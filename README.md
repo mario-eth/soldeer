@@ -50,4 +50,4 @@ The full list of dependencies is available [here](./all_dependencies.toml).
 - Parallel downloads of the dependencies.
 - Error handling.
 - Tests. (I know, I know...)
-- Refactor the code. (lots of duplicated code)
+- Refactor the code. (lots of duplicated code).

@@ -14,13 +14,11 @@ categories = ["development-tools", "package-management"]
 
 [dependencies]
 serde_json = "1.0.1"
-regex = "1.9.1"
 toml = "0.7.6"
 serde = "1.0.171"
 serde_derive = "1.0.171"
 tokio = "1.29.1"
 tokio-dl-stream-to-disk = "1.0.0"
 zip-extract = "0.1.2"
-curl = "0.4.44"
 reqwest = "0.11.18"
 toml_edit = "0.9.1"

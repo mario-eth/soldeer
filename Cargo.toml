@@ -7,7 +7,7 @@ license = "MIT"
 description = "A solidity package manager written in rust. It's minimal and easy within your solidity project. Works best with foundry."
 repository = "https://github.com/mario-eth/soldeer"
 homepage = "https://github.com/mario-eth/soldeer"
-readme = "https://raw.githubusercontent.com/mario-eth/soldeer/main/README.md"
+readme = "./README.md"
 keywords = ["solidity", "package manager"]
 categories = ["development-tools", "package-management"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html

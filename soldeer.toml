@@ -1,8 +1,8 @@
-[remappings]
-enabled = true
+
 
 [dependencies]
 "openzeppelin~v4.9.2" = "https://github.com/OpenZeppelin/openzeppelin-contracts/archive/refs/tags/v4.9.2.zip"
-"solady~v0.0.107" = "https://github.com/Vectorized/solady/archive/refs/tags/v0.0.107.zip"
-"uniswap-v3-periphery~v1.0.0" = "https://github.com/Uniswap/v3-periphery/archive/refs/tags/v1.0.0.zip"
-"solady~v0.0.49" = "https://github.com/Vectorized/solady/archive/refs/tags/v0.0.49.zip"
+"openzeppelin~v1.0.5" = "https://github.com/OpenZeppelin/openzeppelin-contracts/archive/refs/tags/v1.0.5.zip"
+
+[remappings]
+enabled = true

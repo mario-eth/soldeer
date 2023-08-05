@@ -1,4 +1,4 @@
-use std::fs;
+use std::fs::{ metadata, remove_file };
 
 use crate::config::Dependency;
 use crate::utils::get_current_working_dir;
@@ -51,7 +51,7 @@ pub fn healthcheck_dependency(
     println!("Health-checking dependency {}-{}", dependency_name, dependency_version);
     let file_name: String = format!("{}-{}", &dependency_name, &dependency_version);
     let new_path: std::path::PathBuf = get_current_working_dir().unwrap().join("dependencies");
-    match fs::metadata(new_path.join(file_name)) {
+    match metadata(new_path.join(file_name)) {
         Ok(_) => { Ok(()) }
         Err(_) => {
             return Err(MissingDependencies::new(&dependency_name));
@@ -66,7 +66,7 @@ pub fn cleanup_dependency(
     println!("Cleaning up dependency {}-{}", dependency_name, dependency_version);
     let file_name: String = format!("{}-{}.zip", dependency_name, dependency_version);
     let new_path: std::path::PathBuf = get_current_working_dir().unwrap().join("dependencies");
-    match fs::remove_file(new_path.join(file_name)) {
+    match remove_file(new_path.join(file_name)) {
         Ok(_) => { Ok(()) }
         Err(_) => {
             return Err(MissingDependencies::new(&dependency_name));

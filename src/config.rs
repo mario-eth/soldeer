@@ -1,14 +1,12 @@
-use std::fs;
-use std::path::PathBuf;
-use std::path::Path;
+use std::fs::{ self, File };
+use std::path::{ PathBuf, Path };
 use std::process::exit;
 use serde_derive::Deserialize;
-use toml;
-use toml::Table;
-use std::io::Write;
-use std::fs::File;
-use std::io::{ BufRead, BufReader };
+use toml::{ self, Table };
+use std::io::{ Write, BufRead, BufReader };
 use crate::utils::get_current_working_dir;
+extern crate toml_edit;
+use toml_edit::{ Document, value };
 
 // TODO need to improve this, to propagate the error to main and not exit here.
 pub fn read_config(filename: String) -> Vec<Dependency> {
@@ -80,14 +78,10 @@ pub fn define_config_file() -> String {
 pub fn add_to_config(dependency_name: &str, dependency_version: &str, dependency_url: &str) {
     println!("Adding dependency {}-{} to config file", dependency_name, dependency_version);
     let filename: String = define_config_file();
-    let dependencies: Vec<Dependency> = read_config(filename.clone());
-    let mut dependency_exists: bool = false;
-    for dependency in dependencies.iter() {
-        if dependency.name == dependency_name && dependency.version == dependency_version {
-            dependency_exists = true;
-        }
-    }
-    if dependency_exists {
+    let contents = read_file_to_string(filename.clone());
+    let mut doc: Document = contents.parse::<Document>().expect("invalid doc");
+
+    if !doc["dependencies"].get(format!("{}~{}", dependency_name, dependency_version)).is_none() {
         println!(
             "Dependency {}-{} already exists in the config file",
             dependency_name,
@@ -95,21 +89,15 @@ pub fn add_to_config(dependency_name: &str, dependency_version: &str, dependency
         );
         return;
     }
+    doc["dependencies"][format!("{}~{}", dependency_name, dependency_version)] =
+        value(dependency_url);
     let mut file: std::fs::File = fs::OpenOptions
         ::new()
         .write(true)
-        .append(true)
+        .append(false)
         .open(filename)
         .unwrap();
-    if
-        let Err(e) = writeln!(
-            file,
-            "\n\"{}~{}\" = \"{}\"",
-            dependency_name,
-            dependency_version,
-            dependency_url
-        )
-    {
+    if let Err(e) = write!(file, "{}", doc.to_string()) {
         eprintln!("Couldn't write to file: {}", e);
     }
 }
@@ -122,26 +110,12 @@ pub fn remappings() {
 }
 
 fn update_foundry() {
-    //TODO need to create the remappings file if it does not exists.
     if !Path::new("remappings.txt").exists() {
         File::create("remappings.txt").unwrap();
     }
     println!("Updating foundry...");
-    // Read the contents of the file using a `match` block
-    // to return the `data: Ok(c)` as a `String`
-    // or handle any `errors: Err(_)`.
-    let contents: String = match fs::read_to_string("remappings.txt") {
-        // If successful return the files text as `contents`.
-        // `c` is a local variable.
-        Ok(c) => c,
-        // Handle the `error` case.
-        Err(_) => {
-            // Write `msg` to `stderr`.
-            eprintln!("Could not read file `{}`", "remappings.txt");
-            // Exit the program with exit code `1`.
-            exit(1);
-        }
-    };
+    let contents = read_file_to_string(String::from("remappings.txt"));
+
     let existing_remappings: Vec<String> = contents
         .split("\n")
         .map(|s| s.to_string())
@@ -160,7 +134,12 @@ fn update_foundry() {
         if index.is_none() {
             println!("Adding a new remap {}", &dependency.name);
             new_remappings.push_str(
-                &format!("{}=dependencies/{}-{}\n", &dependency.name, &dependency.name, &dependency.version)
+                &format!(
+                    "{}=dependencies/{}-{}\n",
+                    &dependency.name,
+                    &dependency.name,
+                    &dependency.version
+                )
             );
         }
     });
@@ -225,21 +204,8 @@ fn remove_empty_lines(filename: String) {
 
 fn enable_remappings() -> bool {
     let filename = define_config_file();
-    // Read the contents of the file using a `match` block
-    // to return the `data: Ok(c)` as a `String`
-    // or handle any `errors: Err(_)`.
-    let contents: String = match fs::read_to_string(&filename) {
-        // If successful return the files text as `contents`.
-        // `c` is a local variable.
-        Ok(c) => c,
-        // Handle the `error` case.
-        Err(_) => {
-            // Write `msg` to `stderr`.
-            eprintln!("Could not read file `{}`", &filename);
-            // Exit the program with exit code `1`.
-            exit(1);
-        }
-    };
+
+    let contents: String = read_file_to_string(filename.clone());
 
     // Use a `match` block to return the
     // file `contents` as a `Data struct: Ok(d)`
@@ -258,6 +224,22 @@ fn enable_remappings() -> bool {
         }
     };
     return data.remappings.get("enabled").unwrap().as_bool().unwrap();
+}
+
+fn read_file_to_string(filename: String) -> String {
+    let contents: String = match fs::read_to_string(&filename) {
+        // If successful return the files text as `contents`.
+        // `c` is a local variable.
+        Ok(c) => c,
+        // Handle the `error` case.
+        Err(_) => {
+            // Write `msg` to `stderr`.
+            eprintln!("Could not read file `{}`", &filename);
+            // Exit the program with exit code `1`.
+            exit(1);
+        }
+    };
+    return contents;
 }
 // Top level struct to hold the TOML data.
 #[derive(Deserialize)]

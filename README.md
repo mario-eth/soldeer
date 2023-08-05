@@ -46,7 +46,6 @@ The full list of dependencies is available [here](./all_dependencies.toml).
 
 ### TODO
 
-- A better way to write to the TOML file.
 - Parallel downloads of the dependencies.
 - A better way to handle the dependencies.
 - Error handling.

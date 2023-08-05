@@ -1,21 +1,13 @@
 use std::path::Path;
-use std::io::Cursor;
-use std::io::Read;
-use std::io::BufReader;
-use std::fs::File;
+use std::io::{ Cursor, Read, BufReader };
+use reqwest::{ get, Response };
+use std::fs::{ self, remove_file, File };
 use std::fmt;
 use tokio_dl_stream_to_disk::AsyncDownload;
 use zip_extract::ZipExtractError;
-use reqwest::get;
-use reqwest::Response;
-use std::fs;
-use std::fs::remove_file;
 
-use crate::config::Dependency;
-use crate::config::read_config;
+use crate::config::{ Dependency, read_config };
 use crate::utils::get_current_working_dir;
-
-const REMOTE_REPOSITORY: &str = "https://raw.githubusercontent.com/mario-eth/soldeer/main/all_dependencies.toml";
 
 // TODOs:
 // - needs to be downloaded in parallel
@@ -50,11 +42,10 @@ pub fn unzip_dependencies(dependencies: &Vec<Dependency>) -> Result<(), ZipExtra
 
 pub async fn download_dependency_remote(
     dependency_name: &String,
-    dependency_version: &String
+    dependency_version: &String,
+    remote_url: &String
 ) -> Result<String, DownloadError> {
-    let res: Response = get(
-        format!("{}/{}~{}.zip", REMOTE_REPOSITORY, dependency_name, dependency_version)
-    ).await.unwrap();
+    let res: Response = get(format!("{}", remote_url)).await.unwrap();
     let body: String = res.text().await.unwrap();
     let tmp_path: std::path::PathBuf = get_current_working_dir()
         .unwrap()

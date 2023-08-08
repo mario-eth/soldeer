@@ -1,9 +1,9 @@
 
 
-[dependencies]
+[sdependencies]
 "@openzeppelin~v4.9.2" = "https://github.com/OpenZeppelin/openzeppelin-contracts/archive/refs/tags/v4.9.2.zip"
 "@openzeppelin~v1.0.5" = "https://github.com/OpenZeppelin/openzeppelin-contracts/archive/refs/tags/v1.0.5.zip"
-"@solady~v0.0.41" = "https://github.com/Vectorized/solady/archive/refs/tags/v0.0.41.zip"
 
-[remappings]
+[foundry]
 enabled = true
+foundry-config = true

@@ -6,23 +6,36 @@ mod janitor;
 use std::process::exit;
 use std::env;
 
-use crate::config::{ read_config, remappings, Dependency };
+use crate::config::{ read_config, remappings, Dependency, get_foundry_setup };
 use crate::dependency_downloader::{ download_dependencies, unzip_dependencies, unzip_dependency };
 use crate::janitor::{ healthcheck_dependencies, cleanup_after };
 
 const REMOTE_REPOSITORY: &str =
     "https://raw.githubusercontent.com/mario-eth/soldeer/main/all_dependencies.toml";
 
+#[derive(Debug)]
+pub struct FOUNDRY {
+    remappings: bool,
+    config: bool,
+}
 #[tokio::main]
 async fn main() {
     let args: Vec<String> = env::args().collect();
     let command: (String, String, String) = process_args(args).unwrap();
 
+    // setup the foundry setup, in case it's enabled inside the soldeer.toml, then the foundry.toml will be used for
+    // `sdependencies`
+    let f_setup_vec: Vec<bool> = get_foundry_setup();
+    let foundry_setup: FOUNDRY = FOUNDRY {
+        remappings: f_setup_vec[0],
+        config: f_setup_vec[1],
+    };
+
     if command.0 == "install" && command.1 != "" {
         let dependency_name: String = command.1.split("~").collect::<Vec<&str>>()[0].to_string();
         let dependency_version: String = command.1.split("~").collect::<Vec<&str>>()[1].to_string();
         let dependency_url: String;
-        let mut remote_url = REMOTE_REPOSITORY.to_string();
+        let mut remote_url: String = REMOTE_REPOSITORY.to_string();
         if command.2 != "" {
             remote_url = command.2;
         }
@@ -30,7 +43,8 @@ async fn main() {
             dependency_downloader::download_dependency_remote(
                 &dependency_name,
                 &dependency_version,
-                &remote_url
+                &remote_url,
+                &foundry_setup
             ).await
         {
             Ok(url) => {
@@ -49,7 +63,12 @@ async fn main() {
             }
         }
         // TODO this is kinda junky written, need to refactor and a better TOML writer
-        config::add_to_config(&dependency_name, &dependency_version, &dependency_url);
+        config::add_to_config(
+            &dependency_name,
+            &dependency_version,
+            &dependency_url,
+            &foundry_setup
+        );
         match janitor::healthcheck_dependency(&dependency_name, &dependency_version) {
             Ok(_) => {}
             Err(err) => {
@@ -64,9 +83,11 @@ async fn main() {
                 exit(500);
             }
         }
-        remappings();
+        if foundry_setup.remappings {
+            remappings(&foundry_setup);
+        }
     } else if command.0 == "update" || (command.0 == "install" && command.1 == "") {
-        let dependencies: Vec<Dependency> = read_config(String::new());
+        let dependencies: Vec<Dependency> = read_config(String::new(), &foundry_setup);
         if download_dependencies(&dependencies, true).await.is_err() {
             eprintln!("Error downloading dependencies");
             exit(500);
@@ -88,7 +109,9 @@ async fn main() {
             eprintln!("Error cleanup dependencies {:?}", result.err().unwrap().name);
             exit(500);
         }
-        remappings();
+        if foundry_setup.remappings {
+            remappings(&foundry_setup);
+        }
     } else if command.0 == "help" {
         println!(
             "Usage: soldeer [command] [dependency] Example: dependency~version. the `~` is very important to differentiate between the name and the version that needs to be installed."

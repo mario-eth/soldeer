@@ -44,6 +44,10 @@ WARNING! The `[remappings]` must be first then the `[dependencies]`. The `enable
 
 The full list of dependencies is available [here](./all_dependencies.toml).
 
+### CAVEATS
+
+The add to remappings feature just appends to the `remappings.txt`` file, it does not delete old dependencies. So if you want to remove a dependency from remappings you have to do it manually.
+
 ### TODO
 
 - Parallel downloads of the dependencies.

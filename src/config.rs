@@ -7,12 +7,13 @@ use std::io::{ Write, BufRead, BufReader };
 use crate::utils::get_current_working_dir;
 extern crate toml_edit;
 use toml_edit::{ Document, value };
+use crate::FOUNDRY;
 
 // TODO need to improve this, to propagate the error to main and not exit here.
-pub fn read_config(filename: String) -> Vec<Dependency> {
+pub fn read_config(filename: String, foundry_setup: &FOUNDRY) -> Vec<Dependency> {
     let mut filename: String = filename;
     if filename == "" {
-        filename = define_config_file();
+        filename = define_config_file(foundry_setup);
     }
     // Read the contents of the file using a `match` block
     // to return the `data: Ok(c)` as a `String`
@@ -48,7 +49,7 @@ pub fn read_config(filename: String) -> Vec<Dependency> {
     };
 
     let mut dependencies: Vec<Dependency> = Vec::new();
-    data.dependencies.iter().for_each(|(k, v)| {
+    data.sdependencies.iter().for_each(|(k, v)| {
         let parts: Vec<&str> = k.split("~").collect::<Vec<&str>>();
         dependencies.push(Dependency {
             name: parts.get(0).unwrap().to_string(),
@@ -60,28 +61,40 @@ pub fn read_config(filename: String) -> Vec<Dependency> {
     return dependencies;
 }
 
-pub fn define_config_file() -> String {
+pub fn define_config_file(foundry_setup: &FOUNDRY) -> String {
     // reading the current directory to look for the config file
     let working_dir: Result<PathBuf, std::io::Error> = get_current_working_dir();
 
-    let filename: String =
-        working_dir.unwrap().into_os_string().into_string().unwrap() + "/soldeer.toml";
+    let mut filename: String =
+        working_dir.as_ref().unwrap().clone().into_os_string().into_string().unwrap().to_owned() +
+        "/soldeer.toml";
+
+    if foundry_setup.config {
+        filename =
+            working_dir.as_ref().unwrap().clone().into_os_string().into_string().unwrap().clone() +
+            "/foundry.toml";
+    }
     let exists: bool = Path::new(&filename).exists();
     if exists {
-        println!("Config file exists.");
+        // println!("Config file exists.");
     } else {
         eprintln!("Config file does not exist. Program exited.");
         exit(404);
     }
     return filename;
 }
-pub fn add_to_config(dependency_name: &str, dependency_version: &str, dependency_url: &str) {
+pub fn add_to_config(
+    dependency_name: &str,
+    dependency_version: &str,
+    dependency_url: &str,
+    foundry_setup: &FOUNDRY
+) {
     println!("Adding dependency {}-{} to config file", dependency_name, dependency_version);
-    let filename: String = define_config_file();
+    let filename: String = define_config_file(foundry_setup);
     let contents = read_file_to_string(filename.clone());
     let mut doc: Document = contents.parse::<Document>().expect("invalid doc");
 
-    if !doc["dependencies"].get(format!("{}~{}", dependency_name, dependency_version)).is_none() {
+    if !doc["sdependencies"].get(format!("{}~{}", dependency_name, dependency_version)).is_none() {
         println!(
             "Dependency {}-{} already exists in the config file",
             dependency_name,
@@ -89,7 +102,7 @@ pub fn add_to_config(dependency_name: &str, dependency_version: &str, dependency
         );
         return;
     }
-    doc["dependencies"][format!("{}~{}", dependency_name, dependency_version)] =
+    doc["sdependencies"][format!("{}~{}", dependency_name, dependency_version)] =
         value(dependency_url);
     let mut file: std::fs::File = fs::OpenOptions
         ::new()
@@ -102,31 +115,39 @@ pub fn add_to_config(dependency_name: &str, dependency_version: &str, dependency
     }
 }
 
-pub fn remappings() {
-    if !enable_remappings() {
-        return;
-    }
-    update_foundry();
-}
-
-fn update_foundry() {
+pub fn remappings(foundry_setup: &FOUNDRY) {
     if !Path::new("remappings.txt").exists() {
         File::create("remappings.txt").unwrap();
     }
     println!("Updating foundry...");
+    let contents = read_file_to_string(String::from("remappings.txt"));
+
+    let existing_remappings: Vec<String> = contents
+        .split("\n")
+        .map(|s| s.to_string())
+        .collect();
     let mut new_remappings: String = String::new();
-    let dependencies: Vec<Dependency> = read_config(String::new());
+    let dependencies: Vec<Dependency> = read_config(String::new(), foundry_setup);
+
+    let mut existing_remap: Vec<String> = Vec::new();
+    existing_remappings.iter().for_each(|remapping| {
+        let split: Vec<&str> = remapping.split("=").collect::<Vec<&str>>();
+        existing_remap.push(String::from(split[0]));
+    });
 
     dependencies.iter().for_each(|dependency| {
-        println!("Adding a new remap {}", &dependency.name);
-        new_remappings.push_str(
-            &format!(
-                "{}=dependencies/{}-{}\n",
-                &dependency.name,
-                &dependency.name,
-                &dependency.version
-            )
-        );
+        let index = existing_remap.iter().position(|r| r == &dependency.name);
+        if index.is_none() {
+            println!("Adding a new remap {}", &dependency.name);
+            new_remappings.push_str(
+                &format!(
+                    "{}=dependencies/{}-{}\n",
+                    &dependency.name,
+                    &dependency.name,
+                    &dependency.version
+                )
+            );
+        }
     });
 
     if new_remappings.len() == 0 {
@@ -137,11 +158,10 @@ fn update_foundry() {
     let mut file: std::fs::File = fs::OpenOptions
         ::new()
         .write(true)
-        .truncate(true)
-        .append(false)
+        .append(true)
         .open(Path::new("remappings.txt"))
         .unwrap();
-    println!("New remappings: {}", &new_remappings);
+
     match write!(file, "{}", &new_remappings) {
         Ok(_) => {}
         Err(e) => {
@@ -188,15 +208,15 @@ fn remove_empty_lines(filename: String) {
     }
 }
 
-fn enable_remappings() -> bool {
-    let filename = define_config_file();
+pub fn get_foundry_setup() -> Vec<bool> {
+    let filename = define_config_file(&(FOUNDRY { remappings: false, config: false }));
 
     let contents: String = read_file_to_string(filename.clone());
 
     // Use a `match` block to return the
     // file `contents` as a `Data struct: Ok(d)`
     // or handle any `errors: Err(_)`.
-    let data: Remmapings = match toml::from_str(&contents) {
+    let data: Foundry = match toml::from_str(&contents) {
         // If successful, return data as `Data` struct.
         // `d` is a local variable.
         Ok(d) => d,
@@ -209,7 +229,11 @@ fn enable_remappings() -> bool {
             exit(1);
         }
     };
-    return data.remappings.get("enabled").unwrap().as_bool().unwrap();
+
+    return vec![
+        data.foundry.get("enabled").unwrap().as_bool().unwrap(),
+        data.foundry.get("foundry-config").unwrap().as_bool().unwrap()
+    ];
 }
 
 fn read_file_to_string(filename: String) -> String {
@@ -231,7 +255,7 @@ fn read_file_to_string(filename: String) -> String {
 #[derive(Deserialize)]
 #[derive(Debug)]
 struct Data {
-    dependencies: Table,
+    sdependencies: Table,
 }
 
 // Dependency object used to store a dependency data
@@ -244,6 +268,6 @@ pub struct Dependency {
 
 #[derive(Deserialize)]
 #[derive(Debug)]
-struct Remmapings {
-    remappings: Table,
+struct Foundry {
+    foundry: Table,
 }

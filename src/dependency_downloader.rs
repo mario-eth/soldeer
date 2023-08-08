@@ -8,6 +8,7 @@ use zip_extract::ZipExtractError;
 
 use crate::config::{ Dependency, read_config };
 use crate::utils::get_current_working_dir;
+use crate::FOUNDRY;
 
 // TODOs:
 // - needs to be downloaded in parallel
@@ -51,7 +52,8 @@ pub fn unzip_dependencies(dependencies: &Vec<Dependency>) -> Result<(), ZipExtra
 pub async fn download_dependency_remote(
     dependency_name: &String,
     dependency_version: &String,
-    remote_url: &String
+    remote_url: &String,
+    foundry_setup: &FOUNDRY
 ) -> Result<String, DownloadError> {
     let res: Response = get(format!("{}", remote_url)).await.unwrap();
     let body: String = res.text().await.unwrap();
@@ -59,7 +61,7 @@ pub async fn download_dependency_remote(
         .unwrap()
         .join(".dependency_reading.toml");
     fs::write(&tmp_path, body).expect("Unable to write file");
-    let dependencies: Vec<Dependency> = read_config((&tmp_path).to_str().unwrap().to_string());
+    let dependencies: Vec<Dependency> = read_config((&tmp_path).to_str().unwrap().to_string(), foundry_setup);
     for dependency in dependencies.iter() {
         if dependency.name == *dependency_name && dependency.version == *dependency_version {
             println!("dependency url: {}", dependency.url);

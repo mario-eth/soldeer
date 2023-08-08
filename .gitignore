@@ -1,2 +1,4 @@
 /target
 dependencies/
+foundry.toml
+.dependency_reading.toml

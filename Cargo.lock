@@ -1069,6 +1069,7 @@ dependencies = [
 name = "soldeer"
 version = "0.1.0"
 dependencies = [
+ "lazy_static",
  "reqwest",
  "serde",
  "serde_derive",

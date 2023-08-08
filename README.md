@@ -35,12 +35,26 @@ Example of `soldeer.toml`
 [remappings]
 enabled = true
 
-[dependencies]
+[sdependencies]
 "openzeppelin~v4.9.2" = "https://github.com/OpenZeppelin/openzeppelin-contracts/archive/refs/tags/v4.9.2.zip"
 "uniswap-v3-periphery~v1.0.0" = "https://github.com/Uniswap/v3-periphery/archive/refs/tags/v1.0.0.zip"
 ```
 
-WARNING! The `[remappings]` must be first then the `[dependencies]`. The `enabled` field is used to enable or disable the remappings.
+### Foundry integration
+
+`Soldeer` works with foundry config file as well. You just have to define the `sdependencies` option in the `foundry.toml` file.
+
+Example
+
+```toml
+[sdependencies]
+"@openzeppelin~v4.9.2" = "https://github.com/OpenZeppelin/openzeppelin-contracts/archive/refs/tags/v4.9.2.zip"
+"@openzeppelin~v1.0.5" = "https://github.com/OpenZeppelin/openzeppelin-contracts/archive/refs/tags/v1.0.5.zip"
+"@solady~v0.0.41" = "https://github.com/Vectorized/solady/archive/refs/tags/v0.0.41.zip"
+"@uniswap-v3-periphery~v1.0.0-beta.1" = "https://github.com/Uniswap/v3-periphery/archive/refs/tags/v1.0.0-beta.1.zip"
+```
+
+#### !!! This will throw an warning when you do any `forge` action, until forge accepts `soldeer` config as a valid config within the `foundry.toml` file.
 
 The full list of dependencies is available [here](./all_dependencies.toml).
 

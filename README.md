@@ -1,6 +1,6 @@
 # SolDeer ![Rust][rust-badge] [![License: MIT][license-badge]][license]
 
-## Version 0.1.0
+## Version 0.1.1
 
 ### WARNING
 
@@ -32,12 +32,13 @@ It's built in rust and relies on github releases to install the dependencies in 
 Example of `soldeer.toml`
 
 ```toml
-[remappings]
-enabled = true
-
 [sdependencies]
-"openzeppelin~v4.9.2" = "https://github.com/OpenZeppelin/openzeppelin-contracts/archive/refs/tags/v4.9.2.zip"
-"uniswap-v3-periphery~v1.0.0" = "https://github.com/Uniswap/v3-periphery/archive/refs/tags/v1.0.0.zip"
+"@openzeppelin~v4.9.2" = "https://github.com/OpenZeppelin/openzeppelin-contracts/archive/refs/tags/v4.9.2.zip"
+"@openzeppelin~v1.0.5" = "https://github.com/OpenZeppelin/openzeppelin-contracts/archive/refs/tags/v1.0.5.zip"
+
+[foundry]
+enabled = true
+foundry-config = true
 ```
 
 ### Foundry integration

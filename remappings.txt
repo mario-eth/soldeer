@@ -1,4 +1,3 @@
-openzeppelin=dependencies/openzeppelin-v4.9.2
-solady=dependencies/solady-v0.0.107
-solady=dependencies/solady-v0.0.49
-uniswap-v3-periphery=dependencies/uniswap-v3-periphery-v1.0.0
+@openzeppelin=dependencies/@openzeppelin-v1.0.5
+@openzeppelin=dependencies/@openzeppelin-v4.9.2
+@solady=dependencies/@solady-v0.0.41

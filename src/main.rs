@@ -67,7 +67,7 @@ async fn main() {
         remappings();
     } else if command.0 == "update" || (command.0 == "install" && command.1 == "") {
         let dependencies: Vec<Dependency> = read_config(String::new());
-        if download_dependencies(&dependencies).await.is_err() {
+        if download_dependencies(&dependencies, true).await.is_err() {
             eprintln!("Error downloading dependencies");
             exit(500);
         }

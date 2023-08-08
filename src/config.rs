@@ -114,34 +114,19 @@ fn update_foundry() {
         File::create("remappings.txt").unwrap();
     }
     println!("Updating foundry...");
-    let contents = read_file_to_string(String::from("remappings.txt"));
-
-    let existing_remappings: Vec<String> = contents
-        .split("\n")
-        .map(|s| s.to_string())
-        .collect();
     let mut new_remappings: String = String::new();
     let dependencies: Vec<Dependency> = read_config(String::new());
 
-    let mut existing_remap: Vec<String> = Vec::new();
-    existing_remappings.iter().for_each(|remapping| {
-        let split: Vec<&str> = remapping.split("=").collect::<Vec<&str>>();
-        existing_remap.push(String::from(split[0]));
-    });
-
     dependencies.iter().for_each(|dependency| {
-        let index = existing_remap.iter().position(|r| r == &dependency.name);
-        if index.is_none() {
-            println!("Adding a new remap {}", &dependency.name);
-            new_remappings.push_str(
-                &format!(
-                    "{}=dependencies/{}-{}\n",
-                    &dependency.name,
-                    &dependency.name,
-                    &dependency.version
-                )
-            );
-        }
+        println!("Adding a new remap {}", &dependency.name);
+        new_remappings.push_str(
+            &format!(
+                "{}=dependencies/{}-{}\n",
+                &dependency.name,
+                &dependency.name,
+                &dependency.version
+            )
+        );
     });
 
     if new_remappings.len() == 0 {
@@ -152,10 +137,11 @@ fn update_foundry() {
     let mut file: std::fs::File = fs::OpenOptions
         ::new()
         .write(true)
-        .append(true)
+        .truncate(true)
+        .append(false)
         .open(Path::new("remappings.txt"))
         .unwrap();
-
+    println!("New remappings: {}", &new_remappings);
     match write!(file, "{}", &new_remappings) {
         Ok(_) => {}
         Err(e) => {

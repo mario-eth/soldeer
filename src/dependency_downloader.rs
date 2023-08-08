@@ -11,7 +11,15 @@ use crate::utils::get_current_working_dir;
 
 // TODOs:
 // - needs to be downloaded in parallel
-pub async fn download_dependencies(dependencies: &Vec<Dependency>) -> Result<(), DownloadError> {
+pub async fn download_dependencies(
+    dependencies: &Vec<Dependency>,
+    clean: bool
+) -> Result<(), DownloadError> {
+    if clean {
+        let dep_path = get_current_working_dir().unwrap().join("dependencies");
+        fs::remove_dir_all(&dep_path).unwrap();
+        fs::create_dir(&dep_path).unwrap();
+    }
     for dependency in dependencies.iter() {
         let file_name: String = format!("{}-{}.zip", dependency.name, dependency.version);
         match download_dependency(&file_name, &dependency.url).await {
@@ -54,6 +62,7 @@ pub async fn download_dependency_remote(
     let dependencies: Vec<Dependency> = read_config((&tmp_path).to_str().unwrap().to_string());
     for dependency in dependencies.iter() {
         if dependency.name == *dependency_name && dependency.version == *dependency_version {
+            println!("dependency url: {}", dependency.url);
             match
                 download_dependency(
                     &format!("{}-{}.zip", &dependency_name, &dependency_version),

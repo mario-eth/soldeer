@@ -55,5 +55,4 @@ The add to remappings feature just appends to the `remappings.txt`` file, it doe
 - Error handling.
 - Tests. (I know, I know...)
 - Refactor the code. (lots of duplicated code).
-- enable dependencies in the foundry toml file.
 - skip downloading if dependency already downloaded

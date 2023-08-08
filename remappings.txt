@@ -1,3 +1,0 @@
-@openzeppelin=dependencies/@openzeppelin-v1.0.5
-@openzeppelin=dependencies/@openzeppelin-v4.9.2
-@solady=dependencies/@solady-v0.0.41

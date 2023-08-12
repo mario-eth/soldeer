@@ -1,0 +1,15 @@
+"npm" = [
+  "@openzeppelin/contracts",
+  "@openzeppelin/contracts-upgradeable",
+  "@uniswap/universal-router",
+  "@uniswap/v2-core",
+  "@uniswap/v2-periphery",
+  "@uniswap/swap-router-contracts",
+  "@uniswap/v3-core",
+  "@uniswap/v3-periphery",
+  "solmate",
+  "@prb/math",
+  "@prb/contracts",
+  "@prb/proxy",
+  "@prb/test",
+]

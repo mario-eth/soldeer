@@ -11,7 +11,7 @@ This is not a production ready product, it's still in development and should not
 [license-badge]: https://img.shields.io/badge/License-MIT-blue.svg
 
 <p align="center">
-  <img src="./soldeer.png" />
+  <img src="./soldeer.jpeg" />
 </p>
 
 ### What is SolDeer?

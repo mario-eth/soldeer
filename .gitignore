@@ -4,3 +4,7 @@ foundry.toml
 .dependency_reading.toml
 remappings.txt
 crawler/target/
+*.DS_Store*
+package-lock.json
+package.json
+repositories.db

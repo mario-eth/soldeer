@@ -77,11 +77,10 @@ pub fn check_versions_health(
     }
     return Ok(valid_versions);
 }
-pub fn check_version_health(repository: &String, version: &String) -> Result<(), HealthCheckError> {
+pub fn retrieve_version(repository: &String, version: &String) -> Result<(), HealthCheckError> {
     let output: Output = Command::new("npm")
         .arg("i")
         .arg(format!("{}@{}", repository, version))
-        .arg("--dry-run")
         .output()
         .expect("failed to execute process");
     if output.status.success() {

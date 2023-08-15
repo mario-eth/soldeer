@@ -3,7 +3,7 @@ mod utils;
 mod db;
 mod manager;
 
-use npm::{ load_repositories, npm_retrieve_versions, check_version_health };
+use npm::{ load_repositories, npm_retrieve_versions, retrieve_version };
 use npm::LoadError;
 use db::{ get_versions_for_repo_from_db, insert_version_into_db, Version };
 use rusqlite::Error;
@@ -32,7 +32,7 @@ fn main() {
             if existing_versions.contains(&version) {
                 continue;
             }
-            check_version_health(&repository, &version)
+            retrieve_version(&repository, &version)
                 .map_err(|err| {
                     println!("{:?}", err);
                 })

@@ -12,3 +12,5 @@ serde = {version = "1.0.171", features = ["derive"]}
 serde_derive = "1.0.171"
 serde_json = "1.0.1"
 toml = "0.7.6"
+zip = "0.6.6"
+walkdir = "2.3.3"

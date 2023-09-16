@@ -94,7 +94,10 @@ pub fn add_to_config(
     let contents = read_file_to_string(filename.clone());
     let mut doc: Document = contents.parse::<Document>().expect("invalid doc");
 
-    if !doc["sdependencies"].get(format!("{}~{}", dependency_name, dependency_version)).is_none() {
+    if
+        !doc.get("sdependencies").is_none() &&
+        !doc["sdependencies"].get(format!("{}~{}", dependency_name, dependency_version)).is_none()
+    {
         println!(
             "Dependency {}-{} already exists in the config file",
             dependency_name,

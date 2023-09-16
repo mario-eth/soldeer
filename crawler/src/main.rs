@@ -8,7 +8,7 @@ use npm::LoadError;
 use db::{ get_versions_for_repo_from_db, insert_version_into_db, Version };
 use rusqlite::Error;
 use chrono::Utc;
-use manager::{ zip_version, push_to_repository };
+use manager::{ zip_version, push_to_repository, clean };
 fn main() {
     let repositories: Vec<String> = load_repositories()
         .map_err(|err: LoadError| {
@@ -28,16 +28,23 @@ fn main() {
             })
             .unwrap();
 
+        let mut index: usize = 0;
+        let versions_len: usize = versions.len();
         for version in versions {
+            index = index + 1;
             if existing_versions.contains(&version) {
                 continue;
             }
-            retrieve_version(&repository, &version)
-                .map_err(|err| {
-                    println!("{:?}", err);
-                })
-                .unwrap();
-            let version_to_insert = Version {
+            match retrieve_version(&repository, &version) {
+                Ok(_) => {}
+                Err(_) => {
+                    if versions_len == index {
+                        clean();
+                    }
+                    continue;
+                }
+            }
+            let version_to_insert: Version = Version {
                 repository: repository.clone(),
                 version: version.clone(),
                 last_updated: Utc::now(),
@@ -51,6 +58,7 @@ fn main() {
                     println!("{:?}", err);
                 })
                 .unwrap();
+            clean();
         }
     }
 }

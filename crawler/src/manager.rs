@@ -1,18 +1,23 @@
-use std::{ fs::{ File, create_dir, remove_dir_all }, path::PathBuf, env::current_dir, io::Read };
+use std::{ fs::{ File, create_dir, remove_dir_all }, path::PathBuf, io::Read };
 use crate::utils::get_current_working_dir;
 use std::io::{ Write, Seek };
 use std::iter::Iterator;
 use walkdir::{ WalkDir, DirEntry };
 use zip::write::FileOptions;
 use std::path::Path;
+use std::process::{ Command, Output };
+use std::env;
 
 pub fn zip_version(repository: &String, version: &String) {
     println!("Zipping {}/{}", repository, version);
-    let zipped: PathBuf = get_current_working_dir().unwrap().join("zipped");
+    let mut zipped: PathBuf = get_current_working_dir().unwrap().join("zipped");
     if !zipped.exists() {
         create_dir(&zipped).unwrap();
     }
-
+    zipped = zipped.join("all_versions");
+    if !zipped.exists() {
+        create_dir(&zipped).unwrap();
+    }
     // we do this in case some repositories are like name/subpath (e.g. @openzeppelin/contracts)
     let source_name: &str = repository.split("/").collect::<Vec<&str>>()[0];
 
@@ -52,7 +57,7 @@ fn zip_dir<T>(
         // Write file or directory explicitly
         // Some unzip tools unzip files with directory paths correctly, some do not!
         if path.is_file() {
-            println!("adding file {:?} as {:?} ...", path, name);
+            // println!("adding file {:?} as {:?} ...", path, name);
             zip.start_file::<&str>(name.to_str().unwrap(), options)?;
             let mut f: File = File::open(path)?;
 
@@ -62,7 +67,7 @@ fn zip_dir<T>(
         } else if name.as_os_str().len() != 0 {
             // Only if not root! Avoids path spec / warning
             // and mapname conversion failed error on unzip
-            println!("adding dir {:?} as {:?} ...", path, name);
+            // println!("adding dir {:?} as {:?} ...", path, name);
             zip.add_directory(name.to_str().unwrap(), options)?;
         }
     }
@@ -70,4 +75,27 @@ fn zip_dir<T>(
     Result::Ok(())
 }
 
-pub fn push_to_repository(repository: &String, version: &String) {}
+pub fn push_to_repository(repository: &String, version: &String) {
+
+    println!("Pushing {}/{} to repository", repository, version);
+    let commit_message: String = format!(
+        "\"Pushed {} version {} to the repository\"",
+        repository,
+        version
+    );
+    let ssh_key = env::var("SOLDEER_SSH_KEY").unwrap();
+
+    let output_add: Output = Command::new("sh")
+        .arg("push_to_git.sh")
+        .arg(commit_message)
+        .arg(ssh_key)
+        .output()
+        .expect("failed to execute process");
+    println!("status: {}", String::from_utf8(output_add.stdout.clone()).unwrap());
+    println!("error: {}", String::from_utf8(output_add.stderr.clone()).unwrap());
+}
+
+pub fn clean() {
+    let zipped: PathBuf = get_current_working_dir().unwrap().join("zipped");
+    remove_dir_all(zipped).unwrap();
+}

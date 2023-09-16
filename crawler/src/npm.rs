@@ -50,7 +50,7 @@ pub fn npm_retrieve_versions(repository: &String) -> Result<Vec<String>, LoadErr
             return err;
         })
         .unwrap();
-    println!("versions: {:?}", versions);
+    println!("{} versions: {:?}", repository, versions);
     return Ok(versions);
 }
 

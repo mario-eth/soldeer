@@ -8,3 +8,6 @@ crawler/target/
 package-lock.json
 package.json
 repositories.db
+crawler/node_modules/
+crawler/zipped/*
+crawler/zipped/

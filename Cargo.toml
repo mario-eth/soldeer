@@ -10,6 +10,7 @@ homepage = "https://github.com/mario-eth/soldeer"
 readme = "./README.md"
 keywords = ["solidity", "package-manager"]
 categories = ["development-tools", "package-management"]
+exclude = ["crawler/*"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]

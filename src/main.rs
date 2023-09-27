@@ -21,7 +21,7 @@ pub struct FOUNDRY {
 #[tokio::main]
 async fn main() {
     let args: Vec<String> = env::args().collect();
-    let mut command: (String, String, String) = process_args(args).unwrap();
+    let command: (String, String, String) = process_args(args).unwrap();
 
     // setup the foundry setup, in case it's enabled inside the soldeer.toml, then the foundry.toml will be used for
     // `sdependencies`

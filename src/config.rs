@@ -6,7 +6,7 @@ use toml::{ self, Table };
 use std::io::{ Write, BufRead, BufReader };
 use crate::utils::get_current_working_dir;
 extern crate toml_edit;
-use toml_edit::{ Document, value };
+use toml_edit::{ Document };
 use crate::FOUNDRY;
 
 // TODO need to improve this, to propagate the error to main and not exit here.
@@ -75,10 +75,10 @@ pub fn define_config_file(foundry_setup: &FOUNDRY) -> String {
             "/foundry.toml";
     }
     let exists: bool = Path::new(&filename).exists();
-    if exists {
-        // println!("Config file exists.");
-    } else {
-        eprintln!("Config file does not exist. Program exited.");
+    if !exists {
+        eprintln!(
+            "The config file does not exist. Soldeer has exited. If you wish to proceed, below is the minimum requirement for the soldeer.toml file that needs to be created:\n \n [foundry]\n enabled = true\n foundry-config = false\n\n [sdependencies]\n"
+        );
         exit(404);
     }
     return filename;
@@ -92,7 +92,7 @@ pub fn add_to_config(
     println!("Adding dependency {}-{} to config file", dependency_name, dependency_version);
     let filename: String = define_config_file(foundry_setup);
     let contents = read_file_to_string(filename.clone());
-    let mut doc: Document = contents.parse::<Document>().expect("invalid doc");
+    let doc: Document = contents.parse::<Document>().expect("invalid doc");
 
     if
         !doc.get("sdependencies").is_none() &&
@@ -105,15 +105,25 @@ pub fn add_to_config(
         );
         return;
     }
-    doc["sdependencies"][format!("{}~{}", dependency_name, dependency_version)] =
-        value(dependency_url);
+
+    let mut new_dependencies: String = String::new();
+    if doc.get("sdependencies").is_none() {
+        new_dependencies = String::from("\n[sdependencies]\n");
+    }
+    new_dependencies.push_str(
+        &format!(
+            "  \"{}\" = \"{}\"\n",
+            format!("{}~{}", dependency_name, dependency_version),
+            dependency_url
+        )
+    );
     let mut file: std::fs::File = fs::OpenOptions
         ::new()
         .write(true)
-        .append(false)
+        .append(true) // if foundry is enabled, then we append to the foundry.toml
         .open(filename)
         .unwrap();
-    if let Err(e) = write!(file, "{}", doc.to_string()) {
+    if let Err(e) = write!(file, "{}", new_dependencies.to_string()) {
         eprintln!("Couldn't write to file: {}", e);
     }
 }
@@ -135,6 +145,10 @@ pub fn remappings(foundry_setup: &FOUNDRY) {
     let mut existing_remap: Vec<String> = Vec::new();
     existing_remappings.iter().for_each(|remapping| {
         let split: Vec<&str> = remapping.split("=").collect::<Vec<&str>>();
+        if split.len() == 1 {
+            // skip empty lines
+            return;
+        }
         existing_remap.push(String::from(split[0]));
     });
 
@@ -144,7 +158,7 @@ pub fn remappings(foundry_setup: &FOUNDRY) {
             println!("Adding a new remap {}", &dependency.name);
             new_remappings.push_str(
                 &format!(
-                    "{}=dependencies/{}-{}\n",
+                    "\n{}=dependencies/{}-{}",
                     &dependency.name,
                     &dependency.name,
                     &dependency.version

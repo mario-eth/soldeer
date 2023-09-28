@@ -123,6 +123,7 @@ pub fn unzip_dependency(
         .join(Path::new(&("dependencies/".to_owned() + &file_name)));
 
     let target = get_current_working_dir().unwrap().join("dependencies/").join(target_name);
+    println!("target: {:?}", current_dir.as_path());
     let archive: Vec<u8> = read_file(current_dir.as_path().to_str().unwrap().to_string()).unwrap();
     zip_extract::extract(Cursor::new(archive), &target, true)?;
     return Ok(());

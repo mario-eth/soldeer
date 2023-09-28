@@ -19,7 +19,14 @@ pub fn zip_version(repository: &String, version: &String) {
         create_dir(&zipped).unwrap();
     }
     // we do this in case some repositories are like name/subpath (e.g. @openzeppelin/contracts)
-    let source_name: &str = repository.split("/").collect::<Vec<&str>>()[0];
+    let source_names:Vec<&str> =  repository.split("/").collect();
+    let mut source_name: String = repository.split("/").collect::<Vec<&str>>()[0].clone().to_string();
+    if repository.contains("/"){
+        for i in 1..source_names.len() {
+            source_name.push_str("-");
+            source_name.push_str(source_names[i].to_lowercase().as_str());
+        }
+    }
 
     let final_zip: PathBuf = zipped.join(format!("{}~{}.zip", &source_name, version));
     let path: &Path = Path::new(&final_zip);

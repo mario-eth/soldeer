@@ -1,6 +1,7 @@
 #!/bin/bash
 
 remote_url="git@github.com:mario-eth/soldeer-versions.git"
+# remote_url="git@github.com:mario-eth/soldeer-versions.git"
 git_name="Soldeer CI"
 git_email="ci@soldeer.com"
 
@@ -15,6 +16,8 @@ if [ -z "$2" ]; then
     exit 1
 fi
 
+rm package-lock.json
+rm package.json
 
 # Start ssh-agent and add your key
 eval $(ssh-agent)

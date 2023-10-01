@@ -19,9 +19,14 @@ pub fn zip_version(repository: &String, version: &String) {
         create_dir(&zipped).unwrap();
     }
     // we do this in case some repositories are like name/subpath (e.g. @openzeppelin/contracts)
-    let source_names:Vec<&str> =  repository.split("/").collect();
-    let mut source_name: String = repository.split("/").collect::<Vec<&str>>()[0].clone().to_string();
-    if repository.contains("/"){
+    let source_names: Vec<&str> = repository.split("/").collect();
+    let mut source_name: String = repository
+        .split("/")
+        .collect::<Vec<&str>>()[0]
+        .clone()
+        .to_string();
+    let initial_source_name = source_name.clone();
+    if repository.contains("/") {
         for i in 1..source_names.len() {
             source_name.push_str("-");
             source_name.push_str(source_names[i].to_lowercase().as_str());
@@ -32,14 +37,14 @@ pub fn zip_version(repository: &String, version: &String) {
     let path: &Path = Path::new(&final_zip);
     let file: File = File::create(&path).unwrap();
 
-    let to_zip: String = format!("node_modules/");
+    let to_zip: String = format!("node_modules/{}", initial_source_name); // TODO this saves as source + version then @openzeppelin...
     let walkdir: WalkDir = WalkDir::new(&to_zip);
     let it: walkdir::IntoIter = walkdir.into_iter();
 
-    zip_dir(&mut it.filter_map(|e| e.ok()), &to_zip, file, zip::CompressionMethod::Bzip2).unwrap();
+    zip_dir(&mut it.filter_map(|e| e.ok()), &format!("node_modules/"), file, zip::CompressionMethod::Bzip2).unwrap();
 
     // removing node modules after zipping
-    remove_dir_all(get_current_working_dir().unwrap().join("node_modules")).unwrap();
+    remove_dir_all(get_current_working_dir().unwrap().join("node_modules/")).unwrap();
 }
 
 // simple zip directory that walks through a directory and zips it by adding every file to the zip archive
@@ -83,7 +88,6 @@ fn zip_dir<T>(
 }
 
 pub fn push_to_repository(repository: &String, version: &String) {
-
     println!("Pushing {}/{} to repository", repository, version);
     let commit_message: String = format!(
         "\"Pushed {} version {} to the repository\"",

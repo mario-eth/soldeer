@@ -64,7 +64,6 @@ pub async fn download_dependency_remote(
     let dependencies: Vec<Dependency> = read_config((&tmp_path).to_str().unwrap().to_string(), foundry_setup);
     for dependency in dependencies.iter() {
         if dependency.name == *dependency_name && dependency.version == *dependency_version {
-            println!("dependency url: {}", dependency.url);
             match
                 download_dependency(
                     &format!("{}-{}.zip", &dependency_name, &dependency_version),
@@ -94,6 +93,8 @@ pub async fn download_dependency(
     if !new_path.is_dir() {
         fs::create_dir(&new_path).unwrap();
     }
+
+    println!("Downloading dependency {} from {}", dependency_name, dependency_url);
     let download_result: Result<(), tokio_dl_stream_to_disk::error::Error> = AsyncDownload::new(
         dependency_url,
         &new_path,
@@ -106,7 +107,6 @@ pub async fn download_dependency(
         eprintln!("Dependency {} already downloaded", dependency_name);
         return Ok(());
     } else {
-        eprintln!("Dependency {} not downloaded", dependency_name);
         return Err(DownloadError);
     }
 }
@@ -123,7 +123,6 @@ pub fn unzip_dependency(
         .join(Path::new(&("dependencies/".to_owned() + &file_name)));
 
     let target = get_current_working_dir().unwrap().join("dependencies/").join(target_name);
-    println!("target: {:?}", current_dir.as_path());
     let archive: Vec<u8> = read_file(current_dir.as_path().to_str().unwrap().to_string()).unwrap();
     zip_extract::extract(Cursor::new(archive), &target, true)?;
     return Ok(());

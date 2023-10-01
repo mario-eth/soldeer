@@ -1,3 +1,6 @@
 [foundry]
   enabled = true
   foundry-config = false
+  
+[sdependencies]
+  

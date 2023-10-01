@@ -132,7 +132,7 @@ pub fn remappings(foundry_setup: &FOUNDRY) {
     if !Path::new("remappings.txt").exists() {
         File::create("remappings.txt").unwrap();
     }
-    println!("Updating foundry...");
+    println!("Update foundry...");
     let contents = read_file_to_string(String::from("remappings.txt"));
 
     let existing_remappings: Vec<String> = contents
@@ -156,10 +156,14 @@ pub fn remappings(foundry_setup: &FOUNDRY) {
         let index = existing_remap.iter().position(|r| r == &dependency.name);
         if index.is_none() {
             println!("Adding a new remap {}", &dependency.name);
+            let mut dependency_name_formatted = dependency.name.clone();
+            if !dependency_name_formatted.contains("@") {
+                dependency_name_formatted = format!("@{}", dependency_name_formatted);
+            }
             new_remappings.push_str(
                 &format!(
                     "\n{}=dependencies/{}-{}",
-                    &dependency.name,
+                    &dependency_name_formatted,
                     &dependency.name,
                     &dependency.version
                 )

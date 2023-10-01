@@ -16,4 +16,5 @@
   "@axelar-network/axelar-cgp-solidity",
   "@axelar-network/axelar-gmp-sdk-solidity",
   "@axelar-network/interchain-token-service",
+  "solady",
 ]

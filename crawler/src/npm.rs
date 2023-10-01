@@ -80,9 +80,11 @@ pub fn check_versions_health(
 pub fn retrieve_version(repository: &String, version: &String) -> Result<(), HealthCheckError> {
     let output: Output = Command::new("npm")
         .arg("i")
+        .arg("--prefix . downloaded ")
         .arg(format!("{}@{}", repository, version))
         .output()
         .expect("failed to execute process");
+
     if output.status.success() {
         return Ok(());
     } else {

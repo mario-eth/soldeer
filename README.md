@@ -1,6 +1,6 @@
 # SolDeer ![Rust][rust-badge] [![License: MIT][license-badge]][license]
 
-## Version 0.1.3
+## Version 0.1.4
 
 ### WARNING
 

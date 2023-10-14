@@ -16,11 +16,16 @@ pub async fn download_dependencies(
     dependencies: &Vec<Dependency>,
     clean: bool
 ) -> Result<(), DownloadError> {
+    // clean dependencies folder if flag is true
     if clean {
         let dep_path = get_current_working_dir().unwrap().join("dependencies");
-        fs::remove_dir_all(&dep_path).unwrap();
-        fs::create_dir(&dep_path).unwrap();
+        if dep_path.is_dir() {
+            fs::remove_dir_all(&dep_path).unwrap();
+            fs::create_dir(&dep_path).unwrap();
+        }
     }
+
+    // downloading dependencies to dependencies folder
     for dependency in dependencies.iter() {
         let file_name: String = format!("{}-{}.zip", dependency.name, dependency.version);
         match download_dependency(&file_name, &dependency.url).await {
@@ -61,7 +66,10 @@ pub async fn download_dependency_remote(
         .unwrap()
         .join(".dependency_reading.toml");
     fs::write(&tmp_path, body).expect("Unable to write file");
-    let dependencies: Vec<Dependency> = read_config((&tmp_path).to_str().unwrap().to_string(), foundry_setup);
+    let dependencies: Vec<Dependency> = read_config(
+        (&tmp_path).to_str().unwrap().to_string(),
+        foundry_setup
+    );
     for dependency in dependencies.iter() {
         if dependency.name == *dependency_name && dependency.version == *dependency_version {
             match

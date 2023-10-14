@@ -69,6 +69,26 @@ pub fn define_config_file(foundry_setup: &FOUNDRY) -> String {
         working_dir.as_ref().unwrap().clone().into_os_string().into_string().unwrap().to_owned() +
         "/soldeer.toml";
 
+    // match fs::metadata(file_path) {
+    //     Err(_) => {
+    //         filename =
+    //             working_dir
+    //                 .as_ref()
+    //                 .unwrap()
+    //                 .clone()
+    //                 .into_os_string()
+    //                 .into_string()
+    //                 .unwrap()
+    //                 .to_owned() + "/foundry.toml";
+    //         if !Path::new(&filename).exists() {
+    //             eprintln!(
+    //                 "No config file found. Soldeer has exited. If you wish to proceed, below is the minimum requirement for the soldeer.toml file that needs to be created:\n \n [foundry]\n enabled = true\n foundry-config = false\n\n [sdependencies]\n or put [sdependencies] in your foundry.toml"
+    //             );
+    //             exit(404);
+    //         }
+    //     }
+    // }
+
     if foundry_setup.config {
         filename =
             working_dir.as_ref().unwrap().clone().into_os_string().into_string().unwrap().clone() +

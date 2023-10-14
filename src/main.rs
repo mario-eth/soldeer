@@ -36,24 +36,36 @@ async fn main() {
         let dependency_version: String = command.1.split("~").collect::<Vec<&str>>()[1].to_string();
         let dependency_url: String;
         let mut remote_url: String = REMOTE_REPOSITORY.to_string();
+        // If the user specifies their own dependency url (it can be like on a custom link) then we use that to download
         if command.2 != "" {
             remote_url = command.2;
-        }
-
-        match
-            dependency_downloader::download_dependency_remote(
-                &dependency_name,
-                &dependency_version,
-                &remote_url,
-                &foundry_setup
-            ).await
-        {
-            Ok(url) => {
-                dependency_url = url;
-            }
-            Err(err) => {
-                eprintln!("Error downloading dependency: {:?}", err);
+            let mut dependencies: Vec<Dependency> = Vec::new();
+            dependencies.push(Dependency {
+                name: dependency_name.clone(),
+                version: dependency_version.clone(),
+                url: remote_url.clone(),
+            });
+            dependency_url = remote_url.clone();
+            if download_dependencies(&dependencies, true).await.is_err() {
+                eprintln!("Error downloading dependencies");
                 exit(500);
+            }
+        } else {
+            match
+                dependency_downloader::download_dependency_remote(
+                    &dependency_name,
+                    &dependency_version,
+                    &remote_url,
+                    &foundry_setup
+                ).await
+            {
+                Ok(url) => {
+                    dependency_url = url;
+                }
+                Err(err) => {
+                    eprintln!("Error downloading dependency: {:?}", err);
+                    exit(500);
+                }
             }
         }
         match unzip_dependency(&dependency_name, &dependency_version) {

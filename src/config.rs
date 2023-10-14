@@ -7,13 +7,12 @@ use std::io::{ Write, BufRead, BufReader };
 use crate::utils::get_current_working_dir;
 extern crate toml_edit;
 use toml_edit::{ Document };
-use crate::FOUNDRY;
 
 // TODO need to improve this, to propagate the error to main and not exit here.
-pub fn read_config(filename: String, foundry_setup: &FOUNDRY) -> Vec<Dependency> {
+pub fn read_config(filename: String) -> Vec<Dependency> {
     let mut filename: String = filename;
     if filename == "" {
-        filename = define_config_file(foundry_setup);
+        filename = define_config_file();
     }
     // Read the contents of the file using a `match` block
     // to return the `data: Ok(c)` as a `String`
@@ -61,7 +60,7 @@ pub fn read_config(filename: String, foundry_setup: &FOUNDRY) -> Vec<Dependency>
     return dependencies;
 }
 
-pub fn define_config_file(foundry_setup: &FOUNDRY) -> String {
+pub fn define_config_file() -> String {
     // reading the current directory to look for the config file
     let working_dir: Result<PathBuf, std::io::Error> = get_current_working_dir();
 
@@ -69,31 +68,44 @@ pub fn define_config_file(foundry_setup: &FOUNDRY) -> String {
         working_dir.as_ref().unwrap().clone().into_os_string().into_string().unwrap().to_owned() +
         "/soldeer.toml";
 
-    // match fs::metadata(file_path) {
-    //     Err(_) => {
-    //         filename =
-    //             working_dir
-    //                 .as_ref()
-    //                 .unwrap()
-    //                 .clone()
-    //                 .into_os_string()
-    //                 .into_string()
-    //                 .unwrap()
-    //                 .to_owned() + "/foundry.toml";
-    //         if !Path::new(&filename).exists() {
-    //             eprintln!(
-    //                 "No config file found. Soldeer has exited. If you wish to proceed, below is the minimum requirement for the soldeer.toml file that needs to be created:\n \n [foundry]\n enabled = true\n foundry-config = false\n\n [sdependencies]\n or put [sdependencies] in your foundry.toml"
-    //             );
-    //             exit(404);
-    //         }
-    //     }
-    // }
-
-    if foundry_setup.config {
-        filename =
-            working_dir.as_ref().unwrap().clone().into_os_string().into_string().unwrap().clone() +
-            "/foundry.toml";
+    match fs::metadata(&filename) {
+        Ok(_) => {}
+        Err(_) => {
+            filename =
+                working_dir
+                    .as_ref()
+                    .unwrap()
+                    .clone()
+                    .into_os_string()
+                    .into_string()
+                    .unwrap()
+                    .to_owned() + "/foundry.toml";
+            if !Path::new(&filename).exists() {
+                eprintln!(
+                    "No config file found. Soldeer has exited. If you wish to proceed, below is the minimum requirement for the soldeer.toml file that needs to be created:\n \n [remappings]\n enabled = true or false\n\n [sdependencies]\n\n or put \n\n [sdependencies] \n\nin your foundry.toml"
+                );
+                exit(404);
+            }
+        }
     }
+
+    let foundry_file =
+        working_dir.as_ref().unwrap().clone().into_os_string().into_string().unwrap().to_owned() +
+        "/foundry.toml";
+
+    // check if the foundry.toml has the sdependencies defined, if so then we setup the foundry.toml as the config file
+    match fs::metadata(&foundry_file) {
+        Ok(_) => {
+            let contents = read_file_to_string(foundry_file.clone());
+            let doc: Document = contents.parse::<Document>().expect("invalid doc");
+
+            if !doc.get("sdependencies").is_none() {
+                filename = foundry_file;
+            }
+        }
+        Err(_) => {}
+    }
+
     let exists: bool = Path::new(&filename).exists();
     if !exists {
         eprintln!(
@@ -103,16 +115,11 @@ pub fn define_config_file(foundry_setup: &FOUNDRY) -> String {
     }
     return filename;
 }
-pub fn add_to_config(
-    dependency_name: &str,
-    dependency_version: &str,
-    dependency_url: &str,
-    foundry_setup: &FOUNDRY
-) {
+pub fn add_to_config(dependency_name: &str, dependency_version: &str, dependency_url: &str) {
     println!("Adding dependency {}-{} to config file", dependency_name, dependency_version);
-    let filename: String = define_config_file(foundry_setup);
+    let filename: String = define_config_file();
     let contents = read_file_to_string(filename.clone());
-    let doc: Document = contents.parse::<Document>().expect("invalid doc");
+    let mut doc: Document = contents.parse::<Document>().expect("invalid doc");
 
     if
         !doc.get("sdependencies").is_none() &&
@@ -127,9 +134,22 @@ pub fn add_to_config(
     }
 
     let mut new_dependencies: String = String::new();
+
+    // in case we don't have sdependencies defined in the config file, we add it and re-read the doc
     if doc.get("sdependencies").is_none() {
-        new_dependencies = String::from("\n[sdependencies]\n");
+        let mut file: std::fs::File = fs::OpenOptions
+            ::new()
+            .write(true)
+            .append(true)
+            .open(&filename)
+            .unwrap();
+        if let Err(e) = write!(file, "{}", String::from("\n[sdependencies]\n")) {
+            eprintln!("Couldn't write to file: {}", e);
+        }
+
+        doc = read_file_to_string(filename.clone()).parse::<Document>().expect("invalid doc");
     }
+
     new_dependencies.push_str(
         &format!(
             "  \"{}\" = \"{}\"\n",
@@ -137,18 +157,26 @@ pub fn add_to_config(
             dependency_url
         )
     );
+
+    doc["sdependencies"]
+        .as_table_mut()
+        .unwrap()
+        .insert(
+            format!("{}~{}", dependency_name, dependency_version).to_string().as_str(),
+            toml_edit::value(dependency_url)
+        );
     let mut file: std::fs::File = fs::OpenOptions
         ::new()
         .write(true)
-        .append(true) // if foundry is enabled, then we append to the foundry.toml
+        .append(false)
         .open(filename)
         .unwrap();
-    if let Err(e) = write!(file, "{}", new_dependencies.to_string()) {
+    if let Err(e) = write!(file, "{}", doc.to_string()) {
         eprintln!("Couldn't write to file: {}", e);
     }
 }
 
-pub fn remappings(foundry_setup: &FOUNDRY) {
+pub fn remappings() {
     if !Path::new("remappings.txt").exists() {
         File::create("remappings.txt").unwrap();
     }
@@ -160,7 +188,7 @@ pub fn remappings(foundry_setup: &FOUNDRY) {
         .map(|s| s.to_string())
         .collect();
     let mut new_remappings: String = String::new();
-    let dependencies: Vec<Dependency> = read_config(String::new(), foundry_setup);
+    let dependencies: Vec<Dependency> = read_config(String::new());
 
     let mut existing_remap: Vec<String> = Vec::new();
     existing_remappings.iter().for_each(|remapping| {
@@ -250,8 +278,10 @@ fn remove_empty_lines(filename: String) {
 }
 
 pub fn get_foundry_setup() -> Vec<bool> {
-    let filename = define_config_file(&(FOUNDRY { remappings: false, config: false }));
-
+    let filename = define_config_file();
+    if filename.contains("foundry.toml") {
+        return vec![true];
+    }
     let contents: String = read_file_to_string(filename.clone());
 
     // Use a `match` block to return the
@@ -271,10 +301,7 @@ pub fn get_foundry_setup() -> Vec<bool> {
         }
     };
 
-    return vec![
-        data.foundry.get("enabled").unwrap().as_bool().unwrap(),
-        data.foundry.get("foundry-config").unwrap().as_bool().unwrap()
-    ];
+    return vec![data.remappings.get("enabled").unwrap().as_bool().unwrap()];
 }
 
 fn read_file_to_string(filename: String) -> String {
@@ -310,5 +337,5 @@ pub struct Dependency {
 #[derive(Deserialize)]
 #[derive(Debug)]
 struct Foundry {
-    foundry: Table,
+    remappings: Table,
 }

@@ -16,19 +16,17 @@ const REMOTE_REPOSITORY: &str =
 #[derive(Debug)]
 pub struct FOUNDRY {
     remappings: bool,
-    config: bool,
 }
+
 #[tokio::main]
 async fn main() {
     let args: Vec<String> = env::args().collect();
     let command: (String, String, String) = process_args(args).unwrap();
 
-    // setup the foundry setup, in case it's enabled inside the soldeer.toml, then the foundry.toml will be used for
-    // `sdependencies`
+    // check the foundry setup, in case we have a foundry.toml, then the foundry.toml will be used for `sdependencies`
     let f_setup_vec: Vec<bool> = get_foundry_setup();
     let foundry_setup: FOUNDRY = FOUNDRY {
         remappings: f_setup_vec[0],
-        config: f_setup_vec[1],
     };
 
     if command.0 == "install" && command.1 != "" {
@@ -55,8 +53,7 @@ async fn main() {
                 dependency_downloader::download_dependency_remote(
                     &dependency_name,
                     &dependency_version,
-                    &remote_url,
-                    &foundry_setup
+                    &remote_url
                 ).await
             {
                 Ok(url) => {
@@ -76,12 +73,7 @@ async fn main() {
             }
         }
         // TODO this is kinda junky written, need to refactor and a better TOML writer
-        config::add_to_config(
-            &dependency_name,
-            &dependency_version,
-            &dependency_url,
-            &foundry_setup
-        );
+        config::add_to_config(&dependency_name, &dependency_version, &dependency_url);
         match janitor::healthcheck_dependency(&dependency_name, &dependency_version) {
             Ok(_) => {}
             Err(err) => {
@@ -97,10 +89,10 @@ async fn main() {
             }
         }
         if foundry_setup.remappings {
-            remappings(&foundry_setup);
+            remappings();
         }
     } else if command.0 == "update" || (command.0 == "install" && command.1 == "") {
-        let dependencies: Vec<Dependency> = read_config(String::new(), &foundry_setup);
+        let dependencies: Vec<Dependency> = read_config(String::new());
         if download_dependencies(&dependencies, true).await.is_err() {
             eprintln!("Error downloading dependencies");
             exit(500);
@@ -123,7 +115,7 @@ async fn main() {
             exit(500);
         }
         if foundry_setup.remappings {
-            remappings(&foundry_setup);
+            remappings();
         }
     } else if command.0 == "help" {
         println!(

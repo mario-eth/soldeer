@@ -11,7 +11,7 @@ use crate::dependency_downloader::{ download_dependencies, unzip_dependencies, u
 use crate::janitor::{ healthcheck_dependencies, cleanup_after };
 
 const REMOTE_REPOSITORY: &str =
-    "https://raw.githubusercontent.com/mario-eth/soldeer/main/all_dependencies.toml";
+    "https://raw.githubusercontent.com/mario-eth/soldeer-versions/main/all_dependencies.toml";
 
 #[derive(Debug)]
 pub struct FOUNDRY {
@@ -39,6 +39,7 @@ async fn main() {
         if command.2 != "" {
             remote_url = command.2;
         }
+
         match
             dependency_downloader::download_dependency_remote(
                 &dependency_name,

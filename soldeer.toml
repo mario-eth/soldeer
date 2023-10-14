@@ -3,3 +3,5 @@
   foundry-config = false
   
 [sdependencies]  
+  "@gelatonetwork-relay-context~3.2.0" = "https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@gelatonetwork-relay-context~3.2.0.zip"
+  "@openzeppelin-contracts~5.0.0" = "https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@openzeppelin-contracts~5.0.0.zip"

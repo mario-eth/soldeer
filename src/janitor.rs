@@ -20,7 +20,7 @@ impl MissingDependencies {
 }
 
 // Health-check dependencies before we clean them, this one checks if they were unzipped
-pub fn healthcheck_dependencies(dependencies: &Vec<Dependency>) -> Result<(), MissingDependencies> {
+pub fn healthcheck_dependencies(dependencies: &[Dependency]) -> Result<(), MissingDependencies> {
     println!("Health-checking dependencies...");
     for dependency in dependencies.iter() {
         match healthcheck_dependency(&dependency.name, &dependency.version) {
@@ -35,7 +35,7 @@ pub fn healthcheck_dependencies(dependencies: &Vec<Dependency>) -> Result<(), Mi
 }
 
 // Cleanup dependencies after we are downloaded them
-pub fn cleanup_after(dependencies: &Vec<Dependency>) -> Result<(), MissingDependencies> {
+pub fn cleanup_after(dependencies: &[Dependency]) -> Result<(), MissingDependencies> {
     println!("Cleanup dependencies...");
     for dependency in dependencies.iter() {
         match cleanup_dependency(&dependency.name, &dependency.version) {

@@ -46,13 +46,12 @@ async fn main() {
     if command.0 == "install" && !command.1.is_empty() {
         let dependency_name: String = command.1.split('~').collect::<Vec<&str>>()[0].to_string();
         let dependency_version: String = command.1.split('~').collect::<Vec<&str>>()[1].to_string();
-        let dependency_url: String;
         let mut remote_url: String = REMOTE_REPOSITORY.to_string();
         if !command.2.is_empty() {
             remote_url = command.2;
         }
 
-        match dependency_downloader::download_dependency_remote(
+         let dependency_url = match dependency_downloader::download_dependency_remote(
             &dependency_name,
             &dependency_version,
             &remote_url,
@@ -61,13 +60,13 @@ async fn main() {
         .await
         {
             Ok(url) => {
-                dependency_url = url;
+                url
             }
             Err(err) => {
                 eprintln!("Error downloading dependency: {:?}", err);
                 exit(500);
             }
-        }
+        };
         match unzip_dependency(&dependency_name, &dependency_version) {
             Ok(_) => {}
             Err(err) => {

@@ -27,7 +27,7 @@ use crate::FOUNDRY;
 // TODOs:
 // - needs to be downloaded in parallel
 pub async fn download_dependencies(
-    dependencies: &Vec<Dependency>,
+    dependencies: &[Dependency],
     clean: bool,
 ) -> Result<(), DownloadError> {
     if clean {
@@ -49,7 +49,7 @@ pub async fn download_dependencies(
 }
 
 // un-zip-ing dependencies to dependencies folder
-pub fn unzip_dependencies(dependencies: &Vec<Dependency>) -> Result<(), ZipExtractError> {
+pub fn unzip_dependencies(dependencies: &[Dependency]) -> Result<(), ZipExtractError> {
     println!("Unzipping dependencies...");
     for dependency in dependencies.iter() {
         match unzip_dependency(&dependency.name, &dependency.version) {

@@ -51,7 +51,7 @@ async fn main() {
             remote_url = command.2;
         }
 
-         let dependency_url = match dependency_downloader::download_dependency_remote(
+        let dependency_url = match dependency_downloader::download_dependency_remote(
             &dependency_name,
             &dependency_version,
             &remote_url,
@@ -59,14 +59,13 @@ async fn main() {
         )
         .await
         {
-            Ok(url) => {
-                url
-            }
+            Ok(url) => url,
             Err(err) => {
                 eprintln!("Error downloading dependency: {:?}", err);
                 exit(500);
             }
         };
+
         match unzip_dependency(&dependency_name, &dependency_version) {
             Ok(_) => {}
             Err(err) => {

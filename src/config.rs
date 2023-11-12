@@ -124,7 +124,8 @@ pub fn add_to_config(
 
     if doc.get("sdependencies").is_some()
         && doc["sdependencies"]
-            .get(format!("{}~{}", dependency_name, dependency_version)).is_some()
+            .get(format!("{}~{}", dependency_name, dependency_version))
+            .is_some()
     {
         println!(
             "Dependency {}-{} already exists in the config file",

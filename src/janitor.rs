@@ -31,7 +31,7 @@ pub fn healthcheck_dependencies(dependencies: &Vec<Dependency>) -> Result<(), Mi
             }
         }
     }
-    return Ok(());
+    Ok(())
 }
 
 // Cleanup dependencies after we are downloaded them
@@ -46,7 +46,7 @@ pub fn cleanup_after(dependencies: &Vec<Dependency>) -> Result<(), MissingDepend
             }
         }
     }
-    return Ok(());
+    Ok(())
 }
 
 pub fn healthcheck_dependency(
@@ -62,7 +62,7 @@ pub fn healthcheck_dependency(
     match metadata(new_path.join(file_name)) {
         Ok(_) => Ok(()),
         Err(_) => {
-            return Err(MissingDependencies::new(&dependency_name));
+            Err(MissingDependencies::new(dependency_name))
         }
     }
 }
@@ -80,7 +80,7 @@ pub fn cleanup_dependency(
     match remove_file(new_path.join(file_name)) {
         Ok(_) => Ok(()),
         Err(_) => {
-            return Err(MissingDependencies::new(&dependency_name));
+            Err(MissingDependencies::new(dependency_name))
         }
     }
 }

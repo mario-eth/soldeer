@@ -45,7 +45,7 @@ pub async fn download_dependencies(
             }
         }
     }
-    return Ok(());
+    Ok(())
 }
 
 // un-zip-ing dependencies to dependencies folder
@@ -60,7 +60,7 @@ pub fn unzip_dependencies(dependencies: &Vec<Dependency>) -> Result<(), ZipExtra
             }
         }
     }
-    return Ok(());
+    Ok(())
 }
 
 pub async fn download_dependency_remote(
@@ -69,14 +69,14 @@ pub async fn download_dependency_remote(
     remote_url: &String,
     foundry_setup: &FOUNDRY,
 ) -> Result<String, DownloadError> {
-    let res: Response = get(format!("{}", remote_url)).await.unwrap();
+    let res: Response = get(remote_url.to_string()).await.unwrap();
     let body: String = res.text().await.unwrap();
     let tmp_path: std::path::PathBuf = get_current_working_dir()
         .unwrap()
         .join(".dependency_reading.toml");
     fs::write(&tmp_path, body).expect("Unable to write file");
     let dependencies: Vec<Dependency> =
-        read_config((&tmp_path).to_str().unwrap().to_string(), foundry_setup);
+        read_config(tmp_path.to_str().unwrap().to_string(), foundry_setup);
     for dependency in dependencies.iter() {
         if dependency.name == *dependency_name && dependency.version == *dependency_version {
             match download_dependency(
@@ -97,7 +97,7 @@ pub async fn download_dependency_remote(
         }
     }
     remove_file(tmp_path).unwrap();
-    return Ok(String::new());
+    Ok(String::new())
 }
 
 pub async fn download_dependency(
@@ -119,7 +119,7 @@ pub async fn download_dependency(
             .await;
     if download_result.is_ok() {
         println!("{} downloaded successfully!", dependency_name);
-        return Ok(());
+        Ok(())
     } else if download_result
         .err()
         .unwrap()
@@ -153,7 +153,7 @@ pub fn unzip_dependency(
         .join(target_name);
     let archive: Vec<u8> = read_file(current_dir.as_path().to_str().unwrap().to_string()).unwrap();
     zip_extract::extract(Cursor::new(archive), &target, true)?;
-    return Ok(());
+    Ok(())
 }
 
 // read a file contents into a vector of bytes so we can unzip it
@@ -165,7 +165,7 @@ fn read_file(path: String) -> Result<Vec<u8>, std::io::Error> {
     // Read file into vector.
     reader.read_to_end(&mut buffer)?;
 
-    return Ok(buffer);
+    Ok(buffer)
 }
 
 #[derive(Debug, Clone)]

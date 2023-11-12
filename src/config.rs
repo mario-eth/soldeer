@@ -25,7 +25,7 @@ use toml_edit::Document;
 // TODO need to improve this, to propagate the error to main and not exit here.
 pub fn read_config(filename: String, foundry_setup: &FOUNDRY) -> Vec<Dependency> {
     let mut filename: String = filename;
-    if filename == "" {
+    if filename.is_empty() {
         filename = define_config_file(foundry_setup);
     }
     // Read the contents of the file using a `match` block
@@ -63,15 +63,15 @@ pub fn read_config(filename: String, foundry_setup: &FOUNDRY) -> Vec<Dependency>
 
     let mut dependencies: Vec<Dependency> = Vec::new();
     data.sdependencies.iter().for_each(|(k, v)| {
-        let parts: Vec<&str> = k.split("~").collect::<Vec<&str>>();
+        let parts: Vec<&str> = k.split('~').collect::<Vec<&str>>();
         dependencies.push(Dependency {
-            name: parts.get(0).unwrap().to_string(),
+            name: parts.first().unwrap().to_string(),
             version: parts.get(1).unwrap().to_string(),
-            url: v.to_string().replace("\"", ""),
+            url: v.to_string().replace('\"', ""),
         });
     });
 
-    return dependencies;
+    dependencies
 }
 
 pub fn define_config_file(foundry_setup: &FOUNDRY) -> String {
@@ -106,7 +106,7 @@ pub fn define_config_file(foundry_setup: &FOUNDRY) -> String {
         );
         exit(404);
     }
-    return filename;
+    filename
 }
 pub fn add_to_config(
     dependency_name: &str,
@@ -122,10 +122,9 @@ pub fn add_to_config(
     let contents = read_file_to_string(filename.clone());
     let doc: Document = contents.parse::<Document>().expect("invalid doc");
 
-    if !doc.get("sdependencies").is_none()
-        && !doc["sdependencies"]
-            .get(format!("{}~{}", dependency_name, dependency_version))
-            .is_none()
+    if doc.get("sdependencies").is_some()
+        && doc["sdependencies"]
+            .get(format!("{}~{}", dependency_name, dependency_version)).is_some()
     {
         println!(
             "Dependency {}-{} already exists in the config file",
@@ -148,7 +147,7 @@ pub fn add_to_config(
         .append(true) // if foundry is enabled, then we append to the foundry.toml
         .open(filename)
         .unwrap();
-    if let Err(e) = write!(file, "{}", new_dependencies.to_string()) {
+    if let Err(e) = write!(file, "{}", new_dependencies) {
         eprintln!("Couldn't write to file: {}", e);
     }
 }
@@ -160,13 +159,13 @@ pub fn remappings(foundry_setup: &FOUNDRY) {
     println!("Update foundry...");
     let contents = read_file_to_string(String::from("remappings.txt"));
 
-    let existing_remappings: Vec<String> = contents.split("\n").map(|s| s.to_string()).collect();
+    let existing_remappings: Vec<String> = contents.split('\n').map(|s| s.to_string()).collect();
     let mut new_remappings: String = String::new();
     let dependencies: Vec<Dependency> = read_config(String::new(), foundry_setup);
 
     let mut existing_remap: Vec<String> = Vec::new();
     existing_remappings.iter().for_each(|remapping| {
-        let split: Vec<&str> = remapping.split("=").collect::<Vec<&str>>();
+        let split: Vec<&str> = remapping.split('=').collect::<Vec<&str>>();
         if split.len() == 1 {
             // skip empty lines
             return;
@@ -179,7 +178,7 @@ pub fn remappings(foundry_setup: &FOUNDRY) {
         if index.is_none() {
             println!("Adding a new remap {}", &dependency.name);
             let mut dependency_name_formatted = dependency.name.clone();
-            if !dependency_name_formatted.contains("@") {
+            if !dependency_name_formatted.contains('@') {
                 dependency_name_formatted = format!("@{}", dependency_name_formatted);
             }
             new_remappings.push_str(&format!(
@@ -189,7 +188,7 @@ pub fn remappings(foundry_setup: &FOUNDRY) {
         }
     });
 
-    if new_remappings.len() == 0 {
+    if new_remappings.is_empty() {
         remove_empty_lines("remappings.txt".to_string());
         return;
     }
@@ -221,7 +220,7 @@ fn remove_empty_lines(filename: String) {
         // Making sure the line contains something
         if line.len() > 2 {
             if index == total - 1 {
-                new_content.push_str(&format!("{}", line));
+                new_content.push_str(&line.to_string());
             } else {
                 new_content.push_str(&format!("{}\n", line));
             }
@@ -272,14 +271,14 @@ pub fn get_foundry_setup() -> Vec<bool> {
         }
     };
 
-    return vec![
+    vec![
         data.foundry.get("enabled").unwrap().as_bool().unwrap(),
         data.foundry
             .get("foundry-config")
             .unwrap()
             .as_bool()
             .unwrap(),
-    ];
+    ]
 }
 
 fn read_file_to_string(filename: String) -> String {
@@ -295,7 +294,7 @@ fn read_file_to_string(filename: String) -> String {
             exit(1);
         }
     };
-    return contents;
+    contents
 }
 // Top level struct to hold the TOML data.
 #[derive(Deserialize, Debug)]

@@ -43,12 +43,12 @@ async fn main() {
         config: f_setup_vec[1],
     };
 
-    if command.0 == "install" && command.1 != "" {
-        let dependency_name: String = command.1.split("~").collect::<Vec<&str>>()[0].to_string();
-        let dependency_version: String = command.1.split("~").collect::<Vec<&str>>()[1].to_string();
+    if command.0 == "install" && !command.1.is_empty() {
+        let dependency_name: String = command.1.split('~').collect::<Vec<&str>>()[0].to_string();
+        let dependency_version: String = command.1.split('~').collect::<Vec<&str>>()[1].to_string();
         let dependency_url: String;
         let mut remote_url: String = REMOTE_REPOSITORY.to_string();
-        if command.2 != "" {
+        if !command.2.is_empty() {
             remote_url = command.2;
         }
 
@@ -99,7 +99,7 @@ async fn main() {
         if foundry_setup.remappings {
             remappings(&foundry_setup);
         }
-    } else if command.0 == "update" || (command.0 == "install" && command.1 == "") {
+    } else if command.0 == "update" || (command.0 == "install" && command.1.is_empty()) {
         let dependencies: Vec<Dependency> = read_config(String::new(), &foundry_setup);
         if download_dependencies(&dependencies, true).await.is_err() {
             eprintln!("Error downloading dependencies");
@@ -152,5 +152,5 @@ fn process_args(args: Vec<String>) -> Result<(String, String, String), ()> {
     if args.len() > 3 {
         return Ok((command, dependency, String::from(&args[3])));
     }
-    return Ok((command, dependency, String::new()));
+    Ok((command, dependency, String::new()))
 }

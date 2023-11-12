@@ -1,4 +1,7 @@
-use std::fs::{ metadata, remove_file };
+use std::fs::{
+    metadata,
+    remove_file,
+};
 
 use crate::config::Dependency;
 use crate::utils::get_current_working_dir;
@@ -10,7 +13,9 @@ pub struct MissingDependencies {
 
 impl MissingDependencies {
     fn new(msg: &str) -> MissingDependencies {
-        MissingDependencies { name: msg.to_string() }
+        MissingDependencies {
+            name: msg.to_string(),
+        }
     }
 }
 
@@ -46,13 +51,16 @@ pub fn cleanup_after(dependencies: &Vec<Dependency>) -> Result<(), MissingDepend
 
 pub fn healthcheck_dependency(
     dependency_name: &str,
-    dependency_version: &str
+    dependency_version: &str,
 ) -> Result<(), MissingDependencies> {
-    println!("Health-checking dependency {}-{}", dependency_name, dependency_version);
+    println!(
+        "Health-checking dependency {}-{}",
+        dependency_name, dependency_version
+    );
     let file_name: String = format!("{}-{}", &dependency_name, &dependency_version);
     let new_path: std::path::PathBuf = get_current_working_dir().unwrap().join("dependencies");
     match metadata(new_path.join(file_name)) {
-        Ok(_) => { Ok(()) }
+        Ok(_) => Ok(()),
         Err(_) => {
             return Err(MissingDependencies::new(&dependency_name));
         }
@@ -61,13 +69,16 @@ pub fn healthcheck_dependency(
 
 pub fn cleanup_dependency(
     dependency_name: &str,
-    dependency_version: &str
+    dependency_version: &str,
 ) -> Result<(), MissingDependencies> {
-    println!("Cleaning up dependency {}-{}", dependency_name, dependency_version);
+    println!(
+        "Cleaning up dependency {}-{}",
+        dependency_name, dependency_version
+    );
     let file_name: String = format!("{}-{}.zip", dependency_name, dependency_version);
     let new_path: std::path::PathBuf = get_current_working_dir().unwrap().join("dependencies");
     match remove_file(new_path.join(file_name)) {
-        Ok(_) => { Ok(()) }
+        Ok(_) => Ok(()),
         Err(_) => {
             return Err(MissingDependencies::new(&dependency_name));
         }

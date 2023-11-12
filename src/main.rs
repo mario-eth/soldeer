@@ -1,14 +1,26 @@
 mod config;
 mod dependency_downloader;
-mod utils;
 mod janitor;
+mod utils;
 
-use std::process::exit;
 use std::env;
+use std::process::exit;
 
-use crate::config::{ read_config, remappings, Dependency, get_foundry_setup };
-use crate::dependency_downloader::{ download_dependencies, unzip_dependencies, unzip_dependency };
-use crate::janitor::{ healthcheck_dependencies, cleanup_after };
+use crate::config::{
+    get_foundry_setup,
+    read_config,
+    remappings,
+    Dependency,
+};
+use crate::dependency_downloader::{
+    download_dependencies,
+    unzip_dependencies,
+    unzip_dependency,
+};
+use crate::janitor::{
+    cleanup_after,
+    healthcheck_dependencies,
+};
 
 const REMOTE_REPOSITORY: &str =
     "https://raw.githubusercontent.com/mario-eth/soldeer-versions/main/all_dependencies.toml";
@@ -40,13 +52,13 @@ async fn main() {
             remote_url = command.2;
         }
 
-        match
-            dependency_downloader::download_dependency_remote(
-                &dependency_name,
-                &dependency_version,
-                &remote_url,
-                &foundry_setup
-            ).await
+        match dependency_downloader::download_dependency_remote(
+            &dependency_name,
+            &dependency_version,
+            &remote_url,
+            &foundry_setup,
+        )
+        .await
         {
             Ok(url) => {
                 dependency_url = url;
@@ -68,7 +80,7 @@ async fn main() {
             &dependency_name,
             &dependency_version,
             &dependency_url,
-            &foundry_setup
+            &foundry_setup,
         );
         match janitor::healthcheck_dependency(&dependency_name, &dependency_version) {
             Ok(_) => {}
@@ -98,16 +110,21 @@ async fn main() {
             eprintln!("Error unzipping dependencies: {:?}", result.err().unwrap());
             exit(500);
         }
-        let result: Result<(), janitor::MissingDependencies> = healthcheck_dependencies(
-            &dependencies
-        );
+        let result: Result<(), janitor::MissingDependencies> =
+            healthcheck_dependencies(&dependencies);
         if result.is_err() {
-            eprintln!("Error health-checking dependencies {:?}", result.err().unwrap().name);
+            eprintln!(
+                "Error health-checking dependencies {:?}",
+                result.err().unwrap().name
+            );
             exit(500);
         }
         let result: Result<(), janitor::MissingDependencies> = cleanup_after(&dependencies);
         if result.is_err() {
-            eprintln!("Error cleanup dependencies {:?}", result.err().unwrap().name);
+            eprintln!(
+                "Error cleanup dependencies {:?}",
+                result.err().unwrap().name
+            );
             exit(500);
         }
         if foundry_setup.remappings {

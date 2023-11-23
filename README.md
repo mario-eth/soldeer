@@ -1,6 +1,14 @@
 # SolDeer ![Rust][rust-badge] [![License: MIT][license-badge]][license]
 
-## Version 0.1.4
+## Version 0.1.5
+
+### WARNING
+
+#### Breaking Change 0.1.5
+
+In this version, you can skip the creation of `soldeer.toml` if you want to use only `foundry.toml`.
+
+Also the contents of the `soldeer.toml` were changed. Please read the documentation below.
 
 ### WARNING
 
@@ -40,23 +48,37 @@ soldeer help
 
 ### How to use it
 
-`SolDeer` is straightforward. Create a `soldeer.toml` file and define the following parameters:
+`SolDeer` is straightforward. It can work with `foundry.toml` file or you can create a `soldeer.toml`. From version `0.1.5` you can skip the creation of the `soldeer.toml`
+if you want to use just the `foundry.toml` file.
+
+If you use the `soldeer.toml` approach then you need define the following parameter:
 
 ```toml
-[foundry]
-  enabled = true
-  foundry-config = false
+[remappings]
+enabled = true
+
+[sdependencies]
+
 ```
 
-These parameters instruct `SolDeer` to use the `foundry.toml` file as a configuration file. If you prefer not to use the `foundry.toml` file, set `foundry-config` to `false`, and `SolDeer` will default to the `soldeer.toml` file to manage installed dependencies.
+The `remappings` parameter instructs `SolDeer` to modify the remappings to point to the dependencies file as a configuration file.
 
-If `enabled` is set to `false`, `remappings` won't update when a dependency is installed.
+If you use the `foundry.toml` approach then you just have to add this into your `foundry.toml` config file
 
-If you're using Foundry, ensure you update your `foundry.toml` to link the dependencies directory to the libs:
+```toml
+[sdependencies]
+
+```
+
+and modify the libs parameter to include the dependencies folder
 
 ```toml
 libs = ["lib", "dependencies"]
 ```
+
+If `foundry.toml` is used, the remappings will be modified automatically.
+
+### Dependency installation
 
 Add the dependencies by using
 
@@ -64,7 +86,7 @@ Add the dependencies by using
 soldeer install <dependency_name>~<version>
 ```
 
-A full list of dependencies supported is available [here](./all_dependencies.toml).
+A full list of dependencies supported is available [here](https://github.com/mario-eth/soldeer-versions/blob/main/all_dependencies.toml).
 
 Additionally, you can install a dependency from any zip file located at a specific URL:
 
@@ -72,7 +94,7 @@ Additionally, you can install a dependency from any zip file located at a specif
 soldeer install <dependency_name>~<version> <url>
 ```
 
-This command will download the zip file of the dependency, unzip it, install it in the `dependencies` directory, and update the dependencies tree (and add it to the remappings if `foundry->enabled == true`).
+This command will download the zip file of the dependency, unzip it, install it in the `dependencies` directory.
 
 ### Install dependencies from a Dependency List
 
@@ -81,9 +103,8 @@ This command will download the zip file of the dependency, unzip it, install it 
 To distribute a list of dependencies via `soldeer.toml`, use the `update` command:
 
 ```toml
-[foundry]
-  enabled = false
-  foundry-config = false
+[remappings]
+  enabled = true
 
 [sdependencies]
   @openzeppelin~v4.9.3 = "https://github.com/OpenZeppelin/openzeppelin-contracts/archive/refs/tags/v4.9.3.zip"
@@ -98,15 +119,9 @@ soldeer update
 
 #### foundry.toml way
 
-To distribute a list of dependencies via `foundry.toml`, use the `update` command. Your `soldeer.toml` must contain:
+To distribute a list of dependencies via `foundry.toml`, use the `update` command
 
-```toml
-[foundry]
-  enabled = true
-  foundry-config = true
-```
-
-and your `foundry.toml`
+And your `foundry.toml`
 
 ```toml
 # Other foundry configs

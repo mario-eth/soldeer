@@ -16,19 +16,17 @@ const REMOTE_REPOSITORY: &str =
 #[derive(Debug)]
 pub struct FOUNDRY {
     remappings: bool,
-    config: bool,
 }
+
 #[tokio::main]
 async fn main() {
     let args: Vec<String> = env::args().collect();
     let command: (String, String, String) = process_args(args).unwrap();
 
-    // setup the foundry setup, in case it's enabled inside the soldeer.toml, then the foundry.toml will be used for
-    // `sdependencies`
+    // check the foundry setup, in case we have a foundry.toml, then the foundry.toml will be used for `sdependencies`
     let f_setup_vec: Vec<bool> = get_foundry_setup();
     let foundry_setup: FOUNDRY = FOUNDRY {
         remappings: f_setup_vec[0],
-        config: f_setup_vec[1],
     };
 
     if command.0 == "install" && command.1 != "" {
@@ -36,24 +34,35 @@ async fn main() {
         let dependency_version: String = command.1.split("~").collect::<Vec<&str>>()[1].to_string();
         let dependency_url: String;
         let mut remote_url: String = REMOTE_REPOSITORY.to_string();
+        // If the user specifies their own dependency url (it can be like on a custom link) then we use that to download
         if command.2 != "" {
             remote_url = command.2;
-        }
-
-        match
-            dependency_downloader::download_dependency_remote(
-                &dependency_name,
-                &dependency_version,
-                &remote_url,
-                &foundry_setup
-            ).await
-        {
-            Ok(url) => {
-                dependency_url = url;
-            }
-            Err(err) => {
-                eprintln!("Error downloading dependency: {:?}", err);
+            let mut dependencies: Vec<Dependency> = Vec::new();
+            dependencies.push(Dependency {
+                name: dependency_name.clone(),
+                version: dependency_version.clone(),
+                url: remote_url.clone(),
+            });
+            dependency_url = remote_url.clone();
+            if download_dependencies(&dependencies, true).await.is_err() {
+                eprintln!("Error downloading dependencies");
                 exit(500);
+            }
+        } else {
+            match
+                dependency_downloader::download_dependency_remote(
+                    &dependency_name,
+                    &dependency_version,
+                    &remote_url
+                ).await
+            {
+                Ok(url) => {
+                    dependency_url = url;
+                }
+                Err(err) => {
+                    eprintln!("Error downloading dependency: {:?}", err);
+                    exit(500);
+                }
             }
         }
         match unzip_dependency(&dependency_name, &dependency_version) {
@@ -64,12 +73,7 @@ async fn main() {
             }
         }
         // TODO this is kinda junky written, need to refactor and a better TOML writer
-        config::add_to_config(
-            &dependency_name,
-            &dependency_version,
-            &dependency_url,
-            &foundry_setup
-        );
+        config::add_to_config(&dependency_name, &dependency_version, &dependency_url);
         match janitor::healthcheck_dependency(&dependency_name, &dependency_version) {
             Ok(_) => {}
             Err(err) => {
@@ -85,10 +89,10 @@ async fn main() {
             }
         }
         if foundry_setup.remappings {
-            remappings(&foundry_setup);
+            remappings();
         }
     } else if command.0 == "update" || (command.0 == "install" && command.1 == "") {
-        let dependencies: Vec<Dependency> = read_config(String::new(), &foundry_setup);
+        let dependencies: Vec<Dependency> = read_config(String::new());
         if download_dependencies(&dependencies, true).await.is_err() {
             eprintln!("Error downloading dependencies");
             exit(500);
@@ -111,7 +115,7 @@ async fn main() {
             exit(500);
         }
         if foundry_setup.remappings {
-            remappings(&foundry_setup);
+            remappings();
         }
     } else if command.0 == "help" {
         println!(

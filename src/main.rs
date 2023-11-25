@@ -1,14 +1,26 @@
 mod config;
 mod dependency_downloader;
-mod utils;
 mod janitor;
+mod utils;
 
-use std::process::exit;
 use std::env;
+use std::process::exit;
 
-use crate::config::{ read_config, remappings, Dependency, get_foundry_setup };
-use crate::dependency_downloader::{ download_dependencies, unzip_dependencies, unzip_dependency };
-use crate::janitor::{ healthcheck_dependencies, cleanup_after };
+use crate::config::{
+    get_foundry_setup,
+    read_config,
+    remappings,
+    Dependency,
+};
+use crate::dependency_downloader::{
+    download_dependencies,
+    unzip_dependencies,
+    unzip_dependency,
+};
+use crate::janitor::{
+    cleanup_after,
+    healthcheck_dependencies,
+};
 
 const REMOTE_REPOSITORY: &str =
     "https://raw.githubusercontent.com/mario-eth/soldeer-versions/main/all_dependencies.toml";
@@ -29,13 +41,11 @@ async fn main() {
         remappings: f_setup_vec[0],
     };
 
-    if command.0 == "install" && command.1 != "" {
-        let dependency_name: String = command.1.split("~").collect::<Vec<&str>>()[0].to_string();
-        let dependency_version: String = command.1.split("~").collect::<Vec<&str>>()[1].to_string();
-        let dependency_url: String;
+    if command.0 == "install" && !command.1.is_empty() {
+        let dependency_name: String = command.1.split('~').collect::<Vec<&str>>()[0].to_string();
+        let dependency_version: String = command.1.split('~').collect::<Vec<&str>>()[1].to_string();
         let mut remote_url: String = REMOTE_REPOSITORY.to_string();
-        // If the user specifies their own dependency url (it can be like on a custom link) then we use that to download
-        if command.2 != "" {
+        if command.2.is_empty() {
             remote_url = command.2;
             let mut dependencies: Vec<Dependency> = Vec::new();
             dependencies.push(Dependency {
@@ -73,7 +83,12 @@ async fn main() {
             }
         }
         // TODO this is kinda junky written, need to refactor and a better TOML writer
-        config::add_to_config(&dependency_name, &dependency_version, &dependency_url);
+        config::add_to_config(
+            &dependency_name,
+            &dependency_version,
+            &dependency_url
+        );
+
         match janitor::healthcheck_dependency(&dependency_name, &dependency_version) {
             Ok(_) => {}
             Err(err) => {
@@ -91,8 +106,8 @@ async fn main() {
         if foundry_setup.remappings {
             remappings();
         }
-    } else if command.0 == "update" || (command.0 == "install" && command.1 == "") {
-        let dependencies: Vec<Dependency> = read_config(String::new());
+    } else if command.0 == "update" || (command.0 == "install" && command.1.is_empty()) {
+        let dependencies: Vec<Dependency> = read_config(String::new(), &foundry_setup);
         if download_dependencies(&dependencies, true).await.is_err() {
             eprintln!("Error downloading dependencies");
             exit(500);
@@ -102,16 +117,21 @@ async fn main() {
             eprintln!("Error unzipping dependencies: {:?}", result.err().unwrap());
             exit(500);
         }
-        let result: Result<(), janitor::MissingDependencies> = healthcheck_dependencies(
-            &dependencies
-        );
+        let result: Result<(), janitor::MissingDependencies> =
+            healthcheck_dependencies(&dependencies);
         if result.is_err() {
-            eprintln!("Error health-checking dependencies {:?}", result.err().unwrap().name);
+            eprintln!(
+                "Error health-checking dependencies {:?}",
+                result.err().unwrap().name
+            );
             exit(500);
         }
         let result: Result<(), janitor::MissingDependencies> = cleanup_after(&dependencies);
         if result.is_err() {
-            eprintln!("Error cleanup dependencies {:?}", result.err().unwrap().name);
+            eprintln!(
+                "Error cleanup dependencies {:?}",
+                result.err().unwrap().name
+            );
             exit(500);
         }
         if foundry_setup.remappings {
@@ -139,5 +159,5 @@ fn process_args(args: Vec<String>) -> Result<(String, String, String), ()> {
     if args.len() > 3 {
         return Ok((command, dependency, String::from(&args[3])));
     }
-    return Ok((command, dependency, String::new()));
+    Ok((command, dependency, String::new()))
 }

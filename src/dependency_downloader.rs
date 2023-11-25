@@ -93,9 +93,10 @@ pub async fn download_dependency(
     dependency_name: &String,
     dependency_url: &String,
 ) -> Result<(), DownloadError> {
-    let new_path: std::path::PathBuf = get_current_working_dir().unwrap().join("dependencies");
-    if !new_path.is_dir() {
-        fs::create_dir(&new_path).unwrap();
+    let dependency_directory: std::path::PathBuf =
+        get_current_working_dir().unwrap().join("dependencies");
+    if !dependency_directory.is_dir() {
+        fs::create_dir(&dependency_directory).unwrap();
     }
 
     println!(
@@ -103,7 +104,7 @@ pub async fn download_dependency(
         dependency_name, dependency_url
     );
     let download_result: Result<(), tokio_dl_stream_to_disk::error::Error> =
-        AsyncDownload::new(dependency_url, &new_path, dependency_name)
+        AsyncDownload::new(dependency_url, &dependency_directory, dependency_name)
             .download(&None)
             .await;
     if download_result.is_ok() {

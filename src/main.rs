@@ -87,7 +87,7 @@ async fn main() {
                     version: dependency_version.clone(),
                     url: dependency_url.clone(),
                 });
-                if download_dependencies(&dependencies, true).await.is_err() {
+                if download_dependencies(&dependencies, false).await.is_err() {
                     eprintln!("Error downloading dependencies");
                     exit(500);
                 }
@@ -115,6 +115,7 @@ async fn main() {
                     exit(500);
                 }
             }
+
             // TODO this is kinda junky written, need to refactor and a better TOML writer
             config::add_to_config(&dependency_name, &dependency_version, &dependency_url);
 
@@ -125,6 +126,7 @@ async fn main() {
                     exit(500);
                 }
             }
+
             match janitor::cleanup_dependency(&dependency_name, &dependency_version) {
                 Ok(_) => {}
                 Err(err) => {
@@ -132,6 +134,7 @@ async fn main() {
                     exit(500);
                 }
             }
+
             if foundry_setup.remappings {
                 remappings();
             }

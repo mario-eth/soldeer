@@ -1,33 +1,18 @@
 use crate::utils::get_current_working_dir;
 use serde_derive::Deserialize;
-use std::fs::{
-    self,
-    File,
-};
-use std::io::{
-    BufRead,
-    BufReader,
-    Write,
-};
-use std::path::{
-    Path,
-    PathBuf,
-};
+use std::fs::{self, File};
+use std::io::{BufRead, BufReader, Write};
+use std::path::{Path, PathBuf};
 use std::process::exit;
-use toml::{
-    self,
-    Table,
-};
+use toml::{self, Table};
 extern crate toml_edit;
 use toml_edit::Document;
-
 
 // TODO need to improve this, to propagate the error to main and not exit here.
 pub fn read_config(filename: String) -> Vec<Dependency> {
     let mut filename: String = filename;
     if filename.is_empty() {
         filename = define_config_file();
-
     }
     // Read the contents of the file using a `match` block
     // to return the `data: Ok(c)` as a `String`
@@ -92,15 +77,15 @@ pub fn define_config_file() -> String {
     match fs::metadata(&filename) {
         Ok(_) => {}
         Err(_) => {
-            filename =
-                working_dir
-                    .as_ref()
-                    .unwrap()
-                    .clone()
-                    .into_os_string()
-                    .into_string()
-                    .unwrap()
-                    .to_owned() + "/foundry.toml";
+            filename = working_dir
+                .as_ref()
+                .unwrap()
+                .clone()
+                .into_os_string()
+                .into_string()
+                .unwrap()
+                .to_owned()
+                + "/foundry.toml";
             if !Path::new(&filename).exists() {
                 eprintln!(
                     "No config file found. Soldeer has exited. If you wish to proceed, below is the minimum requirement for the soldeer.toml file that needs to be created:\n \n [remappings]\n enabled = true or false\n\n [sdependencies]\n\n or put \n\n [sdependencies] \n\nin your foundry.toml"
@@ -110,9 +95,15 @@ pub fn define_config_file() -> String {
         }
     }
 
-    let foundry_file =
-        working_dir.as_ref().unwrap().clone().into_os_string().into_string().unwrap().to_owned() +
-        "/foundry.toml";
+    let foundry_file = working_dir
+        .as_ref()
+        .unwrap()
+        .clone()
+        .into_os_string()
+        .into_string()
+        .unwrap()
+        .to_owned()
+        + "/foundry.toml";
 
     // check if the foundry.toml has the sdependencies defined, if so then we setup the foundry.toml as the config file
     match fs::metadata(&foundry_file) {
@@ -137,11 +128,7 @@ pub fn define_config_file() -> String {
     filename
 }
 
-pub fn add_to_config(
-    dependency_name: &str,
-    dependency_version: &str,
-    dependency_url: &str
-) {
+pub fn add_to_config(dependency_name: &str, dependency_version: &str, dependency_url: &str) {
     println!(
         "Adding dependency {}-{} to config file",
         dependency_name, dependency_version
@@ -164,8 +151,7 @@ pub fn add_to_config(
 
     // in case we don't have sdependencies defined in the config file, we add it and re-read the doc
     if doc.get("sdependencies").is_none() {
-        let mut file: std::fs::File = fs::OpenOptions
-            ::new()
+        let mut file: std::fs::File = fs::OpenOptions::new()
             .write(true)
             .append(true)
             .open(&filename)
@@ -174,14 +160,15 @@ pub fn add_to_config(
             eprintln!("Couldn't write to file: {}", e);
         }
 
-        doc = read_file_to_string(filename.clone()).parse::<Document>().expect("invalid doc");
+        doc = read_file_to_string(filename.clone())
+            .parse::<Document>()
+            .expect("invalid doc");
     }
-let mut new_dependencies: String = String::new();
+    let mut new_dependencies: String = String::new();
 
     // in case we don't have sdependencies defined in the config file, we add it and re-read the doc
     if doc.get("sdependencies").is_none() {
-        let mut file: std::fs::File = fs::OpenOptions
-            ::new()
+        let mut file: std::fs::File = fs::OpenOptions::new()
             .write(true)
             .append(true)
             .open(&filename)
@@ -190,26 +177,24 @@ let mut new_dependencies: String = String::new();
             eprintln!("Couldn't write to file: {}", e);
         }
 
-        doc = read_file_to_string(filename.clone()).parse::<Document>().expect("invalid doc");
+        doc = read_file_to_string(filename.clone())
+            .parse::<Document>()
+            .expect("invalid doc");
     }
 
-    new_dependencies.push_str(
-        &format!(
-            "  \"{}\" = \"{}\"\n",
-            format!("{}~{}", dependency_name, dependency_version),
-            dependency_url
-        )
-    );
+    new_dependencies.push_str(&format!(
+        "  \"{}\" = \"{}\"\n",
+        format!("{}~{}", dependency_name, dependency_version),
+        dependency_url
+    ));
 
-    doc["sdependencies"]
-        .as_table_mut()
-        .unwrap()
-        .insert(
-            format!("{}~{}", dependency_name, dependency_version).to_string().as_str(),
-            toml_edit::value(dependency_url)
-        );
-    let mut file: std::fs::File = fs::OpenOptions
-        ::new()
+    doc["sdependencies"].as_table_mut().unwrap().insert(
+        format!("{}~{}", dependency_name, dependency_version)
+            .to_string()
+            .as_str(),
+        toml_edit::value(dependency_url),
+    );
+    let mut file: std::fs::File = fs::OpenOptions::new()
         .write(true)
         .append(false)
         .open(filename)

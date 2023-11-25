@@ -1,7 +1,4 @@
-use std::fs::{
-    metadata,
-    remove_file,
-};
+use std::fs::{metadata, remove_file};
 
 use crate::config::Dependency;
 use crate::utils::get_current_working_dir;

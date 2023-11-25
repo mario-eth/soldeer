@@ -26,7 +26,7 @@ use toml_edit::Document;
 pub fn read_config(filename: String) -> Vec<Dependency> {
     let mut filename: String = filename;
     if filename.is_empty() {
-        filename = define_config_file(foundry_setup);
+        filename = define_config_file();
 
     }
     // Read the contents of the file using a `match` block
@@ -161,8 +161,6 @@ pub fn add_to_config(
         );
         return;
     }
-
-    let mut new_dependencies: String = String::new();
 
     // in case we don't have sdependencies defined in the config file, we add it and re-read the doc
     if doc.get("sdependencies").is_none() {

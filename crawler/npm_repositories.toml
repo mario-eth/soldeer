@@ -17,4 +17,6 @@
   "@axelar-network/axelar-gmp-sdk-solidity",
   "@axelar-network/interchain-token-service",
   "solady",
+  "@gnosis.pm/safe-contracts",
+  
 ]

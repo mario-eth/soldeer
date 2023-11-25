@@ -22,7 +22,6 @@ use crate::config::{
     Dependency,
 };
 use crate::utils::get_current_working_dir;
-use crate::FOUNDRY;
 
 // TODOs:
 // - needs to be downloaded in parallel
@@ -30,11 +29,16 @@ pub async fn download_dependencies(
     dependencies: &[Dependency],
     clean: bool,
 ) -> Result<(), DownloadError> {
+    // clean dependencies folder if flag is true
     if clean {
         let dep_path = get_current_working_dir().unwrap().join("dependencies");
-        fs::remove_dir_all(&dep_path).unwrap();
-        fs::create_dir(&dep_path).unwrap();
+        if dep_path.is_dir() {
+            fs::remove_dir_all(&dep_path).unwrap();
+            fs::create_dir(&dep_path).unwrap();
+        }
     }
+
+    // downloading dependencies to dependencies folder
     for dependency in dependencies.iter() {
         let file_name: String = format!("{}-{}.zip", dependency.name, dependency.version);
         match download_dependency(&file_name, &dependency.url).await {
@@ -67,7 +71,6 @@ pub async fn download_dependency_remote(
     dependency_name: &String,
     dependency_version: &String,
     remote_url: &String,
-    foundry_setup: &FOUNDRY,
 ) -> Result<String, DownloadError> {
     let res: Response = get(remote_url.to_string()).await.unwrap();
     let body: String = res.text().await.unwrap();
@@ -76,7 +79,8 @@ pub async fn download_dependency_remote(
         .join(".dependency_reading.toml");
     fs::write(&tmp_path, body).expect("Unable to write file");
     let dependencies: Vec<Dependency> =
-        read_config(tmp_path.to_str().unwrap().to_string(), foundry_setup);
+        read_config(tmp_path.to_str().unwrap().to_string());
+
     for dependency in dependencies.iter() {
         if dependency.name == *dependency_name && dependency.version == *dependency_version {
             match download_dependency(

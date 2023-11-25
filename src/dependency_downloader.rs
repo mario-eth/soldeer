@@ -1,26 +1,12 @@
-use reqwest::{
-    get,
-    Response,
-};
+use reqwest::{get, Response};
 use std::fmt;
-use std::fs::{
-    self,
-    remove_file,
-    File,
-};
-use std::io::{
-    BufReader,
-    Cursor,
-    Read,
-};
+use std::fs::{self, remove_file, File};
+use std::io::{BufReader, Cursor, Read};
 use std::path::Path;
 use tokio_dl_stream_to_disk::AsyncDownload;
 use zip_extract::ZipExtractError;
 
-use crate::config::{
-    read_config,
-    Dependency,
-};
+use crate::config::{read_config, Dependency};
 use crate::utils::get_current_working_dir;
 
 // TODOs:
@@ -78,8 +64,7 @@ pub async fn download_dependency_remote(
         .unwrap()
         .join(".dependency_reading.toml");
     fs::write(&tmp_path, body).expect("Unable to write file");
-    let dependencies: Vec<Dependency> =
-        read_config(tmp_path.to_str().unwrap().to_string());
+    let dependencies: Vec<Dependency> = read_config(tmp_path.to_str().unwrap().to_string());
 
     for dependency in dependencies.iter() {
         if dependency.name == *dependency_name && dependency.version == *dependency_version {

@@ -44,16 +44,17 @@ async fn main() {
     if command.0 == "install" && !command.1.is_empty() {
         let dependency_name: String = command.1.split('~').collect::<Vec<&str>>()[0].to_string();
         let dependency_version: String = command.1.split('~').collect::<Vec<&str>>()[1].to_string();
+        let dependency_url: String;
         let mut remote_url: String = REMOTE_REPOSITORY.to_string();
-        if command.2.is_empty() {
+        if !command.2.is_empty() {
             remote_url = command.2;
             let mut dependencies: Vec<Dependency> = Vec::new();
+            dependency_url = remote_url.clone();
             dependencies.push(Dependency {
                 name: dependency_name.clone(),
                 version: dependency_version.clone(),
-                url: remote_url.clone(),
+                url: dependency_url.clone(),
             });
-            dependency_url = remote_url.clone();
             if download_dependencies(&dependencies, true).await.is_err() {
                 eprintln!("Error downloading dependencies");
                 exit(500);
@@ -107,7 +108,7 @@ async fn main() {
             remappings();
         }
     } else if command.0 == "update" || (command.0 == "install" && command.1.is_empty()) {
-        let dependencies: Vec<Dependency> = read_config(String::new(), &foundry_setup);
+        let dependencies: Vec<Dependency> = read_config(String::new());
         if download_dependencies(&dependencies, true).await.is_err() {
             eprintln!("Error downloading dependencies");
             exit(500);

@@ -11,3 +11,4 @@ repositories.db
 crawler/node_modules/
 crawler/zipped/*
 crawler/zipped/
+src/soldeer.toml

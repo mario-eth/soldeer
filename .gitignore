@@ -12,3 +12,4 @@ crawler/node_modules/
 crawler/zipped/*
 crawler/zipped/
 src/soldeer.toml
+*soldeer.lock

@@ -163,7 +163,6 @@ async fn main() {
                     exit(500);
                 }
             }
-
             if foundry_setup.remappings {
                 remappings();
             }

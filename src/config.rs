@@ -247,11 +247,12 @@ pub fn remappings() {
     dependencies.iter().for_each(|dependency| {
         let index = existing_remap.iter().position(|r| r == &dependency.name);
         if index.is_none() {
-            println!("Adding a new remap {}", &dependency.name);
-            let mut dependency_name_formatted = dependency.name.clone();
+            let mut dependency_name_formatted =
+                format!("{}-{}", &dependency.name, &dependency.version);
             if !dependency_name_formatted.contains('@') {
                 dependency_name_formatted = format!("@{}", dependency_name_formatted);
             }
+            println!("Adding a new remapping {}", &dependency_name_formatted);
             new_remappings.push_str(&format!(
                 "\n{}=dependencies/{}-{}",
                 &dependency_name_formatted, &dependency.name, &dependency.version

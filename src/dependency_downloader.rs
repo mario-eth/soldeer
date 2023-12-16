@@ -175,7 +175,30 @@ impl fmt::Display for DownloadError {
 mod tests {
     use super::*;
     use serial_test::serial;
+    use crate::janitor::{healthcheck_dependency,MissingDependencies};
+
+    // Helper macro to run async tests
+    macro_rules! aw {
+        ($e:expr) => {
+            tokio_test::block_on($e)
+        };
+    }
 
     #[test]
-    fn test_unzip_dependency() {}
+    #[serial]
+    fn unzip_dependency_success() {
+        let mut dependencies: Vec<Dependency> = Vec::new();
+        dependencies.push(Dependency {
+            name: "@openzeppelin-contracts".to_string(),
+            version: "2.3.0".to_string(),
+            url: "https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@openzeppelin-contracts~2.3.0.zip".to_string(),
+        });
+        let _ = aw!(download_dependencies(&dependencies, false));
+        let result: Result<(), ZipExtractError> =
+            unzip_dependency(&dependencies[0].name, &dependencies[0].version);
+        assert!(result.is_ok());
+        let result: Result<(), MissingDependencies> =
+            healthcheck_dependency("@openzeppelin-contracts", "2.3.0");
+        assert!(!result.is_err());
+    }
 }

@@ -1,6 +1,7 @@
 mod config;
 mod dependency_downloader;
 mod janitor;
+mod lock;
 mod utils;
 
 use std::process::exit;
@@ -8,6 +9,7 @@ use std::process::exit;
 use crate::config::{get_foundry_setup, read_config, remappings, Dependency};
 use crate::dependency_downloader::{download_dependencies, unzip_dependencies, unzip_dependency};
 use crate::janitor::{cleanup_after, healthcheck_dependencies};
+use crate::lock::{lock_check, write_lock};
 use clap::{Parser, Subcommand};
 
 const REMOTE_REPOSITORY: &str =
@@ -87,26 +89,54 @@ async fn main() {
                     version: dependency_version.clone(),
                     url: dependency_url.clone(),
                 });
+                println!("Checking lock file...");
+                dependencies = lock_check(&dependencies).unwrap();
+                if dependencies.is_empty() {
+                    eprintln!(
+                        "Dependency {}-{} already installed",
+                        dependency_name, dependency_version
+                    );
+                    exit(500);
+                }
                 if download_dependencies(&dependencies, false).await.is_err() {
                     eprintln!("Error downloading dependencies");
                     exit(500);
                 }
+                let _ = write_lock(&dependencies);
             } else {
-                match dependency_downloader::download_dependency_remote(
-                    &dependency_name,
-                    &dependency_version,
-                    &remote_url,
-                )
-                .await
-                {
+                let mut dependencies: Vec<Dependency> = Vec::new();
+                dependencies = lock_check(&dependencies).unwrap();
+                dependencies.push(Dependency {
+                    name: dependency_name.clone(),
+                    version: dependency_version.clone(),
+                    url: remote_url.clone(),
+                });
+                dependencies = lock_check(&dependencies).unwrap();
+                if dependencies.is_empty() {
+                    eprintln!(
+                        "Dependency {}-{} already installed",
+                        dependency_name, dependency_version
+                    );
+                    exit(500);
+                }
+                match {
+                    dependency_downloader::download_dependency_remote(
+                        &dependency_name,
+                        &dependency_version,
+                        &remote_url,
+                    )
+                    .await
+                } {
                     Ok(url) => {
-                        dependency_url = url;
+                        dependencies[0].url = url;
+                        dependency_url = dependencies[0].url.clone();
                     }
                     Err(err) => {
                         eprintln!("Error downloading dependency: {:?}", err);
                         exit(500);
                     }
                 }
+                let _ = write_lock(&dependencies);
             }
             match unzip_dependency(&dependency_name, &dependency_version) {
                 Ok(_) => {}
@@ -126,7 +156,6 @@ async fn main() {
                     exit(500);
                 }
             }
-
             match janitor::cleanup_dependency(&dependency_name, &dependency_version) {
                 Ok(_) => {}
                 Err(err) => {
@@ -141,6 +170,7 @@ async fn main() {
         }
         Subcommands::Update(_) => {
             let dependencies: Vec<Dependency> = read_config(String::new());
+
             if download_dependencies(&dependencies, true).await.is_err() {
                 eprintln!("Error downloading dependencies");
                 exit(500);

@@ -2,7 +2,7 @@ use reqwest::{get, Response};
 use std::fmt;
 use std::fs::{self, remove_file, File};
 use std::io::{BufReader, Cursor, Read};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use tokio_dl_stream_to_disk::AsyncDownload;
 use zip_extract::ZipExtractError;
 
@@ -17,13 +17,8 @@ pub async fn download_dependencies(
 ) -> Result<(), DownloadError> {
     // clean dependencies folder if flag is true
     if clean {
-        let dep_path = get_current_working_dir().unwrap().join("dependencies");
-        if dep_path.is_dir() {
-            fs::remove_dir_all(&dep_path).unwrap();
-            fs::create_dir(&dep_path).unwrap();
-        }
+        clean_dependency_directory();
     }
-
     // downloading dependencies to dependencies folder
     for dependency in dependencies.iter() {
         let file_name: String = format!("{}-{}.zip", dependency.name, dependency.version);
@@ -53,6 +48,7 @@ pub fn unzip_dependencies(dependencies: &[Dependency]) -> Result<(), ZipExtractE
     Ok(())
 }
 
+#[allow(unused_assignments)]
 pub async fn download_dependency_remote(
     dependency_name: &String,
     dependency_version: &String,
@@ -60,14 +56,15 @@ pub async fn download_dependency_remote(
 ) -> Result<String, DownloadError> {
     let res: Response = get(remote_url.to_string()).await.unwrap();
     let body: String = res.text().await.unwrap();
-    let tmp_path: std::path::PathBuf = get_current_working_dir()
+    let tmp_path: PathBuf = get_current_working_dir()
         .unwrap()
         .join(".dependency_reading.toml");
     fs::write(&tmp_path, body).expect("Unable to write file");
     let dependencies: Vec<Dependency> = read_config(tmp_path.to_str().unwrap().to_string());
-
+    let mut dependency_url: String = String::new();
     for dependency in dependencies.iter() {
         if dependency.name == *dependency_name && dependency.version == *dependency_version {
+            dependency_url = dependency.url.to_string();
             match download_dependency(
                 &format!("{}-{}.zip", &dependency_name, &dependency_version),
                 &dependency.url,
@@ -86,15 +83,14 @@ pub async fn download_dependency_remote(
         }
     }
     remove_file(tmp_path).unwrap();
-    Ok(String::new())
+    Ok(dependency_url)
 }
 
 pub async fn download_dependency(
     dependency_name: &String,
     dependency_url: &String,
 ) -> Result<(), DownloadError> {
-    let dependency_directory: std::path::PathBuf =
-        get_current_working_dir().unwrap().join("dependencies");
+    let dependency_directory: PathBuf = get_current_working_dir().unwrap().join("dependencies");
     if !dependency_directory.is_dir() {
         fs::create_dir(&dependency_directory).unwrap();
     }
@@ -133,7 +129,7 @@ pub fn unzip_dependency(
     );
     let file_name: String = format!("{}-{}.zip", dependency_name, dependency_version);
     let target_name: String = format!("{}-{}/", dependency_name, dependency_version);
-    let current_dir: std::path::PathBuf = get_current_working_dir()
+    let current_dir: PathBuf = get_current_working_dir()
         .unwrap()
         .join(Path::new(&("dependencies/".to_owned() + &file_name)));
 
@@ -144,6 +140,14 @@ pub fn unzip_dependency(
     let archive: Vec<u8> = read_file(current_dir.as_path().to_str().unwrap().to_string()).unwrap();
     zip_extract::extract(Cursor::new(archive), &target, true)?;
     Ok(())
+}
+
+pub fn clean_dependency_directory() {
+    let dep_path = get_current_working_dir().unwrap().join("dependencies");
+    if dep_path.is_dir() {
+        fs::remove_dir_all(&dep_path).unwrap();
+        fs::create_dir(&dep_path).unwrap();
+    }
 }
 
 // read a file contents into a vector of bytes so we can unzip it
@@ -165,4 +169,13 @@ impl fmt::Display for DownloadError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "download failed")
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serial_test::serial;
+
+    #[test]
+    fn test_unzip_dependency() {}
 }

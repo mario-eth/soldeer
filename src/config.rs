@@ -8,6 +8,25 @@ use toml::{self, Table};
 extern crate toml_edit;
 use toml_edit::Document;
 
+// Top level struct to hold the TOML data.
+#[derive(Deserialize, Debug)]
+struct Data {
+    sdependencies: Table,
+}
+
+// Dependency object used to store a dependency data
+#[derive(Deserialize, Clone, Debug)]
+pub struct Dependency {
+    pub name: String,
+    pub version: String,
+    pub url: String,
+}
+
+#[derive(Deserialize, Debug)]
+struct Foundry {
+    remappings: Table,
+}
+
 // TODO need to improve this, to propagate the error to main and not exit here.
 pub fn read_config(filename: String) -> Vec<Dependency> {
     let mut filename: String = filename;
@@ -164,7 +183,7 @@ pub fn add_to_config(dependency_name: &str, dependency_version: &str, dependency
             .parse::<Document>()
             .expect("invalid doc");
     }
-    let mut new_dependencies: String = String::new();
+    let mut new_dependencies: String = String::new(); //todo delete this
 
     // in case we don't have sdependencies defined in the config file, we add it and re-read the doc
     if doc.get("sdependencies").is_none() {
@@ -337,22 +356,4 @@ fn read_file_to_string(filename: String) -> String {
         }
     };
     contents
-}
-// Top level struct to hold the TOML data.
-#[derive(Deserialize, Debug)]
-struct Data {
-    sdependencies: Table,
-}
-
-// Dependency object used to store a dependency data
-#[derive(Debug)]
-pub struct Dependency {
-    pub name: String,
-    pub version: String,
-    pub url: String,
-}
-
-#[derive(Deserialize, Debug)]
-struct Foundry {
-    remappings: Table,
 }

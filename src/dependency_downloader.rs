@@ -17,13 +17,8 @@ pub async fn download_dependencies(
 ) -> Result<(), DownloadError> {
     // clean dependencies folder if flag is true
     if clean {
-        let dep_path = get_current_working_dir().unwrap().join("dependencies");
-        if dep_path.is_dir() {
-            fs::remove_dir_all(&dep_path).unwrap();
-            fs::create_dir(&dep_path).unwrap();
-        }
+        clean_dependency_directory();
     }
-
     // downloading dependencies to dependencies folder
     for dependency in dependencies.iter() {
         let file_name: String = format!("{}-{}.zip", dependency.name, dependency.version);
@@ -53,6 +48,7 @@ pub fn unzip_dependencies(dependencies: &[Dependency]) -> Result<(), ZipExtractE
     Ok(())
 }
 
+#[allow(unused_assignments)]
 pub async fn download_dependency_remote(
     dependency_name: &String,
     dependency_version: &String,
@@ -146,6 +142,14 @@ pub fn unzip_dependency(
     Ok(())
 }
 
+pub fn clean_dependency_directory() {
+    let dep_path = get_current_working_dir().unwrap().join("dependencies");
+    if dep_path.is_dir() {
+        fs::remove_dir_all(&dep_path).unwrap();
+        fs::create_dir(&dep_path).unwrap();
+    }
+}
+
 // read a file contents into a vector of bytes so we can unzip it
 fn read_file(path: String) -> Result<Vec<u8>, std::io::Error> {
     let f = File::open(path)?;
@@ -165,4 +169,13 @@ impl fmt::Display for DownloadError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "download failed")
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serial_test::serial;
+
+    #[test]
+    fn test_unzip_dependency() {}
 }

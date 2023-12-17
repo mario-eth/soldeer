@@ -1,10 +1,26 @@
-use crate::utils::get_current_working_dir;
+use crate::utils::{
+    get_current_working_dir,
+    read_file_to_string,
+};
 use serde_derive::Deserialize;
-use std::fs::{self, File};
-use std::io::{BufRead, BufReader, Write};
-use std::path::{Path, PathBuf};
+use std::fs::{
+    self,
+    File,
+};
+use std::io::{
+    BufRead,
+    BufReader,
+    Write,
+};
+use std::path::{
+    Path,
+    PathBuf,
+};
 use std::process::exit;
-use toml::{self, Table};
+use toml::{
+    self,
+    Table,
+};
 extern crate toml_edit;
 use toml_edit::Document;
 
@@ -33,21 +49,7 @@ pub fn read_config(filename: String) -> Vec<Dependency> {
     if filename.is_empty() {
         filename = define_config_file();
     }
-    // Read the contents of the file using a `match` block
-    // to return the `data: Ok(c)` as a `String`
-    // or handle any `errors: Err(_)`.
-    let contents: String = match fs::read_to_string(&filename) {
-        // If successful return the files text as `contents`.
-        // `c` is a local variable.
-        Ok(c) => c,
-        // Handle the `error` case.
-        Err(_) => {
-            // Write `msg` to `stderr`.
-            eprintln!("Could not read file `{}`", &filename);
-            // Exit the program with exit code `1`.
-            exit(1);
-        }
-    };
+    let contents = read_file_to_string(&filename.clone());
 
     // Use a `match` block to return the
     // file `contents` as a `Data struct: Ok(d)`
@@ -125,16 +127,13 @@ pub fn define_config_file() -> String {
         + "/foundry.toml";
 
     // check if the foundry.toml has the sdependencies defined, if so then we setup the foundry.toml as the config file
-    match fs::metadata(&foundry_file) {
-        Ok(_) => {
-            let contents = read_file_to_string(foundry_file.clone());
-            let doc: Document = contents.parse::<Document>().expect("invalid doc");
+    if fs::metadata(&foundry_file).is_ok() {
+        let contents = read_file_to_string(&foundry_file.clone());
+        let doc: Document = contents.parse::<Document>().expect("invalid doc");
 
-            if !doc.get("sdependencies").is_none() {
-                filename = foundry_file;
-            }
+        if doc.get("sdependencies").is_some() {
+            filename = foundry_file;
         }
-        Err(_) => {}
     }
 
     let exists: bool = Path::new(&filename).exists();
@@ -153,7 +152,7 @@ pub fn add_to_config(dependency_name: &str, dependency_version: &str, dependency
         dependency_name, dependency_version
     );
     let filename: String = define_config_file();
-    let contents = read_file_to_string(filename.clone());
+    let contents = read_file_to_string(&filename.clone());
     let mut doc: Document = contents.parse::<Document>().expect("invalid doc");
 
     if doc.get("sdependencies").is_some()
@@ -179,7 +178,7 @@ pub fn add_to_config(dependency_name: &str, dependency_version: &str, dependency
             eprintln!("Couldn't write to file: {}", e);
         }
 
-        doc = read_file_to_string(filename.clone())
+        doc = read_file_to_string(&filename.clone())
             .parse::<Document>()
             .expect("invalid doc");
     }
@@ -196,15 +195,14 @@ pub fn add_to_config(dependency_name: &str, dependency_version: &str, dependency
             eprintln!("Couldn't write to file: {}", e);
         }
 
-        doc = read_file_to_string(filename.clone())
+        doc = read_file_to_string(&filename.clone())
             .parse::<Document>()
             .expect("invalid doc");
     }
 
     new_dependencies.push_str(&format!(
-        "  \"{}\" = \"{}\"\n",
-        format!("{}~{}", dependency_name, dependency_version),
-        dependency_url
+        "  \"{}~{}\" = \"{}\"\n",
+        dependency_name, dependency_version, dependency_url
     ));
 
     doc["sdependencies"].as_table_mut().unwrap().insert(
@@ -218,17 +216,18 @@ pub fn add_to_config(dependency_name: &str, dependency_version: &str, dependency
         .append(false)
         .open(filename)
         .unwrap();
-    if let Err(e) = write!(file, "{}", doc.to_string()) {
+    if let Err(e) = write!(file, "{}", doc) {
         eprintln!("Couldn't write to file: {}", e);
     }
 }
 
 pub fn remappings() {
-    if !Path::new("remappings.txt").exists() {
-        File::create("remappings.txt").unwrap();
+    let remappings_path = get_current_working_dir().unwrap().join("remappings.txt");
+    if !remappings_path.exists() {
+        File::create(remappings_path.clone()).unwrap();
     }
     println!("Update foundry...");
-    let contents = read_file_to_string(String::from("remappings.txt"));
+    let contents = read_file_to_string(&remappings_path.to_str().unwrap().to_string());
 
     let existing_remappings: Vec<String> = contents.split('\n').map(|s| s.to_string()).collect();
     let mut new_remappings: String = String::new();
@@ -245,13 +244,14 @@ pub fn remappings() {
     });
 
     dependencies.iter().for_each(|dependency| {
-        let index = existing_remap.iter().position(|r| r == &dependency.name);
+        let mut dependency_name_formatted = format!("{}-{}", &dependency.name, &dependency.version);
+        if !dependency_name_formatted.contains('@') {
+            dependency_name_formatted = format!("@{}", dependency_name_formatted);
+        }
+        let index = existing_remap
+            .iter()
+            .position(|r| r == &dependency_name_formatted);
         if index.is_none() {
-            let mut dependency_name_formatted =
-                format!("{}-{}", &dependency.name, &dependency.version);
-            if !dependency_name_formatted.contains('@') {
-                dependency_name_formatted = format!("@{}", dependency_name_formatted);
-            }
             println!("Adding a new remapping {}", &dependency_name_formatted);
             new_remappings.push_str(&format!(
                 "\n{}=dependencies/{}-{}",
@@ -281,7 +281,7 @@ pub fn remappings() {
 }
 
 fn remove_empty_lines(filename: String) {
-    let file: File = File::open(&filename).unwrap();
+    let file: File = File::open(filename).unwrap();
 
     let reader: BufReader<File> = BufReader::new(file);
     let mut new_content: String = String::new();
@@ -321,7 +321,7 @@ pub fn get_foundry_setup() -> Vec<bool> {
     if filename.contains("foundry.toml") {
         return vec![true];
     }
-    let contents: String = read_file_to_string(filename.clone());
+    let contents: String = read_file_to_string(&filename.clone());
 
     // Use a `match` block to return the
     // file `contents` as a `Data struct: Ok(d)`
@@ -340,21 +340,5 @@ pub fn get_foundry_setup() -> Vec<bool> {
         }
     };
 
-    return vec![data.remappings.get("enabled").unwrap().as_bool().unwrap()];
-}
-
-fn read_file_to_string(filename: String) -> String {
-    let contents: String = match fs::read_to_string(&filename) {
-        // If successful return the files text as `contents`.
-        // `c` is a local variable.
-        Ok(c) => c,
-        // Handle the `error` case.
-        Err(_) => {
-            // Write `msg` to `stderr`.
-            eprintln!("Could not read file `{}`", &filename);
-            // Exit the program with exit code `1`.
-            exit(1);
-        }
-    };
-    contents
+    vec![data.remappings.get("enabled").unwrap().as_bool().unwrap()]
 }

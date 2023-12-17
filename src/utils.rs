@@ -1,5 +1,12 @@
 use std::env;
-use std::fs::{self};
+use std::fs::{
+    self,
+    File,
+};
+use std::io::{
+    BufReader,
+    Read,
+};
 use std::path::PathBuf;
 use std::process::exit;
 
@@ -22,4 +29,16 @@ pub fn read_file_to_string(path: &String) -> String {
         }
     };
     contents
+}
+
+// read a file contents into a vector of bytes so we can unzip it
+pub fn read_file(path: String) -> Result<Vec<u8>, std::io::Error> {
+    let f = File::open(path)?;
+    let mut reader = BufReader::new(f);
+    let mut buffer = Vec::new();
+
+    // Read file into vector.
+    reader.read_to_end(&mut buffer)?;
+
+    Ok(buffer)
 }

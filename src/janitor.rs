@@ -1,4 +1,7 @@
-use std::fs::{metadata, remove_file};
+use std::fs::{
+    metadata,
+    remove_file,
+};
 
 use crate::config::Dependency;
 use crate::utils::get_current_working_dir;
@@ -60,10 +63,12 @@ pub fn healthcheck_dependency(
     let new_path: std::path::PathBuf = get_current_working_dir().unwrap().join("dependencies");
     match metadata(new_path.join(file_name)) {
         Ok(_) => Ok(()),
-        Err(_) => Err(MissingDependencies::new(
-            dependency_name,
-            dependency_version,
-        )),
+        Err(_) => {
+            Err(MissingDependencies::new(
+                dependency_name,
+                dependency_version,
+            ))
+        }
     }
 }
 
@@ -79,10 +84,12 @@ pub fn cleanup_dependency(
     let new_path: std::path::PathBuf = get_current_working_dir().unwrap().join("dependencies");
     match remove_file(new_path.join(file_name)) {
         Ok(_) => Ok(()),
-        Err(_) => Err(MissingDependencies::new(
-            dependency_name,
-            dependency_version,
-        )),
+        Err(_) => {
+            Err(MissingDependencies::new(
+                dependency_name,
+                dependency_version,
+            ))
+        }
     }
 }
 
@@ -90,7 +97,9 @@ pub fn cleanup_dependency(
 mod tests {
     use super::*;
     use crate::dependency_downloader::{
-        clean_dependency_directory, download_dependencies, unzip_dependency,
+        clean_dependency_directory,
+        download_dependencies,
+        unzip_dependency,
     };
     use serial_test::serial;
 

@@ -1,13 +1,28 @@
-use reqwest::{get, Response};
+use reqwest::{
+    get,
+    Response,
+};
 use std::fmt;
-use std::fs::{self, remove_file, File};
-use std::io::{BufReader, Cursor, Read};
-use std::path::{Path, PathBuf};
+use std::fs::{
+    self,
+    remove_file,
+};
+use std::io::Cursor;
+use std::path::{
+    Path,
+    PathBuf,
+};
 use tokio_dl_stream_to_disk::AsyncDownload;
 use zip_extract::ZipExtractError;
 
-use crate::config::{read_config, Dependency};
-use crate::utils::get_current_working_dir;
+use crate::config::{
+    read_config,
+    Dependency,
+};
+use crate::utils::{
+    get_current_working_dir,
+    read_file,
+};
 
 // TODOs:
 // - needs to be downloaded in parallel
@@ -150,18 +165,6 @@ pub fn clean_dependency_directory() {
     }
 }
 
-// read a file contents into a vector of bytes so we can unzip it
-fn read_file(path: String) -> Result<Vec<u8>, std::io::Error> {
-    let f = File::open(path)?;
-    let mut reader = BufReader::new(f);
-    let mut buffer = Vec::new();
-
-    // Read file into vector.
-    reader.read_to_end(&mut buffer)?;
-
-    Ok(buffer)
-}
-
 #[derive(Debug, Clone)]
 pub struct DownloadError;
 
@@ -174,8 +177,11 @@ impl fmt::Display for DownloadError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::janitor::{
+        healthcheck_dependency,
+        MissingDependencies,
+    };
     use serial_test::serial;
-    use crate::janitor::{healthcheck_dependency,MissingDependencies};
 
     // Helper macro to run async tests
     macro_rules! aw {

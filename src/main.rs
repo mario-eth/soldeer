@@ -6,11 +6,29 @@ mod utils;
 
 use std::process::exit;
 
-use crate::config::{get_foundry_setup, read_config, remappings, Dependency};
-use crate::dependency_downloader::{download_dependencies, unzip_dependencies, unzip_dependency};
-use crate::janitor::{cleanup_after, healthcheck_dependencies};
-use crate::lock::{lock_check, write_lock};
-use clap::{Parser, Subcommand};
+use crate::config::{
+    get_foundry_setup,
+    read_config,
+    remappings,
+    Dependency,
+};
+use crate::dependency_downloader::{
+    download_dependencies,
+    unzip_dependencies,
+    unzip_dependency,
+};
+use crate::janitor::{
+    cleanup_after,
+    healthcheck_dependencies,
+};
+use crate::lock::{
+    lock_check,
+    write_lock,
+};
+use clap::{
+    Parser,
+    Subcommand,
+};
 
 const REMOTE_REPOSITORY: &str =
     "https://raw.githubusercontent.com/mario-eth/soldeer-versions/main/all_dependencies.toml";
@@ -163,7 +181,6 @@ async fn main() {
                     exit(500);
                 }
             }
-
             if foundry_setup.remappings {
                 remappings();
             }

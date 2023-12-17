@@ -1,13 +1,17 @@
 use crate::config::Dependency;
-use crate::utils::get_current_working_dir;
+use crate::utils::{
+    get_current_working_dir,
+    read_file_to_string,
+};
 use serde_derive::Deserialize;
 use std::fmt;
-use std::fs::{self};
+use std::fs::{
+    self,
+};
 use std::path::PathBuf;
 
 extern crate toml_edit;
 use std::io::Write;
-use std::process::exit;
 
 // Top level struct to hold the TOML data.
 #[derive(Deserialize, Debug)]
@@ -22,35 +26,21 @@ struct LockType {
 }
 
 pub fn lock_check(dependencies: &[Dependency]) -> Result<Vec<Dependency>, LockError> {
-    let lock_file: PathBuf;
-    if cfg!(test) {
-        lock_file = get_current_working_dir()
+    let lock_file: PathBuf = if cfg!(test) {
+        get_current_working_dir()
             .unwrap()
             .join("test")
-            .join("soldeer.lock");
+            .join("soldeer.lock")
     } else {
-        lock_file = get_current_working_dir().unwrap().join("soldeer.lock");
-    }
+        get_current_working_dir().unwrap().join("soldeer.lock")
+    };
 
     if !lock_file.exists() {
         return Ok(dependencies.to_vec());
     }
     let lock_path: String = lock_file.to_str().unwrap().to_string();
-    // Read the contents of the file using a `match` block
-    // to return the `data: Ok(c)` as a `String`
-    // or handle any `errors: Err(_)`.
-    let contents: String = match fs::read_to_string(&lock_path) {
-        // If successful return the files text as `contents`.
-        // `c` is a local variable.
-        Ok(c) => c,
-        // Handle the `error` case.
-        Err(_) => {
-            // Write `msg` to `stderr`.
-            eprintln!("Could not read file `{}`", &lock_path);
-            // Exit the program with exit code `1`.
-            exit(1);
-        }
-    };
+
+    let contents = read_file_to_string(&lock_path);
 
     // Use a `match` block to return the
     // file `contents` as a `LockEntry struct: Ok(d)`
@@ -86,15 +76,16 @@ pub fn lock_check(dependencies: &[Dependency]) -> Result<Vec<Dependency>, LockEr
 
 pub fn write_lock(dependencies: &[Dependency]) -> Result<(), LockError> {
     println!("Writing lock file...");
-    let lock_file: PathBuf;
-    if cfg!(test) {
-        lock_file = get_current_working_dir()
+
+    let lock_file: PathBuf = if cfg!(test) {
+        get_current_working_dir()
             .unwrap()
             .join("test")
-            .join("soldeer.lock");
+            .join("soldeer.lock")
     } else {
-        lock_file = get_current_working_dir().unwrap().join("soldeer.lock");
-    }
+        get_current_working_dir().unwrap().join("soldeer.lock")
+    };
+
     let lock_path: String = lock_file.to_str().unwrap().to_string();
     if !lock_file.exists() {
         std::fs::File::create(lock_path.clone()).unwrap();
@@ -119,7 +110,7 @@ checksum = "{}"
         .append(true)
         .open(lock_file)
         .unwrap();
-    if let Err(e) = write!(file, "{}", new_lock_entries.to_string()) {
+    if let Err(e) = write!(file, "{}", new_lock_entries) {
         eprintln!("Couldn't write to file: {}", e);
     }
     Ok(())
@@ -134,7 +125,7 @@ fn sha256_digest(dependency_name: &str, dependency_version: &str) -> String {
             .join(format!("{}-{}.zip", dependency_name, dependency_version)),
     )
     .unwrap(); // Vec<u8>
-    return sha256::digest(&bytes);
+    sha256::digest(bytes)
 }
 
 #[cfg(test)]

@@ -1,11 +1,14 @@
+mod auth;
 mod config;
 mod dependency_downloader;
 mod janitor;
 mod lock;
 mod utils;
+mod versioning;
 
 use std::process::exit;
 
+use crate::auth::login;
 use crate::config::{
     get_foundry_setup,
     read_config,
@@ -25,6 +28,7 @@ use crate::lock::{
     lock_check,
     write_lock,
 };
+use crate::versioning::push_version;
 use clap::{
     Parser,
     Subcommand,
@@ -33,6 +37,7 @@ use clap::{
 const REMOTE_REPOSITORY: &str =
     "https://raw.githubusercontent.com/mario-eth/soldeer-versions/main/all_dependencies.toml";
 
+pub const BASE_URL: &str = "http://localhost:3000";
 #[derive(Debug)]
 pub struct FOUNDRY {
     remappings: bool,
@@ -54,6 +59,8 @@ struct Args {
 enum Subcommands {
     Install(Install),
     Update(Update),
+    Login(Login),
+    Push(Push),
 }
 
 #[derive(Debug, Clone, Parser)]
@@ -79,6 +86,25 @@ pub struct Update {}
 
 #[derive(Debug, Clone, Parser)]
 pub struct Help {}
+
+#[derive(Debug, Clone, Parser)]
+#[clap(
+    about = "Login into the central repository to push the dependencies.",
+    after_help = "For more information, read the README.md",
+    override_usage = "soldeer login"
+)]
+pub struct Login {}
+
+#[derive(Debug, Clone, Parser)]
+#[clap(
+    about = "Push a dependency to the central repository.",
+    after_help = "For more information, read the README.md",
+    override_usage = "soldeer push <DEPENDENCY>~<VERSION>"
+)]
+pub struct Push {
+    #[clap(required = true)]
+    dependency: String,
+}
 
 #[tokio::main]
 async fn main() {
@@ -218,6 +244,16 @@ async fn main() {
             if foundry_setup.remappings {
                 remappings();
             }
+        }
+        Subcommands::Login(_) => {
+            login().await;
+        }
+        Subcommands::Push(push) => {
+            let dependency_name: String =
+                push.dependency.split('~').collect::<Vec<&str>>()[0].to_string();
+            let dependency_version: String =
+                push.dependency.split('~').collect::<Vec<&str>>()[1].to_string();
+            let _ = push_version(dependency_name, dependency_version).await;
         }
     }
 }

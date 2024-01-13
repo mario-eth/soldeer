@@ -1,3 +1,4 @@
+use simple_home_dir::home_dir;
 use std::env;
 use std::fs::{
     self,
@@ -7,7 +8,10 @@ use std::io::{
     BufReader,
     Read,
 };
-use std::path::PathBuf;
+use std::path::{
+    Path,
+    PathBuf,
+};
 use std::process::exit;
 
 // get the current working directory
@@ -41,4 +45,27 @@ pub fn read_file(path: String) -> Result<Vec<u8>, std::io::Error> {
     reader.read_to_end(&mut buffer)?;
 
     Ok(buffer)
+}
+
+pub fn define_security_file_location() -> String {
+    let custom_security_file = option_env!("SOLDEER_LOGIN_FILE");
+    if custom_security_file.is_some()
+        && custom_security_file.unwrap().len() > 0
+        && Path::new(custom_security_file.unwrap()).exists()
+    {
+        return String::from(custom_security_file.unwrap());
+    }
+    let home = home_dir();
+    match home {
+        Some(_) => {}
+        None => {
+            println!("HOME(linux) or %UserProfile%(Windows) path variable is not set, we can not determine the user's home directory. Please define this environment variable or define a custom path for the login file using the SOLDEER_LOGIN_FILE environment variable.");
+        }
+    }
+    let security_directory = home.unwrap().join(".soldeer");
+    if !security_directory.exists() {
+        fs::create_dir(&security_directory).unwrap();
+    }
+    let security_file = &security_directory.join(".soldeer_login");
+    String::from(security_file.to_str().unwrap())
 }

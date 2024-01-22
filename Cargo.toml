@@ -11,7 +11,7 @@ readme = "./README.md"
 keywords = ["solidity", "package-manager"]
 categories = ["development-tools", "package-management"]
 exclude = ["crawler/*", ".github/*", ".vscode/*"]
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
 
 [dependencies]
 serde_json = "1.0.1"
@@ -21,12 +21,29 @@ serde_derive = "1.0.171"
 tokio = "1.29.1"
 tokio-dl-stream-to-disk = "1.0.0"
 zip-extract = "0.1.2"
-reqwest = "0.11.18"
+reqwest = {version = "0.11.18", features = ["blocking", "json", "multipart"]}
 toml_edit = "0.9.1"
 lazy_static = "1.4.0"
 clap = { version = "4.4.8", features = ["derive"] }
 serial_test = "2.0.0"
 sha256 = "1.4.0"
+email-address-parser = "2.0.0"
+rpassword = "7.3.1"
+simple-home-dir = "0.2.3"
+zip = "0.6.6"
+walkdir = "2.4.0"
+uuid = { version = "1.7", features = ["serde", "v4"] }
+chrono = { version = "0.4.31", features = ["serde"] }
+clap_builder = {version = "4.4.18"}
+regex = "1.10.3"
 
 [dev-dependencies]
 tokio-test = "*"
+
+[lib]
+name = "soldeer_lib"
+path = "src/lib.rs"
+
+[[bin]]
+name = "soldeer"
+path = "src/main.rs"

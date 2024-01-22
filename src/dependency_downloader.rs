@@ -1,12 +1,5 @@
-use reqwest::{
-    get,
-    Response,
-};
 use std::fmt;
-use std::fs::{
-    self,
-    remove_file,
-};
+use std::fs;
 use std::io::Cursor;
 use std::path::{
     Path,
@@ -15,17 +8,13 @@ use std::path::{
 use tokio_dl_stream_to_disk::AsyncDownload;
 use zip_extract::ZipExtractError;
 
-use crate::config::{
-    read_config,
-    Dependency,
-};
+use crate::config::Dependency;
+use crate::remote::get_dependency_url_remote;
 use crate::utils::{
     get_current_working_dir,
     read_file,
 };
 
-// TODOs:
-// - needs to be downloaded in parallel
 pub async fn download_dependencies(
     dependencies: &[Dependency],
     clean: bool,
@@ -67,37 +56,21 @@ pub fn unzip_dependencies(dependencies: &[Dependency]) -> Result<(), ZipExtractE
 pub async fn download_dependency_remote(
     dependency_name: &String,
     dependency_version: &String,
-    remote_url: &String,
 ) -> Result<String, DownloadError> {
-    let res: Response = get(remote_url.to_string()).await.unwrap();
-    let body: String = res.text().await.unwrap();
-    let tmp_path: PathBuf = get_current_working_dir()
-        .unwrap()
-        .join(".dependency_reading.toml");
-    fs::write(&tmp_path, body).expect("Unable to write file");
-    let dependencies: Vec<Dependency> = read_config(tmp_path.to_str().unwrap().to_string());
-    let mut dependency_url: String = String::new();
-    for dependency in dependencies.iter() {
-        if dependency.name == *dependency_name && dependency.version == *dependency_version {
-            dependency_url = dependency.url.to_string();
-            match download_dependency(
-                &format!("{}-{}.zip", &dependency_name, &dependency_version),
-                &dependency.url,
-            )
-            .await
-            {
-                Ok(_) => {}
-                Err(err) => {
-                    eprintln!("Error downloading dependency: {:?}", err);
-                    remove_file(tmp_path).unwrap();
-                    return Err(err);
-                }
-            }
-            remove_file(tmp_path).unwrap();
-            return Ok(dependency.url.to_string());
+    let dependency_url = get_dependency_url_remote(dependency_name, dependency_version).await;
+
+    match download_dependency(
+        &format!("{}-{}.zip", &dependency_name, &dependency_version),
+        &dependency_url,
+    )
+    .await
+    {
+        Ok(_) => {}
+        Err(err) => {
+            eprintln!("Error downloading dependency: {:?}", err);
+            return Err(err);
         }
     }
-    remove_file(tmp_path).unwrap();
     Ok(dependency_url)
 }
 

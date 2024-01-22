@@ -1,10 +1,10 @@
 use crate::auth::get_token;
+use crate::remote::get_project_id;
 use crate::utils::{
     get_current_working_dir,
     read_file,
     read_file_to_string,
 };
-
 use std::{
     fmt,
     fs::File,
@@ -42,7 +42,7 @@ use reqwest::{
     Client,
 };
 use serde_derive::Deserialize;
-
+use std::fs::remove_file;
 #[derive(Clone, Debug)]
 struct FilePair {
     name: String,
@@ -52,15 +52,30 @@ struct FilePair {
 pub async fn push_version(
     dependency_name: String,
     dependency_version: String,
+    root_directory_path: PathBuf,
 ) -> Result<(), PushError> {
-    let file_name: String = format!("{}-{}", dependency_name, dependency_version);
-    let root_directory_path = get_current_working_dir().unwrap();
+    let file_name = root_directory_path
+        .file_name()
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .to_string();
+    println!(
+        "Pushing dependency {}-{}",
+        dependency_name, dependency_version
+    );
 
     let files_to_copy: Vec<FilePair> = filter_filles_to_copy(&root_directory_path);
-    let zip = zip_file(&root_directory_path, &files_to_copy, &file_name).unwrap();
-    push_to_repo(&zip, dependency_version).await;
-    //TODO cleanup zip afterwards
-    //TODO get project id from the soldeer config file or foundry.toml
+    let zip_archive = zip_file(&root_directory_path, &files_to_copy, &file_name).unwrap();
+    match push_to_repo(&zip_archive, dependency_name, dependency_version).await {
+        Ok(_) => {}
+        Err(error) => {
+            remove_file(zip_archive.to_str().unwrap()).unwrap();
+            println!("{}", error.message);
+            exit(500);
+        }
+    }
+
     Ok(())
 }
 
@@ -69,15 +84,16 @@ fn zip_file(
     files_to_copy: &Vec<FilePair>,
     file_name: &String,
 ) -> Result<PathBuf, PushError> {
-    let zip_file_path = root_directory_path
-        .join("dependencies")
-        .join(file_name.clone() + ".zip");
-
+    let zip_file_path = root_directory_path.join(file_name.to_owned() + ".zip");
     let file = File::create(&zip_file_path.to_str().unwrap()).unwrap();
 
     let mut zip = ZipWriter::new(file);
     let options = FileOptions::default().compression_method(CompressionMethod::DEFLATE);
-
+    if files_to_copy.is_empty() {
+        return Err(PushError {
+            message: "No files to push".to_string(),
+        });
+    }
     for file_path in files_to_copy {
         let file = File::open(&file_path.path.clone()).unwrap();
         let file_name = file_path.name.clone();
@@ -89,13 +105,11 @@ fn zip_file(
         if path.is_file() {
             let _ = zip.start_file(&file_name, options);
             let _ = io::copy(&mut file.take(u64::MAX), &mut buffer);
-
             let _ = zip.write_all(&buffer);
-        } else if path.as_os_str().len() != 0 {
+        } else if !path.as_os_str().is_empty() {
             let _ = zip.add_directory(&file_name, options);
         }
     }
-
     let _ = zip.finish();
     Ok(zip_file_path)
 }
@@ -105,7 +119,7 @@ fn filter_filles_to_copy(root_directory_path: &PathBuf) -> Vec<FilePair> {
 
     let root_directory: &str = &(root_directory_path.to_str().unwrap().to_owned() + "/");
     let mut files_to_copy: Vec<FilePair> = Vec::new();
-    for entry in WalkDir::new(&root_directory)
+    for entry in WalkDir::new(root_directory)
         .into_iter()
         .filter_map(|e| e.ok())
     {
@@ -114,8 +128,8 @@ fn filter_filles_to_copy(root_directory_path: &PathBuf) -> Vec<FilePair> {
             .to_str()
             .unwrap()
             .to_string()
-            .replace(&root_directory, "");
-        if file_name == "" {
+            .replace(root_directory, "");
+        if file_name.is_empty() {
             continue;
         }
         let mut found: bool = false;
@@ -152,7 +166,11 @@ fn read_ignore_file() -> Vec<String> {
     ignore_list
 }
 
-async fn push_to_repo(zip_file: &PathBuf, dependency_version: String) {
+async fn push_to_repo(
+    zip_file: &PathBuf,
+    dependency_name: String,
+    dependency_version: String,
+) -> Result<(), PushError> {
     let token = get_token();
     let client = Client::new();
 
@@ -176,9 +194,9 @@ async fn push_to_repo(zip_file: &PathBuf, dependency_version: String) {
     part = part
         .mime_str("application/zip")
         .expect("Could not set mime type");
-
+    let project_id = get_project_id(&dependency_name).await;
     let form = Form::new()
-        .text("project_id", "69118bda-6e12-40a4-ad8b-937dc4c03245")
+        .text("project_id", project_id)
         .text("revision", dependency_version)
         .part("zip_name", part);
 
@@ -197,15 +215,19 @@ async fn push_to_repo(zip_file: &PathBuf, dependency_version: String) {
     if response.status() != 200 {
         let push_error: PushResponseError =
             serde_json::from_str(response.text().await.unwrap().as_str()).unwrap();
-        println!("Could not push dependency: {}", push_error.message);
-        exit(500);
+        return Err(PushError {
+            message: format!("Could not push dependency: {}", push_error.message),
+        });
     } else {
         println!("Successfully pushed dependency");
     }
+    Ok(())
 }
 
 #[derive(Debug, Clone)]
-pub struct PushError;
+pub struct PushError {
+    message: String,
+}
 
 impl fmt::Display for PushError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {

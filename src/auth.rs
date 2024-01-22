@@ -52,7 +52,6 @@ pub async fn login() {
     print!("🔓 Please enter your password: ");
     std::io::stdout().flush().unwrap();
     let password = read_password().unwrap();
-    println!("The password is: '{}'", password);
 
     let login: Login = Login {
         email: email.unwrap().to_string(),

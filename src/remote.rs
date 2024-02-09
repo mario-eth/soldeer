@@ -12,7 +12,7 @@ pub async fn get_dependency_url_remote(
     dependency_version: &String,
 ) -> String {
     let url = format!(
-        "{}/api/v1/revision?project_name={}&revision={}",
+        "{}/api/v1/revision-cli?project_name={}&revision={}",
         crate::BASE_URL,
         dependency_name,
         dependency_version

@@ -40,7 +40,7 @@ use std::{
     process::exit,
 };
 
-pub const BASE_URL: &str = "http://localhost:3000";
+pub const BASE_URL: &str = "https://api.soldeer.xyz";
 
 #[derive(Debug)]
 pub struct FOUNDRY {
@@ -213,12 +213,12 @@ pub async fn run(args: Args) {
                     .unwrap()
                     .to_string(),
             );
-            let regex = Regex::new(r"^[@|a-z][a-z-]*[a-z]$").unwrap();
+            let regex = Regex::new(r"^[@|a-z][a-z0-9-]*[a-z]$").unwrap();
 
             if !regex.is_match(&dependency_name) {
                 // TODO need to work on this to accept only @ at the beginning and - in the middle
                 println!(
-                    "Dependency name {} is not valid, can be only alpha characters and - and @",
+                    "Dependency name {} is not valid, you can use only alphanumeric characters `-` and `@`",
                     dependency_name
                 );
                 exit(500);

@@ -27,23 +27,23 @@ pub async fn get_dependency_url_remote(
                 match revision {
                     Ok(revision) => {
                         if revision.data.is_empty() {
-                            println!("Dependency not found, please check the dependency name");
+                            println!("Dependency not found, please check the dependency name and version");
                             exit(500);
                         }
-                        return revision.data[0].clone().url;
+                        revision.data[0].clone().url
                     }
                     Err(error) => {
-                        println!("Error getting dependency {}", error.to_string());
+                        println!("Error getting dependency {}", error);
                         exit(500);
                     }
                 }
             } else {
-                println!("Dependency not found, please check the dependency name");
+                println!("Dependency not found, please check the dependency name and version");
                 exit(500);
             }
         }
         Err(error) => {
-            println!("Error getting dependency {}", error.to_string());
+            println!("Error getting dependency {}", error);
             exit(500);
         }
     }
@@ -69,10 +69,10 @@ pub async fn get_project_id(dependency_name: &String) -> String {
                             println!("Project not found, please check the dependency name (project name) or create a new project on https://soldeer.xyz");
                             exit(500);
                         }
-                        return project.data[0].id.to_string();
+                        project.data[0].id.to_string()
                     }
                     Err(error) => {
-                        println!("Error getting dependency {}", error.to_string());
+                        println!("Error getting dependency {}", error);
                         exit(500);
                     }
                 }
@@ -82,7 +82,7 @@ pub async fn get_project_id(dependency_name: &String) -> String {
             }
         }
         Err(error) => {
-            println!("Error getting dependency {}", error.to_string());
+            println!("Error getting dependency {}", error);
             exit(500);
         }
     }

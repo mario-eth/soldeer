@@ -50,9 +50,10 @@ pub fn read_file(path: String) -> Result<Vec<u8>, std::io::Error> {
 pub fn define_security_file_location() -> String {
     let custom_security_file = option_env!("SOLDEER_LOGIN_FILE");
     if custom_security_file.is_some()
-        && custom_security_file.unwrap().len() > 0
+        && !custom_security_file.unwrap().is_empty()
         && Path::new(custom_security_file.unwrap()).exists()
     {
+        #[allow(clippy::unnecessary_unwrap)]
         return String::from(custom_security_file.unwrap());
     }
     let home = home_dir();

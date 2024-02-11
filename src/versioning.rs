@@ -80,12 +80,12 @@ pub async fn push_version(
 }
 
 fn zip_file(
-    root_directory_path: &PathBuf,
+    root_directory_path: &Path,
     files_to_copy: &Vec<FilePair>,
     file_name: &String,
 ) -> Result<PathBuf, PushError> {
     let zip_file_path = root_directory_path.join(file_name.to_owned() + ".zip");
-    let file = File::create(&zip_file_path.to_str().unwrap()).unwrap();
+    let file = File::create(zip_file_path.to_str().unwrap()).unwrap();
 
     let mut zip = ZipWriter::new(file);
     let options = FileOptions::default().compression_method(CompressionMethod::DEFLATE);
@@ -114,7 +114,7 @@ fn zip_file(
     Ok(zip_file_path)
 }
 
-fn filter_filles_to_copy(root_directory_path: &PathBuf) -> Vec<FilePair> {
+fn filter_filles_to_copy(root_directory_path: &Path) -> Vec<FilePair> {
     let ignore_files: Vec<String> = read_ignore_file();
 
     let root_directory: &str = &(root_directory_path.to_str().unwrap().to_owned() + "/");
@@ -167,7 +167,7 @@ fn read_ignore_file() -> Vec<String> {
 }
 
 async fn push_to_repo(
-    zip_file: &PathBuf,
+    zip_file: &Path,
     dependency_name: String,
     dependency_version: String,
 ) -> Result<(), PushError> {

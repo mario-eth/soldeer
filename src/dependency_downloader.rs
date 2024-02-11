@@ -178,6 +178,6 @@ mod tests {
         assert!(result.is_ok());
         let result: Result<(), MissingDependencies> =
             healthcheck_dependency("@openzeppelin-contracts", "2.3.0");
-        assert!(!result.is_err());
+        assert!(result.is_ok());
     }
 }

@@ -130,7 +130,7 @@ fn sha256_digest(dependency_name: &str, dependency_version: &str) -> String {
 
 #[cfg(test)]
 fn sha256_digest(_dependency_name: &str, _dependency_version: &str) -> String {
-    return "5019418b1e9128185398870f77a42e51d624c44315bb1572e7545be51d707016".to_string();
+    "5019418b1e9128185398870f77a42e51d624c44315bb1572e7545be51d707016".to_string()
 }
 
 #[derive(Debug, Clone)]
@@ -177,7 +177,7 @@ version = "0.6.5"
 source = "registry+https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@prb-test~0.6.5.zip"
 checksum = "5019418b1e9128185398870f77a42e51d624c44315bb1572e7545be51d707016"
 "#;
-        File::create(&lock_file)
+        File::create(lock_file)
             .unwrap()
             .write_all(lock_contents.as_bytes())
             .unwrap();
@@ -194,7 +194,7 @@ checksum = "5019418b1e9128185398870f77a42e51d624c44315bb1572e7545be51d707016"
             url: "https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@openzeppelin-contracts~2.3.0.zip".to_string(),
         });
         let _result: Vec<Dependency> = lock_check(&dependencies).unwrap();
-        assert_eq!(lock_file.exists(), false);
+        assert!(!lock_file.exists());
     }
 
     #[test]
@@ -234,7 +234,7 @@ checksum = "5019418b1e9128185398870f77a42e51d624c44315bb1572e7545be51d707016"
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].name, "@openzeppelin-contracts");
         assert_eq!(result[0].version, "2.4.0");
-        fs::remove_file(&lock_file).unwrap();
+        fs::remove_file(lock_file).unwrap();
     }
 
     #[test]

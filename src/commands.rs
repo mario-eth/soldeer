@@ -57,7 +57,7 @@ pub struct Login {}
 
 #[derive(Debug, Clone, Parser)]
 #[clap(
-    about = "Push a dependency to the central repository. The PATH_TO_DEPENDENCY is optional and if not provided, the current directory will be used.",
+    about = "Push a dependency to the repository. The PATH_TO_DEPENDENCY is optional and if not provided, the current directory will be used. \nExample: If the directory is /home/soldeer/my_project and you do not specify the PATH_TO_DEPENDENCY, \nthe files inside the /home/soldeer/my_project will be pushed to the repository. \nIf you specify the PATH_TO_DEPENDENCY, the files inside the specified directory will be pushed to the repository. \nExample: soldeer push dependency~version /home/soldeer/my_project",
     after_help = "For more information, read the README.md",
     override_usage = "soldeer push <DEPENDENCY>~<VERSION> [PATH_TO_DEPENDENCY]"
 )]

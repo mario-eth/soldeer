@@ -38,9 +38,9 @@ pub async fn login() {
     print!("ℹ️  If you do not have an account, please go to soldeer.xyz to create one.\n📧 Please enter your email: ");
     std::io::stdout().flush().unwrap();
     let mut email = String::new();
-    match io::stdin().read_line(&mut email) {
-        Ok(_) => {}
-        Err(_) => {}
+    if io::stdin().read_line(&mut email).is_err() {
+        println!("Invalid email");
+        exit(500);
     }
     email = email.trim().to_string().to_ascii_lowercase();
 
@@ -55,7 +55,7 @@ pub async fn login() {
 
     let login: Login = Login {
         email: email.unwrap().to_string(),
-        password: password,
+        password,
     };
 
     let url = format!("{}/api/v1/auth/login", crate::BASE_URL);
@@ -85,12 +85,12 @@ pub async fn login() {
                     println!("Authentication failed. Invalid email or password");
                     exit(500);
                 }
-                println!("Authentication failed. {}", response.status().to_string());
+                println!("Authentication failed. {}", response.status());
                 exit(500);
             }
         }
         Err(error) => {
-            println!("Login failed with error {}", error.to_string());
+            println!("Login failed {}", error);
             exit(500);
         }
     }

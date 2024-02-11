@@ -128,7 +128,7 @@ mod tests {
         let _ = unzip_dependency(&dependencies[0].name, &dependencies[0].version);
         let result: Result<(), MissingDependencies> =
             healthcheck_dependency("@openzeppelin-contracts", "2.3.0");
-        assert!(!result.is_err());
+        assert!(result.is_ok());
 
         clean_dependency_directory();
     }
@@ -146,7 +146,7 @@ mod tests {
         let _ = unzip_dependency(&dependencies[0].name, &dependencies[0].version);
         let result: Result<(), MissingDependencies> =
             cleanup_dependency("@openzeppelin-contracts", "2.3.0");
-        assert!(!result.is_err());
+        assert!(result.is_ok());
         clean_dependency_directory();
     }
 
@@ -183,7 +183,7 @@ mod tests {
         let _ = aw!(download_dependencies(&dependencies, false));
         let _ = unzip_dependency(&dependencies[0].name, &dependencies[0].version);
         let result: Result<(), MissingDependencies> = cleanup_after(&dependencies);
-        assert!(!result.is_err());
+        assert!(result.is_ok());
         clean_dependency_directory();
     }
 

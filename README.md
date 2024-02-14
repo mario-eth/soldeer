@@ -17,7 +17,7 @@ This project was started to solve the following issues:
 - github versioning of the releases is a pain and not all the projects are using it correctly
 
 
-## Version 0.2.1
+## Version 0.2.2
 
 ### WARNING
 

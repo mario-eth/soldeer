@@ -17,7 +17,7 @@ This project was started to solve the following issues:
 - github versioning of the releases is a pain and not all the projects are using it correctly
 
 
-## Version 0.2.1
+## Version 0.2.2
 
 ### WARNING
 
@@ -56,6 +56,22 @@ The `remappings` option let's you enable or disable the remappings autocompletio
 The `sdependencies` option is used to store the dependencies that you install via the `soldeer install <dependency>~<version>` command.
 
 If you want to use it with the foundry you can skip the creation of the `soldeer.toml` file and use the `foundry.toml` file instead. You just have to add the `sdependencies` option in the `foundry.toml` file and the remappings will be updated automatically.
+
+Example of foundry configuration:
+
+```toml
+[profile.default]
+auto_detect_solc = false 
+bytecode_hash = "none" 
+cbor_metadata = false 
+
+.... other foundry config
+[sdependencies] 
+```
+Even if the `[sdependencies]` is empty, this will tell to soldeer to use the `foundry.toml` file for the dependencies management.
+
+#### WARNING
+If you do not define a `soldeer.toml` with the `enabled` field or a `foundry.toml` with the `sdependencies` field, the remappings will not be updated and you will receive a warning.
 
 
 ### HOW TO INSTALL IT

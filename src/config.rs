@@ -304,6 +304,7 @@ fn remove_empty_lines(filename: String) {
     new_content = String::from(new_content.trim_start_matches('\n'));
     let mut file: std::fs::File = fs::OpenOptions::new()
         .write(true)
+        .truncate(true)
         .append(false)
         .open(Path::new("remappings.txt"))
         .unwrap();
@@ -334,13 +335,13 @@ pub fn get_foundry_setup() -> Vec<bool> {
         Err(err) => {
             eprintln!("Error: {}", err);
             // Write `msg` to `stderr`.
-            eprintln!("WARN: remappings field not found in the soldeer.toml and no foundry config file found or the foundry.toml does not contain the `[sdependencies]` field. \nThe foundry.toml file should contain the `[sdependencies]` field if you want to use it as a config file. If you want to use the soldeer.toml file, please add the `[remappings]` field to it with the `enabled` key set to `true` or `false`. \nMore info on https://github.com/mario-eth/soldeer\nThe installation was successful but the remappings were not automatically set.");
+            eprintln!("WARN: remappings field not found in the soldeer.toml and no foundry config file found or the foundry.toml does not contain the `[sdependencies]` field. \nThe foundry.toml file should contain the `[sdependencies]` field if you want to use it as a config file. If you want to use the soldeer.toml file, please add the `[remappings]` field to it with the `enabled` key set to `true` or `false`. \nMore info on https://github.com/mario-eth/soldeer\nThe installation was successful but the remappings feature was skipped.");
             // Exit the program with exit code `1`.
             return vec![false];
         }
     };
     if data.remappings.get("enabled").is_none() {
-        eprintln!("WARN: remappings field not found in the soldeer.toml and no foundry config file found or the foundry.toml does not contain the `[sdependencies]` field. \nThe foundry.toml file should contain the `[sdependencies]` field if you want to use it as a config file. If you want to use the soldeer.toml file, please add the `[remappings]` field to it with the `enabled` key set to `true` or `false`. \nMore info on https://github.com/mario-eth/soldeer\nThe installation was successful but the remappings were not automatically set.");
+        eprintln!("WARN: remappings field not found in the soldeer.toml and no foundry config file found or the foundry.toml does not contain the `[sdependencies]` field. \nThe foundry.toml file should contain the `[sdependencies]` field if you want to use it as a config file. If you want to use the soldeer.toml file, please add the `[remappings]` field to it with the `enabled` key set to `true` or `false`. \nMore info on https://github.com/mario-eth/soldeer\nThe installation was successful but the remappings feature was skipped.");
         return vec![false];
     }
     vec![data.remappings.get("enabled").unwrap().as_bool().unwrap()]

@@ -13,6 +13,7 @@ use std::path::{
     PathBuf,
 };
 use std::process::exit;
+use yansi::Paint;
 
 // get the current working directory
 pub fn get_current_working_dir() -> std::io::Result<PathBuf> {
@@ -60,7 +61,12 @@ pub fn define_security_file_location() -> String {
     match home {
         Some(_) => {}
         None => {
-            println!("HOME(linux) or %UserProfile%(Windows) path variable is not set, we can not determine the user's home directory. Please define this environment variable or define a custom path for the login file using the SOLDEER_LOGIN_FILE environment variable.");
+            println!(
+                "{}",
+                Paint::red(
+                    "HOME(linux) or %UserProfile%(Windows) path variable is not set, we can not determine the user's home directory. Please define this environment variable or define a custom path for the login file using the SOLDEER_LOGIN_FILE environment variable.",
+                    )
+            );
         }
     }
     let security_directory = home.unwrap().join(".soldeer");

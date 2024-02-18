@@ -1,6 +1,8 @@
 {
-    "rust-analyzer.linkedProjects": [
-        "./crawler/Cargo.toml"
-    ],
-    "git.ignoreLimitWarning": true
+  "git.ignoreLimitWarning": true,
+  "editor.formatOnSave": true,
+  "rust-analyzer.rustfmt.extraArgs": ["+nightly"],
+  "[rust]": {
+    "editor.defaultFormatter": "rust-lang.rust-analyzer"
+  }
 }

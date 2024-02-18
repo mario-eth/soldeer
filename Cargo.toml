@@ -36,6 +36,7 @@ uuid = { version = "1.7", features = ["serde", "v4"] }
 chrono = { version = "0.4.31", features = ["serde"] }
 clap_builder = {version = "4.4.18"}
 regex = "1.10.3"
+yansi = "0.5.1"
 
 [dev-dependencies]
 tokio-test = "0.4.3"

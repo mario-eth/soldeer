@@ -1,4 +1,3 @@
-use std::fmt;
 use std::fs;
 use std::io::Cursor;
 use std::path::{
@@ -6,9 +5,11 @@ use std::path::{
     PathBuf,
 };
 use tokio_dl_stream_to_disk::AsyncDownload;
-use zip_extract::ZipExtractError;
+use yansi::Paint;
 
 use crate::config::Dependency;
+use crate::errors::DownloadError;
+use crate::errors::UnzippingError;
 use crate::remote::get_dependency_url_remote;
 use crate::utils::{
     get_current_working_dir,
@@ -29,7 +30,6 @@ pub async fn download_dependencies(
         match download_dependency(&file_name, &dependency.url).await {
             Ok(_) => {}
             Err(err) => {
-                eprintln!("Error downloading dependency: {:?}", err);
                 return Err(err);
             }
         }
@@ -38,13 +38,12 @@ pub async fn download_dependencies(
 }
 
 // un-zip-ing dependencies to dependencies folder
-pub fn unzip_dependencies(dependencies: &[Dependency]) -> Result<(), ZipExtractError> {
-    println!("Unzipping dependencies...");
+pub fn unzip_dependencies(dependencies: &[Dependency]) -> Result<(), UnzippingError> {
+    println!("{}", Paint::green("Unzipping dependencies...".to_string()));
     for dependency in dependencies.iter() {
         match unzip_dependency(&dependency.name, &dependency.version) {
             Ok(_) => {}
             Err(err) => {
-                eprintln!("Error unzipping dependency: {:?}", err);
                 return Err(err);
             }
         }
@@ -57,7 +56,11 @@ pub async fn download_dependency_remote(
     dependency_name: &String,
     dependency_version: &String,
 ) -> Result<String, DownloadError> {
-    let dependency_url = get_dependency_url_remote(dependency_name, dependency_version).await;
+    let dependency_url;
+    match get_dependency_url_remote(dependency_name, dependency_version).await {
+        Ok(url) => dependency_url = url,
+        Err(err) => return Err(err),
+    }
 
     match download_dependency(
         &format!("{}-{}.zip", &dependency_name, &dependency_version),
@@ -65,13 +68,13 @@ pub async fn download_dependency_remote(
     )
     .await
     {
-        Ok(_) => {}
+        Ok(_) => Ok(dependency_url),
         Err(err) => {
             eprintln!("Error downloading dependency: {:?}", err);
             return Err(err);
         }
     }
-    Ok(dependency_url)
+    // Ok(dependency_url)
 }
 
 pub async fn download_dependency(
@@ -83,16 +86,15 @@ pub async fn download_dependency(
         fs::create_dir(&dependency_directory).unwrap();
     }
 
-    println!(
-        "Downloading dependency {} from {}",
-        dependency_name, dependency_url
-    );
     let download_result: Result<(), tokio_dl_stream_to_disk::error::Error> =
         AsyncDownload::new(dependency_url, &dependency_directory, dependency_name)
             .download(&None)
             .await;
     if download_result.is_ok() {
-        println!("{} downloaded successfully!", dependency_name);
+        println!(
+            "{}",
+            Paint::green(format!("Dependency {} downloaded! ", dependency_name))
+        );
         Ok(())
     } else if download_result
         .err()
@@ -100,21 +102,23 @@ pub async fn download_dependency(
         .to_string()
         .contains("already exists")
     {
-        eprintln!("Dependency {} already downloaded", dependency_name);
+        println!(
+            "{}",
+            Paint::yellow(format!("Dependency {} already downloaded", dependency_name))
+        );
         return Ok(());
     } else {
-        return Err(DownloadError);
+        return Err(DownloadError {
+            name: "Unknown".to_string(),
+            version: "Unknown".to_string(),
+        });
     }
 }
 
 pub fn unzip_dependency(
     dependency_name: &String,
     dependency_version: &String,
-) -> Result<(), ZipExtractError> {
-    println!(
-        "Unzipping dependency {}-{}",
-        dependency_name, dependency_version
-    );
+) -> Result<(), UnzippingError> {
     let file_name: String = format!("{}-{}.zip", dependency_name, dependency_version);
     let target_name: String = format!("{}-{}/", dependency_name, dependency_version);
     let current_dir: PathBuf = get_current_working_dir()
@@ -126,7 +130,22 @@ pub fn unzip_dependency(
         .join("dependencies/")
         .join(target_name);
     let archive: Vec<u8> = read_file(current_dir.as_path().to_str().unwrap().to_string()).unwrap();
-    zip_extract::extract(Cursor::new(archive), &target, true)?;
+    match zip_extract::extract(Cursor::new(archive), &target, true) {
+        Ok(_) => {}
+        Err(_) => {
+            return Err(UnzippingError {
+                name: dependency_name.to_string(),
+                version: dependency_version.to_string(),
+            })
+        }
+    }
+    println!(
+        "{}",
+        Paint::green(format!(
+            "The dependency {}-{} was unzipped!",
+            dependency_name, dependency_version
+        ))
+    );
     Ok(())
 }
 
@@ -135,15 +154,6 @@ pub fn clean_dependency_directory() {
     if dep_path.is_dir() {
         fs::remove_dir_all(&dep_path).unwrap();
         fs::create_dir(&dep_path).unwrap();
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct DownloadError;
-
-impl fmt::Display for DownloadError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "download failed")
     }
 }
 

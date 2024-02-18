@@ -2,6 +2,7 @@ mod auth;
 pub mod commands;
 mod config;
 mod dependency_downloader;
+pub mod errors;
 mod janitor;
 mod lock;
 mod remote;
@@ -24,6 +25,7 @@ use crate::dependency_downloader::{
     unzip_dependencies,
     unzip_dependency,
 };
+use crate::errors::SoldeerError;
 use crate::janitor::{
     cleanup_after,
     healthcheck_dependencies,
@@ -35,10 +37,8 @@ use crate::lock::{
 use crate::utils::get_current_working_dir;
 use crate::versioning::push_version;
 use regex::Regex;
-use std::{
-    path::PathBuf,
-    process::exit,
-};
+use std::path::PathBuf;
+use yansi::Paint;
 
 pub const BASE_URL: &str = "https://api.soldeer.xyz";
 
@@ -48,10 +48,10 @@ pub struct FOUNDRY {
 }
 
 #[tokio::main]
-pub async fn run(args: Args) {
-    println!("Running Soldeer...");
+pub async fn run(args: Args) -> Result<(), SoldeerError> {
     match args.command {
         Subcommands::Install(install) => {
+            println!("{}", Paint::green("Running soldeer install"));
             let dependency_name: String =
                 install.dependency.split('~').collect::<Vec<&str>>()[0].to_string();
             let dependency_version: String =
@@ -66,20 +66,35 @@ pub async fn run(args: Args) {
                     version: dependency_version.clone(),
                     url: dependency_url.clone(),
                 });
-                println!("Checking lock file...");
                 dependencies = lock_check(&dependencies).unwrap();
                 if dependencies.is_empty() {
-                    eprintln!(
-                        "Dependency {}-{} already installed",
-                        dependency_name, dependency_version
-                    );
-                    exit(500);
+                    return Err(SoldeerError {
+                        message: format!(
+                            "Dependency {}-{} already installed",
+                            dependency_name, dependency_version
+                        ),
+                    });
                 }
-                if download_dependencies(&dependencies, false).await.is_err() {
-                    eprintln!("Error downloading dependencies");
-                    exit(500);
+
+                match download_dependencies(&dependencies, false).await {
+                    Ok(_) => {}
+                    Err(err) => {
+                        return Err(SoldeerError {
+                            message: format!(
+                                "Error downloading a dependency {:?}~{:?}",
+                                err.name, err.version
+                            ),
+                        });
+                    }
                 }
-                let _ = write_lock(&dependencies);
+                match write_lock(&dependencies) {
+                    Ok(_) => {}
+                    Err(_) => {
+                        return Err(SoldeerError {
+                            message: "Error writing the lock".to_string(),
+                        });
+                    }
+                }
             } else {
                 let mut dependencies: Vec<Dependency> = Vec::new();
                 dependencies = lock_check(&dependencies).unwrap();
@@ -90,117 +105,199 @@ pub async fn run(args: Args) {
                 });
                 dependencies = lock_check(&dependencies).unwrap();
                 if dependencies.is_empty() {
-                    eprintln!(
-                        "Dependency {}-{} already installed",
-                        dependency_name, dependency_version
-                    );
-                    exit(500);
+                    return Err(SoldeerError {
+                        message: format!(
+                            "Dependency {}-{} already installed",
+                            dependency_name, dependency_version
+                        ),
+                    });
                 }
 
-                match {
-                    dependency_downloader::download_dependency_remote(
-                        &dependency_name,
-                        &dependency_version,
-                    )
-                    .await
-                } {
+                match dependency_downloader::download_dependency_remote(
+                    &dependency_name,
+                    &dependency_version,
+                )
+                .await
+                {
                     Ok(url) => {
                         dependencies[0].url = url;
                         dependency_url = dependencies[0].url.clone();
                     }
                     Err(err) => {
-                        eprintln!("Error downloading dependency: {:?}", err);
-                        exit(500);
+                        return Err(SoldeerError {
+                            message: format!(
+                                "Error downloading a dependency {}~{}. \nCheck if the dependency name and version are correct.\nIf you are not sure check https://soldeer.xyz.",
+                                err.name, err.version
+                            ),
+                        });
                     }
                 }
-                let _ = write_lock(&dependencies);
+
+                match write_lock(&dependencies) {
+                    Ok(_) => {}
+                    Err(_) => {
+                        return Err(SoldeerError {
+                            message: "Error writing the lock".to_string(),
+                        });
+                    }
+                }
             }
             match unzip_dependency(&dependency_name, &dependency_version) {
                 Ok(_) => {}
-                Err(err) => {
-                    eprintln!("Error unzipping dependency: {:?}", err);
+                Err(err_unzip) => {
                     match janitor::cleanup_dependency(&dependency_name, &dependency_version) {
                         Ok(_) => {}
-                        Err(err) => {
-                            eprintln!("Error cleanup dependency: {:?}", err);
-                            exit(500);
+                        Err(err_cleanup) => {
+                            return Err(SoldeerError {
+                                message: format!(
+                                    "Error cleaning up dependency {:?}~{:?}",
+                                    err_cleanup.name, err_cleanup.version
+                                ),
+                            })
                         }
                     }
-                    exit(500);
+                    return Err(SoldeerError {
+                        message: format!(
+                            "Error downloading a dependency {:?}~{:?}",
+                            err_unzip.name, err_unzip.version
+                        ),
+                    });
                 }
             }
 
-            config::add_to_config(&dependency_name, &dependency_version, &dependency_url);
+            match config::add_to_config(&dependency_name, &dependency_version, &dependency_url) {
+                Ok(_) => {}
+                Err(err) => {
+                    return Err(SoldeerError { message: err.cause });
+                }
+            }
 
             match janitor::healthcheck_dependency(&dependency_name, &dependency_version) {
                 Ok(_) => {}
                 Err(err) => {
-                    eprintln!("Error health-checking dependency: {:?}", err);
-                    exit(500);
+                    return Err(SoldeerError {
+                        message: format!(
+                            "Error health-checking dependency {:?}~{:?}",
+                            err.name, err.version
+                        ),
+                    });
                 }
             }
             match janitor::cleanup_dependency(&dependency_name, &dependency_version) {
                 Ok(_) => {}
                 Err(err) => {
-                    eprintln!("Error cleanup dependency: {:?}", err);
-                    exit(500);
+                    return Err(SoldeerError {
+                        message: format!(
+                            "Error cleaning up dependency {:?}~{:?}",
+                            err.name, err.version
+                        ),
+                    });
                 }
             }
             // check the foundry setup, in case we have a foundry.toml, then the foundry.toml will be used for `sdependencies`
-            let f_setup_vec: Vec<bool> = get_foundry_setup();
+            let f_setup_vec: Vec<bool> = match get_foundry_setup() {
+                Ok(setup) => setup,
+                Err(err) => return Err(SoldeerError { message: err.cause }),
+            };
             let foundry_setup: FOUNDRY = FOUNDRY {
                 remappings: f_setup_vec[0],
             };
 
             if foundry_setup.remappings {
-                remappings();
+                match remappings() {
+                    Ok(_) => {}
+                    Err(err) => {
+                        return Err(SoldeerError { message: err.cause });
+                    }
+                }
             }
         }
         Subcommands::Update(_) => {
-            let dependencies: Vec<Dependency> = read_config(String::new());
+            println!("{}", Paint::green("Running soldeer update"));
 
-            if download_dependencies(&dependencies, true).await.is_err() {
-                eprintln!("Error downloading dependencies");
-                exit(500);
+            let dependencies: Vec<Dependency> = match read_config(String::new()) {
+                Ok(dep) => dep,
+                Err(err) => return Err(SoldeerError { message: err.cause }),
+            };
+
+            match download_dependencies(&dependencies, true).await {
+                Ok(_) => {}
+                Err(err) => {
+                    return Err(SoldeerError {
+                        message: format!(
+                            "Error downloading a dependency {:?}~{:?}",
+                            err.name, err.version
+                        ),
+                    })
+                }
             }
-            let result: Result<(), zip_extract::ZipExtractError> =
-                unzip_dependencies(&dependencies);
-            if result.is_err() {
-                eprintln!("Error unzipping dependencies: {:?}", result.err().unwrap());
-                exit(500);
+
+            match unzip_dependencies(&dependencies) {
+                Ok(_) => {}
+                Err(err) => {
+                    return Err(SoldeerError {
+                        message: format!(
+                            "Error unzipping dependency {:?}~{:?}",
+                            err.name, err.version
+                        ),
+                    })
+                }
             }
-            let result: Result<(), janitor::MissingDependencies> =
-                healthcheck_dependencies(&dependencies);
-            if result.is_err() {
-                eprintln!(
-                    "Error health-checking dependencies {:?}",
-                    result.err().unwrap().name
-                );
-                exit(500);
+
+            match healthcheck_dependencies(&dependencies) {
+                Ok(_) => {}
+                Err(err) => {
+                    return Err(SoldeerError {
+                        message: format!(
+                            "Error health-checking dependencies {:?}~{:?}",
+                            err.name, err.version
+                        ),
+                    });
+                }
             }
-            let result: Result<(), janitor::MissingDependencies> = cleanup_after(&dependencies);
-            if result.is_err() {
-                eprintln!(
-                    "Error cleanup dependencies {:?}",
-                    result.err().unwrap().name
-                );
-                exit(500);
+            match cleanup_after(&dependencies) {
+                Ok(_) => {}
+                Err(err) => {
+                    return Err(SoldeerError {
+                        message: format!(
+                            "Error cleanup dependencies {:?}~{:?}",
+                            err.name, err.version
+                        ),
+                    });
+                }
             }
+
             // check the foundry setup, in case we have a foundry.toml, then the foundry.toml will be used for `sdependencies`
-            let f_setup_vec: Vec<bool> = get_foundry_setup();
+            let f_setup_vec: Vec<bool> = match get_foundry_setup() {
+                Ok(f_setup) => f_setup,
+                Err(err) => {
+                    return Err(SoldeerError { message: err.cause });
+                }
+            };
             let foundry_setup: FOUNDRY = FOUNDRY {
                 remappings: f_setup_vec[0],
             };
 
             if foundry_setup.remappings {
-                remappings();
+                match remappings() {
+                    Ok(_) => {}
+                    Err(err) => {
+                        return Err(SoldeerError { message: err.cause });
+                    }
+                }
             }
         }
         Subcommands::Login(_) => {
-            login().await;
+            println!("{}", Paint::green("Running soldeer login"));
+            match login().await {
+                Ok(_) => {}
+                Err(err) => {
+                    return Err(SoldeerError { message: err.cause });
+                }
+            }
         }
         Subcommands::Push(push) => {
-            println!("Pushing dependency...");
+            println!("{}", Paint::green("Running soldeer push"));
             let dependency_name: String =
                 push.dependency.split('~').collect::<Vec<&str>>()[0].to_string();
             let dependency_version: String =
@@ -216,14 +313,20 @@ pub async fn run(args: Args) {
             let regex = Regex::new(r"^[@|a-z][a-z0-9-]*[a-z]$").unwrap();
 
             if !regex.is_match(&dependency_name) {
-                // TODO need to work on this to accept only @ at the beginning and - in the middle
-                println!(
-                    "Dependency name {} is not valid, you can use only alphanumeric characters `-` and `@`",
-                    dependency_name
-                );
-                exit(500);
+                return Err(SoldeerError{message:"Dependency name {} is not valid, you can use only alphanumeric characters `-` and `@`".to_string()});
             }
-            let _ = push_version(dependency_name, dependency_version, PathBuf::from(path)).await;
+            match push_version(&dependency_name, &dependency_version, PathBuf::from(path)).await {
+                Ok(_) => {}
+                Err(err) => {
+                    return Err(SoldeerError {
+                        message: format!(
+                            "Dependency {}~{} could not be pushed. \n Cause: {}",
+                            dependency_name, dependency_version, err.cause
+                        ),
+                    });
+                }
+            }
         }
     }
+    Ok(())
 }

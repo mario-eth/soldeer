@@ -15,7 +15,7 @@ pub struct Args {
     pub command: Subcommands,
 }
 
-#[derive(Debug, Subcommand)]
+#[derive(Debug, Clone, Subcommand)]
 pub enum Subcommands {
     Install(Install),
     Update(Update),

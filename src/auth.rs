@@ -2,6 +2,7 @@ use email_address_parser::{
     EmailAddress,
     ParsingOptions,
 };
+use yansi::Paint;
 
 use crate::utils::{
     define_security_file_location,
@@ -19,8 +20,9 @@ use std::{
         self,
         Write,
     },
-    process::exit,
 };
+
+use crate::errors::LoginError;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Login {
@@ -34,20 +36,22 @@ pub struct LoginResponse {
     pub token: String,
 }
 
-pub async fn login() {
+pub async fn login() -> Result<(), LoginError> {
     print!("ℹ️  If you do not have an account, please go to soldeer.xyz to create one.\n📧 Please enter your email: ");
     std::io::stdout().flush().unwrap();
     let mut email = String::new();
     if io::stdin().read_line(&mut email).is_err() {
-        println!("Invalid email");
-        exit(500);
+        return Err(LoginError {
+            cause: "Invalid email".to_string(),
+        });
     }
     email = email.trim().to_string().to_ascii_lowercase();
 
     let email: Option<EmailAddress> = EmailAddress::parse(&email, Some(ParsingOptions::default()));
     if email.is_none() {
-        eprintln!("Invalid email");
-        exit(500);
+        return Err(LoginError {
+            cause: "Invalid email".to_string(),
+        });
     }
     print!("🔓 Please enter your password: ");
     std::io::stdout().flush().unwrap();
@@ -66,7 +70,7 @@ pub async fn login() {
     match login_response {
         Ok(response) => {
             if response.status().is_success() {
-                println!("Login successful");
+                println!("{}", Paint::green("Login successful"));
                 let jwt = serde_json::from_str::<LoginResponse>(&response.text().await.unwrap())
                     .unwrap()
                     .token;
@@ -77,36 +81,46 @@ pub async fn login() {
                     .open(&security_file)
                     .unwrap();
                 if let Err(e) = write!(file, "{}", &jwt) {
-                    eprintln!("Couldn't write to security file{}: {}", &security_file, e);
+                    return Err(LoginError {
+                        cause: format!(
+                            "Couldn't write to the security file {}: {}",
+                            &security_file, e
+                        ),
+                    });
                 }
-                println!("Login details saved in: {:?}", &security_file);
+                println!(
+                    "{}",
+                    Paint::green(format!("Login details saved in: {:?}", &security_file))
+                );
+
+                return Ok(());
             } else {
                 if response.status().as_u16() == 401 {
-                    println!("Authentication failed. Invalid email or password");
-                    exit(500);
+                    return Err(LoginError {
+                        cause: "Authentication failed. Invalid email or password".to_string(),
+                    });
                 }
-                println!("Authentication failed. {}", response.status());
-                exit(500);
             }
         }
-        Err(error) => {
-            println!("Login failed {}", error);
-            exit(500);
-        }
+        Err(_) => {}
     }
+    return Err(LoginError {
+        cause: "Authentication failed. Unknown error.".to_string(),
+    });
 }
 
-pub fn get_token() -> String {
+pub fn get_token() -> Result<String, LoginError> {
     let security_file = define_security_file_location();
     let jwt = read_file(security_file);
     match jwt {
         Ok(token) => {
-            String::from_utf8(token)
-                .expect("You are not logged in. Please login using the 'soldeer login' command")
+            Ok(String::from_utf8(token)
+                .expect("You are not logged in. Please login using the 'soldeer login' command"))
         }
         Err(_) => {
-            println!("You are not logged in. Please login using the 'soldeer login' command");
-            exit(500);
+            return Err(LoginError {
+                cause: "You are not logged in. Please login using the 'login' command".to_string(),
+            });
         }
     }
 }

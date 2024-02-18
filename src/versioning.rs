@@ -18,6 +18,7 @@ use std::{
     },
 };
 
+use reqwest::StatusCode;
 use walkdir::WalkDir;
 
 use yansi::Paint;
@@ -245,14 +246,29 @@ async fn push_to_repo(
         .send();
 
     let response = res.await.unwrap();
-    if response.status() != 200 {
-        return Err(PushError {
-            name: (&dependency_name).to_string(),
-            version: (&dependency_version).to_string(),
-            cause: "The server returned an unexpected error".to_string(),
-        });
-    } else {
-        println!("{}", Paint::green("Success!"));
+    match response.status() {
+        StatusCode::OK => println!("{}", Paint::green("Success!")),
+        StatusCode::NO_CONTENT => {
+            return Err(PushError {
+                name: (&dependency_name).to_string(),
+                version: (&dependency_version).to_string(),
+                cause: "Project not found. Make sure you send the right dependency name. \nThe dependency name is the project name you created on https://soldeer.xyz".to_string(),
+            });
+        }
+        StatusCode::ALREADY_REPORTED => {
+            return Err(PushError {
+                name: (&dependency_name).to_string(),
+                version: (&dependency_version).to_string(),
+                cause: "Dependency already exists".to_string(),
+            });
+        }
+        _ => {
+            return Err(PushError {
+                name: (&dependency_name).to_string(),
+                version: (&dependency_version).to_string(),
+                cause: "The server returned an unexpected error".to_string(),
+            });
+        }
     }
     Ok(())
 }

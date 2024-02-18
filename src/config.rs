@@ -174,17 +174,15 @@ pub fn add_to_config(
             dependency_name, dependency_version
         ))
     );
-    let filename: String;
-    match define_config_file() {
-        Ok(file) => {
-            filename = file;
-        }
+    let filename: String = match define_config_file() {
+        Ok(file) => file,
+
         Err(err) => {
             let dir = get_current_working_dir()
                 .unwrap()
                 .join("dependencies")
                 .join(format!("{}-{}", dependency_name, dependency_version));
-            remove_dir_all(&dir).unwrap();
+            remove_dir_all(dir).unwrap();
             match cleanup_dependency(dependency_name, dependency_version) {
                 Ok(_) => {}
                 Err(_) => {
@@ -204,7 +202,7 @@ pub fn add_to_config(
             }
             return Err(err);
         }
-    }
+    };
     let contents = read_file_to_string(&filename.clone());
     let mut doc: Document = contents.parse::<Document>().expect("invalid doc");
 
@@ -225,11 +223,7 @@ pub fn add_to_config(
 
     // in case we don't have sdependencies defined in the config file, we add it and re-read the doc
     if doc.get("sdependencies").is_none() {
-        let mut file: std::fs::File = fs::OpenOptions::new()
-            .write(true)
-            .append(true)
-            .open(&filename)
-            .unwrap();
+        let mut file: std::fs::File = fs::OpenOptions::new().append(true).open(&filename).unwrap();
         if let Err(e) = write!(file, "{}", String::from("\n[sdependencies]\n")) {
             eprintln!("Couldn't write to file: {}", e);
         }
@@ -242,11 +236,7 @@ pub fn add_to_config(
 
     // in case we don't have sdependencies defined in the config file, we add it and re-read the doc
     if doc.get("sdependencies").is_none() {
-        let mut file: std::fs::File = fs::OpenOptions::new()
-            .write(true)
-            .append(true)
-            .open(&filename)
-            .unwrap();
+        let mut file: std::fs::File = fs::OpenOptions::new().append(true).open(&filename).unwrap();
         if let Err(e) = write!(file, "{}", String::from("\n[sdependencies]\n")) {
             eprintln!("Couldn't write to file: {}", e);
         }
@@ -275,7 +265,7 @@ pub fn add_to_config(
     if let Err(e) = write!(file, "{}", doc) {
         eprintln!("Couldn't write to file: {}", e);
     }
-    return Ok(());
+    Ok(())
 }
 
 pub fn remappings() -> Result<(), ConfigError> {
@@ -287,13 +277,13 @@ pub fn remappings() -> Result<(), ConfigError> {
 
     let existing_remappings: Vec<String> = contents.split('\n').map(|s| s.to_string()).collect();
     let mut new_remappings: String = String::new();
-    let dependencies: Vec<Dependency>;
-    match read_config(String::new()) {
-        Ok(dep) => dependencies = dep,
+
+    let dependencies: Vec<Dependency> = match read_config(String::new()) {
+        Ok(dep) => dep,
         Err(err) => {
             return Err(err);
         }
-    }
+    };
 
     let mut existing_remap: Vec<String> = Vec::new();
     existing_remappings.iter().for_each(|remapping| {
@@ -334,7 +324,6 @@ pub fn remappings() -> Result<(), ConfigError> {
     }
 
     let mut file: std::fs::File = fs::OpenOptions::new()
-        .write(true)
         .append(true)
         .open(Path::new("remappings.txt"))
         .unwrap();
@@ -390,13 +379,12 @@ fn remove_empty_lines(filename: String) {
 }
 
 pub fn get_foundry_setup() -> Result<Vec<bool>, ConfigError> {
-    let filename;
-    match define_config_file() {
-        Ok(file) => filename = file,
+    let filename = match define_config_file() {
+        Ok(file) => file,
         Err(err) => {
             return Err(err);
         }
-    }
+    };
     if filename.contains("foundry.toml") {
         return Ok(vec![true]);
     }
@@ -475,12 +463,12 @@ enabled = true
         });
     }
 
-    std::fs::File::create(&config_file).unwrap();
+    std::fs::File::create(config_file).unwrap();
     let mut file: std::fs::File = fs::OpenOptions::new()
         .write(true)
         .open(config_file)
         .unwrap();
-    if let Err(_) = write!(file, "{}", content) {
+    if write!(file, "{}", content).is_err() {
         return Err(ConfigError {
             cause: "Could not create a new config file".to_string(),
         });

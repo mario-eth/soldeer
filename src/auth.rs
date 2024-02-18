@@ -67,46 +67,41 @@ pub async fn login() -> Result<(), LoginError> {
 
     let login_response = req.send().await;
     let security_file = define_security_file_location();
-    match login_response {
-        Ok(response) => {
-            if response.status().is_success() {
-                println!("{}", Paint::green("Login successful"));
-                let jwt = serde_json::from_str::<LoginResponse>(&response.text().await.unwrap())
-                    .unwrap()
-                    .token;
-                let mut file: std::fs::File = OpenOptions::new()
-                    .create(true)
-                    .write(true)
-                    .append(false)
-                    .open(&security_file)
-                    .unwrap();
-                if let Err(e) = write!(file, "{}", &jwt) {
-                    return Err(LoginError {
-                        cause: format!(
-                            "Couldn't write to the security file {}: {}",
-                            &security_file, e
-                        ),
-                    });
-                }
-                println!(
-                    "{}",
-                    Paint::green(format!("Login details saved in: {:?}", &security_file))
-                );
-
-                return Ok(());
-            } else {
-                if response.status().as_u16() == 401 {
-                    return Err(LoginError {
-                        cause: "Authentication failed. Invalid email or password".to_string(),
-                    });
-                }
+    if let Ok(response) = login_response {
+        if response.status().is_success() {
+            println!("{}", Paint::green("Login successful"));
+            let jwt = serde_json::from_str::<LoginResponse>(&response.text().await.unwrap())
+                .unwrap()
+                .token;
+            let mut file: std::fs::File = OpenOptions::new()
+                .create(true)
+                .write(true)
+                .append(false)
+                .open(&security_file)
+                .unwrap();
+            if let Err(e) = write!(file, "{}", &jwt) {
+                return Err(LoginError {
+                    cause: format!(
+                        "Couldn't write to the security file {}: {}",
+                        &security_file, e
+                    ),
+                });
             }
+            println!(
+                "{}",
+                Paint::green(format!("Login details saved in: {:?}", &security_file))
+            );
+
+            return Ok(());
+        } else if response.status().as_u16() == 401 {
+            return Err(LoginError {
+                cause: "Authentication failed. Invalid email or password".to_string(),
+            });
         }
-        Err(_) => {}
     }
-    return Err(LoginError {
+    Err(LoginError {
         cause: "Authentication failed. Unknown error.".to_string(),
-    });
+    })
 }
 
 pub fn get_token() -> Result<String, LoginError> {
@@ -118,9 +113,9 @@ pub fn get_token() -> Result<String, LoginError> {
                 .expect("You are not logged in. Please login using the 'soldeer login' command"))
         }
         Err(_) => {
-            return Err(LoginError {
+            Err(LoginError {
                 cause: "You are not logged in. Please login using the 'login' command".to_string(),
-            });
+            })
         }
     }
 }

@@ -58,9 +58,7 @@ pub fn cleanup_dependency(
     let new_path: std::path::PathBuf = get_current_working_dir().unwrap().join("dependencies");
     match remove_file(new_path.join(&file_name)) {
         Ok(_) => Ok(()),
-        Err(err) => {
-            println!("{:?}", err);
-            println!("{:?}", new_path.join(&file_name));
+        Err(_) => {
             Err(MissingDependencies::new(
                 dependency_name,
                 dependency_version,

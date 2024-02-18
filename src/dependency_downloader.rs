@@ -56,11 +56,11 @@ pub async fn download_dependency_remote(
     dependency_name: &String,
     dependency_version: &String,
 ) -> Result<String, DownloadError> {
-    let dependency_url;
-    match get_dependency_url_remote(dependency_name, dependency_version).await {
-        Ok(url) => dependency_url = url,
+    let dependency_url = match get_dependency_url_remote(dependency_name, dependency_version).await
+    {
+        Ok(url) => url,
         Err(err) => return Err(err),
-    }
+    };
 
     match download_dependency(
         &format!("{}-{}.zip", &dependency_name, &dependency_version),
@@ -71,15 +71,15 @@ pub async fn download_dependency_remote(
         Ok(_) => Ok(dependency_url),
         Err(err) => {
             eprintln!("Error downloading dependency: {:?}", err);
-            return Err(err);
+            Err(err)
         }
     }
     // Ok(dependency_url)
 }
 
 pub async fn download_dependency(
-    dependency_name: &String,
-    dependency_url: &String,
+    dependency_name: &str,
+    dependency_url: &str,
 ) -> Result<(), DownloadError> {
     let dependency_directory: PathBuf = get_current_working_dir().unwrap().join("dependencies");
     if !dependency_directory.is_dir() {
@@ -160,10 +160,8 @@ pub fn clean_dependency_directory() {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::janitor::{
-        healthcheck_dependency,
-        MissingDependencies,
-    };
+    use crate::errors::MissingDependencies;
+    use crate::janitor::healthcheck_dependency;
     use serial_test::serial;
 
     // Helper macro to run async tests
@@ -183,7 +181,7 @@ mod tests {
             url: "https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@openzeppelin-contracts~2.3.0.zip".to_string(),
         });
         let _ = aw!(download_dependencies(&dependencies, false));
-        let result: Result<(), ZipExtractError> =
+        let result: Result<(), UnzippingError> =
             unzip_dependency(&dependencies[0].name, &dependencies[0].version);
         assert!(result.is_ok());
         let result: Result<(), MissingDependencies> =

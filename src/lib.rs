@@ -40,7 +40,8 @@ use regex::Regex;
 use std::path::PathBuf;
 use yansi::Paint;
 
-pub const BASE_URL: &str = "https://api.soldeer.xyz";
+pub const BASE_URL: &str = "http://0.0.0.0:3000";
+// pub const BASE_URL: &str = "https://api.soldeer.xyz";
 
 #[derive(Debug)]
 pub struct FOUNDRY {
@@ -87,7 +88,7 @@ pub async fn run(args: Args) -> Result<(), SoldeerError> {
                         });
                     }
                 }
-                match write_lock(&dependencies) {
+                match write_lock(&dependencies, false) {
                     Ok(_) => {}
                     Err(_) => {
                         return Err(SoldeerError {
@@ -133,7 +134,7 @@ pub async fn run(args: Args) -> Result<(), SoldeerError> {
                     }
                 }
 
-                match write_lock(&dependencies) {
+                match write_lock(&dependencies, false) {
                     Ok(_) => {}
                     Err(_) => {
                         return Err(SoldeerError {
@@ -255,6 +256,16 @@ pub async fn run(args: Args) -> Result<(), SoldeerError> {
                     });
                 }
             }
+
+            match write_lock(&dependencies, true) {
+                Ok(_) => {}
+                Err(_) => {
+                    return Err(SoldeerError {
+                        message: "Error writing the lock".to_string(),
+                    });
+                }
+            }
+
             match cleanup_after(&dependencies) {
                 Ok(_) => {}
                 Err(err) => {
@@ -320,7 +331,7 @@ pub async fn run(args: Args) -> Result<(), SoldeerError> {
                 Err(err) => {
                     return Err(SoldeerError {
                         message: format!(
-                            "Dependency {}~{} could not be pushed. \n Cause: {}",
+                            "Dependency {}~{} could not be pushed. \nCause: {}",
                             dependency_name, dependency_version, err.cause
                         ),
                     });

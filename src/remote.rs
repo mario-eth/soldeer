@@ -20,31 +20,25 @@ pub async fn get_dependency_url_remote(
     );
     let req = Client::new().get(url);
 
-    match req.send().await {
-        Ok(response) => {
-            if response.status().is_success() {
-                let response_text = response.text().await.unwrap();
-                let revision = serde_json::from_str::<RevisionResponse>(&response_text);
-                match revision {
-                    Ok(revision) => {
-                        if revision.data.is_empty() {
-                            return Err(DownloadError {
-                                name: dependency_name.to_string(),
-                                version: dependency_version.to_string(),
-                            });
-                        }
-                        return Ok(revision.data[0].clone().url);
-                    }
-                    Err(_) => {}
+    if let Ok(response) = req.send().await {
+        if response.status().is_success() {
+            let response_text = response.text().await.unwrap();
+            let revision = serde_json::from_str::<RevisionResponse>(&response_text);
+            if let Ok(revision) = revision {
+                if revision.data.is_empty() {
+                    return Err(DownloadError {
+                        name: dependency_name.to_string(),
+                        version: dependency_version.to_string(),
+                    });
                 }
+                return Ok(revision.data[0].clone().url);
             }
         }
-        Err(_) => {}
     }
-    return Err(DownloadError {
+    Err(DownloadError {
         name: dependency_name.to_string(),
         version: dependency_version.to_string(),
-    });
+    })
 }
 //TODO clean this up and do error handling
 pub async fn get_project_id(dependency_name: &String) -> Result<String, ProjectNotFound> {
@@ -56,30 +50,27 @@ pub async fn get_project_id(dependency_name: &String) -> Result<String, ProjectN
     let req = Client::new().get(url);
     let get_project_response = req.send().await;
 
-    match get_project_response {
-        Ok(response) => {
-            if response.status().is_success() {
-                let response_text = response.text().await.unwrap();
-                let project = serde_json::from_str::<ProjectResponse>(&response_text);
-                match project {
-                    Ok(project) => {
-                        if !project.data.is_empty() {
-                            return Ok(project.data[0].id.to_string());
-                        }
+    if let Ok(response) = get_project_response {
+        if response.status().is_success() {
+            let response_text = response.text().await.unwrap();
+            let project = serde_json::from_str::<ProjectResponse>(&response_text);
+            match project {
+                Ok(project) => {
+                    if !project.data.is_empty() {
+                        return Ok(project.data[0].id.to_string());
                     }
-                    Err(_) => {
-                        return Err(ProjectNotFound {
-                            name: dependency_name.to_string(),
-                            cause: "Error from the server or check the internet connection."
-                                .to_string(),
-                        });
-                    }
+                }
+                Err(_) => {
+                    return Err(ProjectNotFound {
+                        name: dependency_name.to_string(),
+                        cause: "Error from the server or check the internet connection."
+                            .to_string(),
+                    });
                 }
             }
         }
-        Err(_) => {}
     }
-    return Err(ProjectNotFound{name: dependency_name.to_string(), cause:"Project not found, please check the dependency name (project name) or create a new project on https://soldeer.xyz".to_string()});
+    Err(ProjectNotFound{name: dependency_name.to_string(), cause:"Project not found, please check the dependency name (project name) or create a new project on https://soldeer.xyz".to_string()})
 }
 
 #[allow(non_snake_case)]

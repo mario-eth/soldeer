@@ -40,8 +40,7 @@ use regex::Regex;
 use std::path::PathBuf;
 use yansi::Paint;
 
-pub const BASE_URL: &str = "http://0.0.0.0:3000";
-// pub const BASE_URL: &str = "https://api.soldeer.xyz";
+pub const BASE_URL: &str = "https://api.soldeer.xyz";
 
 #[derive(Debug)]
 pub struct FOUNDRY {
@@ -52,7 +51,15 @@ pub struct FOUNDRY {
 pub async fn run(args: Args) -> Result<(), SoldeerError> {
     match args.command {
         Subcommands::Install(install) => {
-            println!("{}", Paint::green("Running soldeer install"));
+            println!("{}", Paint::green("🦌 Running soldeer install 🦌\n"));
+            if !install.dependency.contains("~") {
+                return Err(SoldeerError {
+                    message: format!(
+                        "Dependency {} does not specify a version. \nThe format should be [DEPENDENCY]~[VERSION]",
+                        install.dependency
+                    ),
+                });
+            }
             let dependency_name: String =
                 install.dependency.split('~').collect::<Vec<&str>>()[0].to_string();
             let dependency_version: String =
@@ -82,7 +89,7 @@ pub async fn run(args: Args) -> Result<(), SoldeerError> {
                     Err(err) => {
                         return Err(SoldeerError {
                             message: format!(
-                                "Error downloading a dependency {:?}~{:?}",
+                                "Error downloading a dependency {}~{}",
                                 err.name, err.version
                             ),
                         });
@@ -151,7 +158,7 @@ pub async fn run(args: Args) -> Result<(), SoldeerError> {
                         Err(err_cleanup) => {
                             return Err(SoldeerError {
                                 message: format!(
-                                    "Error cleaning up dependency {:?}~{:?}",
+                                    "Error cleaning up dependency {}~{}",
                                     err_cleanup.name, err_cleanup.version
                                 ),
                             })
@@ -159,7 +166,7 @@ pub async fn run(args: Args) -> Result<(), SoldeerError> {
                     }
                     return Err(SoldeerError {
                         message: format!(
-                            "Error downloading a dependency {:?}~{:?}",
+                            "Error downloading a dependency {}~{}",
                             err_unzip.name, err_unzip.version
                         ),
                     });
@@ -178,7 +185,7 @@ pub async fn run(args: Args) -> Result<(), SoldeerError> {
                 Err(err) => {
                     return Err(SoldeerError {
                         message: format!(
-                            "Error health-checking dependency {:?}~{:?}",
+                            "Error health-checking dependency {}~{}",
                             err.name, err.version
                         ),
                     });
@@ -189,7 +196,7 @@ pub async fn run(args: Args) -> Result<(), SoldeerError> {
                 Err(err) => {
                     return Err(SoldeerError {
                         message: format!(
-                            "Error cleaning up dependency {:?}~{:?}",
+                            "Error cleaning up dependency {}~{}",
                             err.name, err.version
                         ),
                     });
@@ -214,7 +221,7 @@ pub async fn run(args: Args) -> Result<(), SoldeerError> {
             }
         }
         Subcommands::Update(_) => {
-            println!("{}", Paint::green("Running soldeer update"));
+            println!("{}", Paint::green("🦌 Running soldeer update 🦌\n"));
 
             let dependencies: Vec<Dependency> = match read_config(String::new()) {
                 Ok(dep) => dep,
@@ -226,7 +233,7 @@ pub async fn run(args: Args) -> Result<(), SoldeerError> {
                 Err(err) => {
                     return Err(SoldeerError {
                         message: format!(
-                            "Error downloading a dependency {:?}~{:?}",
+                            "Error downloading a dependency {}~{}",
                             err.name, err.version
                         ),
                     })
@@ -237,10 +244,7 @@ pub async fn run(args: Args) -> Result<(), SoldeerError> {
                 Ok(_) => {}
                 Err(err) => {
                     return Err(SoldeerError {
-                        message: format!(
-                            "Error unzipping dependency {:?}~{:?}",
-                            err.name, err.version
-                        ),
+                        message: format!("Error unzipping dependency {}~{}", err.name, err.version),
                     })
                 }
             }
@@ -250,7 +254,7 @@ pub async fn run(args: Args) -> Result<(), SoldeerError> {
                 Err(err) => {
                     return Err(SoldeerError {
                         message: format!(
-                            "Error health-checking dependencies {:?}~{:?}",
+                            "Error health-checking dependencies {}~{}",
                             err.name, err.version
                         ),
                     });
@@ -270,10 +274,7 @@ pub async fn run(args: Args) -> Result<(), SoldeerError> {
                 Ok(_) => {}
                 Err(err) => {
                     return Err(SoldeerError {
-                        message: format!(
-                            "Error cleanup dependencies {:?}~{:?}",
-                            err.name, err.version
-                        ),
+                        message: format!("Error cleanup dependencies {}~{}", err.name, err.version),
                     });
                 }
             }
@@ -299,7 +300,7 @@ pub async fn run(args: Args) -> Result<(), SoldeerError> {
             }
         }
         Subcommands::Login(_) => {
-            println!("{}", Paint::green("Running soldeer login"));
+            println!("{}", Paint::green("🦌 Running soldeer login 🦌\n"));
             match login().await {
                 Ok(_) => {}
                 Err(err) => {
@@ -308,7 +309,7 @@ pub async fn run(args: Args) -> Result<(), SoldeerError> {
             }
         }
         Subcommands::Push(push) => {
-            println!("{}", Paint::green("Running soldeer push"));
+            println!("{}", Paint::green("🦌 Running soldeer push 🦌\n"));
             let dependency_name: String =
                 push.dependency.split('~').collect::<Vec<&str>>()[0].to_string();
             let dependency_version: String =

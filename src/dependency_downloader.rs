@@ -39,7 +39,6 @@ pub async fn download_dependencies(
 
 // un-zip-ing dependencies to dependencies folder
 pub fn unzip_dependencies(dependencies: &[Dependency]) -> Result<(), UnzippingError> {
-    println!("{}", Paint::green("Unzipping dependencies...".to_string()));
     for dependency in dependencies.iter() {
         match unzip_dependency(&dependency.name, &dependency.version) {
             Ok(_) => {}

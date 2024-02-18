@@ -56,7 +56,7 @@ pub fn cleanup_dependency(
 ) -> Result<(), MissingDependencies> {
     let file_name: String = format!("{}-{}.zip", dependency_name, dependency_version);
     let new_path: std::path::PathBuf = get_current_working_dir().unwrap().join("dependencies");
-    match remove_file(new_path.join(&file_name)) {
+    match remove_file(new_path.join(file_name)) {
         Ok(_) => Ok(()),
         Err(_) => {
             Err(MissingDependencies::new(

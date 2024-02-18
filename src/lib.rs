@@ -52,7 +52,7 @@ pub async fn run(args: Args) -> Result<(), SoldeerError> {
     match args.command {
         Subcommands::Install(install) => {
             println!("{}", Paint::green("🦌 Running soldeer install 🦌\n"));
-            if !install.dependency.contains("~") {
+            if !install.dependency.contains('~') {
                 return Err(SoldeerError {
                     message: format!(
                         "Dependency {} does not specify a version. \nThe format should be [DEPENDENCY]~[VERSION]",
@@ -338,6 +338,10 @@ pub async fn run(args: Args) -> Result<(), SoldeerError> {
                     });
                 }
             }
+        }
+        Subcommands::VersionDryRun(_) => {
+            const VERSION: &str = env!("CARGO_PKG_VERSION");
+            println!("{}", Paint::cyan(format!("Current Soldeer {}", VERSION)));
         }
     }
     Ok(())

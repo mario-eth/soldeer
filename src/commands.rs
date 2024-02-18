@@ -21,6 +21,7 @@ pub enum Subcommands {
     Update(Update),
     Login(Login),
     Push(Push),
+    VersionDryRun(VersionDryRun),
 }
 
 #[derive(Debug, Clone, Parser)]
@@ -45,7 +46,7 @@ pub struct Install {
 pub struct Update {}
 
 #[derive(Debug, Clone, Parser)]
-pub struct Help {}
+pub struct VersionDryRun {}
 
 #[derive(Debug, Clone, Parser)]
 #[clap(

@@ -1,7 +1,5 @@
+# Example of soldeer.toml
 [remappings]
 enabled = false
 
-
 [sdependencies]
-"@openzeppelin-contracts~3.4.1" = "https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@openzeppelin-contracts~3.4.1.zip"
-"@openzeppelin-contracts~2.3.0" = "https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@openzeppelin-contracts~2.3.0.zip"

@@ -114,7 +114,7 @@ pub fn define_config_file() -> Result<String, ConfigError> {
                 .to_owned()
                 + "/foundry.toml";
             if !Path::new(&filename).exists() {
-                println!("{}", Paint::blue("No config file found. If you wish to proceed, please select how you want Soldeer to be configured:\n1.Using foundry.toml\n2.Using soldeer.toml\nPlease select 1 or 2:"));
+                println!("{}", Paint::blue("No config file found. If you wish to proceed, please select how you want Soldeer to be configured:\n1. Using foundry.toml\n2. Using soldeer.toml\n(Press 1 or 2)"));
                 std::io::stdout().flush().unwrap();
                 let mut option = String::new();
                 if io::stdin().read_line(&mut option).is_err() {
@@ -307,7 +307,7 @@ pub fn remappings() -> Result<(), ConfigError> {
             println!(
                 "{}",
                 Paint::green(format!(
-                    "Adding a new dependency to remappings {}",
+                    "Added a new dependency to remappings {}",
                     &dependency_name_formatted
                 ))
             );

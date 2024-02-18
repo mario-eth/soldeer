@@ -4,31 +4,15 @@ use std::fs::{
 };
 
 use crate::config::Dependency;
+use crate::errors::MissingDependencies;
 use crate::utils::get_current_working_dir;
-
-#[derive(Debug)]
-pub struct MissingDependencies {
-    pub name: String,
-    pub version: String,
-}
-
-impl MissingDependencies {
-    fn new(name: &str, version: &str) -> MissingDependencies {
-        MissingDependencies {
-            name: name.to_string(),
-            version: version.to_string(),
-        }
-    }
-}
 
 // Health-check dependencies before we clean them, this one checks if they were unzipped
 pub fn healthcheck_dependencies(dependencies: &[Dependency]) -> Result<(), MissingDependencies> {
-    println!("Health-checking dependencies...");
     for dependency in dependencies.iter() {
         match healthcheck_dependency(&dependency.name, &dependency.version) {
             Ok(_) => {}
             Err(err) => {
-                eprintln!("Error health-checking dependency: {:?}", err);
                 return Err(err);
             }
         }
@@ -38,12 +22,10 @@ pub fn healthcheck_dependencies(dependencies: &[Dependency]) -> Result<(), Missi
 
 // Cleanup dependencies after we are downloaded them
 pub fn cleanup_after(dependencies: &[Dependency]) -> Result<(), MissingDependencies> {
-    println!("Cleanup dependencies...");
     for dependency in dependencies.iter() {
         match cleanup_dependency(&dependency.name, &dependency.version) {
             Ok(_) => {}
             Err(err) => {
-                eprintln!("Error cleanup dependency: {:?}", err);
                 return Err(err);
             }
         }
@@ -55,10 +37,6 @@ pub fn healthcheck_dependency(
     dependency_name: &str,
     dependency_version: &str,
 ) -> Result<(), MissingDependencies> {
-    println!(
-        "Health-checking dependency {}-{}",
-        dependency_name, dependency_version
-    );
     let file_name: String = format!("{}-{}", &dependency_name, &dependency_version);
     let new_path: std::path::PathBuf = get_current_working_dir().unwrap().join("dependencies");
     match metadata(new_path.join(file_name)) {
@@ -76,10 +54,6 @@ pub fn cleanup_dependency(
     dependency_name: &str,
     dependency_version: &str,
 ) -> Result<(), MissingDependencies> {
-    println!(
-        "Cleaning up dependency {}-{}",
-        dependency_name, dependency_version
-    );
     let file_name: String = format!("{}-{}.zip", dependency_name, dependency_version);
     let new_path: std::path::PathBuf = get_current_working_dir().unwrap().join("dependencies");
     match remove_file(new_path.join(file_name)) {

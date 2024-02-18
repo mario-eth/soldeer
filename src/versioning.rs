@@ -6,7 +6,6 @@ use crate::utils::{
     read_file_to_string,
 };
 use std::{
-    fmt,
     fs::File,
     io::{
         self,
@@ -17,17 +16,19 @@ use std::{
         Path,
         PathBuf,
     },
-    process::exit,
 };
 
+use reqwest::StatusCode;
 use walkdir::WalkDir;
 
+use yansi::Paint;
 use zip::{
     write::FileOptions,
     CompressionMethod,
     ZipWriter,
 };
 
+use crate::errors::PushError;
 use reqwest::{
     header::{
         HeaderMap,
@@ -41,8 +42,8 @@ use reqwest::{
     },
     Client,
 };
-use serde_derive::Deserialize;
 use std::fs::remove_file;
+
 #[derive(Clone, Debug)]
 struct FilePair {
     name: String,
@@ -50,8 +51,8 @@ struct FilePair {
 }
 
 pub async fn push_version(
-    dependency_name: String,
-    dependency_version: String,
+    dependency_name: &String,
+    dependency_version: &String,
     root_directory_path: PathBuf,
 ) -> Result<(), PushError> {
     let file_name = root_directory_path
@@ -61,18 +62,27 @@ pub async fn push_version(
         .unwrap()
         .to_string();
     println!(
-        "Pushing dependency {}-{}",
-        dependency_name, dependency_version
+        "{}",
+        Paint::green(format!(
+            "Pushing a dependency {}-{}:",
+            dependency_name, dependency_version
+        ))
     );
 
     let files_to_copy: Vec<FilePair> = filter_filles_to_copy(&root_directory_path);
-    let zip_archive = zip_file(&root_directory_path, &files_to_copy, &file_name).unwrap();
+    let zip_archive = zip_file(
+        dependency_name,
+        dependency_version,
+        &root_directory_path,
+        &files_to_copy,
+        &file_name,
+    )
+    .unwrap();
     match push_to_repo(&zip_archive, dependency_name, dependency_version).await {
         Ok(_) => {}
         Err(error) => {
             remove_file(zip_archive.to_str().unwrap()).unwrap();
-            println!("{}", error.message);
-            exit(500);
+            return Err(error);
         }
     }
 
@@ -80,6 +90,8 @@ pub async fn push_version(
 }
 
 fn zip_file(
+    dependency_name: &String,
+    dependency_version: &String,
     root_directory_path: &Path,
     files_to_copy: &Vec<FilePair>,
     file_name: &String,
@@ -91,7 +103,9 @@ fn zip_file(
     let options = FileOptions::default().compression_method(CompressionMethod::DEFLATE);
     if files_to_copy.is_empty() {
         return Err(PushError {
-            message: "No files to push".to_string(),
+            name: dependency_name.to_string(),
+            version: dependency_version.to_string(),
+            cause: "No files to push".to_string(),
         });
     }
     for file_path in files_to_copy {
@@ -168,10 +182,19 @@ fn read_ignore_file() -> Vec<String> {
 
 async fn push_to_repo(
     zip_file: &Path,
-    dependency_name: String,
-    dependency_version: String,
+    dependency_name: &String,
+    dependency_version: &String,
 ) -> Result<(), PushError> {
-    let token = get_token();
+    let token = match get_token() {
+        Ok(result) => result,
+        Err(err) => {
+            return Err(PushError {
+                name: (&dependency_name).to_string(),
+                version: (&dependency_version).to_string(),
+                cause: err.cause,
+            });
+        }
+    };
     let client = Client::new();
 
     let url = format!("{}/api/v1/revision/upload", crate::BASE_URL);
@@ -194,10 +217,21 @@ async fn push_to_repo(
     part = part
         .mime_str("application/zip")
         .expect("Could not set mime type");
-    let project_id = get_project_id(&dependency_name).await;
+
+    let project_id = match get_project_id(dependency_name).await {
+        Ok(id) => id,
+        Err(err) => {
+            return Err(PushError {
+                name: (&dependency_name).to_string(),
+                version: (&dependency_version).to_string(),
+                cause: err.cause,
+            });
+        }
+    };
+
     let form = Form::new()
         .text("project_id", project_id)
-        .text("revision", dependency_version)
+        .text("revision", (&dependency_version).to_string())
         .part("zip_name", part);
 
     headers.insert(
@@ -212,41 +246,29 @@ async fn push_to_repo(
         .send();
 
     let response = res.await.unwrap();
-    if response.status() != 200 {
-        let push_error: PushResponseError =
-            serde_json::from_str(response.text().await.unwrap().as_str()).unwrap();
-        return Err(PushError {
-            message: format!("Could not push dependency: {}", push_error.message),
-        });
-    } else {
-        println!("Successfully pushed dependency");
+    match response.status() {
+        StatusCode::OK => println!("{}", Paint::green("Success!")),
+        StatusCode::NO_CONTENT => {
+            return Err(PushError {
+                name: (&dependency_name).to_string(),
+                version: (&dependency_version).to_string(),
+                cause: "Project not found. Make sure you send the right dependency name. \nThe dependency name is the project name you created on https://soldeer.xyz".to_string(),
+            });
+        }
+        StatusCode::ALREADY_REPORTED => {
+            return Err(PushError {
+                name: (&dependency_name).to_string(),
+                version: (&dependency_version).to_string(),
+                cause: "Dependency already exists".to_string(),
+            });
+        }
+        _ => {
+            return Err(PushError {
+                name: (&dependency_name).to_string(),
+                version: (&dependency_version).to_string(),
+                cause: "The server returned an unexpected error".to_string(),
+            });
+        }
     }
     Ok(())
-}
-
-#[derive(Debug, Clone)]
-pub struct PushError {
-    message: String,
-}
-
-impl fmt::Display for PushError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "push failed")
-    }
-}
-
-#[derive(Debug, Clone, Deserialize)]
-pub struct PushResponseError {
-    pub message: String,
-    pub status: String,
-}
-
-impl fmt::Display for PushResponseError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            f,
-            "push failed with status {} and message {}",
-            self.status, self.message
-        )
-    }
 }

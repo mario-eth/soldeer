@@ -1,3 +1,6 @@
+use crate::errors::ConfigError;
+use crate::janitor::cleanup_dependency;
+use crate::lock::remove_lock;
 use crate::utils::{
     get_current_working_dir,
     read_file_to_string,
@@ -5,6 +8,7 @@ use crate::utils::{
 use serde_derive::Deserialize;
 use std::fs::{
     self,
+    remove_dir_all,
     File,
 };
 use std::io::{
@@ -21,7 +25,9 @@ use toml::{
     self,
     Table,
 };
+use yansi::Paint;
 extern crate toml_edit;
+use std::io;
 use toml_edit::Document;
 
 // Top level struct to hold the TOML data.
@@ -43,11 +49,13 @@ struct Foundry {
     remappings: Table,
 }
 
-// TODO need to improve this, to propagate the error to main and not exit here.
-pub fn read_config(filename: String) -> Vec<Dependency> {
+pub fn read_config(filename: String) -> Result<Vec<Dependency>, ConfigError> {
     let mut filename: String = filename;
     if filename.is_empty() {
-        filename = define_config_file();
+        filename = match define_config_file() {
+            Ok(file) => file,
+            Err(err) => return Err(err),
+        }
     }
     let contents = read_file_to_string(&filename.clone());
 
@@ -59,12 +67,10 @@ pub fn read_config(filename: String) -> Vec<Dependency> {
         // `d` is a local variable.
         Ok(d) => d,
         // Handle the `error` case.
-        Err(err) => {
-            eprintln!("Error: {}", err);
-            // Write `msg` to `stderr`.
-            eprintln!("Unable to load data from `{}`", filename);
-            // Exit the program with exit code `1`.
-            exit(1);
+        Err(_) => {
+            return Err(ConfigError {
+                cause: format!("Could not read the config file {}", filename),
+            });
         }
     };
 
@@ -78,10 +84,10 @@ pub fn read_config(filename: String) -> Vec<Dependency> {
         });
     });
 
-    dependencies
+    Ok(dependencies)
 }
 
-pub fn define_config_file() -> String {
+pub fn define_config_file() -> Result<String, ConfigError> {
     // reading the current directory to look for the config file
     let working_dir: Result<PathBuf, std::io::Error> = get_current_working_dir();
 
@@ -108,10 +114,20 @@ pub fn define_config_file() -> String {
                 .to_owned()
                 + "/foundry.toml";
             if !Path::new(&filename).exists() {
-                eprintln!(
-                    "No config file found. Soldeer has exited. If you wish to proceed, below is the minimum requirement for the soldeer.toml file that needs to be created:\n \n [remappings]\n enabled = true or false\n\n [sdependencies]\n\n or put \n\n [sdependencies] \n\nin your foundry.toml"
-                );
-                exit(404);
+                println!("{}", Paint::blue("No config file found. If you wish to proceed, please select how you want Soldeer to be configured:\n1. Using foundry.toml\n2. Using soldeer.toml\n(Press 1 or 2)"));
+                std::io::stdout().flush().unwrap();
+                let mut option = String::new();
+                if io::stdin().read_line(&mut option).is_err() {
+                    return Err(ConfigError {
+                        cause: "Option invalid.".to_string(),
+                    });
+                }
+                match create_example_config(option) {
+                    Ok(_) => {}
+                    Err(err) => {
+                        return Err(err);
+                    }
+                }
             }
         }
     }
@@ -143,15 +159,50 @@ pub fn define_config_file() -> String {
         );
         exit(404);
     }
-    filename
+    Ok(filename)
 }
 
-pub fn add_to_config(dependency_name: &str, dependency_version: &str, dependency_url: &str) {
+pub fn add_to_config(
+    dependency_name: &str,
+    dependency_version: &str,
+    dependency_url: &str,
+) -> Result<(), ConfigError> {
     println!(
-        "Adding dependency {}-{} to config file",
-        dependency_name, dependency_version
+        "{}",
+        Paint::green(format!(
+            "Adding dependency {}-{} to the config file",
+            dependency_name, dependency_version
+        ))
     );
-    let filename: String = define_config_file();
+    let filename: String = match define_config_file() {
+        Ok(file) => file,
+
+        Err(err) => {
+            let dir = get_current_working_dir()
+                .unwrap()
+                .join("dependencies")
+                .join(format!("{}-{}", dependency_name, dependency_version));
+            remove_dir_all(dir).unwrap();
+            match cleanup_dependency(dependency_name, dependency_version) {
+                Ok(_) => {}
+                Err(_) => {
+                    return Err(ConfigError {
+                        cause: "Could not delete the artifacts".to_string(),
+                    });
+                }
+            }
+
+            match remove_lock(dependency_name, dependency_version) {
+                Ok(_) => {}
+                Err(_) => {
+                    return Err(ConfigError {
+                        cause: "Could not remove the lock".to_string(),
+                    })
+                }
+            }
+            return Err(err);
+        }
+    };
     let contents = read_file_to_string(&filename.clone());
     let mut doc: Document = contents.parse::<Document>().expect("invalid doc");
 
@@ -161,19 +212,18 @@ pub fn add_to_config(dependency_name: &str, dependency_version: &str, dependency
             .is_some()
     {
         println!(
-            "Dependency {}-{} already exists in the config file",
-            dependency_name, dependency_version
+            "{}",
+            Paint::yellow(format!(
+                "Dependency {}-{} already exists in the config file",
+                dependency_name, dependency_version
+            ))
         );
-        return;
+        return Ok(());
     }
 
     // in case we don't have sdependencies defined in the config file, we add it and re-read the doc
     if doc.get("sdependencies").is_none() {
-        let mut file: std::fs::File = fs::OpenOptions::new()
-            .write(true)
-            .append(true)
-            .open(&filename)
-            .unwrap();
+        let mut file: std::fs::File = fs::OpenOptions::new().append(true).open(&filename).unwrap();
         if let Err(e) = write!(file, "{}", String::from("\n[sdependencies]\n")) {
             eprintln!("Couldn't write to file: {}", e);
         }
@@ -186,11 +236,7 @@ pub fn add_to_config(dependency_name: &str, dependency_version: &str, dependency
 
     // in case we don't have sdependencies defined in the config file, we add it and re-read the doc
     if doc.get("sdependencies").is_none() {
-        let mut file: std::fs::File = fs::OpenOptions::new()
-            .write(true)
-            .append(true)
-            .open(&filename)
-            .unwrap();
+        let mut file: std::fs::File = fs::OpenOptions::new().append(true).open(&filename).unwrap();
         if let Err(e) = write!(file, "{}", String::from("\n[sdependencies]\n")) {
             eprintln!("Couldn't write to file: {}", e);
         }
@@ -219,19 +265,25 @@ pub fn add_to_config(dependency_name: &str, dependency_version: &str, dependency
     if let Err(e) = write!(file, "{}", doc) {
         eprintln!("Couldn't write to file: {}", e);
     }
+    Ok(())
 }
 
-pub fn remappings() {
+pub fn remappings() -> Result<(), ConfigError> {
     let remappings_path = get_current_working_dir().unwrap().join("remappings.txt");
     if !remappings_path.exists() {
         File::create(remappings_path.clone()).unwrap();
     }
-    println!("Update foundry...");
     let contents = read_file_to_string(&remappings_path.to_str().unwrap().to_string());
 
     let existing_remappings: Vec<String> = contents.split('\n').map(|s| s.to_string()).collect();
     let mut new_remappings: String = String::new();
-    let dependencies: Vec<Dependency> = read_config(String::new());
+
+    let dependencies: Vec<Dependency> = match read_config(String::new()) {
+        Ok(dep) => dep,
+        Err(err) => {
+            return Err(err);
+        }
+    };
 
     let mut existing_remap: Vec<String> = Vec::new();
     existing_remappings.iter().for_each(|remapping| {
@@ -252,7 +304,13 @@ pub fn remappings() {
             .iter()
             .position(|r| r == &dependency_name_formatted);
         if index.is_none() {
-            println!("Adding a new remapping {}", &dependency_name_formatted);
+            println!(
+                "{}",
+                Paint::green(format!(
+                    "Added a new dependency to remappings {}",
+                    &dependency_name_formatted
+                ))
+            );
             new_remappings.push_str(&format!(
                 "\n{}=dependencies/{}-{}",
                 &dependency_name_formatted, &dependency.name, &dependency.version
@@ -262,22 +320,25 @@ pub fn remappings() {
 
     if new_remappings.is_empty() {
         remove_empty_lines("remappings.txt".to_string());
-        return;
+        return Ok(());
     }
 
     let mut file: std::fs::File = fs::OpenOptions::new()
-        .write(true)
         .append(true)
         .open(Path::new("remappings.txt"))
         .unwrap();
 
     match write!(file, "{}", &new_remappings) {
         Ok(_) => {}
-        Err(e) => {
-            eprintln!("Couldn't write to file: {}", e);
+        Err(_) => {
+            println!(
+                "{}",
+                Paint::yellow("Could not write to the remappings file".to_string())
+            );
         }
     }
     remove_empty_lines("remappings.txt".to_string());
+    Ok(())
 }
 
 fn remove_empty_lines(filename: String) {
@@ -317,10 +378,15 @@ fn remove_empty_lines(filename: String) {
     }
 }
 
-pub fn get_foundry_setup() -> Vec<bool> {
-    let filename = define_config_file();
+pub fn get_foundry_setup() -> Result<Vec<bool>, ConfigError> {
+    let filename = match define_config_file() {
+        Ok(file) => file,
+        Err(err) => {
+            return Err(err);
+        }
+    };
     if filename.contains("foundry.toml") {
-        return vec![true];
+        return Ok(vec![true]);
     }
     let contents: String = read_file_to_string(&filename.clone());
 
@@ -332,17 +398,80 @@ pub fn get_foundry_setup() -> Vec<bool> {
         // `d` is a local variable.
         Ok(d) => d,
         // Handle the `error` case.
-        Err(err) => {
-            eprintln!("Error: {}", err);
-            // Write `msg` to `stderr`.
-            eprintln!("WARN: remappings field not found in the soldeer.toml and no foundry config file found or the foundry.toml does not contain the `[sdependencies]` field. \nThe foundry.toml file should contain the `[sdependencies]` field if you want to use it as a config file. If you want to use the soldeer.toml file, please add the `[remappings]` field to it with the `enabled` key set to `true` or `false`. \nMore info on https://github.com/mario-eth/soldeer\nThe installation was successful but the remappings feature was skipped.");
-            // Exit the program with exit code `1`.
-            return vec![false];
+        Err(_) => {
+            println!(
+                "{}",
+                Paint::yellow("The remappings field not found in the soldeer.toml and no foundry config file found or the foundry.toml does not contain the `[sdependencies]` field. \nThe foundry.toml file should contain the `[sdependencies]` field if you want to use it as a config file. If you want to use the soldeer.toml file, please add the `[remappings]` field to it with the `enabled` key set to `true` or `false`. \nMore info on https://github.com/mario-eth/soldeer\nThe installation was successful but the remappings feature was skipped.".to_string())
+            );
+            return Ok(vec![false]);
         }
     };
     if data.remappings.get("enabled").is_none() {
-        eprintln!("WARN: remappings field not found in the soldeer.toml and no foundry config file found or the foundry.toml does not contain the `[sdependencies]` field. \nThe foundry.toml file should contain the `[sdependencies]` field if you want to use it as a config file. If you want to use the soldeer.toml file, please add the `[remappings]` field to it with the `enabled` key set to `true` or `false`. \nMore info on https://github.com/mario-eth/soldeer\nThe installation was successful but the remappings feature was skipped.");
-        return vec![false];
+        println!(
+            "{}",
+            Paint::yellow("The remappings field not found in the soldeer.toml and no foundry config file found or the foundry.toml does not contain the `[sdependencies]` field. \nThe foundry.toml file should contain the `[sdependencies]` field if you want to use it as a config file. If you want to use the soldeer.toml file, please add the `[remappings]` field to it with the `enabled` key set to `true` or `false`. \nMore info on https://github.com/mario-eth/soldeer\nThe installation was successful but the remappings feature was skipped.".to_string())
+        );
+        return Ok(vec![false]);
     }
-    vec![data.remappings.get("enabled").unwrap().as_bool().unwrap()]
+    Ok(vec![data
+        .remappings
+        .get("enabled")
+        .unwrap()
+        .as_bool()
+        .unwrap()])
+}
+
+fn create_example_config(option: String) -> Result<(), ConfigError> {
+    let config_file: &str;
+    let content: &str;
+    let mut path: PathBuf = get_current_working_dir().unwrap();
+    if option.trim() == "1" {
+        path = path.join("foundry.toml");
+        config_file = path.to_str().unwrap();
+        content = r#"
+# Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
+
+[profile.default]
+auto_detect_solc = false
+bytecode_hash = "none"
+evm_version = "paris"           # See https://www.evmdiff.com/features?name=PUSH0&kind=opcode
+fuzz = { runs = 1_000 }
+gas_reports = ["*"]
+optimizer = true
+optimizer_runs = 10_000
+out = "out"
+script = "script"
+solc = "0.8.23"
+src = "src"
+test = "test"
+libs = ["dependencies"]
+
+[sdependencies]
+"#;
+    } else if option.trim() == "2" {
+        path = path.join("soldeer.toml");
+        config_file = path.to_str().unwrap();
+        content = r#"
+[remappings]
+enabled = true
+
+[sdependencies]
+"#;
+    } else {
+        return Err(ConfigError {
+            cause: "Option invalid".to_string(),
+        });
+    }
+
+    std::fs::File::create(config_file).unwrap();
+    let mut file: std::fs::File = fs::OpenOptions::new()
+        .write(true)
+        .open(config_file)
+        .unwrap();
+    if write!(file, "{}", content).is_err() {
+        return Err(ConfigError {
+            cause: "Could not create a new config file".to_string(),
+        });
+    }
+    Ok(())
 }

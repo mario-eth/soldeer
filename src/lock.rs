@@ -1,31 +1,46 @@
 use crate::config::Dependency;
+use crate::errors::LockError;
 use crate::utils::{
     get_current_working_dir,
     read_file_to_string,
 };
 use serde_derive::Deserialize;
-use std::fmt;
 use std::fs::{
     self,
+    remove_file,
 };
 use std::path::PathBuf;
+use yansi::Paint;
 
 extern crate toml_edit;
 use std::io::Write;
 
 // Top level struct to hold the TOML data.
 #[derive(Deserialize, Debug)]
-struct LockEntry {
+pub struct LockEntry {
     name: String,
     version: String,
+    source: String,
+    checksum: String,
 }
+
+impl Clone for LockEntry {
+    fn clone(&self) -> LockEntry {
+        LockEntry {
+            name: String::from(&self.name),
+            version: String::from(&self.version),
+            source: String::from(&self.source),
+            checksum: String::from(&self.checksum),
+        }
+    }
+}
+
 // Top level struct to hold the TOML data.
 #[derive(Deserialize, Debug)]
 struct LockType {
     sdependencies: Vec<LockEntry>,
 }
-
-pub fn lock_check(dependencies: &[Dependency]) -> Result<Vec<Dependency>, LockError> {
+fn read_lock() -> Result<Vec<LockEntry>, LockError> {
     let lock_file: PathBuf = if cfg!(test) {
         get_current_working_dir()
             .unwrap()
@@ -36,7 +51,9 @@ pub fn lock_check(dependencies: &[Dependency]) -> Result<Vec<Dependency>, LockEr
     };
 
     if !lock_file.exists() {
-        return Ok(dependencies.to_vec());
+        return Err(LockError {
+            cause: "Lock does not exists".to_string(),
+        });
     }
     let lock_path: String = lock_file.to_str().unwrap().to_string();
 
@@ -51,19 +68,36 @@ pub fn lock_check(dependencies: &[Dependency]) -> Result<Vec<Dependency>, LockEr
         Ok(d) => d,
         // Handle the `error` case.
         Err(_err) => {
-            eprintln!("Lock file might be empty");
-            return Ok(dependencies.to_vec());
+            return Ok(vec![]);
         }
     };
+    Ok(data.sdependencies)
+}
+
+pub fn lock_check(dependencies: &[Dependency]) -> Result<Vec<Dependency>, LockError> {
+    let lock_entries = match read_lock() {
+        Ok(entries) => entries,
+        Err(err) => {
+            if err.cause != *"Lock does not exists" {
+                return Err(err);
+            }
+            vec![]
+        }
+    };
+
     let mut unlock_dependencies: Vec<Dependency> = Vec::new();
     dependencies.iter().for_each(|dependency| {
         let mut is_locked: bool = false;
-        data.sdependencies.iter().for_each(|lock_entry| {
+        lock_entries.iter().for_each(|lock_entry| {
             if lock_entry.name == dependency.name && lock_entry.version == dependency.version {
                 println!(
-                    "Dependency {}-{} is locked",
-                    lock_entry.name, lock_entry.version
+                    "{}",
+                    Paint::yellow(format!(
+                        "Dependency {}-{} is locked",
+                        lock_entry.name, lock_entry.version
+                    ))
                 );
+
                 is_locked = true;
             }
         });
@@ -74,9 +108,7 @@ pub fn lock_check(dependencies: &[Dependency]) -> Result<Vec<Dependency>, LockEr
     Ok(unlock_dependencies)
 }
 
-pub fn write_lock(dependencies: &[Dependency]) -> Result<(), LockError> {
-    println!("Writing lock file...");
-
+pub fn write_lock(dependencies: &[Dependency], clean: bool) -> Result<(), LockError> {
     let lock_file: PathBuf = if cfg!(test) {
         get_current_working_dir()
             .unwrap()
@@ -85,6 +117,17 @@ pub fn write_lock(dependencies: &[Dependency]) -> Result<(), LockError> {
     } else {
         get_current_working_dir().unwrap().join("soldeer.lock")
     };
+
+    if clean {
+        match remove_file(&lock_file) {
+            Ok(_) => {}
+            Err(_) => {
+                return Err(LockError {
+                    cause: "Could not clean lock file".to_string(),
+                })
+            }
+        }
+    }
 
     let lock_path: String = lock_file.to_str().unwrap().to_string();
     if !lock_file.exists() {
@@ -104,14 +147,62 @@ checksum = "{}"
 "#,
             dependency.name, dependency.version, dependency.url, hash
         ));
+        println!(
+            "{}",
+            Paint::green(format!(
+                "Writing {}~{} to the lock file.",
+                &dependency.name.to_string(),
+                &dependency.version.to_string()
+            ))
+        );
+    });
+    let mut file: std::fs::File = fs::OpenOptions::new().append(true).open(lock_file).unwrap();
+    if write!(file, "{}", new_lock_entries).is_err() {
+        return Err(LockError {
+            cause: "Could not write to the lock file".to_string(),
+        });
+    }
+    Ok(())
+}
+
+pub fn remove_lock(dependency_name: &str, dependency_version: &str) -> Result<(), LockError> {
+    let lock_file: PathBuf = if cfg!(test) {
+        get_current_working_dir()
+            .unwrap()
+            .join("test")
+            .join("soldeer.lock")
+    } else {
+        get_current_working_dir().unwrap().join("soldeer.lock")
+    };
+
+    let entries = match read_lock() {
+        Ok(entries) => entries,
+        Err(err) => return Err(err),
+    };
+    let mut new_lock_entries: String = String::new();
+    entries.iter().for_each(|entry| {
+        if entry.name != dependency_name || entry.version != dependency_version {
+            new_lock_entries.push_str(&format!(
+                r#"
+[[sdependencies]]
+name = "{}"
+version = "{}"
+source = "{}"
+checksum = "{}"
+"#,
+                &entry.name, &entry.version, &entry.source, &entry.checksum
+            ));
+        }
     });
     let mut file: std::fs::File = fs::OpenOptions::new()
+        .truncate(true)
         .write(true)
-        .append(true)
         .open(lock_file)
         .unwrap();
-    if let Err(e) = write!(file, "{}", new_lock_entries) {
-        eprintln!("Couldn't write to file: {}", e);
+    if write!(file, "{}", new_lock_entries).is_err() {
+        return Err(LockError {
+            cause: "Could not write to the lock file".to_string(),
+        });
     }
     Ok(())
 }
@@ -131,15 +222,6 @@ fn sha256_digest(dependency_name: &str, dependency_version: &str) -> String {
 #[cfg(test)]
 fn sha256_digest(_dependency_name: &str, _dependency_version: &str) -> String {
     "5019418b1e9128185398870f77a42e51d624c44315bb1572e7545be51d707016".to_string()
-}
-
-#[derive(Debug, Clone)]
-pub struct LockError;
-
-impl fmt::Display for LockError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "lock failed")
-    }
 }
 
 #[cfg(test)]
@@ -251,7 +333,7 @@ checksum = "5019418b1e9128185398870f77a42e51d624c44315bb1572e7545be51d707016"
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].name, "@openzeppelin-contracts");
         assert_eq!(result[0].version, "2.5.0");
-        write_lock(&result).unwrap();
+        write_lock(&result, false).unwrap();
         let contents = read_file_to_string(&lock_file.to_str().unwrap().to_string());
 
         assert_eq!(
@@ -279,7 +361,7 @@ checksum = "5019418b1e9128185398870f77a42e51d624c44315bb1572e7545be51d707016"
             version: "2.6.0".to_string(),
             url: "https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@openzeppelin-contracts~2.6.0.zip".to_string(),
         });
-        write_lock(&dependencies).unwrap();
+        write_lock(&dependencies, false).unwrap();
         let contents = read_file_to_string(&lock_file.to_str().unwrap().to_string());
 
         assert_eq!(

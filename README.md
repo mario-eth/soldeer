@@ -17,7 +17,7 @@ This project was started to solve the following issues:
 - npmjs was built for the js ecosystem not for solidity
 - github versioning of the releases is a pain and not all the projects are using it correctly
 
-## Version 0.2.4
+## Version 0.2.5
 
 ### WARNING
 

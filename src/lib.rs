@@ -322,10 +322,10 @@ pub async fn run(args: Args) -> Result<(), SoldeerError> {
                     .unwrap()
                     .to_string(),
             );
-            let regex = Regex::new(r"^[@|a-z][a-z0-9-]*[a-z]$").unwrap();
+            let regex = Regex::new(r"^[@|a-z0-9][a-z0-9-]*[a-z0-9]$").unwrap();
 
             if !regex.is_match(&dependency_name) {
-                return Err(SoldeerError{message:"Dependency name {} is not valid, you can use only alphanumeric characters `-` and `@`".to_string()});
+                return Err(SoldeerError{message:format!("Dependency name {} is not valid, you can use only alphanumeric characters `-` and `@`", &dependency_name)});
             }
             match push_version(&dependency_name, &dependency_version, PathBuf::from(path)).await {
                 Ok(_) => {}

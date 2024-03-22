@@ -202,7 +202,7 @@ pub async fn run(args: Args) -> Result<(), SoldeerError> {
                     });
                 }
             }
-            // check the foundry setup, in case we have a foundry.toml, then the foundry.toml will be used for `sdependencies`
+            // check the foundry setup, in case we have a foundry.toml, then the foundry.toml will be used for `dependencies`
             let f_setup_vec: Vec<bool> = match get_foundry_setup() {
                 Ok(setup) => setup,
                 Err(err) => return Err(SoldeerError { message: err.cause }),
@@ -245,7 +245,7 @@ pub async fn run(args: Args) -> Result<(), SoldeerError> {
                 Err(err) => {
                     return Err(SoldeerError {
                         message: format!("Error unzipping dependency {}~{}", err.name, err.version),
-                    })
+                    });
                 }
             }
 
@@ -279,7 +279,7 @@ pub async fn run(args: Args) -> Result<(), SoldeerError> {
                 }
             }
 
-            // check the foundry setup, in case we have a foundry.toml, then the foundry.toml will be used for `sdependencies`
+            // check the foundry setup, in case we have a foundry.toml, then the foundry.toml will be used for `dependencies`
             let f_setup_vec: Vec<bool> = match get_foundry_setup() {
                 Ok(f_setup) => f_setup,
                 Err(err) => {

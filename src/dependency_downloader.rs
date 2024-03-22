@@ -135,7 +135,7 @@ pub fn unzip_dependency(
             return Err(UnzippingError {
                 name: dependency_name.to_string(),
                 version: dependency_version.to_string(),
-            })
+            });
         }
     }
     println!(

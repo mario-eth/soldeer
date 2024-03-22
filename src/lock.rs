@@ -38,7 +38,7 @@ impl Clone for LockEntry {
 // Top level struct to hold the TOML data.
 #[derive(Deserialize, Debug)]
 struct LockType {
-    sdependencies: Vec<LockEntry>,
+    dependencies: Vec<LockEntry>,
 }
 fn read_lock() -> Result<Vec<LockEntry>, LockError> {
     let lock_file: PathBuf = if cfg!(test) {
@@ -71,7 +71,7 @@ fn read_lock() -> Result<Vec<LockEntry>, LockError> {
             return Ok(vec![]);
         }
     };
-    Ok(data.sdependencies)
+    Ok(data.dependencies)
 }
 
 pub fn lock_check(dependencies: &[Dependency]) -> Result<Vec<Dependency>, LockError> {
@@ -139,7 +139,7 @@ pub fn write_lock(dependencies: &[Dependency], clean: bool) -> Result<(), LockEr
         let hash = sha256_digest(&dependency.name, &dependency.version);
         new_lock_entries.push_str(&format!(
             r#"
-[[sdependencies]]
+[[dependencies]]
 name = "{}"
 version = "{}"
 source = "{}"
@@ -184,7 +184,7 @@ pub fn remove_lock(dependency_name: &str, dependency_version: &str) -> Result<()
         if entry.name != dependency_name || entry.version != dependency_version {
             new_lock_entries.push_str(&format!(
                 r#"
-[[sdependencies]]
+[[dependencies]]
 name = "{}"
 version = "{}"
 source = "{}"
@@ -247,13 +247,13 @@ mod tests {
     pub fn initialize() {
         let lock_file = check_lock_file();
         let lock_contents = r#"
-[[sdependencies]]
+[[dependencies]]
 name = "@openzeppelin-contracts"
 version = "2.3.0"
 source = "registry+https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@openzeppelin-contracts~2.3.0.zip"
 checksum = "a2d469062adeb62f7a4aada78237acae4ad3c168ba65c3ac9c76e290332c11ec"
                     
-[[sdependencies]]
+[[dependencies]]
 name = "@prb-test"
 version = "0.6.5"
 source = "registry+https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@prb-test~0.6.5.zip"
@@ -339,7 +339,7 @@ checksum = "5019418b1e9128185398870f77a42e51d624c44315bb1572e7545be51d707016"
         assert_eq!(
             contents,
             r#"
-[[sdependencies]]
+[[dependencies]]
 name = "@openzeppelin-contracts"
 version = "2.5.0"
 source = "https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@openzeppelin-contracts~2.5.0.zip"
@@ -367,19 +367,19 @@ checksum = "5019418b1e9128185398870f77a42e51d624c44315bb1572e7545be51d707016"
         assert_eq!(
             contents,
             r#"
-[[sdependencies]]
+[[dependencies]]
 name = "@openzeppelin-contracts"
 version = "2.3.0"
 source = "registry+https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@openzeppelin-contracts~2.3.0.zip"
 checksum = "a2d469062adeb62f7a4aada78237acae4ad3c168ba65c3ac9c76e290332c11ec"
                     
-[[sdependencies]]
+[[dependencies]]
 name = "@prb-test"
 version = "0.6.5"
 source = "registry+https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@prb-test~0.6.5.zip"
 checksum = "5019418b1e9128185398870f77a42e51d624c44315bb1572e7545be51d707016"
 
-[[sdependencies]]
+[[dependencies]]
 name = "@openzeppelin-contracts-2"
 version = "2.6.0"
 source = "https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@openzeppelin-contracts~2.6.0.zip"

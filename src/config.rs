@@ -28,12 +28,16 @@ use toml::{
 use yansi::Paint;
 extern crate toml_edit;
 use std::io;
-use toml_edit::Document;
+use toml_edit::{
+    value,
+    Document,
+    Item,
+};
 
 // Top level struct to hold the TOML data.
 #[derive(Deserialize, Debug)]
 struct Data {
-    sdependencies: Table,
+    dependencies: Table,
 }
 
 // Dependency object used to store a dependency data
@@ -58,7 +62,6 @@ pub fn read_config(filename: String) -> Result<Vec<Dependency>, ConfigError> {
         }
     }
     let contents = read_file_to_string(&filename.clone());
-
     // Use a `match` block to return the
     // file `contents` as a `Data struct: Ok(d)`
     // or handle any `errors: Err(_)`.
@@ -67,7 +70,8 @@ pub fn read_config(filename: String) -> Result<Vec<Dependency>, ConfigError> {
         // `d` is a local variable.
         Ok(d) => d,
         // Handle the `error` case.
-        Err(_) => {
+        Err(err) => {
+            println!("{:?}", err);
             return Err(ConfigError {
                 cause: format!("Could not read the config file {}", filename),
             });
@@ -75,12 +79,12 @@ pub fn read_config(filename: String) -> Result<Vec<Dependency>, ConfigError> {
     };
 
     let mut dependencies: Vec<Dependency> = Vec::new();
-    data.sdependencies.iter().for_each(|(k, v)| {
+    data.dependencies.iter().for_each(|(k, v)| {
         let parts: Vec<&str> = k.split('~').collect::<Vec<&str>>();
         dependencies.push(Dependency {
-            name: parts.first().unwrap().to_string(),
-            version: parts.get(1).unwrap().to_string(),
-            url: v.to_string().replace('\"', ""),
+            name: parts[0].to_string(),
+            version: v["version"].to_string().replace('"', ""),
+            url: v["url"].to_string().replace('\"', ""),
         });
     });
 
@@ -142,12 +146,12 @@ pub fn define_config_file() -> Result<String, ConfigError> {
         .to_owned()
         + "/foundry.toml";
 
-    // check if the foundry.toml has the sdependencies defined, if so then we setup the foundry.toml as the config file
+    // check if the foundry.toml has the dependencies defined, if so then we setup the foundry.toml as the config file
     if fs::metadata(&foundry_file).is_ok() {
         let contents = read_file_to_string(&foundry_file.clone());
         let doc: Document = contents.parse::<Document>().expect("invalid doc");
 
-        if doc.get("sdependencies").is_some() {
+        if doc.get("dependencies").is_some() {
             filename = foundry_file;
         }
     }
@@ -155,7 +159,7 @@ pub fn define_config_file() -> Result<String, ConfigError> {
     let exists: bool = Path::new(&filename).exists();
     if !exists {
         eprintln!(
-            "The config file does not exist. Soldeer has exited. If you wish to proceed, below is the minimum requirement for the soldeer.toml file that needs to be created:\n \n [foundry]\n enabled = true\n foundry-config = false\n\n [sdependencies]\n"
+            "The config file does not exist. Soldeer has exited. If you wish to proceed, below is the minimum requirement for the soldeer.toml file that needs to be created:\n \n [foundry]\n enabled = true\n foundry-config = false\n\n [dependencies]\n"
         );
         exit(404);
     }
@@ -205,11 +209,10 @@ pub fn add_to_config(
     };
     let contents = read_file_to_string(&filename.clone());
     let mut doc: Document = contents.parse::<Document>().expect("invalid doc");
-
-    if doc.get("sdependencies").is_some()
-        && doc["sdependencies"]
-            .get(format!("{}~{}", dependency_name, dependency_version))
-            .is_some()
+    let item = doc["dependencies"].get(dependency_name);
+    if doc.get("dependencies").is_some()
+        && item.is_some()
+        && item.unwrap()["version"].to_string().replace('"', "") == dependency_version
     {
         println!(
             "{}",
@@ -221,10 +224,10 @@ pub fn add_to_config(
         return Ok(());
     }
 
-    // in case we don't have sdependencies defined in the config file, we add it and re-read the doc
-    if doc.get("sdependencies").is_none() {
+    // in case we don't have dependencies defined in the config file, we add it and re-read the doc
+    if doc.get("dependencies").is_none() {
         let mut file: std::fs::File = fs::OpenOptions::new().append(true).open(&filename).unwrap();
-        if let Err(e) = write!(file, "{}", String::from("\n[sdependencies]\n")) {
+        if let Err(e) = write!(file, "{}", String::from("\n[dependencies]\n")) {
             eprintln!("Couldn't write to file: {}", e);
         }
 
@@ -234,10 +237,10 @@ pub fn add_to_config(
     }
     let mut new_dependencies: String = String::new(); //todo delete this
 
-    // in case we don't have sdependencies defined in the config file, we add it and re-read the doc
-    if doc.get("sdependencies").is_none() {
+    // in case we don't have dependencies defined in the config file, we add it and re-read the doc
+    if doc.get("dependencies").is_none() {
         let mut file: std::fs::File = fs::OpenOptions::new().append(true).open(&filename).unwrap();
-        if let Err(e) = write!(file, "{}", String::from("\n[sdependencies]\n")) {
+        if let Err(e) = write!(file, "{}", String::from("\n[dependencies]\n")) {
             eprintln!("Couldn't write to file: {}", e);
         }
 
@@ -251,12 +254,18 @@ pub fn add_to_config(
         dependency_name, dependency_version, dependency_url
     ));
 
-    doc["sdependencies"].as_table_mut().unwrap().insert(
-        format!("{}~{}", dependency_name, dependency_version)
-            .to_string()
-            .as_str(),
-        toml_edit::value(dependency_url),
+    let mut new_item: Item = Item::None;
+    new_item["version"] = value(dependency_version);
+    new_item["url"] = value(dependency_url);
+    let dependency_name = format!(
+        "{}~{}",
+        dependency_name.to_string().as_str(),
+        dependency_version.to_string().as_str()
     );
+    doc["dependencies"]
+        .as_table_mut()
+        .unwrap()
+        .insert(dependency_name.as_str(), new_item);
     let mut file: std::fs::File = fs::OpenOptions::new()
         .write(true)
         .append(false)
@@ -401,7 +410,7 @@ pub fn get_foundry_setup() -> Result<Vec<bool>, ConfigError> {
         Err(_) => {
             println!(
                 "{}",
-                Paint::yellow("The remappings field not found in the soldeer.toml and no foundry config file found or the foundry.toml does not contain the `[sdependencies]` field. \nThe foundry.toml file should contain the `[sdependencies]` field if you want to use it as a config file. If you want to use the soldeer.toml file, please add the `[remappings]` field to it with the `enabled` key set to `true` or `false`. \nMore info on https://github.com/mario-eth/soldeer\nThe installation was successful but the remappings feature was skipped.".to_string())
+                Paint::yellow("The remappings field not found in the soldeer.toml and no foundry config file found or the foundry.toml does not contain the `[dependencies]` field. \nThe foundry.toml file should contain the `[dependencies]` field if you want to use it as a config file. If you want to use the soldeer.toml file, please add the `[remappings]` field to it with the `enabled` key set to `true` or `false`. \nMore info on https://github.com/mario-eth/soldeer\nThe installation was successful but the remappings feature was skipped.".to_string())
             );
             return Ok(vec![false]);
         }
@@ -409,7 +418,7 @@ pub fn get_foundry_setup() -> Result<Vec<bool>, ConfigError> {
     if data.remappings.get("enabled").is_none() {
         println!(
             "{}",
-            Paint::yellow("The remappings field not found in the soldeer.toml and no foundry config file found or the foundry.toml does not contain the `[sdependencies]` field. \nThe foundry.toml file should contain the `[sdependencies]` field if you want to use it as a config file. If you want to use the soldeer.toml file, please add the `[remappings]` field to it with the `enabled` key set to `true` or `false`. \nMore info on https://github.com/mario-eth/soldeer\nThe installation was successful but the remappings feature was skipped.".to_string())
+            Paint::yellow("The remappings field not found in the soldeer.toml and no foundry config file found or the foundry.toml does not contain the `[dependencies]` field. \nThe foundry.toml file should contain the `[dependencies]` field if you want to use it as a config file. If you want to use the soldeer.toml file, please add the `[remappings]` field to it with the `enabled` key set to `true` or `false`. \nMore info on https://github.com/mario-eth/soldeer\nThe installation was successful but the remappings feature was skipped.".to_string())
         );
         return Ok(vec![false]);
     }
@@ -446,7 +455,7 @@ src = "src"
 test = "test"
 libs = ["dependencies"]
 
-[sdependencies]
+[dependencies]
 "#;
     } else if option.trim() == "2" {
         path = path.join("soldeer.toml");
@@ -455,7 +464,7 @@ libs = ["dependencies"]
 [remappings]
 enabled = true
 
-[sdependencies]
+[dependencies]
 "#;
     } else {
         return Err(ConfigError {

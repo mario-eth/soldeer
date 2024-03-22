@@ -17,7 +17,11 @@ This project was started to solve the following issues:
 - npmjs was built for the js ecosystem not for solidity
 - github versioning of the releases is a pain and not all the projects are using it correctly
 
-## Version 0.2.4
+## Version 0.2.6
+
+#### Breaking Changes introduced in 0.2.6
+
+In 0.2.6 the `sdependencies` has been renamed to `dependencies`. Furthermore a dependency now stored in the toml respects Cargo toml format with `version` and `url` included.
 
 ### WARNING
 
@@ -50,13 +54,13 @@ Then you have to create a `soldeer.toml` file in the root of your project. The f
 [remappings]
 enabled = true
 
-[sdependencies]
+[dependencies]
 ```
 
 The `remappings` option let's you enable or disable the remappings autocompletion. If you set it to `true` then the remappings will be automatically updated when you install a new dependency.
-The `sdependencies` option is used to store the dependencies that you install via the `soldeer install <dependency>~<version>` command.
+The `dependencies` option is used to store the dependencies that you install via the `soldeer install <dependency>~<version>` command.
 
-If you want to use it with the foundry you can skip the creation of the `soldeer.toml` file and use the `foundry.toml` file instead. You just have to add the `sdependencies` option in the `foundry.toml` file and the remappings will be updated automatically.
+If you want to use it with the foundry you can skip the creation of the `soldeer.toml` file and use the `foundry.toml` file instead. You just have to add the `dependencies` option in the `foundry.toml` file and the remappings will be updated automatically.
 
 Example of foundry configuration:
 
@@ -67,14 +71,14 @@ bytecode_hash = "none"
 cbor_metadata = false
 
 .... other foundry config
-[sdependencies]
+[dependencies]
 ```
 
-Even if the `[sdependencies]` is empty, this will tell to soldeer to use the `foundry.toml` file for the dependencies management.
+Even if the `[dependencies]` is empty, this will tell to soldeer to use the `foundry.toml` file for the dependencies management.
 
 #### WARNING
 
-If you do not define a `soldeer.toml` with the `enabled` field or a `foundry.toml` with the `sdependencies` field, the remappings will not be updated and you will receive a warning.
+If you do not define a `soldeer.toml` with the `enabled` field or a `foundry.toml` with the `dependencies` field, the remappings will not be updated and you will receive a warning.
 
 ### HOW TO INSTALL IT
 

@@ -80,9 +80,8 @@ pub fn read_config(filename: String) -> Result<Vec<Dependency>, ConfigError> {
 
     let mut dependencies: Vec<Dependency> = Vec::new();
     data.dependencies.iter().for_each(|(k, v)| {
-        let parts: Vec<&str> = k.split('~').collect::<Vec<&str>>();
         dependencies.push(Dependency {
-            name: parts[0].to_string(),
+            name: k.to_string(),
             version: v["version"].to_string().replace('"', ""),
             url: v["url"].to_string().replace('\"', ""),
         });
@@ -185,7 +184,7 @@ pub fn add_to_config(
             let dir = get_current_working_dir()
                 .unwrap()
                 .join("dependencies")
-                .join(format!("{}-{}", dependency_name, dependency_version));
+                .join(dependency_name);
             remove_dir_all(dir).unwrap();
             match cleanup_dependency(dependency_name, dependency_version) {
                 Ok(_) => {}
@@ -257,15 +256,10 @@ pub fn add_to_config(
     let mut new_item: Item = Item::None;
     new_item["version"] = value(dependency_version);
     new_item["url"] = value(dependency_url);
-    let dependency_name = format!(
-        "{}~{}",
-        dependency_name.to_string().as_str(),
-        dependency_version.to_string().as_str()
-    );
     doc["dependencies"]
         .as_table_mut()
         .unwrap()
-        .insert(dependency_name.as_str(), new_item);
+        .insert(dependency_name.to_string().as_str(), new_item);
     let mut file: std::fs::File = fs::OpenOptions::new()
         .write(true)
         .append(false)

@@ -17,9 +17,13 @@ This project was started to solve the following issues:
 - npmjs was built for the js ecosystem not for solidity
 - github versioning of the releases is a pain and not all the projects are using it correctly
 
-## Version 0.2.6
+## Version 0.2.7
 
-#### Breaking Changes introduced in 0.2.6
+#### Version 0.2.7 introduces the following changes:
+
+Save the dependency key as the dependency name to respect the Cargo.toml format. For multiple versions for the same dependency an issue has been created to be added as a feature [#34](https://github.com/mario-eth/soldeer/issues/34). For now the dependency name is the key in the toml file.
+
+### Breaking Changes introduced in 0.2.6
 
 In 0.2.6 the `sdependencies` has been renamed to `dependencies`. Furthermore a dependency now stored in the toml respects Cargo toml format with `version` and `url` included.
 

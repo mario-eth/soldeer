@@ -10,10 +10,7 @@ mod utils;
 mod versioning;
 
 use crate::auth::login;
-use crate::commands::{
-    Args,
-    Subcommands,
-};
+use crate::commands::Subcommands;
 use crate::config::{
     get_foundry_setup,
     read_config,
@@ -48,8 +45,8 @@ pub struct FOUNDRY {
 }
 
 #[tokio::main]
-pub async fn run(args: Args) -> Result<(), SoldeerError> {
-    match args.command {
+pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
+    match command {
         Subcommands::Install(install) => {
             println!("{}", Paint::green("🦌 Running soldeer install 🦌\n"));
             if !install.dependency.contains('~') {

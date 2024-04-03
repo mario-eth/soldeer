@@ -1,12 +1,12 @@
-extern crate soldeer_lib;
+extern crate soldeer;
 use yansi::Paint;
 
-use crate::soldeer_lib::commands::Args;
+use crate::soldeer::commands::Args;
 use clap::Parser;
 
 pub fn main() {
     let args = Args::parse();
-    match soldeer_lib::run(args) {
+    match soldeer::run(args.command) {
         Ok(_) => {}
         Err(err) => {
             eprintln!("{}", Paint::red(err.message))

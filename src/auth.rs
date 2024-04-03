@@ -75,6 +75,7 @@ pub async fn login() -> Result<(), LoginError> {
                 .token;
             let mut file: std::fs::File = OpenOptions::new()
                 .create(true)
+                .truncate(true)
                 .write(true)
                 .append(false)
                 .open(&security_file)

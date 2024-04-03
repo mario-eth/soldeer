@@ -21,10 +21,7 @@ use std::path::{
     PathBuf,
 };
 use std::process::exit;
-use toml::{
-    self,
-    Table,
-};
+use toml::Table;
 use yansi::Paint;
 extern crate toml_edit;
 use std::io;

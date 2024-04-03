@@ -10,7 +10,7 @@ license = "MIT"
 name = "soldeer"
 readme = "./README.md"
 repository = "https://github.com/mario-eth/soldeer"
-version = "0.2.7"
+version = "0.2.8"
 
 [dependencies]
 chrono = {version = "0.4.34", features = ["serde"]}
@@ -39,7 +39,7 @@ zip-extract = "0.1.3"
 tokio-test = "0.4.3"
 
 [lib]
-name = "soldeer_lib"
+name = "soldeer"
 path = "src/lib.rs"
 
 [[bin]]

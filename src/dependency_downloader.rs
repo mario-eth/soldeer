@@ -73,7 +73,6 @@ pub async fn download_dependency_remote(
             Err(err)
         }
     }
-    // Ok(dependency_url)
 }
 
 pub async fn download_dependency(
@@ -92,7 +91,7 @@ pub async fn download_dependency(
     if download_result.is_ok() {
         println!(
             "{}",
-            Paint::green(format!("Dependency {} downloaded! ", dependency_name))
+            Paint::green(&format!("Dependency {} downloaded! ", dependency_name))
         );
         Ok(())
     } else if download_result
@@ -103,7 +102,10 @@ pub async fn download_dependency(
     {
         println!(
             "{}",
-            Paint::yellow(format!("Dependency {} already downloaded", dependency_name))
+            Paint::yellow(&format!(
+                "Dependency {} already downloaded",
+                dependency_name
+            ))
         );
         return Ok(());
     } else {
@@ -140,7 +142,7 @@ pub fn unzip_dependency(
     }
     println!(
         "{}",
-        Paint::green(format!(
+        Paint::green(&format!(
             "The dependency {}-{} was unzipped!",
             dependency_name, dependency_version
         ))

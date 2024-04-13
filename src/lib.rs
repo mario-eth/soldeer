@@ -94,9 +94,9 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
                 }
                 match write_lock(&dependencies, false) {
                     Ok(_) => {}
-                    Err(_) => {
+                    Err(err) => {
                         return Err(SoldeerError {
-                            message: "Error writing the lock".to_string(),
+                            message: format!("Error writing the lock: {}", err.cause),
                         });
                     }
                 }
@@ -140,9 +140,9 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
 
                 match write_lock(&dependencies, false) {
                     Ok(_) => {}
-                    Err(_) => {
+                    Err(err) => {
                         return Err(SoldeerError {
-                            message: "Error writing the lock".to_string(),
+                            message: format!("Error writing the lock: {}", err.cause),
                         });
                     }
                 }
@@ -260,9 +260,9 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
 
             match write_lock(&dependencies, true) {
                 Ok(_) => {}
-                Err(_) => {
+                Err(err) => {
                     return Err(SoldeerError {
-                        message: "Error writing the lock".to_string(),
+                        message: format!("Error writing the lock: {}", err.cause),
                     });
                 }
             }
@@ -338,7 +338,7 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
         }
         Subcommands::VersionDryRun(_) => {
             const VERSION: &str = env!("CARGO_PKG_VERSION");
-            println!("{}", Paint::cyan(format!("Current Soldeer {}", VERSION)));
+            println!("{}", Paint::cyan(&format!("Current Soldeer {}", VERSION)));
         }
     }
     Ok(())

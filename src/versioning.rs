@@ -63,7 +63,7 @@ pub async fn push_version(
         .to_string();
     println!(
         "{}",
-        Paint::green(format!(
+        Paint::green(&format!(
             "Pushing a dependency {}-{}:",
             dependency_name, dependency_version
         ))

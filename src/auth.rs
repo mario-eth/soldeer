@@ -90,7 +90,7 @@ pub async fn login() -> Result<(), LoginError> {
             }
             println!(
                 "{}",
-                Paint::green(format!("Login details saved in: {:?}", &security_file))
+                Paint::green(&format!("Login details saved in: {:?}", &security_file))
             );
 
             return Ok(());

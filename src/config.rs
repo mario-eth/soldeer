@@ -1,6 +1,7 @@
 use crate::errors::ConfigError;
 use crate::janitor::cleanup_dependency;
 use crate::lock::remove_lock;
+use crate::remote::get_dependency_url_remote;
 use crate::utils::{
     get_current_working_dir,
     read_file_to_string,
@@ -50,7 +51,7 @@ struct Foundry {
     remappings: Table,
 }
 
-pub fn read_config(filename: String) -> Result<Vec<Dependency>, ConfigError> {
+pub async fn read_config(filename: String) -> Result<Vec<Dependency>, ConfigError> {
     let mut filename: String = filename;
     if filename.is_empty() {
         filename = match define_config_file() {
@@ -76,13 +77,25 @@ pub fn read_config(filename: String) -> Result<Vec<Dependency>, ConfigError> {
     };
 
     let mut dependencies: Vec<Dependency> = Vec::new();
-    data.dependencies.iter().for_each(|(k, v)| {
-        dependencies.push(Dependency {
-            name: k.to_string(),
-            version: v["version"].to_string().replace('"', ""),
-            url: v["url"].to_string().replace('\"', ""),
-        });
-    });
+    let iterator = data.dependencies.iter();
+    for (k, v) in iterator {
+        let url;
+        let version = v["version"].to_string().replace('"', "");
+        let name = k.to_string();
+        if v.get("url").is_some() {
+            url = v["url"].to_string().replace('\"', "");
+        } else {
+            match get_dependency_url_remote(&name, &version).await {
+                Ok(u) => url = u,
+                Err(_) => {
+                    return Err(ConfigError {
+                        cause: "Could not get the url".to_string(),
+                    });
+                }
+            }
+        }
+        dependencies.push(Dependency { name, version, url });
+    }
 
     Ok(dependencies)
 }
@@ -166,6 +179,7 @@ pub fn add_to_config(
     dependency_name: &str,
     dependency_version: &str,
     dependency_url: &str,
+    custom_url: bool,
 ) -> Result<(), ConfigError> {
     println!(
         "{}",
@@ -243,7 +257,9 @@ pub fn add_to_config(
 
     let mut new_item: Item = Item::None;
     new_item["version"] = value(dependency_version);
-    new_item["url"] = value(dependency_url);
+    if custom_url {
+        new_item["url"] = value(dependency_url);
+    }
     doc["dependencies"]
         .as_table_mut()
         .unwrap()
@@ -259,7 +275,7 @@ pub fn add_to_config(
     Ok(())
 }
 
-pub fn remappings() -> Result<(), ConfigError> {
+pub async fn remappings() -> Result<(), ConfigError> {
     let remappings_path = get_current_working_dir().unwrap().join("remappings.txt");
     if !remappings_path.exists() {
         File::create(remappings_path.clone()).unwrap();
@@ -269,7 +285,7 @@ pub fn remappings() -> Result<(), ConfigError> {
     let existing_remappings: Vec<String> = contents.split('\n').map(|s| s.to_string()).collect();
     let mut new_remappings: String = String::new();
 
-    let dependencies: Vec<Dependency> = match read_config(String::new()) {
+    let dependencies: Vec<Dependency> = match read_config(String::new()).await {
         Ok(dep) => dep,
         Err(err) => {
             return Err(err);

@@ -62,7 +62,9 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
             let dependency_version: String =
                 install.dependency.split('~').collect::<Vec<&str>>()[1].to_string();
             let dependency_url: String;
+            let mut custom_url = false;
             if install.remote_url.is_some() {
+                custom_url = true;
                 let remote_url = install.remote_url.unwrap();
                 let mut dependencies: Vec<Dependency> = Vec::new();
                 dependency_url = remote_url.clone();
@@ -170,7 +172,12 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
                 }
             }
 
-            match config::add_to_config(&dependency_name, &dependency_version, &dependency_url) {
+            match config::add_to_config(
+                &dependency_name,
+                &dependency_version,
+                &dependency_url,
+                custom_url,
+            ) {
                 Ok(_) => {}
                 Err(err) => {
                     return Err(SoldeerError { message: err.cause });
@@ -209,7 +216,7 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
             };
 
             if foundry_setup.remappings {
-                match remappings() {
+                match remappings().await {
                     Ok(_) => {}
                     Err(err) => {
                         return Err(SoldeerError { message: err.cause });
@@ -220,7 +227,7 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
         Subcommands::Update(_) => {
             println!("{}", Paint::green("🦌 Running soldeer update 🦌\n"));
 
-            let dependencies: Vec<Dependency> = match read_config(String::new()) {
+            let dependencies: Vec<Dependency> = match read_config(String::new()).await {
                 Ok(dep) => dep,
                 Err(err) => return Err(SoldeerError { message: err.cause }),
             };
@@ -288,7 +295,7 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
             };
 
             if foundry_setup.remappings {
-                match remappings() {
+                match remappings().await {
                     Ok(_) => {}
                     Err(err) => {
                         return Err(SoldeerError { message: err.cause });

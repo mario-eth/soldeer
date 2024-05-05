@@ -17,7 +17,7 @@ This project was started to solve the following issues:
 - npmjs was built for the js ecosystem not for solidity
 - github versioning of the releases is a pain and not all the projects are using it correctly
 
-## Version 0.2.10
+## Version 0.2.11
 
 ### Version 0.2.7 introduces the following breaking changes
 
@@ -37,7 +37,7 @@ Soldeer has 3 parts:
 - soldeer repository - a central repository used to store various packages. Anyone can push their own packages as public. The repository works like npmjs or crates.io
 - soldeer foundry (in progress) - a foundry plugin that will allow you to use soldeer in your foundry projects directly from forge
 
-### HOW TO USE IT.
+### HOW TO USE IT
 
 #### Soldeer CLI
 

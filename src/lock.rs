@@ -92,7 +92,7 @@ pub fn lock_check(dependencies: &[Dependency]) -> Result<Vec<Dependency>, LockEr
             if lock_entry.name == dependency.name && lock_entry.version == dependency.version {
                 println!(
                     "{}",
-                    Paint::yellow(format!(
+                    Paint::yellow(&format!(
                         "Dependency {}-{} is locked",
                         lock_entry.name, lock_entry.version
                     ))
@@ -118,7 +118,7 @@ pub fn write_lock(dependencies: &[Dependency], clean: bool) -> Result<(), LockEr
         get_current_working_dir().unwrap().join("soldeer.lock")
     };
 
-    if clean {
+    if clean && (lock_file).exists() {
         match remove_file(&lock_file) {
             Ok(_) => {}
             Err(_) => {
@@ -129,9 +129,8 @@ pub fn write_lock(dependencies: &[Dependency], clean: bool) -> Result<(), LockEr
         }
     }
 
-    let lock_path: String = lock_file.to_str().unwrap().to_string();
     if !lock_file.exists() {
-        std::fs::File::create(lock_path.clone()).unwrap();
+        std::fs::File::create(lock_file.to_str().unwrap()).unwrap();
     }
 
     let mut new_lock_entries: String = String::new();
@@ -149,7 +148,7 @@ checksum = "{}"
         ));
         println!(
             "{}",
-            Paint::green(format!(
+            Paint::green(&format!(
                 "Writing {}~{} to the lock file.",
                 &dependency.name.to_string(),
                 &dependency.version.to_string()

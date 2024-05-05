@@ -80,7 +80,21 @@ pub async fn read_config(filename: String) -> Result<Vec<Dependency>, ConfigErro
     let iterator = data.dependencies.iter();
     for (k, v) in iterator {
         let url;
-        let version = v["version"].to_string().replace('"', "");
+        let version;
+
+        // supports dep = {version = "" }
+        if v.get("version").is_some() {
+            version = v["version"].to_string().replace('"', "");
+        } else {
+            // supports dep = ""
+            version = String::from(v.as_str().unwrap());
+            if version.is_empty() {
+                return Err(ConfigError {
+                    cause: "Could not get the config correctly from the config file".to_string(),
+                });
+            }
+        }
+
         let name = k.to_string();
         if v.get("url").is_some() {
             url = v["url"].to_string().replace('\"', "");

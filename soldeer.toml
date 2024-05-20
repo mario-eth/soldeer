@@ -3,9 +3,3 @@
 enabled = true
 
 [dependencies]
-"@openzeppelin-contracts~5.0.2" = { version = "5.0.2", url = "https://soldeer-revisions.s3.amazonaws.com/@openzeppelin-contracts/5_0_2_14-03-2024_06:11:59_contracts.zip" }
-"@openzeppelin-contracts~4.9.6" = { version = "4.9.6", url = "https://soldeer-revisions.s3.amazonaws.com/@openzeppelin-contracts/4_9_6_14-03-2024_06:11:55_contracts.zip" }
-"@openzeppelin-contracts~5.0.0-rc.1" = { version = "5.0.0-rc.1", url = "https://soldeer-revisions.s3.amazonaws.com/@openzeppelin-contracts/5_0_0-rc_1_22-01-2024_13:13:58_contracts.zip" }
-"@openzeppelin-contracts~5.0.0-rc.0" = { version = "5.0.0-rc.0", url = "https://soldeer-revisions.s3.amazonaws.com/@openzeppelin-contracts/5_0_0-rc_0_22-01-2024_13:13:57_contracts.zip" }
-"@openzeppelin-contracts~4.9.0-rc.1" = { version = "4.9.0-rc.1", url = "https://soldeer-revisions.s3.amazonaws.com/@openzeppelin-contracts/4_9_0-rc_1_22-01-2024_13:13:49_contracts.zip" }
-"@openzeppelin-contracts~4.8.0-rc.2" = { version = "4.8.0-rc.2", url = "https://soldeer-revisions.s3.amazonaws.com/@openzeppelin-contracts/4_8_0-rc_2_22-01-2024_13:13:39_contracts.zip" }

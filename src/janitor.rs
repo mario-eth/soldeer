@@ -5,7 +5,7 @@ use std::fs::{
 
 use crate::config::Dependency;
 use crate::errors::MissingDependencies;
-use crate::utils::get_current_working_dir;
+use crate::DEPENDENCY_DIR;
 
 // Health-check dependencies before we clean them, this one checks if they were unzipped
 pub fn healthcheck_dependencies(dependencies: &[Dependency]) -> Result<(), MissingDependencies> {
@@ -20,7 +20,7 @@ pub fn healthcheck_dependencies(dependencies: &[Dependency]) -> Result<(), Missi
     Ok(())
 }
 
-// Cleanup dependencies after we are downloaded them
+// Cleanup zips after the download
 pub fn cleanup_after(dependencies: &[Dependency]) -> Result<(), MissingDependencies> {
     for dependency in dependencies.iter() {
         match cleanup_dependency(&dependency.name, &dependency.version) {
@@ -38,8 +38,8 @@ pub fn healthcheck_dependency(
     dependency_version: &str,
 ) -> Result<(), MissingDependencies> {
     let file_name: String = format!("{}-{}", &dependency_name, &dependency_version);
-    let new_path: std::path::PathBuf = get_current_working_dir().unwrap().join("dependencies");
-    match metadata(new_path.join(file_name)) {
+    let new_path: std::path::PathBuf = DEPENDENCY_DIR.clone().join(file_name);
+    match metadata(new_path) {
         Ok(_) => Ok(()),
         Err(_) => {
             Err(MissingDependencies::new(
@@ -55,8 +55,8 @@ pub fn cleanup_dependency(
     dependency_version: &str,
 ) -> Result<(), MissingDependencies> {
     let file_name: String = format!("{}-{}.zip", dependency_name, dependency_version);
-    let new_path: std::path::PathBuf = get_current_working_dir().unwrap().join("dependencies");
-    match remove_file(new_path.join(file_name)) {
+    let new_path: std::path::PathBuf = DEPENDENCY_DIR.clone().join(file_name);
+    match remove_file(new_path) {
         Ok(_) => Ok(()),
         Err(_) => {
             Err(MissingDependencies::new(

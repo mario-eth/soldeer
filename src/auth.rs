@@ -80,11 +80,11 @@ pub async fn login() -> Result<(), LoginError> {
                 .append(false)
                 .open(&security_file)
                 .unwrap();
-            if let Err(e) = write!(file, "{}", &jwt) {
+            if let Err(err) = write!(file, "{}", &jwt) {
                 return Err(LoginError {
                     cause: format!(
                         "Couldn't write to the security file {}: {}",
-                        &security_file, e
+                        &security_file, err
                     ),
                 });
             }

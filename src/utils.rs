@@ -4,7 +4,9 @@ use std::fs::{
     self,
     File,
 };
+use std::io::Write;
 use std::io::{
+    BufRead,
     BufReader,
     Read,
 };
@@ -50,13 +52,13 @@ pub fn read_file(path: String) -> Result<Vec<u8>, std::io::Error> {
 
 pub fn define_security_file_location() -> String {
     let custom_security_file = option_env!("SOLDEER_LOGIN_FILE");
-    if custom_security_file.is_some()
-        && !custom_security_file.unwrap().is_empty()
-        && Path::new(custom_security_file.unwrap()).exists()
-    {
-        #[allow(clippy::unnecessary_unwrap)]
-        return String::from(custom_security_file.unwrap());
+
+    if let Some(file) = custom_security_file {
+        if !file.is_empty() && Path::new(file).exists() {
+            return file.to_string();
+        }
     }
+
     let home = home_dir();
     match home {
         Some(_) => {}
@@ -75,4 +77,41 @@ pub fn define_security_file_location() -> String {
     }
     let security_file = &security_directory.join(".soldeer_login");
     String::from(security_file.to_str().unwrap())
+}
+
+pub fn remove_empty_lines(filename: &str) {
+    let file: File = File::open(filename).unwrap();
+
+    let reader: BufReader<File> = BufReader::new(file);
+    let mut new_content: String = String::new();
+    let lines: Vec<_> = reader.lines().collect();
+    let total: usize = lines.len();
+    for (index, line) in lines.into_iter().enumerate() {
+        let line: &String = line.as_ref().unwrap();
+        // Making sure the line contains something
+        if line.len() > 2 {
+            if index == total - 1 {
+                new_content.push_str(&line.to_string());
+            } else {
+                new_content.push_str(&format!("{}\n", line));
+            }
+        }
+    }
+
+    // Removing the annoying new lines at the end and beginning of the file
+    new_content = String::from(new_content.trim_end_matches('\n'));
+    new_content = String::from(new_content.trim_start_matches('\n'));
+    let mut file: std::fs::File = fs::OpenOptions::new()
+        .write(true)
+        .truncate(true)
+        .append(false)
+        .open(Path::new(filename))
+        .unwrap();
+
+    match write!(file, "{}", &new_content) {
+        Ok(_) => {}
+        Err(e) => {
+            eprintln!("Couldn't write to file: {}", e);
+        }
+    }
 }

@@ -33,11 +33,21 @@ use crate::lock::{
 };
 use crate::utils::get_current_working_dir;
 use crate::versioning::push_version;
+use lazy_static::lazy_static;
 use regex::Regex;
+use std::env;
 use std::path::PathBuf;
 use yansi::Paint;
 
 pub const BASE_URL: &str = "https://api.soldeer.xyz";
+
+// pub static DEPENDENCY_DIR: PathBuf = Lazy::new(|| env::current_dir().unwrap());
+
+lazy_static! {
+    pub static ref DEPENDENCY_DIR: PathBuf =
+        get_current_working_dir().unwrap().join("dependencies/");
+    pub static ref LOCK_FILE: PathBuf = get_current_working_dir().unwrap().join("soldeer.lock");
+}
 
 #[derive(Debug)]
 pub struct FOUNDRY {
@@ -73,14 +83,12 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
                     version: dependency_version.clone(),
                     url: dependency_url.clone(),
                 });
-                dependencies = lock_check(&dependencies).unwrap();
-                if dependencies.is_empty() {
-                    return Err(SoldeerError {
-                        message: format!(
-                            "Dependency {}-{} already installed",
-                            dependency_name, dependency_version
-                        ),
-                    });
+
+                match lock_check(&dependencies) {
+                    Ok(dep) => dependencies = dep,
+                    Err(err) => {
+                        return Err(SoldeerError { message: err.cause });
+                    }
                 }
 
                 match download_dependencies(&dependencies, false).await {
@@ -103,21 +111,16 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
                     }
                 }
             } else {
-                let mut dependencies: Vec<Dependency> = Vec::new();
-                dependencies = lock_check(&dependencies).unwrap();
-                dependencies.push(Dependency {
+                let mut dependencies: Vec<Dependency> = vec![Dependency {
                     name: dependency_name.clone(),
                     version: dependency_version.clone(),
                     url: String::new(),
-                });
-                dependencies = lock_check(&dependencies).unwrap();
-                if dependencies.is_empty() {
-                    return Err(SoldeerError {
-                        message: format!(
-                            "Dependency {}-{} already installed",
-                            dependency_name, dependency_version
-                        ),
-                    });
+                }];
+                match lock_check(&dependencies) {
+                    Ok(dep) => dependencies = dep,
+                    Err(err) => {
+                        return Err(SoldeerError { message: err.cause });
+                    }
                 }
 
                 match dependency_downloader::download_dependency_remote(

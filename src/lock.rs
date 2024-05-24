@@ -68,13 +68,25 @@ fn read_lock() -> Result<Vec<LockEntry>, LockError> {
     Ok(data.dependencies)
 }
 
-pub fn lock_check(dependency: &Dependency) -> Result<Vec<Dependency>, LockError> {
+pub fn lock_check(
+    dependency: &Dependency,
+    create_lock: bool,
+) -> Result<Vec<Dependency>, LockError> {
     let lock_entries = match read_lock() {
         Ok(entries) => entries,
         Err(_) => {
-            return Err(LockError {
-                cause: "Lock does not exists".to_string(),
-            });
+            if create_lock {
+                let _ = write_lock(&[], false).map_err(|_| {
+                    LockError {
+                        cause: "Could not write lock file".to_string(),
+                    }
+                });
+                vec![]
+            } else {
+                return Err(LockError {
+                    cause: "Lock does not exists".to_string(),
+                });
+            }
         }
     };
 
@@ -265,7 +277,9 @@ checksum = "5019418b1e9128185398870f77a42e51d624c44315bb1572e7545be51d707016"
             url: "https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@openzeppelin-contracts~2.3.0.zip".to_string(),
         };
 
-        assert!(lock_check(&dependency).is_err_and(|e| { e.cause == "Lock does not exists" }));
+        assert!(
+            lock_check(&dependency, false).is_err_and(|e| { e.cause == "Lock does not exists" })
+        );
         assert!(!lock_file.exists());
     }
 
@@ -279,7 +293,7 @@ checksum = "5019418b1e9128185398870f77a42e51d624c44315bb1572e7545be51d707016"
             url: "https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@openzeppelin-contracts~2.3.0.zip".to_string(),
         };
 
-        assert!(lock_check(&dependency).is_err_and(|e| {
+        assert!(lock_check(&dependency, true).is_err_and(|e| {
             e.cause == "Dependency @openzeppelin-contracts-2.3.0 is already installed"
         }));
     }
@@ -295,7 +309,7 @@ checksum = "5019418b1e9128185398870f77a42e51d624c44315bb1572e7545be51d707016"
         };
         let dependencies = vec![dependency.clone()];
         write_lock(&dependencies, false).unwrap();
-        assert!(lock_check(&dependency).is_err_and(|e| {
+        assert!(lock_check(&dependency, true).is_err_and(|e| {
             e.cause == "Dependency @openzeppelin-contracts-2.5.0 is already installed"
         }));
         let contents = read_file_to_string(&lock_file.to_str().unwrap().to_string());
@@ -310,7 +324,7 @@ source = "https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@o
 checksum = "5019418b1e9128185398870f77a42e51d624c44315bb1572e7545be51d707016"
 "#
         );
-        assert!(lock_check(&dependency).is_err_and(|e| {
+        assert!(lock_check(&dependency, true).is_err_and(|e| {
             e.cause == "Dependency @openzeppelin-contracts-2.5.0 is already installed"
         }));
     }
@@ -353,7 +367,7 @@ checksum = "5019418b1e9128185398870f77a42e51d624c44315bb1572e7545be51d707016"
 "#
         );
 
-        assert!(lock_check(&dependency).is_err_and(|e| {
+        assert!(lock_check(&dependency, true).is_err_and(|e| {
             e.cause == "Dependency @openzeppelin-contracts-2-2.6.0 is already installed"
         }));
     }

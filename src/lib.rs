@@ -85,7 +85,7 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
                 };
                 dependencies.push(dependency.clone());
 
-                match lock_check(&dependency) {
+                match lock_check(&dependency, true) {
                     Ok(dep) => dependencies = dep,
                     Err(err) => {
                         return Err(SoldeerError { message: err.cause });
@@ -118,7 +118,7 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
                     url: String::new(),
                 };
                 let mut dependencies: Vec<Dependency>;
-                match lock_check(&dependency) {
+                match lock_check(&dependency, true) {
                     Ok(dep) => dependencies = dep,
                     Err(err) => {
                         return Err(SoldeerError { message: err.cause });

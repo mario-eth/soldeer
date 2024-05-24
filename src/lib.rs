@@ -1,3 +1,6 @@
+#![cfg_attr(docsrs, feature(doc_cfg, doc_auto_cfg))]
+#![cfg_attr(not(test), warn(unused_crate_dependencies))]
+
 mod auth;
 pub mod commands;
 mod config;
@@ -33,18 +36,18 @@ use crate::lock::{
 };
 use crate::utils::get_current_working_dir;
 use crate::versioning::push_version;
-use lazy_static::lazy_static;
+use once_cell::sync::Lazy;
 use regex::Regex;
 use std::env;
 use std::path::PathBuf;
 use yansi::Paint;
 
 pub const BASE_URL: &str = "https://api.soldeer.xyz";
-lazy_static! {
-    pub static ref DEPENDENCY_DIR: PathBuf =
-        get_current_working_dir().unwrap().join("dependencies/");
-    pub static ref LOCK_FILE: PathBuf = get_current_working_dir().unwrap().join("soldeer.lock");
-}
+
+pub static DEPENDENCY_DIR: Lazy<PathBuf> =
+    Lazy::new(|| get_current_working_dir().unwrap().join("dependencies/"));
+pub static LOCK_FILE: Lazy<PathBuf> =
+    Lazy::new(|| get_current_working_dir().unwrap().join("soldeer.lock"));
 
 #[derive(Debug)]
 pub struct FOUNDRY {
@@ -59,7 +62,7 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
             if !install.dependency.contains('~') {
                 return Err(SoldeerError {
                     message: format!(
-                        "Dependency {} does not specify a version. \nThe format should be [DEPENDENCY]~[VERSION]",
+                        "Dependency {} does not specify a version.\nThe format should be [DEPENDENCY]~[VERSION]",
                         install.dependency
                     ),
                 });
@@ -135,7 +138,7 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
                     Err(err) => {
                         return Err(SoldeerError {
                             message: format!(
-                                "Error downloading a dependency {}~{}. \nCheck if the dependency name and version are correct.\nIf you are not sure check https://soldeer.xyz.",
+                                "Error downloading a dependency {}~{}.\nCheck if the dependency name and version are correct.\nIf you are not sure check https://soldeer.xyz.",
                                 err.name, err.version
                             ),
                         });
@@ -338,7 +341,7 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
                 Err(err) => {
                     return Err(SoldeerError {
                         message: format!(
-                            "Dependency {}~{} could not be pushed. \nCause: {}",
+                            "Dependency {}~{} could not be pushed.\nCause: {}",
                             dependency_name, dependency_version, err.cause
                         ),
                     });

@@ -1,10 +1,8 @@
-extern crate soldeer;
+use clap::Parser;
+use soldeer::commands::Args;
 use yansi::Paint;
 
-use crate::soldeer::commands::Args;
-use clap::Parser;
-
-pub fn main() {
+fn main() {
     let args = Args::parse();
     match soldeer::run(args.command) {
         Ok(_) => {}

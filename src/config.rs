@@ -14,6 +14,7 @@ use std::fs::{
     remove_dir_all,
     File,
 };
+use std::io;
 use std::io::Write;
 use std::path::{
     Path,
@@ -21,14 +22,12 @@ use std::path::{
 };
 use std::process::exit;
 use toml::Table;
-use yansi::Paint;
-extern crate toml_edit;
-use std::io;
 use toml_edit::{
     value,
     DocumentMut,
     Item,
 };
+use yansi::Paint;
 
 // Top level struct to hold the TOML data.
 #[derive(Deserialize, Debug)]
@@ -173,7 +172,7 @@ pub fn define_config_file() -> Result<String, ConfigError> {
     let exists: bool = Path::new(&filename).exists();
     if !exists {
         eprintln!(
-            "The config file does not exist. Soldeer has exited. If you wish to proceed, below is the minimum requirement for the soldeer.toml file that needs to be created:\n \n [foundry]\n enabled = true\n foundry-config = false\n\n [dependencies]\n"
+            "The config file does not exist. Soldeer has exited. If you wish to proceed, below is the minimum requirement for the soldeer.toml file that needs to be created:\n\n [foundry]\n enabled = true\n foundry-config = false\n\n [dependencies]\n"
         );
         exit(404);
     }
@@ -369,7 +368,7 @@ pub fn get_foundry_setup() -> Result<Vec<bool>, ConfigError> {
         Err(_) => {
             println!(
                 "{}",
-                Paint::yellow(&"The remappings field not found in the soldeer.toml and no foundry config file found or the foundry.toml does not contain the `[dependencies]` field. \nThe foundry.toml file should contain the `[dependencies]` field if you want to use it as a config file. If you want to use the soldeer.toml file, please add the `[remappings]` field to it with the `enabled` key set to `true` or `false`. \nMore info on https://github.com/mario-eth/soldeer\nThe installation was successful but the remappings feature was skipped.".to_string())
+                Paint::yellow(&"The remappings field not found in the soldeer.toml and no foundry config file found or the foundry.toml does not contain the `[dependencies]` field.\nThe foundry.toml file should contain the `[dependencies]` field if you want to use it as a config file. If you want to use the soldeer.toml file, please add the `[remappings]` field to it with the `enabled` key set to `true` or `false`.\nMore info on https://github.com/mario-eth/soldeer\nThe installation was successful but the remappings feature was skipped.".to_string())
             );
             return Ok(vec![false]);
         }
@@ -377,7 +376,7 @@ pub fn get_foundry_setup() -> Result<Vec<bool>, ConfigError> {
     if data.remappings.get("enabled").is_none() {
         println!(
             "{}",
-            Paint::yellow(&"The remappings field not found in the soldeer.toml and no foundry config file found or the foundry.toml does not contain the `[dependencies]` field. \nThe foundry.toml file should contain the `[dependencies]` field if you want to use it as a config file. If you want to use the soldeer.toml file, please add the `[remappings]` field to it with the `enabled` key set to `true` or `false`. \nMore info on https://github.com/mario-eth/soldeer\nThe installation was successful but the remappings feature was skipped.".to_string())
+            Paint::yellow(&"The remappings field not found in the soldeer.toml and no foundry config file found or the foundry.toml does not contain the `[dependencies]` field.\nThe foundry.toml file should contain the `[dependencies]` field if you want to use it as a config file. If you want to use the soldeer.toml file, please add the `[remappings]` field to it with the `enabled` key set to `true` or `false`.\nMore info on https://github.com/mario-eth/soldeer\nThe installation was successful but the remappings feature was skipped.".to_string())
         );
         return Ok(vec![false]);
     }

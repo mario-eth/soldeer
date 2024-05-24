@@ -1,12 +1,11 @@
-use email_address_parser::{
-    EmailAddress,
-    ParsingOptions,
-};
-use yansi::Paint;
-
+use crate::errors::LoginError;
 use crate::utils::{
     define_security_file_location,
     read_file,
+};
+use email_address_parser::{
+    EmailAddress,
+    ParsingOptions,
 };
 use reqwest::Client;
 use rpassword::read_password;
@@ -21,8 +20,7 @@ use std::{
         Write,
     },
 };
-
-use crate::errors::LoginError;
+use yansi::Paint;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Login {

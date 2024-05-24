@@ -10,11 +10,9 @@ use std::fs::{
     self,
     remove_file,
 };
+use std::io::Write;
 use std::path::PathBuf;
 use yansi::Paint;
-
-extern crate toml_edit;
-use std::io::Write;
 
 // Top level struct to hold the TOML data.
 #[derive(Deserialize, Debug)]

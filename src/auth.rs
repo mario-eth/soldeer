@@ -66,6 +66,7 @@ pub async fn login() -> Result<(), LoginError> {
     let req = Client::new().post(url).json(&login);
 
     let login_response = req.send().await;
+
     let security_file = define_security_file_location();
     if let Ok(response) = login_response {
         if response.status().is_success() {
@@ -100,6 +101,7 @@ pub async fn login() -> Result<(), LoginError> {
             });
         }
     }
+
     Err(LoginError {
         cause: "Authentication failed. Unknown error.".to_string(),
     })

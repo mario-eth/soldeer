@@ -85,6 +85,8 @@ pub async fn push_version(
             return Err(error);
         }
     }
+    // deleting zip archive
+    let _ = remove_file(zip_archive);
 
     Ok(())
 }

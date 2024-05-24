@@ -40,9 +40,6 @@ use std::path::PathBuf;
 use yansi::Paint;
 
 pub const BASE_URL: &str = "https://api.soldeer.xyz";
-
-// pub static DEPENDENCY_DIR: PathBuf = Lazy::new(|| env::current_dir().unwrap());
-
 lazy_static! {
     pub static ref DEPENDENCY_DIR: PathBuf =
         get_current_working_dir().unwrap().join("dependencies/");

@@ -1,7 +1,11 @@
+use futures::StreamExt;
 use std::fs;
 use std::io::Cursor;
 use std::path::PathBuf;
-use tokio_dl_stream_to_disk::AsyncDownload;
+use tokio::{
+    fs::File,
+    io::AsyncWriteExt,
+};
 use yansi::Paint;
 
 use crate::config::Dependency;
@@ -78,36 +82,49 @@ pub async fn download_dependency(
         fs::create_dir(&dependency_directory).unwrap();
     }
 
-    let download_result: Result<(), tokio_dl_stream_to_disk::error::Error> =
-        AsyncDownload::new(dependency_url, &dependency_directory, dependency_name)
-            .download(&None)
-            .await;
-    if download_result.is_ok() {
-        println!(
-            "{}",
-            Paint::green(&format!("Dependency {} downloaded! ", dependency_name))
-        );
-        Ok(())
-    } else if download_result
-        .err()
-        .unwrap()
-        .to_string()
-        .contains("already exists")
-    {
-        println!(
-            "{}",
-            Paint::yellow(&format!(
-                "Dependency {} already downloaded",
-                dependency_name
-            ))
-        );
-        return Ok(());
-    } else {
-        return Err(DownloadError {
-            name: "Unknown".to_string(),
-            version: "Unknown".to_string(),
-        });
+    let mut file = File::create(&dependency_directory.join(dependency_name))
+        .await
+        .unwrap();
+
+    let mut stream = match reqwest::get(dependency_url).await {
+        Ok(res) => res.bytes_stream(),
+        Err(_) => {
+            return Err(DownloadError {
+                name: "Unknown".to_string(),
+                version: "Unknown".to_string(),
+            });
+        }
+    };
+
+    while let Some(chunk_result) = stream.next().await {
+        let chunk = chunk_result;
+        match file.write_all(&chunk.unwrap()).await {
+            Ok(_) => {}
+            Err(_) => {
+                return Err(DownloadError {
+                    name: "Unknown".to_string(),
+                    version: "Unknown".to_string(),
+                });
+            }
+        }
     }
+
+    match file.flush().await {
+        Ok(_) => {}
+        Err(_) => {
+            return Err(DownloadError {
+                name: "Unknown".to_string(),
+                version: "Unknown".to_string(),
+            });
+        }
+    };
+
+    println!(
+        "{}",
+        Paint::green(&format!("Dependency {} downloaded! ", dependency_name))
+    );
+
+    Ok(())
 }
 
 pub fn unzip_dependency(

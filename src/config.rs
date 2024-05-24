@@ -73,6 +73,7 @@ pub async fn read_config(filename: String) -> Result<Vec<Dependency>, ConfigErro
     let mut dependencies: Vec<Dependency> = Vec::new();
     let iterator = data.dependencies.iter();
     for (name, v) in iterator {
+        #[allow(clippy::needless_late_init)]
         let url;
         let version;
 

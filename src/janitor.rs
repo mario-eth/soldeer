@@ -37,8 +37,8 @@ pub fn healthcheck_dependency(
     dependency_name: &str,
     dependency_version: &str,
 ) -> Result<(), MissingDependencies> {
-    let file_name: String = format!("{}-{}", &dependency_name, &dependency_version);
-    let new_path: std::path::PathBuf = DEPENDENCY_DIR.clone().join(file_name);
+    let file_name: String = format!("{dependency_name}-{dependency_version}");
+    let new_path = DEPENDENCY_DIR.join(file_name);
     match metadata(new_path) {
         Ok(_) => Ok(()),
         Err(_) => {
@@ -68,6 +68,7 @@ pub fn cleanup_dependency(
 }
 
 #[cfg(test)]
+#[allow(clippy::vec_init_then_push)]
 mod tests {
     use super::*;
     use crate::dependency_downloader::{
@@ -77,71 +78,69 @@ mod tests {
     };
     use serial_test::serial;
 
-    // Helper macro to run async tests
-    macro_rules! aw {
-        ($e:expr) => {
-            tokio_test::block_on($e)
-        };
-    }
-    #[test]
-    fn healthcheck_dependency_not_found() {
-        let result: Result<(), MissingDependencies> = healthcheck_dependency("test", "1.0.0");
-        assert!(result.is_err());
+    struct CleanupDependency;
+    impl Drop for CleanupDependency {
+        fn drop(&mut self) {
+            clean_dependency_directory();
+        }
     }
 
-    #[test]
+    #[tokio::test]
+    async fn healthcheck_dependency_not_found() {
+        let _ = healthcheck_dependency("test", "1.0.0").unwrap_err();
+    }
+
+    #[tokio::test]
     #[serial]
-    fn healthcheck_dependency_found() {
+    async fn healthcheck_dependency_found() {
+        let _cleanup = CleanupDependency;
+
         let mut dependencies: Vec<Dependency> = Vec::new();
         dependencies.push(Dependency {
             name: "@openzeppelin-contracts".to_string(),
             version: "2.3.0".to_string(),
             url: "https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@openzeppelin-contracts~2.3.0.zip".to_string(),
         });
-        let _ = aw!(download_dependencies(&dependencies, false));
-        let _ = unzip_dependency(&dependencies[0].name, &dependencies[0].version);
-        let result: Result<(), MissingDependencies> =
-            healthcheck_dependency("@openzeppelin-contracts", "2.3.0");
-        assert!(result.is_ok());
-
-        clean_dependency_directory();
+        download_dependencies(&dependencies, false).await.unwrap();
+        unzip_dependency(&dependencies[0].name, &dependencies[0].version).unwrap();
+        healthcheck_dependency("@openzeppelin-contracts", "2.3.0").unwrap();
     }
 
-    #[test]
+    #[tokio::test]
     #[serial]
-    fn cleanup_existing_dependency() {
+    async fn cleanup_existing_dependency() {
+        let _cleanup = CleanupDependency;
+
         let mut dependencies: Vec<Dependency> = Vec::new();
         dependencies.push(Dependency {
             name: "@openzeppelin-contracts".to_string(),
             version: "2.3.0".to_string(),
             url: "https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@openzeppelin-contracts~2.3.0.zip".to_string(),
         });
-        let _ = aw!(download_dependencies(&dependencies, false));
-        let _ = unzip_dependency(&dependencies[0].name, &dependencies[0].version);
-        let result: Result<(), MissingDependencies> =
-            cleanup_dependency("@openzeppelin-contracts", "2.3.0");
-        assert!(result.is_ok());
-        clean_dependency_directory();
+        download_dependencies(&dependencies, false).await.unwrap();
+        unzip_dependency(&dependencies[0].name, &dependencies[0].version).unwrap();
+        cleanup_dependency("@openzeppelin-contracts", "2.3.0").unwrap();
     }
 
     #[test]
     #[serial]
     fn cleanup_nonexisting_dependency() {
+        let _cleanup = CleanupDependency;
+
         let mut dependencies: Vec<Dependency> = Vec::new();
         dependencies.push(Dependency {
             name: "@openzeppelin-contracts".to_string(),
             version: "2.3.0".to_string(),
             url: "https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@openzeppelin-contracts~2.3.0.zip".to_string(),
         });
-        let result: Result<(), MissingDependencies> =
-            cleanup_dependency("@openzeppelin-contracts", "2.3.0");
-        assert!(result.is_err());
-        clean_dependency_directory();
+        cleanup_dependency("@openzeppelin-contracts", "2.3.0").unwrap_err();
     }
 
-    #[test]
+    #[tokio::test]
     #[serial]
-    fn cleanup_after_existing_dependency() {
+    async fn cleanup_after_existing_dependency() {
+        let _cleanup = CleanupDependency;
+
         let mut dependencies: Vec<Dependency> = Vec::new();
         dependencies.push(Dependency {
             name: "@openzeppelin-contracts".to_string(),
@@ -154,16 +153,18 @@ mod tests {
             url: "https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@openzeppelin-contracts~2.4.0.zip".to_string(),
         });
 
-        let _ = aw!(download_dependencies(&dependencies, false));
+        download_dependencies(&dependencies, false).await.unwrap();
         let _ = unzip_dependency(&dependencies[0].name, &dependencies[0].version);
         let result: Result<(), MissingDependencies> = cleanup_after(&dependencies);
         assert!(result.is_ok());
         clean_dependency_directory();
     }
 
-    #[test]
+    #[tokio::test]
     #[serial]
-    fn cleanup_after_one_existing_one_not_existing_dependency() {
+    async fn cleanup_after_one_existing_one_not_existing_dependency() {
+        let _cleanup = CleanupDependency;
+
         let mut dependencies: Vec<Dependency> = Vec::new();
         dependencies.push(Dependency {
             name: "@openzeppelin-contracts".to_string(),
@@ -171,18 +172,15 @@ mod tests {
             url: "https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@openzeppelin-contracts~2.3.0.zip".to_string(),
         });
 
-        let _ = aw!(download_dependencies(&dependencies, false));
-        let _ = unzip_dependency(&dependencies[0].name, &dependencies[0].version);
+        download_dependencies(&dependencies, false).await.unwrap();
+        unzip_dependency(&dependencies[0].name, &dependencies[0].version).unwrap();
         dependencies.push(Dependency {
             name: "@openzeppelin-contracts".to_string(),
             version: "2.4.0".to_string(),
             url: "https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@openzeppelin-contracts~2.4.0.zip".to_string(),
         });
-        let result: Result<(), MissingDependencies> = cleanup_after(&dependencies);
-        assert!(result.is_err());
-        let error = result.err().unwrap();
+        let error = cleanup_after(&dependencies).unwrap_err();
         assert!(error.name == "@openzeppelin-contracts");
         assert!(error.version == "2.4.0");
-        clean_dependency_directory();
     }
 }

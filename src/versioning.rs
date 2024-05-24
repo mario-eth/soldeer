@@ -1,34 +1,12 @@
 use crate::auth::get_token;
+use crate::errors::PushError;
 use crate::remote::get_project_id;
 use crate::utils::{
     get_current_working_dir,
     read_file,
     read_file_to_string,
 };
-use std::{
-    fs::File,
-    io::{
-        self,
-        Read,
-        Write,
-    },
-    path::{
-        Path,
-        PathBuf,
-    },
-};
-
 use reqwest::StatusCode;
-use walkdir::WalkDir;
-
-use yansi::Paint;
-use zip::{
-    write::FileOptions,
-    CompressionMethod,
-    ZipWriter,
-};
-
-use crate::errors::PushError;
 use reqwest::{
     header::{
         HeaderMap,
@@ -43,6 +21,25 @@ use reqwest::{
     Client,
 };
 use std::fs::remove_file;
+use std::{
+    fs::File,
+    io::{
+        self,
+        Read,
+        Write,
+    },
+    path::{
+        Path,
+        PathBuf,
+    },
+};
+use walkdir::WalkDir;
+use yansi::Paint;
+use zip::{
+    write::SimpleFileOptions,
+    CompressionMethod,
+    ZipWriter,
+};
 
 #[derive(Clone, Debug)]
 struct FilePair {
@@ -102,7 +99,7 @@ fn zip_file(
     let file = File::create(zip_file_path.to_str().unwrap()).unwrap();
 
     let mut zip = ZipWriter::new(file);
-    let options = FileOptions::default().compression_method(CompressionMethod::DEFLATE);
+    let options = SimpleFileOptions::default().compression_method(CompressionMethod::DEFLATE);
     if files_to_copy.is_empty() {
         return Err(PushError {
             name: dependency_name.to_string(),
@@ -119,11 +116,11 @@ fn zip_file(
         // Write file or directory explicitly
         // Some unzip tools unzip files with directory paths correctly, some do not!
         if path.is_file() {
-            let _ = zip.start_file(&file_name, options);
+            let _ = zip.start_file(file_name.as_str(), options);
             let _ = io::copy(&mut file.take(u64::MAX), &mut buffer);
             let _ = zip.write_all(&buffer);
         } else if !path.as_os_str().is_empty() {
-            let _ = zip.add_directory(&file_name, options);
+            let _ = zip.add_directory(file_name, options);
         }
     }
     let _ = zip.finish();
@@ -211,7 +208,7 @@ async fn push_to_repo(
         header_value.expect("Could not set auth header"),
     );
 
-    let file_fs = read_file(zip_file.to_str().unwrap().to_string()).unwrap();
+    let file_fs = read_file(zip_file).unwrap();
     let mut part =
         Part::bytes(file_fs).file_name(zip_file.file_name().unwrap().to_str().unwrap().to_string());
 
@@ -233,7 +230,7 @@ async fn push_to_repo(
 
     let form = Form::new()
         .text("project_id", project_id)
-        .text("revision", (&dependency_version).to_string())
+        .text("revision", dependency_version.clone())
         .part("zip_name", part);
 
     headers.insert(
@@ -254,7 +251,7 @@ async fn push_to_repo(
             return Err(PushError {
                 name: (&dependency_name).to_string(),
                 version: (&dependency_version).to_string(),
-                cause: "Project not found. Make sure you send the right dependency name. \nThe dependency name is the project name you created on https://soldeer.xyz".to_string(),
+                cause: "Project not found. Make sure you send the right dependency name.\nThe dependency name is the project name you created on https://soldeer.xyz".to_string(),
             });
         }
         StatusCode::ALREADY_REPORTED => {

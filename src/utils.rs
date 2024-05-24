@@ -39,7 +39,7 @@ pub fn read_file_to_string(path: &String) -> String {
 }
 
 // read a file contents into a vector of bytes so we can unzip it
-pub fn read_file(path: String) -> Result<Vec<u8>, std::io::Error> {
+pub fn read_file(path: impl AsRef<Path>) -> Result<Vec<u8>, std::io::Error> {
     let f = File::open(path)?;
     let mut reader = BufReader::new(f);
     let mut buffer = Vec::new();

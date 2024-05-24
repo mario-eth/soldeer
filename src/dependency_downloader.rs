@@ -1,9 +1,6 @@
 use std::fs;
 use std::io::Cursor;
-use std::path::{
-    Path,
-    PathBuf,
-};
+use std::path::PathBuf;
 use tokio_dl_stream_to_disk::AsyncDownload;
 use yansi::Paint;
 
@@ -11,10 +8,8 @@ use crate::config::Dependency;
 use crate::errors::DownloadError;
 use crate::errors::UnzippingError;
 use crate::remote::get_dependency_url_remote;
-use crate::utils::{
-    get_current_working_dir,
-    read_file,
-};
+use crate::utils::read_file;
+use crate::DEPENDENCY_DIR;
 
 pub async fn download_dependencies(
     dependencies: &[Dependency],
@@ -50,7 +45,6 @@ pub fn unzip_dependencies(dependencies: &[Dependency]) -> Result<(), UnzippingEr
     Ok(())
 }
 
-#[allow(unused_assignments)]
 pub async fn download_dependency_remote(
     dependency_name: &String,
     dependency_version: &String,
@@ -79,8 +73,8 @@ pub async fn download_dependency(
     dependency_name: &str,
     dependency_url: &str,
 ) -> Result<(), DownloadError> {
-    let dependency_directory: PathBuf = get_current_working_dir().unwrap().join("dependencies");
-    if !dependency_directory.is_dir() {
+    let dependency_directory: PathBuf = DEPENDENCY_DIR.clone();
+    if !DEPENDENCY_DIR.is_dir() {
         fs::create_dir(&dependency_directory).unwrap();
     }
 
@@ -122,15 +116,10 @@ pub fn unzip_dependency(
 ) -> Result<(), UnzippingError> {
     let file_name: String = format!("{}-{}.zip", dependency_name, dependency_version);
     let target_name: String = format!("{}-{}/", dependency_name, dependency_version);
-    let current_dir: PathBuf = get_current_working_dir()
-        .unwrap()
-        .join(Path::new(&("dependencies/".to_owned() + &file_name)));
-
-    let target = get_current_working_dir()
-        .unwrap()
-        .join("dependencies/")
-        .join(target_name);
+    let current_dir: PathBuf = DEPENDENCY_DIR.join(file_name);
+    let target = DEPENDENCY_DIR.join(target_name);
     let archive: Vec<u8> = read_file(current_dir.as_path().to_str().unwrap().to_string()).unwrap();
+
     match zip_extract::extract(Cursor::new(archive), &target, true) {
         Ok(_) => {}
         Err(_) => {
@@ -151,10 +140,9 @@ pub fn unzip_dependency(
 }
 
 pub fn clean_dependency_directory() {
-    let dep_path = get_current_working_dir().unwrap().join("dependencies");
-    if dep_path.is_dir() {
-        fs::remove_dir_all(&dep_path).unwrap();
-        fs::create_dir(&dep_path).unwrap();
+    if DEPENDENCY_DIR.is_dir() {
+        fs::remove_dir_all(DEPENDENCY_DIR.clone()).unwrap();
+        fs::create_dir(DEPENDENCY_DIR.clone()).unwrap();
     }
 }
 

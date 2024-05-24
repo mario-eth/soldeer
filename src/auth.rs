@@ -66,6 +66,7 @@ pub async fn login() -> Result<(), LoginError> {
     let req = Client::new().post(url).json(&login);
 
     let login_response = req.send().await;
+
     let security_file = define_security_file_location();
     if let Ok(response) = login_response {
         if response.status().is_success() {
@@ -80,11 +81,11 @@ pub async fn login() -> Result<(), LoginError> {
                 .append(false)
                 .open(&security_file)
                 .unwrap();
-            if let Err(e) = write!(file, "{}", &jwt) {
+            if let Err(err) = write!(file, "{}", &jwt) {
                 return Err(LoginError {
                     cause: format!(
                         "Couldn't write to the security file {}: {}",
-                        &security_file, e
+                        &security_file, err
                     ),
                 });
             }
@@ -100,6 +101,7 @@ pub async fn login() -> Result<(), LoginError> {
             });
         }
     }
+
     Err(LoginError {
         cause: "Authentication failed. Unknown error.".to_string(),
     })

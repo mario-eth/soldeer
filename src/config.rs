@@ -5,18 +5,16 @@ use crate::remote::get_dependency_url_remote;
 use crate::utils::{
     get_current_working_dir,
     read_file_to_string,
+    remove_empty_lines,
 };
+use crate::DEPENDENCY_DIR;
 use serde_derive::Deserialize;
 use std::fs::{
     self,
     remove_dir_all,
     File,
 };
-use std::io::{
-    BufRead,
-    BufReader,
-    Write,
-};
+use std::io::Write;
 use std::path::{
     Path,
     PathBuf,
@@ -60,14 +58,10 @@ pub async fn read_config(filename: String) -> Result<Vec<Dependency>, ConfigErro
         }
     }
     let contents = read_file_to_string(&filename.clone());
-    // Use a `match` block to return the
-    // file `contents` as a `Data struct: Ok(d)`
-    // or handle any `errors: Err(_)`.
+
+    // reading the contents into a data structure using toml::from_str
     let data: Data = match toml::from_str(&contents) {
-        // If successful, return data as `Data` struct.
-        // `d` is a local variable.
         Ok(d) => d,
-        // Handle the `error` case.
         Err(err) => {
             println!("{:?}", err);
             return Err(ConfigError {
@@ -78,15 +72,16 @@ pub async fn read_config(filename: String) -> Result<Vec<Dependency>, ConfigErro
 
     let mut dependencies: Vec<Dependency> = Vec::new();
     let iterator = data.dependencies.iter();
-    for (k, v) in iterator {
+    for (name, v) in iterator {
         let url;
         let version;
 
-        // supports dep = {version = "" }
+        // checks if the format is dependency = {version = "1.1.1" }
         if v.get("version").is_some() {
+            // clear any string quotes added by mistake
             version = v["version"].to_string().replace('"', "");
         } else {
-            // supports dep = ""
+            // checks if the format is dependency = "1.1.1"
             version = String::from(v.as_str().unwrap());
             if version.is_empty() {
                 return Err(ConfigError {
@@ -95,12 +90,13 @@ pub async fn read_config(filename: String) -> Result<Vec<Dependency>, ConfigErro
             }
         }
 
-        let name = k.to_string();
         if v.get("url").is_some() {
+            // clear any string quotes added by mistake
             url = v["url"].to_string().replace('\"', "");
         } else {
-            match get_dependency_url_remote(&name, &version).await {
-                Ok(u) => url = u,
+            // we don't have a specified url, means we will rely on the remote server to give it to us
+            url = match get_dependency_url_remote(name, &version).await {
+                Ok(u) => u,
                 Err(_) => {
                     return Err(ConfigError {
                         cause: "Could not get the url".to_string(),
@@ -108,7 +104,12 @@ pub async fn read_config(filename: String) -> Result<Vec<Dependency>, ConfigErro
                 }
             }
         }
-        dependencies.push(Dependency { name, version, url });
+
+        dependencies.push(Dependency {
+            name: name.to_string(),
+            version,
+            url,
+        });
     }
 
     Ok(dependencies)
@@ -116,30 +117,21 @@ pub async fn read_config(filename: String) -> Result<Vec<Dependency>, ConfigErro
 
 pub fn define_config_file() -> Result<String, ConfigError> {
     // reading the current directory to look for the config file
-    let working_dir: Result<PathBuf, std::io::Error> = get_current_working_dir();
-
-    let mut filename: String = working_dir
+    let working_dir = get_current_working_dir()
         .as_ref()
         .unwrap()
         .clone()
         .into_os_string()
         .into_string()
         .unwrap()
-        .to_owned()
-        + "/soldeer.toml";
+        .to_owned();
+
+    let mut filename: String = working_dir.to_owned() + "/soldeer.toml";
 
     match fs::metadata(&filename) {
         Ok(_) => {}
         Err(_) => {
-            filename = working_dir
-                .as_ref()
-                .unwrap()
-                .clone()
-                .into_os_string()
-                .into_string()
-                .unwrap()
-                .to_owned()
-                + "/foundry.toml";
+            filename = working_dir.to_owned() + "/foundry.toml";
             if !Path::new(&filename).exists() {
                 println!("{}", Paint::blue("No config file found. If you wish to proceed, please select how you want Soldeer to be configured:\n1. Using foundry.toml\n2. Using soldeer.toml\n(Press 1 or 2)"));
                 std::io::stdout().flush().unwrap();
@@ -149,8 +141,14 @@ pub fn define_config_file() -> Result<String, ConfigError> {
                         cause: "Option invalid.".to_string(),
                     });
                 }
-                match create_example_config(option) {
-                    Ok(_) => {}
+                match create_example_config(&option) {
+                    Ok(_) => {
+                        if &option == "1" {
+                            filename = working_dir.to_owned() + "/foundry.toml";
+                        } else {
+                            filename = working_dir.to_owned() + "/soldeer.toml";
+                        }
+                    }
                     Err(err) => {
                         return Err(err);
                     }
@@ -159,15 +157,7 @@ pub fn define_config_file() -> Result<String, ConfigError> {
         }
     }
 
-    let foundry_file = working_dir
-        .as_ref()
-        .unwrap()
-        .clone()
-        .into_os_string()
-        .into_string()
-        .unwrap()
-        .to_owned()
-        + "/foundry.toml";
+    let foundry_file = working_dir.to_owned() + "/foundry.toml";
 
     // check if the foundry.toml has the dependencies defined, if so then we setup the foundry.toml as the config file
     if fs::metadata(&foundry_file).is_ok() {
@@ -206,10 +196,7 @@ pub fn add_to_config(
         Ok(file) => file,
 
         Err(err) => {
-            let dir = get_current_working_dir()
-                .unwrap()
-                .join("dependencies")
-                .join(dependency_name);
+            let dir = DEPENDENCY_DIR.join(dependency_name);
             remove_dir_all(dir).unwrap();
             match cleanup_dependency(dependency_name, dependency_version) {
                 Ok(_) => {}
@@ -231,6 +218,7 @@ pub fn add_to_config(
             return Err(err);
         }
     };
+
     let contents = read_file_to_string(&filename.clone());
     let mut doc: DocumentMut = contents.parse::<DocumentMut>().expect("invalid doc");
 
@@ -340,7 +328,7 @@ pub async fn remappings() -> Result<(), ConfigError> {
     });
 
     if new_remappings.is_empty() {
-        remove_empty_lines("remappings.txt".to_string());
+        remove_empty_lines("remappings.txt");
         return Ok(());
     }
 
@@ -358,45 +346,8 @@ pub async fn remappings() -> Result<(), ConfigError> {
             );
         }
     }
-    remove_empty_lines("remappings.txt".to_string());
+    remove_empty_lines("remappings.txt");
     Ok(())
-}
-
-fn remove_empty_lines(filename: String) {
-    let file: File = File::open(filename).unwrap();
-
-    let reader: BufReader<File> = BufReader::new(file);
-    let mut new_content: String = String::new();
-    let lines: Vec<_> = reader.lines().collect();
-    let total: usize = lines.len();
-    for (index, line) in lines.into_iter().enumerate() {
-        let line: &String = line.as_ref().unwrap();
-        // Making sure the line contains something
-        if line.len() > 2 {
-            if index == total - 1 {
-                new_content.push_str(&line.to_string());
-            } else {
-                new_content.push_str(&format!("{}\n", line));
-            }
-        }
-    }
-
-    // Removing the annoying new lines at the end and beginning of the file
-    new_content = String::from(new_content.trim_end_matches('\n'));
-    new_content = String::from(new_content.trim_start_matches('\n'));
-    let mut file: std::fs::File = fs::OpenOptions::new()
-        .write(true)
-        .truncate(true)
-        .append(false)
-        .open(Path::new("remappings.txt"))
-        .unwrap();
-
-    match write!(file, "{}", &new_content) {
-        Ok(_) => {}
-        Err(e) => {
-            eprintln!("Couldn't write to file: {}", e);
-        }
-    }
 }
 
 pub fn get_foundry_setup() -> Result<Vec<bool>, ConfigError> {
@@ -411,14 +362,9 @@ pub fn get_foundry_setup() -> Result<Vec<bool>, ConfigError> {
     }
     let contents: String = read_file_to_string(&filename.clone());
 
-    // Use a `match` block to return the
-    // file `contents` as a `Data struct: Ok(d)`
-    // or handle any `errors: Err(_)`.
+    // reading the contents into a data structure using toml::from_str
     let data: Foundry = match toml::from_str(&contents) {
-        // If successful, return data as `Data` struct.
-        // `d` is a local variable.
         Ok(d) => d,
-        // Handle the `error` case.
         Err(_) => {
             println!(
                 "{}",
@@ -442,7 +388,7 @@ pub fn get_foundry_setup() -> Result<Vec<bool>, ConfigError> {
         .unwrap()])
 }
 
-fn create_example_config(option: String) -> Result<(), ConfigError> {
+fn create_example_config(option: &str) -> Result<(), ConfigError> {
     let config_file: &str;
     let content: &str;
     let mut path: PathBuf = get_current_working_dir().unwrap();

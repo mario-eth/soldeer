@@ -10,14 +10,15 @@ license = "MIT"
 name = "soldeer"
 readme = "./README.md"
 repository = "https://github.com/mario-eth/soldeer"
-version = "0.2.11"
+version = "0.2.12"
 
 [dependencies]
 chrono = {version = "0.4.37", features = ["serde"]}
 clap = {version = "4.5.4", features = ["derive"]}
 email-address-parser = "2.0.0"
+lazy_static = "1.4.0"
 regex = "1.10.4"
-reqwest = {version = "0.12.3", features = ["blocking", "json", "multipart"]}
+reqwest = {version = "0.12.3", features = ["blocking", "json", "multipart"], default-features = false}
 rpassword = "7.3.1"
 serde = "1.0.197"
 serde_derive = "1.0.197"
@@ -45,3 +46,7 @@ path = "src/lib.rs"
 [[bin]]
 name = "soldeer"
 path = "src/main.rs"
+
+[features]
+default = ["rustls"]
+rustls = ["reqwest/rustls-tls"]

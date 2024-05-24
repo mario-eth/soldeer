@@ -4,6 +4,7 @@ use crate::utils::{
     get_current_working_dir,
     read_file_to_string,
 };
+use crate::LOCK_FILE;
 use serde_derive::Deserialize;
 use std::fs::{
     self,
@@ -47,7 +48,7 @@ fn read_lock() -> Result<Vec<LockEntry>, LockError> {
             .join("test")
             .join("soldeer.lock")
     } else {
-        get_current_working_dir().unwrap().join("soldeer.lock")
+        LOCK_FILE.clone()
     };
 
     if !lock_file.exists() {
@@ -59,14 +60,9 @@ fn read_lock() -> Result<Vec<LockEntry>, LockError> {
 
     let contents = read_file_to_string(&lock_path);
 
-    // Use a `match` block to return the
-    // file `contents` as a `LockEntry struct: Ok(d)`
-    // or handle any `errors: Err(_)`.
+    // reading the contents into a data structure using toml::from_str
     let data: LockType = match toml::from_str(&contents) {
-        // If successful, return data as `LockEntry` struct.
-        // `d` is a local variable.
         Ok(d) => d,
-        // Handle the `error` case.
         Err(_err) => {
             return Ok(vec![]);
         }
@@ -86,25 +82,25 @@ pub fn lock_check(dependencies: &[Dependency]) -> Result<Vec<Dependency>, LockEr
     };
 
     let mut unlock_dependencies: Vec<Dependency> = Vec::new();
+    let mut is_locked: bool = false;
+    let mut string_err = String::new();
     dependencies.iter().for_each(|dependency| {
-        let mut is_locked: bool = false;
         lock_entries.iter().for_each(|lock_entry| {
             if lock_entry.name == dependency.name && lock_entry.version == dependency.version {
-                println!(
-                    "{}",
-                    Paint::yellow(&format!(
-                        "Dependency {}-{} is locked",
-                        lock_entry.name, lock_entry.version
-                    ))
+                string_err = format!(
+                    "Dependency {}-{} is already installed",
+                    lock_entry.name, lock_entry.version
                 );
-
                 is_locked = true;
             }
         });
-        if !is_locked {
-            unlock_dependencies.push(dependency.clone());
-        }
+
+        unlock_dependencies.push(dependency.clone());
     });
+
+    if is_locked {
+        return Err(LockError { cause: string_err });
+    }
     Ok(unlock_dependencies)
 }
 
@@ -115,7 +111,7 @@ pub fn write_lock(dependencies: &[Dependency], clean: bool) -> Result<(), LockEr
             .join("test")
             .join("soldeer.lock")
     } else {
-        get_current_working_dir().unwrap().join("soldeer.lock")
+        LOCK_FILE.clone()
     };
 
     if clean && (lock_file).exists() {
@@ -171,7 +167,7 @@ pub fn remove_lock(dependency_name: &str, dependency_version: &str) -> Result<()
             .join("test")
             .join("soldeer.lock")
     } else {
-        get_current_working_dir().unwrap().join("soldeer.lock")
+        LOCK_FILE.clone()
     };
 
     let entries = match read_lock() {

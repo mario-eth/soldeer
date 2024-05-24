@@ -75,13 +75,14 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
                 let remote_url = install.remote_url.unwrap();
                 let mut dependencies: Vec<Dependency> = Vec::new();
                 dependency_url = remote_url.clone();
-                dependencies.push(Dependency {
+                let dependency = Dependency {
                     name: dependency_name.clone(),
                     version: dependency_version.clone(),
                     url: dependency_url.clone(),
-                });
+                };
+                dependencies.push(dependency.clone());
 
-                match lock_check(&dependencies) {
+                match lock_check(&dependency) {
                     Ok(dep) => dependencies = dep,
                     Err(err) => {
                         return Err(SoldeerError { message: err.cause });
@@ -108,12 +109,13 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
                     }
                 }
             } else {
-                let mut dependencies: Vec<Dependency> = vec![Dependency {
+                let dependency = Dependency {
                     name: dependency_name.clone(),
                     version: dependency_version.clone(),
                     url: String::new(),
-                }];
-                match lock_check(&dependencies) {
+                };
+                let mut dependencies: Vec<Dependency>;
+                match lock_check(&dependency) {
                     Ok(dep) => dependencies = dep,
                     Err(err) => {
                         return Err(SoldeerError { message: err.cause });

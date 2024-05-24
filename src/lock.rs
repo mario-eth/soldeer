@@ -70,33 +70,30 @@ fn read_lock() -> Result<Vec<LockEntry>, LockError> {
     Ok(data.dependencies)
 }
 
-pub fn lock_check(dependencies: &[Dependency]) -> Result<Vec<Dependency>, LockError> {
+pub fn lock_check(dependency: &Dependency) -> Result<Vec<Dependency>, LockError> {
     let lock_entries = match read_lock() {
         Ok(entries) => entries,
-        Err(err) => {
-            if err.cause != *"Lock does not exists" {
-                return Err(err);
-            }
-            vec![]
+        Err(_) => {
+            return Err(LockError {
+                cause: "Lock does not exists".to_string(),
+            });
         }
     };
 
     let mut unlock_dependencies: Vec<Dependency> = Vec::new();
     let mut is_locked: bool = false;
     let mut string_err = String::new();
-    dependencies.iter().for_each(|dependency| {
-        lock_entries.iter().for_each(|lock_entry| {
-            if lock_entry.name == dependency.name && lock_entry.version == dependency.version {
-                string_err = format!(
-                    "Dependency {}-{} is already installed",
-                    lock_entry.name, lock_entry.version
-                );
-                is_locked = true;
-            }
-        });
-
-        unlock_dependencies.push(dependency.clone());
+    lock_entries.iter().for_each(|lock_entry| {
+        if lock_entry.name == dependency.name && lock_entry.version == dependency.version {
+            string_err = format!(
+                "Dependency {}-{} is already installed",
+                lock_entry.name, lock_entry.version
+            );
+            is_locked = true;
+        }
     });
+
+    unlock_dependencies.push(dependency.clone());
 
     if is_locked {
         return Err(LockError { cause: string_err });
@@ -264,13 +261,13 @@ checksum = "5019418b1e9128185398870f77a42e51d624c44315bb1572e7545be51d707016"
     #[serial]
     fn lock_file_not_present_test() {
         let lock_file = check_lock_file();
-        let mut dependencies: Vec<Dependency> = Vec::new();
-        dependencies.push(Dependency {
+        let dependency = Dependency {
             name: "@openzeppelin-contracts".to_string(),
             version: "2.3.0".to_string(),
             url: "https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@openzeppelin-contracts~2.3.0.zip".to_string(),
-        });
-        let _result: Vec<Dependency> = lock_check(&dependencies).unwrap();
+        };
+
+        assert!(lock_check(&dependency).is_err_and(|e| { e.cause == "Lock does not exists" }));
         assert!(!lock_file.exists());
     }
 
@@ -278,57 +275,31 @@ checksum = "5019418b1e9128185398870f77a42e51d624c44315bb1572e7545be51d707016"
     #[serial]
     fn check_lock_all_locked_test() {
         initialize();
-        let mut dependencies: Vec<Dependency> = Vec::new();
-        dependencies.push(Dependency {
+        let dependency = Dependency {
             name: "@openzeppelin-contracts".to_string(),
             version: "2.3.0".to_string(),
             url: "https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@openzeppelin-contracts~2.3.0.zip".to_string(),
-        });
-        let result: Vec<Dependency> = lock_check(&dependencies).unwrap();
-        assert_eq!(result.len(), 0);
-    }
+        };
 
-    #[test]
-    #[serial]
-    fn check_lock_not_all_locked_test() {
-        initialize();
-        let lock_file = get_current_working_dir()
-            .unwrap()
-            .join("test")
-            .join("soldeer.lock");
-        let mut dependencies: Vec<Dependency> = Vec::new();
-        dependencies.push(Dependency {
-            name: "@openzeppelin-contracts".to_string(),
-            version: "2.3.0".to_string(),
-            url: "https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@openzeppelin-contracts~2.3.0.zip".to_string(),
-        });
-        dependencies.push(Dependency {
-            name: "@openzeppelin-contracts".to_string(),
-            version: "2.4.0".to_string(),
-            url: "https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@openzeppelin-contracts~2.4.0.zip".to_string(),
-        });
-        let result: Vec<Dependency> = lock_check(&dependencies).unwrap();
-        assert_eq!(result.len(), 1);
-        assert_eq!(result[0].name, "@openzeppelin-contracts");
-        assert_eq!(result[0].version, "2.4.0");
-        fs::remove_file(lock_file).unwrap();
+        assert!(lock_check(&dependency).is_err_and(|e| {
+            e.cause == "Dependency @openzeppelin-contracts-2.3.0 is already installed"
+        }));
     }
 
     #[test]
     #[serial]
     fn write_clean_lock_test() {
         let lock_file = check_lock_file();
-        let mut dependencies: Vec<Dependency> = Vec::new();
-        dependencies.push(Dependency {
+        let dependency = Dependency {
             name: "@openzeppelin-contracts".to_string(),
             version: "2.5.0".to_string(),
             url: "https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@openzeppelin-contracts~2.5.0.zip".to_string(),
-        });
-        let mut result: Vec<Dependency> = lock_check(&dependencies).unwrap();
-        assert_eq!(result.len(), 1);
-        assert_eq!(result[0].name, "@openzeppelin-contracts");
-        assert_eq!(result[0].version, "2.5.0");
-        write_lock(&result, false).unwrap();
+        };
+        let dependencies = vec![dependency.clone()];
+        write_lock(&dependencies, false).unwrap();
+        assert!(lock_check(&dependency).is_err_and(|e| {
+            e.cause == "Dependency @openzeppelin-contracts-2.5.0 is already installed"
+        }));
         let contents = read_file_to_string(&lock_file.to_str().unwrap().to_string());
 
         assert_eq!(
@@ -341,8 +312,9 @@ source = "https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@o
 checksum = "5019418b1e9128185398870f77a42e51d624c44315bb1572e7545be51d707016"
 "#
         );
-        result = lock_check(&dependencies).unwrap();
-        assert_eq!(result.len(), 0);
+        assert!(lock_check(&dependency).is_err_and(|e| {
+            e.cause == "Dependency @openzeppelin-contracts-2.5.0 is already installed"
+        }));
     }
 
     #[test]
@@ -351,11 +323,12 @@ checksum = "5019418b1e9128185398870f77a42e51d624c44315bb1572e7545be51d707016"
         let lock_file = check_lock_file();
         initialize();
         let mut dependencies: Vec<Dependency> = Vec::new();
-        dependencies.push(Dependency {
+        let dependency = Dependency {
             name: "@openzeppelin-contracts-2".to_string(),
             version: "2.6.0".to_string(),
             url: "https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@openzeppelin-contracts~2.6.0.zip".to_string(),
-        });
+        };
+        dependencies.push(dependency.clone());
         write_lock(&dependencies, false).unwrap();
         let contents = read_file_to_string(&lock_file.to_str().unwrap().to_string());
 
@@ -381,7 +354,9 @@ source = "https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@o
 checksum = "5019418b1e9128185398870f77a42e51d624c44315bb1572e7545be51d707016"
 "#
         );
-        let result = lock_check(&dependencies).unwrap();
-        assert_eq!(result.len(), 0);
+
+        assert!(lock_check(&dependency).is_err_and(|e| {
+            e.cause == "Dependency @openzeppelin-contracts-2-2.6.0 is already installed"
+        }));
     }
 }

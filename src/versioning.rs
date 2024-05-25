@@ -261,11 +261,21 @@ async fn push_to_repo(
                 cause: "Dependency already exists".to_string(),
             });
         }
+        StatusCode::UNAUTHORIZED => {
+            return Err(PushError {
+                name: (&dependency_name).to_string(),
+                version: (&dependency_version).to_string(),
+                cause: "Unauthorized. Please login".to_string(),
+            });
+        }
         _ => {
             return Err(PushError {
                 name: (&dependency_name).to_string(),
                 version: (&dependency_version).to_string(),
-                cause: "The server returned an unexpected error".to_string(),
+                cause: format!(
+                    "The server returned an unexpected error {:?}",
+                    response.status()
+                ),
             });
         }
     }

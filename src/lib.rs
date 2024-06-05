@@ -36,8 +36,11 @@ use crate::lock::{
 };
 use crate::utils::get_current_working_dir;
 use crate::versioning::push_version;
+use commands::Install;
+use config::remove_forge_lib;
 use once_cell::sync::Lazy;
 use regex::Regex;
+use remote::get_latest_forge_std_dependency;
 use std::env;
 use std::path::PathBuf;
 use yansi::Paint;
@@ -57,6 +60,33 @@ pub struct FOUNDRY {
 #[tokio::main]
 pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
     match command {
+        Subcommands::Init(_) => {
+            println!("{}", Paint::green("🦌 Running soldeer init 🦌\n"));
+            println!("This utility will create a soldeer.lock file");
+            match remove_forge_lib() {
+                Ok(_) => {}
+                Err(err) => {
+                    return Err(SoldeerError { message: err.cause });
+                }
+            }
+            let soldeer_forge_std = match get_latest_forge_std_dependency().await {
+                Ok(dep) => dep,
+                Err(err) => {
+                    return Err(SoldeerError {
+                        message: format!(
+                            "Error downloading a dependency {}~{}",
+                            err.name, err.version
+                        ),
+                    });
+                }
+            };
+            run(Subcommands::Install(
+                Install{
+                    dependency: soldeer_forge_std,
+                    remote_url: None,
+                }
+            ))?;
+        }
         Subcommands::Install(install) => {
             println!("{}", Paint::green("🦌 Running soldeer install 🦌\n"));
             if !install.dependency.contains('~') {

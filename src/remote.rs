@@ -73,6 +73,37 @@ pub async fn get_project_id(dependency_name: &String) -> Result<String, ProjectN
     Err(ProjectNotFound{name: dependency_name.to_string(), cause:"Project not found, please check the dependency name (project name) or create a new project on https://soldeer.xyz".to_string()})
 }
 
+pub async fn get_latest_forge_std_dependency() -> Result<String,DownloadError> {
+    let dependency_name = "forge-std";
+    let url = format!(
+        "{}/api/v1/revision?project_name={}&offset=0&limit=1",
+        crate::BASE_URL,
+        dependency_name
+    );
+    let req = Client::new().get(url);
+    if let Ok(response) = req.send().await {
+        if response.status().is_success() {
+            let response_text = response.text().await.unwrap();
+            let revision = serde_json::from_str::<RevisionResponse>(&response_text);
+            if let Ok(revision) = revision {
+                if revision.data.is_empty() {
+                    return Err(DownloadError {
+                        name: dependency_name.to_string(),
+                        version: "".to_string(),
+                    });
+                }
+                return Ok(
+                    format!("{}~{}", dependency_name, revision.data[0].clone().version)
+                );
+            }
+        }
+    }
+    Err(DownloadError {
+        name: dependency_name.to_string(),
+        version: "".to_string(),
+    })   
+} 
+
 #[allow(non_snake_case)]
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Revision {

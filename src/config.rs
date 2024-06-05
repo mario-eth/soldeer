@@ -442,3 +442,16 @@ enabled = true
     }
     Ok(())
 }
+
+pub fn remove_forge_lib() -> Result<(), ConfigError> {
+    let lib_folder = get_current_working_dir().unwrap().join("lib/");
+    let gitignore_file = get_current_working_dir().unwrap().join(".gitignore");
+    if !gitignore_file.exists() {
+        return Err(ConfigError{
+            cause: "Couldn't find .gitignore".to_string()
+        })
+    }
+    remove_dir_all(lib_folder).unwrap();
+    Ok(())
+}
+

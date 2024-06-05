@@ -1,3 +1,4 @@
+use crate::config::Dependency;
 use crate::errors::DownloadError;
 use crate::errors::ProjectNotFound;
 use chrono::DateTime;
@@ -73,7 +74,7 @@ pub async fn get_project_id(dependency_name: &String) -> Result<String, ProjectN
     Err(ProjectNotFound{name: dependency_name.to_string(), cause:"Project not found, please check the dependency name (project name) or create a new project on https://soldeer.xyz".to_string()})
 }
 
-pub async fn get_latest_forge_std_dependency() -> Result<String,DownloadError> {
+pub async fn get_latest_forge_std_dependency() -> Result<Dependency,DownloadError> {
     let dependency_name = "forge-std";
     let url = format!(
         "{}/api/v1/revision?project_name={}&offset=0&limit=1",
@@ -93,7 +94,11 @@ pub async fn get_latest_forge_std_dependency() -> Result<String,DownloadError> {
                     });
                 }
                 return Ok(
-                    format!("{}~{}", dependency_name, revision.data[0].clone().version)
+                    Dependency {
+                        name: dependency_name.to_string(),
+ ,                      version:revision.data[0].clone().version,
+ ,                      url:String::new()
+                    } 
                 );
             }
         }

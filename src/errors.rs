@@ -1,6 +1,6 @@
 use std::fmt;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct SoldeerError {
     pub message: String,
 }
@@ -11,7 +11,7 @@ impl fmt::Display for SoldeerError {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct MissingDependencies {
     pub name: String,
     pub version: String,
@@ -26,7 +26,7 @@ impl MissingDependencies {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct UnzippingError {
     pub name: String,
     pub version: String,
@@ -41,7 +41,7 @@ impl UnzippingError {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct IncorrectDependency {
     pub name: String,
     pub version: String,
@@ -56,7 +56,7 @@ impl IncorrectDependency {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct LockError {
     pub cause: String,
 }
@@ -67,7 +67,7 @@ impl fmt::Display for LockError {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct DownloadError {
     pub name: String,
     pub version: String,
@@ -88,7 +88,7 @@ impl DownloadError {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ProjectNotFound {
     pub name: String,
     pub cause: String,
@@ -103,7 +103,7 @@ impl ProjectNotFound {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct PushError {
     pub name: String,
     pub version: String,
@@ -120,7 +120,7 @@ impl PushError {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct LoginError {
     pub cause: String,
 }
@@ -132,7 +132,7 @@ impl LoginError {
         }
     }
 }
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ConfigError {
     pub cause: String,
 }

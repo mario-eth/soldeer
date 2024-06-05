@@ -145,3 +145,12 @@ You will have the same commands as in the standalone version.
 The "add to remappings" feature only appends to the remappings.txt file and does not delete old dependencies. If you want to remove a dependency from remappings, you must do it manually.
 
 If you use other dependency managers, such as git submodules or npm, ensure you don't duplicate dependencies between soldeer and the other manager.
+
+### Dependencies maintenance
+
+The goal of Soldeer is to be integrated into the pipelines of every open-source project, such as OpenZeppelin, Solady, Uniswap, etc. The maintainers of these projects can push their own dependencies to the repository, and the community can use them. Until that happens, the Soldeer maintenance team (currently m4rio.eth) will push the most used dependencies to the repository by relying on the npmjs versions or GitHub. We are using [this](https://github.com/mario-eth/soldeer-crawler) software to crawl and push the dependencies under the `soldeer` organization.
+
+For those who want an extra layer of security, a SHA is generated in the `soldeer.lock` file for the dependencies that are installed. Some of the projects are truncated, e.g., for OpenZeppelin, only the `contracts` directory is pushed to the repository, so you will have to check the SHA against the original version's contracts directory.
+
+**For Project Maintainers**  
+If you want to move your project from the Soldeer organization and take care of pushing the versions to Soldeer yourself, please open an issue or contact me on [X (formerly Twitter)](https://twitter.com/m4rio_eth).

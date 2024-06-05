@@ -127,6 +127,13 @@ async fn execute_login(login: Login) -> Result<(), LoginError> {
             return Err(LoginError {
                 cause: "Authentication failed. Invalid email or password".to_string(),
             });
+        } else {
+            return Err(LoginError {
+                cause: format!(
+                    "Authentication failed. Server response: {}",
+                    response.status().as_u16()
+                ),
+            });
         }
     }
 
@@ -139,7 +146,6 @@ async fn execute_login(login: Login) -> Result<(), LoginError> {
 mod tests {
     use std::{
         fs::remove_file,
-        path::Path,
         process::exit,
     };
 
@@ -203,6 +209,90 @@ mod tests {
                 return ();
             }
             Err(_) => exit(1),
+        };
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn login_401() {
+        let opts = mockito::ServerOpts {
+            host: "0.0.0.0",
+            port: 1234,
+            ..Default::default()
+        };
+        let data = r#"
+        {
+            "status": "401"
+        }"#;
+
+        // Request a new server from the pool
+        let mut server = mockito::Server::new_with_opts_async(opts).await;
+
+        // Use one of these addresses to configure your client
+
+        // Create a mock
+        let _ = server
+            .mock("POST", "/api/v1/auth/login")
+            .with_status(401)
+            .with_header("content-type", "application/json")
+            .with_body(data)
+            .create();
+
+        match execute_login(Login {
+            email: "test@test.com".to_string(),
+            password: "1234".to_string(),
+        })
+        .await
+        {
+            Ok(_) => {}
+            Err(err) => {
+                let expected_error = LoginError {
+                    cause: "Authentication failed. Invalid email or password".to_string(),
+                };
+                assert_eq!(err, expected_error);
+            }
+        };
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn login_500() {
+        let opts = mockito::ServerOpts {
+            host: "0.0.0.0",
+            port: 1234,
+            ..Default::default()
+        };
+        let data = r#"
+        {
+            "status": "500",
+        }"#;
+
+        // Request a new server from the pool
+        let mut server = mockito::Server::new_with_opts_async(opts).await;
+
+        // Use one of these addresses to configure your client
+
+        // Create a mock
+        let _ = server
+            .mock("POST", "/api/v1/auth/login")
+            .with_status(500)
+            .with_header("content-type", "application/json")
+            .with_body(data)
+            .create();
+
+        match execute_login(Login {
+            email: "test@test.com".to_string(),
+            password: "1234".to_string(),
+        })
+        .await
+        {
+            Ok(_) => {}
+            Err(err) => {
+                let expected_error = LoginError {
+                    cause: "Authentication failed. Server response: 500".to_string(),
+                };
+                assert_eq!(err, expected_error);
+            }
         };
     }
 }

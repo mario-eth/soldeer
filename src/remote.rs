@@ -97,7 +97,7 @@ pub async fn get_latest_forge_std_dependency() -> Result<Dependency,DownloadErro
                     Dependency {
                         name: dependency_name.to_string(),
                         version:revision.data[0].clone().version,
-                        url:String::new()
+                        url:revision.data[0].clone().url
                     } 
                 );
             }

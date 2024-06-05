@@ -68,6 +68,7 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
                     return Err(SoldeerError { message: err.cause });
                 }
             }
+
             let dependency = match get_latest_forge_std_dependency().await {
                 Ok(dep) => dep,
                 Err(err) => {
@@ -79,39 +80,13 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
                     });
                 }
             };
-            
-            println!("{}", Paint::green("🦌 Running soldeer install 🦌\n"));
-            let dependency_name: String = dependency.name.clone();
-            let dependency_version: String = dependency.version.clone();
-            let dependency_url: String;
-            let mut custom_url = false;
-            let mut dependencies: Vec<Dependency>;
-            match lock_check(&dependency, true) {
-                Ok(dep) => dependencies = dep,
+            println!("{}", Paint::green("🦌 Installing forge-std 🦌\n"));
+            let dependencies: Vec<Dependency> = match lock_check(&dependency, true) {
+                Ok(dep) => dep,
                 Err(err) => {
                     return Err(SoldeerError { message: err.cause });
                 }
-            }
-
-            match dependency_downloader::download_dependency_remote(
-                &dependency_name,
-                &dependency_version,
-            )
-            .await
-            {
-                Ok(url) => {
-                    dependencies[0].url = url;
-                    dependency_url = dependencies[0].url.clone();
-                }
-                Err(err) => {
-                    return Err(SoldeerError {
-                        message: format!(
-                            "Error downloading a dependency {}~{}.\nCheck if the dependency name and version are correct.\nIf you are not sure check https://soldeer.xyz.",
-                            err.name, err.version
-                        ),
-                    });
-                }
-            }
+            };
 
             match write_lock(&dependencies, false) {
                 Ok(_) => {}
@@ -122,10 +97,10 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
                 }
             }
             
-            match unzip_dependency(&dependency_name, &dependency_version) {
+            match unzip_dependency(&dependency.name, &dependency.version) {
                 Ok(_) => {}
                 Err(err_unzip) => {
-                    match janitor::cleanup_dependency(&dependency_name, &dependency_version) {
+                    match janitor::cleanup_dependency(&dependency.name, &dependency.version) {
                         Ok(_) => {}
                         Err(err_cleanup) => {
                             return Err(SoldeerError {
@@ -146,10 +121,10 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
             }
 
             match config::add_to_config(
-                &dependency_name,
-                &dependency_version,
-                &dependency_url,
-                custom_url,
+                &dependency.name,
+                &dependency.version,
+                &dependency.url,
+                false,
             ) {
                 Ok(_) => {}
                 Err(err) => {
@@ -157,7 +132,7 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
                 }
             }
 
-            match janitor::healthcheck_dependency(&dependency_name, &dependency_version) {
+            match janitor::healthcheck_dependency(&dependency.name, &dependency.version) {
                 Ok(_) => {}
                 Err(err) => {
                     return Err(SoldeerError {
@@ -168,7 +143,7 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
                     });
                 }
             }
-            match janitor::cleanup_dependency(&dependency_name, &dependency_version) {
+            match janitor::cleanup_dependency(&dependency.name, &dependency.version) {
                 Ok(_) => {}
                 Err(err) => {
                     return Err(SoldeerError {

@@ -203,7 +203,7 @@ mod tests {
                 let results = read_file_to_string(&"./test_save_jwt".to_string());
                 assert_eq!(results, "jwt_token_example");
                 let _ = remove_file("./test_save_jwt");
-                return ();
+                return;
             }
             Err(_) => exit(1),
         };

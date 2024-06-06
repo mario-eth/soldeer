@@ -38,6 +38,7 @@ use crate::utils::get_current_working_dir;
 use crate::versioning::push_version;
 use once_cell::sync::Lazy;
 use regex::Regex;
+use remote::get_latest_forge_std_dependency;
 use std::env;
 use std::path::PathBuf;
 use yansi::Paint;
@@ -61,6 +62,125 @@ pub struct FOUNDRY {
 #[tokio::main]
 pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
     match command {
+        Subcommands::Init(_) => {
+            println!("{}", Paint::green("🦌 Running soldeer init 🦌\n"));
+            println!("This utility will create a soldeer.lock file");
+            match config::remove_forge_lib() {
+                Ok(_) => {}
+                Err(err) => {
+                    return Err(SoldeerError { message: err.cause });
+                }
+            }
+
+            let dependency = match get_latest_forge_std_dependency().await {
+                Ok(dep) => dep,
+                Err(err) => {
+                    return Err(SoldeerError {
+                        message: format!(
+                            "Error downloading a dependency {}~{}",
+                            err.name, err.version
+                        ),
+                    });
+                }
+            };
+            let dependencies: Vec<Dependency> = match lock_check(&dependency, true) {
+                Ok(dep) => dep,
+                Err(err) => {
+                    return Err(SoldeerError { message: err.cause });
+                }
+            };
+
+            match dependency_downloader::download_dependency_remote(
+                &dependency.name,
+                &dependency.version,
+            )
+            .await
+            {
+                Ok(_) => {}
+                Err(err) => {
+                    return Err(SoldeerError {
+                        message: format!(
+                            "Error downloading a dependency {}~{}.\nCheck if the dependency name and version are correct.\nIf you are not sure check https://soldeer.xyz.",
+                            err.name, err.version
+                        ),
+                    });
+                }
+            }
+
+            match write_lock(&dependencies, false) {
+                Ok(_) => {}
+                Err(err) => {
+                    return Err(SoldeerError {
+                        message: format!("Error writing the lock: {}", err.cause),
+                    });
+                }
+            }
+            
+            match unzip_dependency(&dependency.name, &dependency.version) {
+                Ok(_) => {}
+                Err(err_unzip) => {
+                    match janitor::cleanup_dependency(&dependency.name, &dependency.version) {
+                        Ok(_) => {}
+                        Err(err_cleanup) => {
+                            return Err(SoldeerError {
+                                message: format!(
+                                    "Error cleaning up dependency {}~{}",
+                                    err_cleanup.name, err_cleanup.version
+                                ),
+                            })
+                        }
+                    }
+                    return Err(SoldeerError {
+                        message: format!(
+                            "Error downloading a dependency {}~{}",
+                            err_unzip.name, err_unzip.version
+                        ),
+                    });
+                }
+            }
+
+            match config::create_default_config_file(&dependency.version) {
+                Ok(_) => {}
+                Err(err) => {
+                    return Err(SoldeerError { message: err.cause });
+                }
+            }
+
+            match config::add_to_config(
+                &dependency.name,
+                &dependency.version,
+                &dependency.url,
+                false,
+            ) {
+                Ok(_) => {}
+                Err(err) => {
+                    return Err(SoldeerError { message: err.cause });
+                }
+            }
+
+            match janitor::healthcheck_dependency(&dependency.name, &dependency.version) {
+                Ok(_) => {}
+                Err(err) => {
+                    return Err(SoldeerError {
+                        message: format!(
+                            "Error health-checking dependency {}~{}",
+                            err.name, err.version
+                        ),
+                    });
+                }
+            }
+            match janitor::cleanup_dependency(&dependency.name, &dependency.version) {
+                Ok(_) => {}
+                Err(err) => {
+                    return Err(SoldeerError {
+                        message: format!(
+                            "Error cleaning up dependency {}~{}",
+                            err.name, err.version
+                        ),
+                    });
+                }
+            }
+        }
         Subcommands::Install(install) => {
             println!("{}", Paint::green("🦌 Running soldeer install 🦌\n"));
             if !install.dependency.contains('~') {

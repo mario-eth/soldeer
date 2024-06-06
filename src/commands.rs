@@ -13,12 +13,21 @@ pub struct Args {
 
 #[derive(Debug, Clone, Subcommand)]
 pub enum Subcommands {
+    Init(Init),
     Install(Install),
     Update(Update),
     Login(Login),
     Push(Push),
     VersionDryRun(VersionDryRun),
 }
+
+#[derive(Debug, Clone, Parser)]
+#[clap(
+    about = "Initialize a fresh Soldeer project.",
+    after_help = "For more information, read the README.md",
+    override_usage = "soldeer init"
+)]
+pub struct Init {}
 
 #[derive(Debug, Clone, Parser)]
 #[clap(

@@ -10,9 +10,7 @@ use crate::utils::{
 use crate::DEPENDENCY_DIR;
 use serde_derive::Deserialize;
 use std::fs::{
-    self,
-    remove_dir_all,
-    File,
+    self, remove_dir_all, remove_file, File
 };
 use std::io;
 use std::io::Write;
@@ -432,6 +430,68 @@ enabled = true
         });
     }
 
+    std::fs::File::create(config_file).unwrap();
+    let mut file: std::fs::File = fs::OpenOptions::new()
+        .write(true)
+        .open(config_file)
+        .unwrap();
+    if write!(file, "{}", content).is_err() {
+        return Err(ConfigError {
+            cause: "Could not create a new config file".to_string(),
+        });
+    }
+    Ok(())
+}
+
+pub fn remove_forge_lib() -> Result<(), ConfigError> {
+    let lib_dir = get_current_working_dir().unwrap().join("lib/");
+    let gitmodules_file = get_current_working_dir().unwrap().join(".gitmodules");
+    if !gitmodules_file.exists() {
+        return Err(ConfigError{
+            cause: "Couldn't find .gitmodules".to_string()
+        })
+    }
+    if !lib_dir.exists() {
+        return Err(ConfigError{
+            cause: "Couldn't find the lib directory".to_string()
+        }) 
+    }
+    match remove_file(gitmodules_file) {
+        Ok(_) => {}
+        Err(err) => {
+            return Err(ConfigError {
+                cause: format!("Couldn't remove the .gitmodules file: {}", err),
+            });
+        }
+    }
+    match remove_dir_all(lib_dir) {
+        Ok(_) => {}
+        Err(err) => {
+            return Err(ConfigError {
+                cause: format!("Couldn't remove the lib dirrectory: {}", err),
+            });
+        }
+    }
+    Ok(())
+}
+
+pub fn create_default_config_file(forge_version: &str) -> Result<(), ConfigError> {
+    let path: PathBuf = get_current_working_dir().unwrap().join("foundry.toml");
+    let config_file = path.to_str().unwrap();
+
+    let content:&str = &format!(r#"
+[profile.default]
+src = "src"
+out = "out"
+libs = ["dependencies"]
+
+remappings = ['forge-std/=dependencies/forge-std-{forge_version}/src']
+
+# See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
+# This project uses Soldeer to manage dependencies https://soldeer.xyz/
+
+[dependencies]     
+"#, forge_version=forge_version);
     std::fs::File::create(config_file).unwrap();
     let mut file: std::fs::File = fs::OpenOptions::new()
         .write(true)

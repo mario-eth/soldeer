@@ -80,13 +80,29 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
                     });
                 }
             };
-            println!("{}", Paint::green("🦌 Installing forge-std 🦌\n"));
             let dependencies: Vec<Dependency> = match lock_check(&dependency, true) {
                 Ok(dep) => dep,
                 Err(err) => {
                     return Err(SoldeerError { message: err.cause });
                 }
             };
+
+            match dependency_downloader::download_dependency_remote(
+                &dependency.name,
+                &dependency.version,
+            )
+            .await
+            {
+                Ok(_) => {}
+                Err(err) => {
+                    return Err(SoldeerError {
+                        message: format!(
+                            "Error downloading a dependency {}~{}.\nCheck if the dependency name and version are correct.\nIf you are not sure check https://soldeer.xyz.",
+                            err.name, err.version
+                        ),
+                    });
+                }
+            }
 
             match write_lock(&dependencies, false) {
                 Ok(_) => {}

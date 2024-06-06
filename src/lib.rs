@@ -36,7 +36,6 @@ use crate::lock::{
 };
 use crate::utils::get_current_working_dir;
 use crate::versioning::push_version;
-use config::remove_forge_lib;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use remote::get_latest_forge_std_dependency;
@@ -62,7 +61,7 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
         Subcommands::Init(_) => {
             println!("{}", Paint::green("🦌 Running soldeer init 🦌\n"));
             println!("This utility will create a soldeer.lock file");
-            match remove_forge_lib() {
+            match config::remove_forge_lib() {
                 Ok(_) => {}
                 Err(err) => {
                     return Err(SoldeerError { message: err.cause });
@@ -136,6 +135,13 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
                 }
             }
 
+            match config::create_default_config_file(&dependency.version) {
+                Ok(_) => {}
+                Err(err) => {
+                    return Err(SoldeerError { message: err.cause });
+                }
+            }
+
             match config::add_to_config(
                 &dependency.name,
                 &dependency.version,
@@ -170,23 +176,6 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
                     });
                 }
             }
-            // check the foundry setup, in case we have a foundry.toml, then the foundry.toml will be used for `dependencies`
-            let f_setup_vec: Vec<bool> = match get_foundry_setup() {
-                Ok(setup) => setup,
-                Err(err) => return Err(SoldeerError { message: err.cause }),
-            };
-            let foundry_setup: FOUNDRY = FOUNDRY {
-                remappings: f_setup_vec[0],
-            };
-
-            if foundry_setup.remappings {
-                match remappings().await {
-                    Ok(_) => {}
-                    Err(err) => {
-                        return Err(SoldeerError { message: err.cause });
-                    }
-                }
-            }      
         }
         Subcommands::Install(install) => {
             println!("{}", Paint::green("🦌 Running soldeer install 🦌\n"));

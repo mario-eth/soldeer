@@ -473,3 +473,32 @@ pub fn remove_forge_lib() -> Result<(), ConfigError> {
     Ok(())
 }
 
+pub fn create_default_config_file(forge_version: &str) -> Result<(), ConfigError> {
+    let path: PathBuf = get_current_working_dir().unwrap().join("foundry.toml");
+    let config_file = path.to_str().unwrap();
+
+    let content:&str = &format!(r#"
+[profile.default]
+src = "src"
+out = "out"
+libs = ["dependencies"]
+
+remappings = ['forge-std/=dependencies/forge-std-{forge_version}/src']
+
+# See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
+# This project uses Soldeer to manage dependencies https://soldeer.xyz/
+
+[dependencies]     
+"#, forge_version=forge_version);
+    std::fs::File::create(config_file).unwrap();
+    let mut file: std::fs::File = fs::OpenOptions::new()
+        .write(true)
+        .open(config_file)
+        .unwrap();
+    if write!(file, "{}", content).is_err() {
+        return Err(ConfigError {
+            cause: "Could not create a new config file".to_string(),
+        });
+    }
+    Ok(())
+}

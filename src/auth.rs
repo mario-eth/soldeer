@@ -98,7 +98,6 @@ async fn execute_login(login: Login) -> Result<(), LoginError> {
     if let Ok(response) = login_response {
         if response.status().is_success() {
             println!("{}", Paint::green("Login successful"));
-            // print!("{:}", &response.text().await.unwrap());
             let jwt = serde_json::from_str::<LoginResponse>(&response.text().await.unwrap())
                 .unwrap()
                 .token;

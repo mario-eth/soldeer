@@ -262,6 +262,7 @@ pub fn add_to_config(
     if custom_url {
         new_item["url"] = value(dependency_url);
     }
+
     doc["dependencies"]
         .as_table_mut()
         .unwrap()
@@ -269,6 +270,7 @@ pub fn add_to_config(
     let mut file: std::fs::File = fs::OpenOptions::new()
         .write(true)
         .append(false)
+        .truncate(true)
         .open(filename)
         .unwrap();
     if let Err(e) = write!(file, "{}", doc) {

@@ -43,7 +43,11 @@ use std::env;
 use std::path::PathBuf;
 use yansi::Paint;
 
-pub const BASE_URL: &str = "https://api.soldeer.xyz";
+const BASE_URL: &str = if cfg!(test) {
+    "http://0.0.0.0:1234"
+} else {
+    "https://api.soldeer.xyz"
+};
 
 pub static DEPENDENCY_DIR: Lazy<PathBuf> =
     Lazy::new(|| get_current_working_dir().unwrap().join("dependencies/"));

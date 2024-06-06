@@ -51,7 +51,11 @@ pub fn read_file(path: impl AsRef<Path>) -> Result<Vec<u8>, std::io::Error> {
 }
 
 pub fn define_security_file_location() -> String {
-    let custom_security_file = option_env!("SOLDEER_LOGIN_FILE");
+    let custom_security_file = if cfg!(test) {
+        return "./test_save_jwt".to_string();
+    } else {
+        option_env!("SOLDEER_LOGIN_FILE")
+    };
 
     if let Some(file) = custom_security_file {
         if !file.is_empty() && Path::new(file).exists() {

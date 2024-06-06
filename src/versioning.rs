@@ -97,7 +97,6 @@ fn zip_file(
 ) -> Result<PathBuf, PushError> {
     let zip_file_path = root_directory_path.join(file_name.to_owned() + ".zip");
     let file = File::create(zip_file_path.to_str().unwrap()).unwrap();
-
     let mut zip = ZipWriter::new(file);
     let options = SimpleFileOptions::default().compression_method(CompressionMethod::DEFLATE);
     if files_to_copy.is_empty() {
@@ -107,6 +106,7 @@ fn zip_file(
             cause: "No files to push".to_string(),
         });
     }
+
     for file_path in files_to_copy {
         let file = File::open(&file_path.path.clone()).unwrap();
         let file_name = file_path.name.clone();
@@ -116,11 +116,41 @@ fn zip_file(
         // Write file or directory explicitly
         // Some unzip tools unzip files with directory paths correctly, some do not!
         if path.is_file() {
-            let _ = zip.start_file(file_name.as_str(), options);
-            let _ = io::copy(&mut file.take(u64::MAX), &mut buffer);
-            let _ = zip.write_all(&buffer);
+            match zip.start_file(file_name.as_str(), options) {
+                Ok(_) => {}
+                Err(err) => {
+                    return Err(PushError {
+                        name: dependency_name.to_string(),
+                        version: dependency_version.to_string(),
+                        cause: format!("Zipping failed. Could not start to zip: {}", err),
+                    });
+                }
+            }
+            match io::copy(&mut file.take(u64::MAX), &mut buffer) {
+                Ok(_) => {}
+                Err(err) => {
+                    return Err(PushError {
+                        name: dependency_name.to_string(),
+                        version: dependency_version.to_string(),
+                        cause: format!(
+                            "Zipping failed, could not read file {} because of the error {}",
+                            file_name, err
+                        ),
+                    });
+                }
+            }
+            match zip.write_all(&buffer) {
+                Ok(_) => {}
+                Err(err) => {
+                    return Err(PushError {
+                        name: dependency_name.to_string(),
+                        version: dependency_version.to_string(),
+                        cause: format!("Zipping failed. Could not write to zip: {}", err),
+                    });
+                }
+            }
         } else if !path.as_os_str().is_empty() {
-            let _ = zip.add_directory(file_name, options);
+            let _ = zip.add_directory(&file_name, options);
         }
     }
     let _ = zip.finish();
@@ -160,7 +190,6 @@ fn filter_filles_to_copy(root_directory_path: &Path) -> Vec<FilePair> {
             path: entry.path().to_str().unwrap().to_string(),
         });
     }
-
     files_to_copy
 }
 

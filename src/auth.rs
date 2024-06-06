@@ -186,8 +186,6 @@ mod tests {
         // Request a new server from the pool
         let mut server = mockito::Server::new_with_opts_async(opts).await;
 
-        // Use one of these addresses to configure your client
-
         // Create a mock
         let _ = server
             .mock("POST", "/api/v1/auth/login")
@@ -228,8 +226,6 @@ mod tests {
         // Request a new server from the pool
         let mut server = mockito::Server::new_with_opts_async(opts).await;
 
-        // Use one of these addresses to configure your client
-
         // Create a mock
         let _ = server
             .mock("POST", "/api/v1/auth/login")
@@ -269,8 +265,6 @@ mod tests {
 
         // Request a new server from the pool
         let mut server = mockito::Server::new_with_opts_async(opts).await;
-
-        // Use one of these addresses to configure your client
 
         // Create a mock
         let _ = server

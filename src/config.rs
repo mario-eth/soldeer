@@ -10,9 +10,7 @@ use crate::utils::{
 use crate::DEPENDENCY_DIR;
 use serde_derive::Deserialize;
 use std::fs::{
-    self,
-    remove_dir_all,
-    File,
+    self, remove_dir_all, remove_file, File
 };
 use std::io;
 use std::io::Write;
@@ -444,14 +442,34 @@ enabled = true
 }
 
 pub fn remove_forge_lib() -> Result<(), ConfigError> {
-    let lib_folder = get_current_working_dir().unwrap().join("lib/");
-    let gitignore_file = get_current_working_dir().unwrap().join(".gitignore");
-    if !gitignore_file.exists() {
+    let lib_dir = get_current_working_dir().unwrap().join("lib/");
+    let gitmodules_file = get_current_working_dir().unwrap().join(".gitmodules");
+    if !gitmodules_file.exists() {
         return Err(ConfigError{
-            cause: "Couldn't find .gitignore".to_string()
+            cause: "Couldn't find .gitmodules".to_string()
         })
     }
-    remove_dir_all(lib_folder).unwrap();
+    if !lib_dir.exists() {
+        return Err(ConfigError{
+            cause: "Couldn't find the lib directory".to_string()
+        }) 
+    }
+    match remove_file(gitmodules_file) {
+        Ok(_) => {}
+        Err(err) => {
+            return Err(ConfigError {
+                cause: format!("Couldn't remove the .gitmodules file: {}", err),
+            });
+        }
+    }
+    match remove_dir_all(lib_dir) {
+        Ok(_) => {}
+        Err(err) => {
+            return Err(ConfigError {
+                cause: format!("Couldn't remove the lib dirrectory: {}", err),
+            });
+        }
+    }
     Ok(())
 }
 

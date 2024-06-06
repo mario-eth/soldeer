@@ -107,6 +107,11 @@ if you want to use just the `foundry.toml` file.
 
 ### DEPENDENCY INSTALLATION
 
+Initialize a fresh installation by using
+```bash
+soldeer init
+```
+
 Add the dependencies by using
 
 ```bash

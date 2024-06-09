@@ -87,18 +87,25 @@ pub async fn download_dependency(
         .unwrap();
 
     let mut stream = match reqwest::get(dependency_url).await {
-        Ok(res) => res.bytes_stream(),
+        Ok(res) => {
+            if res.status() != 200 {
+                return Err(DownloadError {
+                    name: "CouldNotDownload".to_string(),
+                    version: format!("Status-{}", res.status()),
+                });
+            }
+            res.bytes_stream()
+        }
         Err(_) => {
             return Err(DownloadError {
-                name: "Unknown".to_string(),
+                name: "UnknownDownloadCopyStream".to_string(),
                 version: "Unknown".to_string(),
             });
         }
     };
 
     while let Some(chunk_result) = stream.next().await {
-        let chunk = chunk_result;
-        match file.write_all(&chunk.unwrap()).await {
+        match file.write_all(&chunk_result.unwrap()).await {
             Ok(_) => {}
             Err(_) => {
                 return Err(DownloadError {
@@ -169,6 +176,170 @@ mod tests {
     use super::*;
     use crate::janitor::healthcheck_dependency;
     use serial_test::serial;
+    use std::{
+        path::Path,
+        time::UNIX_EPOCH,
+    };
+    use std::{
+        thread,
+        time,
+    };
+
+    #[tokio::test]
+    #[serial]
+    async fn download_dependencies_one_success() {
+        let mut dependencies: Vec<Dependency> = Vec::new();
+        let dependency = Dependency {
+            name: "@openzeppelin-contracts".to_string(),
+            version: "2.3.0".to_string(),
+            url: "https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@openzeppelin-contracts~2.3.0.zip".to_string(),
+        };
+        dependencies.push(dependency.clone());
+        download_dependencies(&dependencies, false).await.unwrap();
+        let path_zip =
+            DEPENDENCY_DIR.join(&format!("{}-{}.zip", &dependency.name, &dependency.version));
+        assert_eq!(Path::new(&path_zip).exists(), true);
+        clean_dependency_directory()
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn download_dependencies_two_success() {
+        let mut dependencies: Vec<Dependency> = Vec::new();
+        let  dependency_one = Dependency {
+            name: "@openzeppelin-contracts".to_string(),
+            version: "2.3.0".to_string(),
+            url: "https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@openzeppelin-contracts~2.3.0.zip".to_string(),
+        };
+        dependencies.push(dependency_one.clone());
+
+        let dependency_two = Dependency {
+            name: "@uniswap-v2-core".to_string(),
+            version: "1.0.0-beta.4".to_string(),
+            url: "https://soldeer-revisions.s3.amazonaws.com/@uniswap-v2-core/1_0_0-beta_4_22-01-2024_13:18:27_v2-core.zip".to_string(),
+        };
+
+        dependencies.push(dependency_two.clone());
+        download_dependencies(&dependencies, false).await.unwrap();
+        let mut path_zip = DEPENDENCY_DIR.join(&format!(
+            "{}-{}.zip",
+            &dependency_one.name, &dependency_one.version
+        ));
+        assert_eq!(Path::new(&path_zip).exists(), true);
+
+        path_zip = DEPENDENCY_DIR.join(&format!(
+            "{}-{}.zip",
+            &dependency_two.name, &dependency_two.version
+        ));
+        assert_eq!(Path::new(&path_zip).exists(), true);
+        clean_dependency_directory()
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn download_dependency_should_replace_existing_zip() {
+        let mut dependencies: Vec<Dependency> = Vec::new();
+        let  dependency_one = Dependency {
+            name: "@openzeppelin-contracts".to_string(),
+            version: "2.3.0".to_string(),
+            url: "https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@openzeppelin-contracts~2.3.0.zip".to_string(),
+        };
+        dependencies.push(dependency_one.clone());
+
+        download_dependencies(&dependencies, false).await.unwrap();
+        let path_zip = DEPENDENCY_DIR.join(&format!(
+            "{}-{}.zip",
+            &dependency_one.name, &dependency_one.version
+        ));
+        let created_at_one = fs::metadata(Path::new(&path_zip))
+            .unwrap()
+            .modified()
+            .unwrap()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+
+        // waiting a bit to not download too fast
+        thread::sleep(time::Duration::from_millis(10));
+
+        download_dependencies(&dependencies, false).await.unwrap();
+
+        let created_at_two = fs::metadata(Path::new(&path_zip))
+            .unwrap()
+            .modified()
+            .unwrap()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+
+        assert_eq!(created_at_two > created_at_one, true);
+        clean_dependency_directory()
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn download_dependencies_one_with_clean_success() {
+        let mut dependencies: Vec<Dependency> = Vec::new();
+        let dependency_old = Dependency {
+            name: "@uniswap-v2-core".to_string(),
+            version: "1.0.0-beta.4".to_string(),
+            url: "https://soldeer-revisions.s3.amazonaws.com/@uniswap-v2-core/1_0_0-beta_4_22-01-2024_13:18:27_v2-core.zip".to_string(),
+        };
+
+        dependencies.push(dependency_old.clone());
+        download_dependencies(&dependencies, false).await.unwrap();
+
+        // making sure the dependency exists so we can check the deletion
+        let path_zip_old = DEPENDENCY_DIR.join(&format!(
+            "{}-{}.zip",
+            &dependency_old.name, &dependency_old.version
+        ));
+        assert_eq!(Path::new(&path_zip_old).exists(), true);
+
+        let dependency = Dependency {
+            name: "@openzeppelin-contracts".to_string(),
+            version: "2.3.0".to_string(),
+            url: "https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@openzeppelin-contracts~2.3.0.zip".to_string(),
+        };
+        dependencies = Vec::new();
+        dependencies.push(dependency.clone());
+
+        download_dependencies(&dependencies, true).await.unwrap();
+        let path_zip =
+            DEPENDENCY_DIR.join(&format!("{}-{}.zip", &dependency.name, &dependency.version));
+        assert_eq!(Path::new(&path_zip_old).exists(), false);
+        assert_eq!(Path::new(&path_zip).exists(), true);
+        clean_dependency_directory()
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn download_dependencies_one_fail() {
+        let mut dependencies: Vec<Dependency> = Vec::new();
+
+        let dependency = Dependency {
+            name: "@openzeppelin-contracts".to_string(),
+            version: "2.3.0".to_string(),
+            url: "https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@openzeppelin-contracts~.zip".to_string(),
+        };
+        dependencies.push(dependency.clone());
+
+        match download_dependencies(&dependencies, false).await {
+            Ok(_) => {
+                assert_eq!("Invalid state", "");
+            }
+            Err(err) => {
+                assert_eq!(
+                    err,
+                    DownloadError {
+                        name: "CouldNotDownload".to_string(),
+                        version: "Status-404 Not Found".to_string(),
+                    }
+                );
+            }
+        }
+        clean_dependency_directory()
+    }
 
     #[tokio::test]
     #[serial]

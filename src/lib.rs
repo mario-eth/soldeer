@@ -35,6 +35,11 @@ use crate::lock::{
 };
 use crate::utils::get_current_working_dir;
 use crate::versioning::push_version;
+use config::{
+    add_to_config,
+    define_config_file,
+};
+use janitor::cleanup_dependency;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use std::env;
@@ -158,7 +163,7 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
             match unzip_dependency(&dependency_name, &dependency_version) {
                 Ok(_) => {}
                 Err(err_unzip) => {
-                    match janitor::cleanup_dependency(&dependency_name, &dependency_version) {
+                    match janitor::cleanup_dependency(&dependency_name, &dependency_version, true) {
                         Ok(_) => {}
                         Err(err_cleanup) => {
                             return Err(SoldeerError {
@@ -178,11 +183,31 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
                 }
             }
 
-            match config::add_to_config(
+            let config_file: String = match define_config_file() {
+                Ok(file) => file,
+
+                Err(_) => {
+                    match cleanup_dependency(&dependency_name, &dependency_version, true) {
+                        Ok(_) => {
+                            return Err(SoldeerError {
+                                message: format!("Could define the config file"),
+                            });
+                        }
+                        Err(_) => {
+                            return Err(SoldeerError {
+                                message: format!("Could not delete dependency artifacts"),
+                            });
+                        }
+                    }
+                }
+            };
+
+            match add_to_config(
                 &dependency_name,
                 &dependency_version,
                 &dependency_url,
                 custom_url,
+                &config_file,
             ) {
                 Ok(_) => {}
                 Err(err) => {
@@ -201,7 +226,7 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
                     });
                 }
             }
-            match janitor::cleanup_dependency(&dependency_name, &dependency_version) {
+            match janitor::cleanup_dependency(&dependency_name, &dependency_version, false) {
                 Ok(_) => {}
                 Err(err) => {
                     return Err(SoldeerError {

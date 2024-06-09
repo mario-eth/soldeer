@@ -1,10 +1,12 @@
 use std::fs::{
     metadata,
+    remove_dir_all,
     remove_file,
 };
 
 use crate::config::Dependency;
 use crate::errors::MissingDependencies;
+use crate::lock::remove_lock;
 use crate::DEPENDENCY_DIR;
 
 // Health-check dependencies before we clean them, this one checks if they were unzipped
@@ -23,7 +25,7 @@ pub fn healthcheck_dependencies(dependencies: &[Dependency]) -> Result<(), Missi
 // Cleanup zips after the download
 pub fn cleanup_after(dependencies: &[Dependency]) -> Result<(), MissingDependencies> {
     for dependency in dependencies.iter() {
-        match cleanup_dependency(&dependency.name, &dependency.version) {
+        match cleanup_dependency(&dependency.name, &dependency.version, false) {
             Ok(_) => {}
             Err(err) => {
                 return Err(err);
@@ -53,10 +55,11 @@ pub fn healthcheck_dependency(
 pub fn cleanup_dependency(
     dependency_name: &str,
     dependency_version: &str,
+    full: bool,
 ) -> Result<(), MissingDependencies> {
     let file_name: String = format!("{}-{}.zip", dependency_name, dependency_version);
     let new_path: std::path::PathBuf = DEPENDENCY_DIR.clone().join(file_name);
-    match remove_file(new_path) {
+    let _ = match remove_file(new_path) {
         Ok(_) => Ok(()),
         Err(_) => {
             Err(MissingDependencies::new(
@@ -64,7 +67,21 @@ pub fn cleanup_dependency(
                 dependency_version,
             ))
         }
+    };
+    if full {
+        let dir = DEPENDENCY_DIR.join(dependency_name);
+        remove_dir_all(dir).unwrap();
+        match remove_lock(dependency_name, dependency_version) {
+            Ok(_) => {}
+            Err(_) => {
+                return Err(MissingDependencies::new(
+                    dependency_name,
+                    dependency_version,
+                ))
+            }
+        }
     }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -119,7 +136,7 @@ mod tests {
         });
         download_dependencies(&dependencies, false).await.unwrap();
         unzip_dependency(&dependencies[0].name, &dependencies[0].version).unwrap();
-        cleanup_dependency("@openzeppelin-contracts", "2.3.0").unwrap();
+        cleanup_dependency("@openzeppelin-contracts", "2.3.0", false).unwrap();
     }
 
     #[test]
@@ -133,7 +150,7 @@ mod tests {
             version: "2.3.0".to_string(),
             url: "https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@openzeppelin-contracts~2.3.0.zip".to_string(),
         });
-        cleanup_dependency("@openzeppelin-contracts", "2.3.0").unwrap_err();
+        cleanup_dependency("@openzeppelin-contracts", "2.3.0", false).unwrap_err();
     }
 
     #[tokio::test]

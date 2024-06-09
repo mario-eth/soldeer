@@ -1,6 +1,4 @@
 use crate::errors::ConfigError;
-use crate::janitor::cleanup_dependency;
-use crate::lock::remove_lock;
 use crate::remote::get_dependency_url_remote;
 use crate::utils::{
     get_current_working_dir,
@@ -8,14 +6,12 @@ use crate::utils::{
     remove_empty_lines,
 };
 use crate::{
-    DEPENDENCY_DIR,
     FOUNDRY_CONFIG_FILE,
     SOLDEER_CONFIG_FILE,
 };
 use serde_derive::Deserialize;
 use std::fs::{
     self,
-    remove_dir_all,
     File,
 };
 use std::io;
@@ -152,6 +148,7 @@ pub fn add_to_config(
     dependency_version: &str,
     dependency_url: &str,
     custom_url: bool,
+    config_file: &str,
 ) -> Result<(), ConfigError> {
     println!(
         "{}",
@@ -160,34 +157,8 @@ pub fn add_to_config(
             dependency_name, dependency_version
         ))
     );
-    let filename: String = match define_config_file() {
-        Ok(file) => file,
 
-        Err(err) => {
-            let dir = DEPENDENCY_DIR.join(dependency_name);
-            remove_dir_all(dir).unwrap();
-            match cleanup_dependency(dependency_name, dependency_version) {
-                Ok(_) => {}
-                Err(_) => {
-                    return Err(ConfigError {
-                        cause: "Could not delete the dependency artifacts".to_string(),
-                    });
-                }
-            }
-
-            match remove_lock(dependency_name, dependency_version) {
-                Ok(_) => {}
-                Err(_) => {
-                    return Err(ConfigError {
-                        cause: "Could not remove the lock".to_string(),
-                    })
-                }
-            }
-            return Err(err);
-        }
-    };
-
-    let contents = read_file_to_string(&filename.clone());
+    let contents = read_file_to_string(&String::from(config_file));
     let mut doc: DocumentMut = contents.parse::<DocumentMut>().expect("invalid doc");
 
     if doc.contains_table("dependencies") {
@@ -209,12 +180,15 @@ pub fn add_to_config(
 
     // in case we don't have dependencies defined in the config file, we add it and re-read the doc
     if !doc.contains_table("dependencies") {
-        let mut file: std::fs::File = fs::OpenOptions::new().append(true).open(&filename).unwrap();
+        let mut file: std::fs::File = fs::OpenOptions::new()
+            .append(true)
+            .open(config_file)
+            .unwrap();
         if let Err(e) = write!(file, "{}", String::from("\n[dependencies]\n")) {
             eprintln!("Couldn't write to the config file: {}", e);
         }
 
-        doc = read_file_to_string(&filename.clone())
+        doc = read_file_to_string(&String::from(config_file))
             .parse::<DocumentMut>()
             .expect("invalid doc");
     }
@@ -226,9 +200,11 @@ pub fn add_to_config(
     ));
 
     let mut new_item: Item = Item::None;
-    new_item["version"] = value(dependency_version);
     if custom_url {
+        new_item["version"] = value(dependency_version);
         new_item["url"] = value(dependency_url);
+    } else {
+        new_item = value(dependency_version)
     }
 
     doc["dependencies"]
@@ -239,7 +215,7 @@ pub fn add_to_config(
         .write(true)
         .append(false)
         .truncate(true)
-        .open(filename)
+        .open(config_file)
         .unwrap();
     if let Err(e) = write!(file, "{}", doc) {
         eprintln!("Couldn't write to the config file: {}", e);
@@ -779,8 +755,8 @@ libs = ["dependencies"]
         Ok(())
     }
 
-    #[tokio::test]
-    async fn define_config_file_choses_foundry() -> Result<(), ConfigError> {
+    #[test]
+    fn define_config_file_choses_foundry() -> Result<(), ConfigError> {
         let config_contents = r#"
 # Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
 
@@ -829,8 +805,8 @@ libs = ["dependencies"]
         Ok(())
     }
 
-    #[tokio::test]
-    async fn create_new_file_if_not_defined_foundry() -> Result<(), ConfigError> {
+    #[test]
+    fn create_new_file_if_not_defined_foundry() -> Result<(), ConfigError> {
         let content = r#"
 # Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
 
@@ -859,8 +835,8 @@ libs = ["dependencies"]
         Ok(())
     }
 
-    #[tokio::test]
-    async fn create_new_file_if_not_defined_soldeer() -> Result<(), ConfigError> {
+    #[test]
+    fn create_new_file_if_not_defined_soldeer() -> Result<(), ConfigError> {
         let content = r#"
 [remappings]
 enabled = true
@@ -880,6 +856,380 @@ enabled = true
             true
         );
         assert_eq!(read_file_to_string(&result), content);
+        Ok(())
+    }
+
+    #[test]
+    fn add_to_config_foundry_no_custom_url_first_dependency() -> Result<(), ConfigError> {
+        let mut content = r#"
+# Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
+
+[profile.default]
+script = "script"
+solc = "0.8.26"
+src = "src"
+test = "test"
+libs = ["dependencies"]
+
+[dependencies]
+"#;
+
+        let target_config = define_config(true);
+
+        write_to_config(&target_config, content);
+
+        add_to_config(
+            "dep1",
+            "1.0.0",
+            "http://custom_url.com/custom.zip",
+            false,
+            target_config.to_str().unwrap(),
+        )
+        .unwrap();
+        content = r#"
+# Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
+
+[profile.default]
+script = "script"
+solc = "0.8.26"
+src = "src"
+test = "test"
+libs = ["dependencies"]
+
+[dependencies]
+dep1 = "1.0.0"
+"#;
+
+        assert_eq!(
+            read_file_to_string(&String::from(target_config.to_str().unwrap())),
+            content
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn add_to_config_foundry_with_custom_url_first_dependency() -> Result<(), ConfigError> {
+        let mut content = r#"
+# Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
+
+[profile.default]
+script = "script"
+solc = "0.8.26"
+src = "src"
+test = "test"
+libs = ["dependencies"]
+
+[dependencies]
+"#;
+
+        let target_config = define_config(true);
+
+        write_to_config(&target_config, content);
+
+        add_to_config(
+            "dep1",
+            "1.0.0",
+            "http://custom_url.com/custom.zip",
+            true,
+            target_config.to_str().unwrap(),
+        )
+        .unwrap();
+        content = r#"
+# Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
+
+[profile.default]
+script = "script"
+solc = "0.8.26"
+src = "src"
+test = "test"
+libs = ["dependencies"]
+
+[dependencies]
+dep1 = { version = "1.0.0", url = "http://custom_url.com/custom.zip" }
+"#;
+
+        assert_eq!(
+            read_file_to_string(&String::from(target_config.to_str().unwrap())),
+            content
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn add_to_config_foundry_no_custom_url_second_dependency() -> Result<(), ConfigError> {
+        let mut content = r#"
+# Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
+
+[profile.default]
+script = "script"
+solc = "0.8.26"
+src = "src"
+test = "test"
+libs = ["dependencies"]
+
+[dependencies]
+old_dep = "5.1.0-my-version-is-cool"
+"#;
+
+        let target_config = define_config(true);
+
+        write_to_config(&target_config, content);
+
+        add_to_config(
+            "dep1",
+            "1.0.0",
+            "http://custom_url.com/custom.zip",
+            false,
+            target_config.to_str().unwrap(),
+        )
+        .unwrap();
+        content = r#"
+# Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
+
+[profile.default]
+script = "script"
+solc = "0.8.26"
+src = "src"
+test = "test"
+libs = ["dependencies"]
+
+[dependencies]
+old_dep = "5.1.0-my-version-is-cool"
+dep1 = "1.0.0"
+"#;
+
+        assert_eq!(
+            read_file_to_string(&String::from(target_config.to_str().unwrap())),
+            content
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn add_to_config_foundry_with_custom_url_second_dependency() -> Result<(), ConfigError> {
+        let mut content = r#"
+# Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
+
+[profile.default]
+script = "script"
+solc = "0.8.26"
+src = "src"
+test = "test"
+libs = ["dependencies"]
+
+[dependencies]
+old_dep = { version = "5.1.0-my-version-is-cool", url = "http://custom_url.com/cool-cool-cool.zip" }
+"#;
+
+        let target_config = define_config(true);
+
+        write_to_config(&target_config, content);
+
+        add_to_config(
+            "dep1",
+            "1.0.0",
+            "http://custom_url.com/custom.zip",
+            true,
+            target_config.to_str().unwrap(),
+        )
+        .unwrap();
+        content = r#"
+# Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
+
+[profile.default]
+script = "script"
+solc = "0.8.26"
+src = "src"
+test = "test"
+libs = ["dependencies"]
+
+[dependencies]
+old_dep = { version = "5.1.0-my-version-is-cool", url = "http://custom_url.com/cool-cool-cool.zip" }
+dep1 = { version = "1.0.0", url = "http://custom_url.com/custom.zip" }
+"#;
+
+        assert_eq!(
+            read_file_to_string(&String::from(target_config.to_str().unwrap())),
+            content
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn add_to_config_foundry_update_dependency_version() -> Result<(), ConfigError> {
+        let mut content = r#"
+# Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
+
+[profile.default]
+script = "script"
+solc = "0.8.26"
+src = "src"
+test = "test"
+libs = ["dependencies"]
+
+[dependencies]
+old_dep = { version = "5.1.0-my-version-is-cool", url = "http://custom_url.com/cool-cool-cool.zip" }
+"#;
+
+        let target_config = define_config(true);
+
+        write_to_config(&target_config, content);
+
+        add_to_config(
+            "old_dep",
+            "1.0.0",
+            "http://custom_url.com/custom.zip",
+            true,
+            target_config.to_str().unwrap(),
+        )
+        .unwrap();
+        content = r#"
+# Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
+
+[profile.default]
+script = "script"
+solc = "0.8.26"
+src = "src"
+test = "test"
+libs = ["dependencies"]
+
+[dependencies]
+old_dep = { version = "1.0.0", url = "http://custom_url.com/custom.zip" }
+"#;
+
+        assert_eq!(
+            read_file_to_string(&String::from(target_config.to_str().unwrap())),
+            content
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn add_to_config_foundry_update_dependency_version_no_custom_url() -> Result<(), ConfigError> {
+        let mut content = r#"
+# Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
+
+[profile.default]
+script = "script"
+solc = "0.8.26"
+src = "src"
+test = "test"
+libs = ["dependencies"]
+
+[dependencies]
+old_dep = { version = "5.1.0-my-version-is-cool", url = "http://custom_url.com/cool-cool-cool.zip" }
+"#;
+
+        let target_config = define_config(true);
+
+        write_to_config(&target_config, content);
+
+        add_to_config(
+            "old_dep",
+            "1.0.0",
+            "http://custom_url.com/custom.zip",
+            false,
+            target_config.to_str().unwrap(),
+        )
+        .unwrap();
+        content = r#"
+# Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
+
+[profile.default]
+script = "script"
+solc = "0.8.26"
+src = "src"
+test = "test"
+libs = ["dependencies"]
+
+[dependencies]
+old_dep = "1.0.0"
+"#;
+
+        assert_eq!(
+            read_file_to_string(&String::from(target_config.to_str().unwrap())),
+            content
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn add_to_config_soldeer_no_custom_url_first_dependency() -> Result<(), ConfigError> {
+        let mut content = r#"
+[remappings]
+enabled = true
+
+[dependencies]
+"#;
+
+        let target_config = define_config(false);
+
+        write_to_config(&target_config, content);
+
+        add_to_config(
+            "dep1",
+            "1.0.0",
+            "http://custom_url.com/custom.zip",
+            false,
+            target_config.to_str().unwrap(),
+        )
+        .unwrap();
+        content = r#"
+[remappings]
+enabled = true
+
+[dependencies]
+dep1 = "1.0.0"
+"#;
+
+        assert_eq!(
+            read_file_to_string(&String::from(target_config.to_str().unwrap())),
+            content
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn add_to_config_soldeer_with_custom_url_first_dependency() -> Result<(), ConfigError> {
+        let mut content = r#"
+[remappings]
+enabled = true
+
+[dependencies]
+"#;
+
+        let target_config = define_config(false);
+
+        write_to_config(&target_config, content);
+
+        add_to_config(
+            "dep1",
+            "1.0.0",
+            "http://custom_url.com/custom.zip",
+            true,
+            target_config.to_str().unwrap(),
+        )
+        .unwrap();
+        content = r#"
+[remappings]
+enabled = true
+
+[dependencies]
+dep1 = { version = "1.0.0", url = "http://custom_url.com/custom.zip" }
+"#;
+
+        assert_eq!(
+            read_file_to_string(&String::from(target_config.to_str().unwrap())),
+            content
+        );
+
         Ok(())
     }
 

@@ -13,3 +13,4 @@ crawler/zipped/*
 crawler/zipped/
 src/soldeer.toml
 *soldeer.lock
+test/*

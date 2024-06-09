@@ -119,3 +119,11 @@ pub fn remove_empty_lines(filename: &str) {
         }
     }
 }
+
+pub fn get_base_url() -> String {
+    if cfg!(test) {
+        env::var("base_url").unwrap_or("http://0.0.0.0".to_string())
+    } else {
+        "https://api.soldeer.xyz".to_string()
+    }
+}

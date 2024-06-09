@@ -1,5 +1,6 @@
 use crate::errors::DownloadError;
 use crate::errors::ProjectNotFound;
+use crate::utils::get_base_url;
 use chrono::DateTime;
 use chrono::Utc;
 use reqwest::Client;
@@ -14,7 +15,7 @@ pub async fn get_dependency_url_remote(
 ) -> Result<String, DownloadError> {
     let url = format!(
         "{}/api/v1/revision-cli?project_name={}&revision={}",
-        crate::BASE_URL,
+        get_base_url(),
         dependency_name,
         dependency_version
     );
@@ -44,7 +45,7 @@ pub async fn get_dependency_url_remote(
 pub async fn get_project_id(dependency_name: &String) -> Result<String, ProjectNotFound> {
     let url = format!(
         "{}/api/v1/project?project_name={}",
-        crate::BASE_URL,
+        get_base_url(),
         dependency_name
     );
     let req = Client::new().get(url);

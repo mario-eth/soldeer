@@ -7,7 +7,11 @@ use crate::utils::{
     read_file_to_string,
     remove_empty_lines,
 };
-use crate::DEPENDENCY_DIR;
+use crate::{
+    DEPENDENCY_DIR,
+    FOUNDRY_CONFIG_FILE,
+    SOLDEER_CONFIG_FILE,
+};
 use serde_derive::Deserialize;
 use std::fs::{
     self,
@@ -16,11 +20,7 @@ use std::fs::{
 };
 use std::io;
 use std::io::Write;
-use std::path::{
-    Path,
-    PathBuf,
-};
-use std::process::exit;
+use std::path::Path;
 use toml::Table;
 use toml_edit::{
     value,
@@ -36,7 +36,7 @@ struct Data {
 }
 
 // Dependency object used to store a dependency data
-#[derive(Deserialize, Clone, Debug)]
+#[derive(Deserialize, Clone, Debug, PartialEq)]
 pub struct Dependency {
     pub name: String,
     pub version: String,
@@ -61,8 +61,7 @@ pub async fn read_config(filename: String) -> Result<Vec<Dependency>, ConfigErro
     // reading the contents into a data structure using toml::from_str
     let data: Data = match toml::from_str(&contents) {
         Ok(d) => d,
-        Err(err) => {
-            println!("{:?}", err);
+        Err(_) => {
             return Err(ConfigError {
                 cause: format!("Could not read the config file {}", filename),
             });
@@ -116,66 +115,35 @@ pub async fn read_config(filename: String) -> Result<Vec<Dependency>, ConfigErro
 }
 
 pub fn define_config_file() -> Result<String, ConfigError> {
-    // reading the current directory to look for the config file
-    let working_dir = get_current_working_dir()
-        .as_ref()
-        .unwrap()
-        .clone()
-        .into_os_string()
-        .into_string()
-        .unwrap()
-        .to_owned();
+    let mut filename: String = String::from(FOUNDRY_CONFIG_FILE.to_str().unwrap());
 
-    let mut filename: String = working_dir.to_owned() + "/soldeer.toml";
+    // check if the foundry.toml has the dependencies defined, if so then we setup the foundry.toml as the config file
+    if fs::metadata(&filename).is_ok() {
+        let contents = read_file_to_string(&filename.clone());
+        let doc: DocumentMut = contents.parse::<DocumentMut>().expect("invalid doc");
+
+        if doc.get("dependencies").is_some() {
+            return Ok(filename);
+        }
+    }
+
+    filename = String::from(SOLDEER_CONFIG_FILE.to_str().unwrap());
 
     match fs::metadata(&filename) {
         Ok(_) => {}
         Err(_) => {
-            filename = working_dir.to_owned() + "/foundry.toml";
-            if !Path::new(&filename).exists() {
-                println!("{}", Paint::blue("No config file found. If you wish to proceed, please select how you want Soldeer to be configured:\n1. Using foundry.toml\n2. Using soldeer.toml\n(Press 1 or 2)"));
-                std::io::stdout().flush().unwrap();
-                let mut option = String::new();
-                if io::stdin().read_line(&mut option).is_err() {
-                    return Err(ConfigError {
-                        cause: "Option invalid.".to_string(),
-                    });
-                }
-                match create_example_config(&option) {
-                    Ok(_) => {
-                        if &option == "1" {
-                            filename = working_dir.to_owned() + "/foundry.toml";
-                        } else {
-                            filename = working_dir.to_owned() + "/soldeer.toml";
-                        }
-                    }
-                    Err(err) => {
-                        return Err(err);
-                    }
-                }
+            println!("{}", Paint::blue("No config file found. If you wish to proceed, please select how you want Soldeer to be configured:\n1. Using foundry.toml\n2. Using soldeer.toml\n(Press 1 or 2)"));
+            std::io::stdout().flush().unwrap();
+            let mut option = String::new();
+            if io::stdin().read_line(&mut option).is_err() {
+                return Err(ConfigError {
+                    cause: "Option invalid.".to_string(),
+                });
             }
+            return create_example_config(&option);
         }
     }
 
-    let foundry_file = working_dir.to_owned() + "/foundry.toml";
-
-    // check if the foundry.toml has the dependencies defined, if so then we setup the foundry.toml as the config file
-    if fs::metadata(&foundry_file).is_ok() {
-        let contents = read_file_to_string(&foundry_file.clone());
-        let doc: DocumentMut = contents.parse::<DocumentMut>().expect("invalid doc");
-
-        if doc.get("dependencies").is_some() {
-            filename = foundry_file;
-        }
-    }
-
-    let exists: bool = Path::new(&filename).exists();
-    if !exists {
-        eprintln!(
-            "The config file does not exist. Soldeer has exited. If you wish to proceed, below is the minimum requirement for the soldeer.toml file that needs to be created:\n\n [foundry]\n enabled = true\n foundry-config = false\n\n [dependencies]\n"
-        );
-        exit(404);
-    }
     Ok(filename)
 }
 
@@ -390,27 +358,17 @@ pub fn get_foundry_setup() -> Result<Vec<bool>, ConfigError> {
         .unwrap()])
 }
 
-fn create_example_config(option: &str) -> Result<(), ConfigError> {
+fn create_example_config(option: &str) -> Result<String, ConfigError> {
     let config_file: &str;
     let content: &str;
-    let mut path: PathBuf = get_current_working_dir().unwrap();
     if option.trim() == "1" {
-        path = path.join("foundry.toml");
-        config_file = path.to_str().unwrap();
+        config_file = FOUNDRY_CONFIG_FILE.to_str().unwrap();
         content = r#"
 # Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
 
 [profile.default]
-auto_detect_solc = false
-bytecode_hash = "none"
-evm_version = "paris"           # See https://www.evmdiff.com/features?name=PUSH0&kind=opcode
-fuzz = { runs = 1_000 }
-gas_reports = ["*"]
-optimizer = true
-optimizer_runs = 10_000
-out = "out"
 script = "script"
-solc = "0.8.23"
+solc = "0.8.26"
 src = "src"
 test = "test"
 libs = ["dependencies"]
@@ -418,8 +376,7 @@ libs = ["dependencies"]
 [dependencies]
 "#;
     } else if option.trim() == "2" {
-        path = path.join("soldeer.toml");
-        config_file = path.to_str().unwrap();
+        config_file = SOLDEER_CONFIG_FILE.to_str().unwrap();
         content = r#"
 [remappings]
 enabled = true
@@ -442,5 +399,537 @@ enabled = true
             cause: "Could not create a new config file".to_string(),
         });
     }
-    Ok(())
+    let mut filename = String::from(FOUNDRY_CONFIG_FILE.to_str().unwrap());
+    if option.trim() == "2" {
+        filename = String::from(SOLDEER_CONFIG_FILE.to_str().unwrap());
+    }
+    Ok(filename)
+}
+
+////////////// TESTS //////////////
+
+#[cfg(test)]
+mod tests {
+    use std::env;
+    use std::fs::remove_file;
+    use std::io::Write;
+    use std::{
+        fs::{
+            self,
+        },
+        path::PathBuf,
+    };
+
+    use crate::config::Dependency;
+    use crate::errors::ConfigError;
+    use crate::utils::get_current_working_dir;
+    use rand::{
+        distributions::Alphanumeric,
+        Rng,
+    };
+    use serial_test::serial; // 0.8
+
+    use super::*;
+
+    #[tokio::test] // check dependencies as {version = "1.1.1"}
+    #[serial]
+    async fn read_foundry_config_version_v1_ok() -> Result<(), ConfigError> {
+        let config_contents = r#"
+# Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
+
+[profile.default]
+libs = ["dependencies"] 
+
+[dependencies]
+"@gearbox-protocol-periphery-v3" = "1.6.1"
+"@openzeppelin-contracts" = "5.0.2"   
+"#;
+        let target_config = define_config(true);
+
+        write_to_config(&target_config, config_contents);
+
+        ////////////// MOCK //////////////
+        // Request a new server from the pool, TODO i tried to move this into a fn but the mock is dropped at the end of the function...
+        let mut server = mockito::Server::new_async().await;
+        env::set_var("base_url", format!("http://{}", server.host_with_port()));
+
+        let _ = server
+            .mock(
+                "GET",
+                mockito::Matcher::Regex(r"^/api/v1/revision-cli.*".to_string()),
+            )
+            .with_status(201)
+            .with_header("content-type", "application/json")
+            .with_body(get_return_data())
+            .create();
+
+        ////////////// END-MOCK //////////////
+
+        let result = match read_config(String::from(target_config.to_str().unwrap())).await {
+            Ok(dep) => dep,
+            Err(err) => {
+                return Err(err);
+            }
+        };
+
+        assert_eq!(
+            result[0],
+            Dependency {
+                name: "@gearbox-protocol-periphery-v3".to_string(),
+                version: "1.6.1".to_string(),
+                url: "https://example_url.com/example_url.zip".to_string()
+            }
+        );
+
+        assert_eq!(
+            result[1],
+            Dependency {
+                name: "@openzeppelin-contracts".to_string(),
+                version: "5.0.2".to_string(),
+                url: "https://example_url.com/example_url.zip".to_string()
+            }
+        );
+        let _ = remove_file(target_config);
+        Ok(())
+    }
+
+    #[tokio::test] // check dependencies as "1.1.1"
+    #[serial]
+    async fn read_foundry_config_version_v2_ok() -> Result<(), ConfigError> {
+        let config_contents = r#"
+# Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
+
+[profile.default]
+libs = ["dependencies"] 
+
+[dependencies]
+"@gearbox-protocol-periphery-v3" = "1.6.1"
+"@openzeppelin-contracts" = "5.0.2"   
+"#;
+        let target_config = define_config(true);
+
+        write_to_config(&target_config, config_contents);
+
+        ////////////// MOCK //////////////
+        // Request a new server from the pool, TODO i tried to move this into a fn but the mock is dropped at the end of the function...
+        let mut server = mockito::Server::new_async().await;
+        env::set_var("base_url", format!("http://{}", server.host_with_port()));
+
+        let _ = server
+            .mock(
+                "GET",
+                mockito::Matcher::Regex(r"^/api/v1/revision-cli.*".to_string()),
+            )
+            .with_status(201)
+            .with_header("content-type", "application/json")
+            .with_body(get_return_data())
+            .create();
+
+        ////////////// END-MOCK //////////////
+
+        let result = match read_config(String::from(target_config.to_str().unwrap())).await {
+            Ok(dep) => dep,
+            Err(err) => {
+                return Err(err);
+            }
+        };
+
+        assert_eq!(
+            result[0],
+            Dependency {
+                name: "@gearbox-protocol-periphery-v3".to_string(),
+                version: "1.6.1".to_string(),
+                url: "https://example_url.com/example_url.zip".to_string()
+            }
+        );
+
+        assert_eq!(
+            result[1],
+            Dependency {
+                name: "@openzeppelin-contracts".to_string(),
+                version: "5.0.2".to_string(),
+                url: "https://example_url.com/example_url.zip".to_string()
+            }
+        );
+        let _ = remove_file(target_config);
+        Ok(())
+    }
+
+    #[tokio::test] // check dependencies as "1.1.1"
+    #[serial]
+    async fn read_soldeer_config_version_v1_ok() -> Result<(), ConfigError> {
+        let config_contents = r#"
+[remappings]
+enabled = true
+
+[dependencies]
+"@gearbox-protocol-periphery-v3" = "1.6.1"
+"@openzeppelin-contracts" = "5.0.2"   
+"#;
+        let target_config = define_config(false);
+
+        write_to_config(&target_config, config_contents);
+
+        ////////////// MOCK //////////////
+        // Request a new server from the pool, TODO i tried to move this into a fn but the mock is dropped at the end of the function...
+        let mut server = mockito::Server::new_async().await;
+        env::set_var("base_url", format!("http://{}", server.host_with_port()));
+
+        let _ = server
+            .mock(
+                "GET",
+                mockito::Matcher::Regex(r"^/api/v1/revision-cli.*".to_string()),
+            )
+            .with_status(201)
+            .with_header("content-type", "application/json")
+            .with_body(get_return_data())
+            .create();
+
+        ////////////// END-MOCK //////////////
+
+        let result = match read_config(String::from(target_config.to_str().unwrap())).await {
+            Ok(dep) => dep,
+            Err(err) => {
+                return Err(err);
+            }
+        };
+
+        assert_eq!(
+            result[0],
+            Dependency {
+                name: "@gearbox-protocol-periphery-v3".to_string(),
+                version: "1.6.1".to_string(),
+                url: "https://example_url.com/example_url.zip".to_string()
+            }
+        );
+
+        assert_eq!(
+            result[1],
+            Dependency {
+                name: "@openzeppelin-contracts".to_string(),
+                version: "5.0.2".to_string(),
+                url: "https://example_url.com/example_url.zip".to_string()
+            }
+        );
+        let _ = remove_file(target_config);
+        Ok(())
+    }
+
+    #[tokio::test] // check dependencies as "1.1.1"
+    #[serial]
+    async fn read_soldeer_config_version_v2_ok() -> Result<(), ConfigError> {
+        let config_contents = r#"
+[remappings]
+enabled = true
+
+[dependencies]
+"@gearbox-protocol-periphery-v3" = "1.6.1"
+"@openzeppelin-contracts" = "5.0.2"   
+"#;
+        let target_config = define_config(false);
+
+        write_to_config(&target_config, config_contents);
+
+        ////////////// MOCK //////////////
+        // Request a new server from the pool, TODO i tried to move this into a fn but the mock is dropped at the end of the function...
+        let mut server = mockito::Server::new_async().await;
+        env::set_var("base_url", format!("http://{}", server.host_with_port()));
+
+        let _ = server
+            .mock(
+                "GET",
+                mockito::Matcher::Regex(r"^/api/v1/revision-cli.*".to_string()),
+            )
+            .with_status(201)
+            .with_header("content-type", "application/json")
+            .with_body(get_return_data())
+            .create();
+
+        ////////////// END-MOCK //////////////
+
+        let result = match read_config(String::from(target_config.to_str().unwrap())).await {
+            Ok(dep) => dep,
+            Err(err) => {
+                return Err(err);
+            }
+        };
+
+        assert_eq!(
+            result[0],
+            Dependency {
+                name: "@gearbox-protocol-periphery-v3".to_string(),
+                version: "1.6.1".to_string(),
+                url: "https://example_url.com/example_url.zip".to_string()
+            }
+        );
+
+        assert_eq!(
+            result[1],
+            Dependency {
+                name: "@openzeppelin-contracts".to_string(),
+                version: "5.0.2".to_string(),
+                url: "https://example_url.com/example_url.zip".to_string()
+            }
+        );
+        let _ = remove_file(target_config);
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn read_malformed_config_incorrect_version_string_fails() -> Result<(), ConfigError> {
+        let config_contents = r#"
+# Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
+
+[profile.default]
+libs = ["dependencies"] 
+
+[dependencies]
+"@gearbox-protocol-periphery-v3" = 1.6.1"
+"#;
+        let target_config = define_config(false);
+
+        write_to_config(&target_config, config_contents);
+
+        let _ = match read_config(String::from(target_config.clone().to_str().unwrap())).await {
+            Ok(_) => {
+                assert_eq!("False state", "");
+            }
+            Err(err) => {
+                assert_eq!(
+                    err,
+                    ConfigError {
+                        cause: format!(
+                            "Could not read the config file {}",
+                            target_config.to_str().unwrap()
+                        ),
+                    }
+                )
+            }
+        };
+        let _ = remove_file(target_config);
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn read_malformed_config_empty_version_string_fails() -> Result<(), ConfigError> {
+        let config_contents = r#"
+# Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
+
+[profile.default]
+libs = ["dependencies"] 
+
+[dependencies]
+"@gearbox-protocol-periphery-v3" = ""
+"#;
+        let target_config = define_config(false);
+
+        write_to_config(&target_config, config_contents);
+
+        let _ = match read_config(String::from(target_config.clone().to_str().unwrap())).await {
+            Ok(_) => {
+                assert_eq!("False state", "");
+            }
+            Err(err) => {
+                assert_eq!(
+                    err,
+                    ConfigError {
+                        cause: "Could not get the config correctly from the config file"
+                            .to_string(),
+                    }
+                )
+            }
+        };
+        let _ = remove_file(target_config);
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn read_dependency_url_call_fails() -> Result<(), ConfigError> {
+        let config_contents = r#"
+# Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
+
+[profile.default]
+libs = ["dependencies"] 
+
+[dependencies]
+"@gearbox-protocol-periphery-v3" = "1.1.1"
+"#;
+        let target_config = define_config(false);
+
+        write_to_config(&target_config, config_contents);
+
+        let _ = match read_config(String::from(target_config.clone().to_str().unwrap())).await {
+            Ok(_) => {
+                assert_eq!("False state", "");
+            }
+            Err(err) => {
+                assert_eq!(
+                    err,
+                    ConfigError {
+                        cause: "Could not get the url".to_string(),
+                    }
+                )
+            }
+        };
+        let _ = remove_file(target_config);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn define_config_file_choses_foundry() -> Result<(), ConfigError> {
+        let config_contents = r#"
+# Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
+
+[profile.default]
+libs = ["dependencies"] 
+
+[dependencies]
+"#;
+        let target_config = define_config(true);
+
+        write_to_config(&target_config, config_contents);
+
+        assert_eq!(
+            target_config
+                .file_name()
+                .unwrap()
+                .to_str()
+                .unwrap()
+                .contains("foundry"),
+            true
+        );
+        let _ = remove_file(target_config);
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn define_config_file_choses_soldeer() -> Result<(), ConfigError> {
+        let config_contents = r#"
+[dependencies]
+"#;
+        let target_config = define_config(false);
+
+        write_to_config(&target_config, config_contents);
+
+        assert_eq!(
+            target_config
+                .file_name()
+                .unwrap()
+                .to_str()
+                .unwrap()
+                .contains("soldeer"),
+            true
+        );
+        let _ = remove_file(target_config);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn create_new_file_if_not_defined_foundry() -> Result<(), ConfigError> {
+        let content = r#"
+# Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
+
+[profile.default]
+script = "script"
+solc = "0.8.26"
+src = "src"
+test = "test"
+libs = ["dependencies"]
+
+[dependencies]
+"#;
+
+        let result = create_example_config("1").unwrap();
+
+        assert_eq!(
+            PathBuf::from(&result)
+                .file_name()
+                .unwrap()
+                .to_str()
+                .unwrap()
+                .contains("foundry"),
+            true
+        );
+        assert_eq!(read_file_to_string(&result), content);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn create_new_file_if_not_defined_soldeer() -> Result<(), ConfigError> {
+        let content = r#"
+[remappings]
+enabled = true
+
+[dependencies]
+"#;
+
+        let result = create_example_config("2").unwrap();
+
+        assert_eq!(
+            PathBuf::from(&result)
+                .file_name()
+                .unwrap()
+                .to_str()
+                .unwrap()
+                .contains("soldeer"),
+            true
+        );
+        assert_eq!(read_file_to_string(&result), content);
+        Ok(())
+    }
+
+    ////////////// UTILS //////////////
+
+    fn write_to_config(target_file: &PathBuf, content: &str) {
+        if target_file.exists() {
+            let _ = remove_file(target_file);
+        }
+        let mut file: std::fs::File = fs::OpenOptions::new()
+            .create_new(true)
+            .write(true)
+            .open(&target_file)
+            .unwrap();
+        if let Err(e) = write!(file, "{}", content) {
+            eprintln!("Couldn't write to the config file: {}", e);
+        }
+    }
+
+    fn define_config(foundry: bool) -> PathBuf {
+        let s: String = rand::thread_rng()
+            .sample_iter(&Alphanumeric)
+            .take(7)
+            .map(char::from)
+            .collect();
+        let mut target = format!("foundry{}.toml", s);
+        if !foundry {
+            target = format!("soldeer{}.toml", s);
+        }
+        get_current_working_dir().unwrap().join("test").join(target)
+    }
+
+    fn get_return_data() -> String {
+        r#"
+        {
+            "data": [
+                {
+                    "created_at": "2024-03-14T06:11:59.838552Z",
+                    "deleted": false,
+                    "downloads": 100,
+                    "id": "c10d3ec8-7968-468f-bc12-8188bcafce2b",
+                    "internal_name": "example_url.zip",
+                    "project_id": "bbf2a8e4-2572-4787-bff9-216db013691b",
+                    "url": "https://example_url.com/example_url.zip",
+                    "version": "5.0.2"
+                }
+            ],
+            "status": "success"
+        }
+        "#
+        .to_string()
+    }
 }

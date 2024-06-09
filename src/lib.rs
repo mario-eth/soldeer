@@ -1,5 +1,4 @@
 #![cfg_attr(docsrs, feature(doc_cfg, doc_auto_cfg))]
-#![cfg_attr(not(test), warn(unused_crate_dependencies))]
 
 mod auth;
 pub mod commands;
@@ -42,16 +41,14 @@ use std::env;
 use std::path::PathBuf;
 use yansi::Paint;
 
-const BASE_URL: &str = if cfg!(test) {
-    "http://0.0.0.0:1234"
-} else {
-    "https://api.soldeer.xyz"
-};
-
 pub static DEPENDENCY_DIR: Lazy<PathBuf> =
     Lazy::new(|| get_current_working_dir().unwrap().join("dependencies/"));
 pub static LOCK_FILE: Lazy<PathBuf> =
     Lazy::new(|| get_current_working_dir().unwrap().join("soldeer.lock"));
+pub static SOLDEER_CONFIG_FILE: Lazy<PathBuf> =
+    Lazy::new(|| get_current_working_dir().unwrap().join("soldeer.toml"));
+pub static FOUNDRY_CONFIG_FILE: Lazy<PathBuf> =
+    Lazy::new(|| get_current_working_dir().unwrap().join("foundry.toml"));
 
 #[derive(Debug)]
 pub struct FOUNDRY {

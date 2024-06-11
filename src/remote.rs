@@ -30,6 +30,7 @@ pub async fn get_dependency_url_remote(
                     return Err(DownloadError {
                         name: dependency_name.to_string(),
                         version: dependency_version.to_string(),
+                        cause: "Could not get the dependency URL".to_string(),
                     });
                 }
                 return Ok(revision.data[0].clone().url);
@@ -39,6 +40,7 @@ pub async fn get_dependency_url_remote(
     Err(DownloadError {
         name: dependency_name.to_string(),
         version: dependency_version.to_string(),
+        cause: "Could not get the dependency URL".to_string(),
     })
 }
 //TODO clean this up and do error handling

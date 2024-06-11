@@ -71,6 +71,7 @@ impl fmt::Display for LockError {
 pub struct DownloadError {
     pub name: String,
     pub version: String,
+    pub cause: String,
 }
 
 impl fmt::Display for DownloadError {
@@ -80,10 +81,11 @@ impl fmt::Display for DownloadError {
 }
 
 impl DownloadError {
-    pub fn new(name: &str, version: &str) -> DownloadError {
+    pub fn new(name: &str, version: &str, cause: &str) -> DownloadError {
         DownloadError {
             name: name.to_string(),
             version: version.to_string(),
+            cause: cause.to_string(),
         }
     }
 }

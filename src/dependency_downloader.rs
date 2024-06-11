@@ -66,10 +66,7 @@ pub async fn download_dependency_remote(
     .await
     {
         Ok(_) => Ok(dependency_url),
-        Err(err) => {
-            eprintln!("Error downloading dependency: {:?}", err);
-            Err(err)
-        }
+        Err(err) => Err(err),
     }
 }
 
@@ -85,21 +82,22 @@ pub async fn download_dependency(
     let mut file = File::create(&dependency_directory.join(dependency_name))
         .await
         .unwrap();
-
     let mut stream = match reqwest::get(dependency_url).await {
         Ok(res) => {
             if res.status() != 200 {
                 return Err(DownloadError {
-                    name: "CouldNotDownload".to_string(),
-                    version: format!("Status-{}", res.status()),
+                    name: dependency_name.to_string(),
+                    version: dependency_url.to_string(),
+                    cause: format!("Could not download, status: {:?}", res.status()),
                 });
             }
             res.bytes_stream()
         }
         Err(_) => {
             return Err(DownloadError {
-                name: "UnknownDownloadCopyStream".to_string(),
-                version: "Unknown".to_string(),
+                name: dependency_name.to_string(),
+                version: dependency_url.to_string(),
+                cause: "Unknown error".to_string(),
             });
         }
     };
@@ -109,8 +107,9 @@ pub async fn download_dependency(
             Ok(_) => {}
             Err(_) => {
                 return Err(DownloadError {
-                    name: "Unknown".to_string(),
-                    version: "Unknown".to_string(),
+                    name: dependency_name.to_string(),
+                    version: dependency_url.to_string(),
+                    cause: "Unknown error".to_string(),
                 });
             }
         }
@@ -120,8 +119,9 @@ pub async fn download_dependency(
         Ok(_) => {}
         Err(_) => {
             return Err(DownloadError {
-                name: "Unknown".to_string(),
-                version: "Unknown".to_string(),
+                name: dependency_name.to_string(),
+                version: dependency_url.to_string(),
+                cause: "Unknown error".to_string(),
             });
         }
     };
@@ -176,13 +176,15 @@ mod tests {
     use super::*;
     use crate::janitor::healthcheck_dependency;
     use serial_test::serial;
+    use std::fs::metadata;
+    use std::{
+        env,
+        thread,
+        time,
+    };
     use std::{
         path::Path,
         time::UNIX_EPOCH,
-    };
-    use std::{
-        thread,
-        time,
     };
 
     #[tokio::test]
@@ -329,13 +331,7 @@ mod tests {
                 assert_eq!("Invalid state", "");
             }
             Err(err) => {
-                assert_eq!(
-                    err,
-                    DownloadError {
-                        name: "CouldNotDownload".to_string(),
-                        version: "Status-404 Not Found".to_string(),
-                    }
-                );
+                assert_eq!(err.cause, "Could not download, status: 404");
             }
         }
         clean_dependency_directory()
@@ -345,13 +341,130 @@ mod tests {
     #[serial]
     async fn unzip_dependency_success() {
         let mut dependencies: Vec<Dependency> = Vec::new();
-        dependencies.push(Dependency {
+        let dependency = Dependency {
             name: "@openzeppelin-contracts".to_string(),
             version: "2.3.0".to_string(),
             url: "https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@openzeppelin-contracts~2.3.0.zip".to_string(),
+        };
+        dependencies.push(dependency.clone());
+        download_dependencies(&dependencies, false).await.unwrap();
+        let path = DEPENDENCY_DIR.join(&format!("{}-{}", &dependency.name, &dependency.version));
+        match unzip_dependencies(&dependencies) {
+            Ok(_) => {
+                assert_eq!(path.exists(), true);
+                assert_eq!(metadata(&path).unwrap().len() > 0, true);
+            }
+            Err(_) => {
+                clean_dependency_directory();
+                assert_eq!("Error", "");
+            }
+        }
+        clean_dependency_directory();
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn unzip_non_zip_file_error() {
+        let mut dependencies: Vec<Dependency> = Vec::new();
+        let dependency = Dependency {
+            name: "@openzeppelin-contracts".to_string(),
+            version: "2.3.0".to_string(),
+            url: "https://freetestdata.com/wp-content/uploads/2022/02/Free_Test_Data_117KB_JPG.jpg"
+                .to_string(),
+        };
+        dependencies.push(dependency.clone());
+        download_dependencies(&dependencies, false).await.unwrap();
+        match unzip_dependencies(&dependencies) {
+            Ok(_) => {
+                clean_dependency_directory();
+                assert_eq!("Wrong State", "");
+            }
+            Err(err) => {
+                assert_eq!(
+                    err,
+                    UnzippingError {
+                        name: dependency.name.to_string(),
+                        version: dependency.version.to_string(),
+                    }
+                );
+            }
+        }
+        clean_dependency_directory();
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn download_dependency_remote_success() {
+        env::set_var("base_url", "https://api.soldeer.xyz");
+
+        let dependency = Dependency {
+            name: "@openzeppelin-contracts".to_string(),
+            version: "2.3.0".to_string(),
+            url: "".to_string(),
+        };
+        download_dependency_remote(&dependency.name, &dependency.version)
+            .await
+            .unwrap();
+
+        let path_zip =
+            DEPENDENCY_DIR.join(&format!("{}-{}.zip", &dependency.name, &dependency.version));
+        assert_eq!(Path::new(&path_zip).exists(), true);
+        clean_dependency_directory();
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn download_dependency_remote_non_existent_fail() {
+        env::set_var("base_url", "https://api.soldeer.xyz");
+
+        let dependency = Dependency {
+            name: "@wrong-dependency".to_string(),
+            version: "2.3.0".to_string(),
+            url: "".to_string(),
+        };
+        match download_dependency_remote(&dependency.name, &dependency.version).await {
+            Ok(_) => {
+                clean_dependency_directory();
+                assert_eq!("Wrong State", "");
+            }
+            Err(err) => {
+                assert_eq!(
+                    err,
+                    DownloadError {
+                        name: dependency.name.to_string(),
+                        version: dependency.version.to_string(),
+                        cause: "Could not get the dependency URL".to_string(),
+                    }
+                )
+            }
+        }
+
+        clean_dependency_directory();
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn download_unzip_check_integrity() {
+        let mut dependencies: Vec<Dependency> = Vec::new();
+        dependencies.push(Dependency {
+            name: "@openzeppelin-contracts".to_string(),
+            version: "3.3.0-custom-test".to_string(),
+            url: "https://soldeer-revisions.s3.amazonaws.com/@openzeppelin-contracts/3_3_0-rc_2_22-01-2024_13:12:57_contracts.zip".to_string(),
         });
         download_dependencies(&dependencies, false).await.unwrap();
         unzip_dependency(&dependencies[0].name, &dependencies[0].version).unwrap();
-        healthcheck_dependency("@openzeppelin-contracts", "2.3.0").unwrap();
+        healthcheck_dependency("@openzeppelin-contracts", "3.3.0-custom-test").unwrap();
+        assert_eq!(
+            Path::new(
+                &DEPENDENCY_DIR
+                    .join("@openzeppelin-contracts-3.3.0-custom-test")
+                    .join("token")
+                    .join("ERC20")
+                    .join("ERC20.sol")
+            )
+            .exists(),
+            true
+        );
+        clean_dependency_directory()
     }
 }

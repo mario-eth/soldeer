@@ -1,6 +1,7 @@
 use crate::errors::LoginError;
 use crate::utils::{
     define_security_file_location,
+    get_base_url,
     read_file,
 };
 use email_address_parser::{
@@ -89,7 +90,7 @@ fn check_email(email_str: String) -> Result<String, LoginError> {
 }
 
 async fn execute_login(login: Login) -> Result<(), LoginError> {
-    let url = format!("{}/api/v1/auth/login", crate::BASE_URL);
+    let url = format!("{}/api/v1/auth/login", get_base_url());
     let req = Client::new().post(url).json(&login);
 
     let login_response = req.send().await;
@@ -144,8 +145,8 @@ async fn execute_login(login: Login) -> Result<(), LoginError> {
 #[cfg(test)]
 mod tests {
     use std::{
+        env,
         fs::remove_file,
-        process::exit,
     };
 
     use serial_test::serial;
@@ -170,13 +171,7 @@ mod tests {
 
     #[tokio::test]
     #[serial]
-    #[ignore = "not working"]
     async fn login_success() {
-        let opts = mockito::ServerOpts {
-            host: "0.0.0.0",
-            port: 1234,
-            ..Default::default()
-        };
         let data = r#"
         {
             "status": "200",
@@ -184,10 +179,11 @@ mod tests {
         }"#;
 
         // Request a new server from the pool
-        let mut server = mockito::Server::new_with_opts_async(opts).await;
+        let mut server = mockito::Server::new_async().await;
+        env::set_var("base_url", format!("http://{}", server.host_with_port()));
 
         // Create a mock
-        let mock = server
+        let _ = server
             .mock("POST", "/api/v1/auth/login")
             .with_status(201)
             .with_header("content-type", "application/json")
@@ -201,36 +197,28 @@ mod tests {
         .await
         {
             Ok(_) => {
-                server.reset();
-                mock.remove();
                 let results = read_file_to_string(&"./test_save_jwt".to_string());
                 assert_eq!(results, "jwt_token_example");
                 let _ = remove_file("./test_save_jwt");
-                return;
             }
-            Err(_) => exit(1),
+            Err(_) => {
+                assert_eq!("Invalid State", "");
+            }
         };
     }
 
     #[tokio::test]
     #[serial]
-    #[ignore = "not working"]
     async fn login_401() {
-        let opts = mockito::ServerOpts {
-            host: "0.0.0.0",
-            port: 1234,
-            ..Default::default()
-        };
+        let mut server = mockito::Server::new_async().await;
+        env::set_var("base_url", format!("http://{}", server.host_with_port()));
+
         let data = r#"
         {
-            "status": "401"
+            "status": "401",
         }"#;
 
-        // Request a new server from the pool
-        let mut server = mockito::Server::new_with_opts_async(opts).await;
-
-        // Create a mock
-        let mock = server
+        let _ = server
             .mock("POST", "/api/v1/auth/login")
             .with_status(401)
             .with_header("content-type", "application/json")
@@ -248,8 +236,6 @@ mod tests {
                 let expected_error = LoginError {
                     cause: "Authentication failed. Invalid email or password".to_string(),
                 };
-                server.reset();
-                mock.remove();
                 assert_eq!(err, expected_error);
             }
         };
@@ -258,21 +244,15 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn login_500() {
-        let opts = mockito::ServerOpts {
-            host: "0.0.0.0",
-            port: 1234,
-            ..Default::default()
-        };
+        let mut server = mockito::Server::new_async().await;
+        env::set_var("base_url", format!("http://{}", server.host_with_port()));
+
         let data = r#"
         {
-            "status": "500",
+            "status": "401",
         }"#;
 
-        // Request a new server from the pool
-        let mut server = mockito::Server::new_with_opts_async(opts).await;
-
-        // Create a mock
-        let mock = server
+        let _ = server
             .mock("POST", "/api/v1/auth/login")
             .with_status(500)
             .with_header("content-type", "application/json")
@@ -290,8 +270,6 @@ mod tests {
                 let expected_error = LoginError {
                     cause: "Authentication failed. Server response: 500".to_string(),
                 };
-                server.reset();
-                mock.remove();
                 assert_eq!(err, expected_error);
             }
         };

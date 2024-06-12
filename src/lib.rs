@@ -1,5 +1,4 @@
 #![cfg_attr(docsrs, feature(doc_cfg, doc_auto_cfg))]
-#![cfg_attr(not(test), warn(unused_crate_dependencies))]
 
 mod auth;
 pub mod commands;
@@ -36,22 +35,25 @@ use crate::lock::{
 };
 use crate::utils::get_current_working_dir;
 use crate::versioning::push_version;
+use config::{
+    add_to_config,
+    define_config_file,
+};
+use janitor::cleanup_dependency;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use std::env;
 use std::path::PathBuf;
 use yansi::Paint;
 
-const BASE_URL: &str = if cfg!(test) {
-    "http://0.0.0.0:1234"
-} else {
-    "https://api.soldeer.xyz"
-};
-
 pub static DEPENDENCY_DIR: Lazy<PathBuf> =
     Lazy::new(|| get_current_working_dir().unwrap().join("dependencies/"));
 pub static LOCK_FILE: Lazy<PathBuf> =
     Lazy::new(|| get_current_working_dir().unwrap().join("soldeer.lock"));
+pub static SOLDEER_CONFIG_FILE: Lazy<PathBuf> =
+    Lazy::new(|| get_current_working_dir().unwrap().join("soldeer.toml"));
+pub static FOUNDRY_CONFIG_FILE: Lazy<PathBuf> =
+    Lazy::new(|| get_current_working_dir().unwrap().join("foundry.toml"));
 
 #[derive(Debug)]
 pub struct FOUNDRY {
@@ -161,7 +163,7 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
             match unzip_dependency(&dependency_name, &dependency_version) {
                 Ok(_) => {}
                 Err(err_unzip) => {
-                    match janitor::cleanup_dependency(&dependency_name, &dependency_version) {
+                    match janitor::cleanup_dependency(&dependency_name, &dependency_version, true) {
                         Ok(_) => {}
                         Err(err_cleanup) => {
                             return Err(SoldeerError {
@@ -181,11 +183,31 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
                 }
             }
 
-            match config::add_to_config(
+            let config_file: String = match define_config_file() {
+                Ok(file) => file,
+
+                Err(_) => {
+                    match cleanup_dependency(&dependency_name, &dependency_version, true) {
+                        Ok(_) => {
+                            return Err(SoldeerError {
+                                message: "Could define the config file".to_string(),
+                            });
+                        }
+                        Err(_) => {
+                            return Err(SoldeerError {
+                                message: "Could not delete dependency artifacts".to_string(),
+                            });
+                        }
+                    }
+                }
+            };
+
+            match add_to_config(
                 &dependency_name,
                 &dependency_version,
                 &dependency_url,
                 custom_url,
+                &config_file,
             ) {
                 Ok(_) => {}
                 Err(err) => {
@@ -204,7 +226,7 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
                     });
                 }
             }
-            match janitor::cleanup_dependency(&dependency_name, &dependency_version) {
+            match janitor::cleanup_dependency(&dependency_name, &dependency_version, false) {
                 Ok(_) => {}
                 Err(err) => {
                     return Err(SoldeerError {

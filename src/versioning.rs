@@ -2,6 +2,7 @@ use crate::auth::get_token;
 use crate::errors::PushError;
 use crate::remote::get_project_id;
 use crate::utils::{
+    get_base_url,
     get_current_working_dir,
     read_file,
     read_file_to_string,
@@ -225,7 +226,7 @@ async fn push_to_repo(
     };
     let client = Client::new();
 
-    let url = format!("{}/api/v1/revision/upload", crate::BASE_URL);
+    let url = format!("{}/api/v1/revision/upload", get_base_url());
 
     let mut headers: HeaderMap = HeaderMap::new();
 

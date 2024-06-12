@@ -667,7 +667,7 @@ libs = ["dependencies"]
 
         write_to_config(&target_config, config_contents);
 
-        let _ = match read_config(String::from(target_config.clone().to_str().unwrap())).await {
+        match read_config(String::from(target_config.clone().to_str().unwrap())).await {
             Ok(_) => {
                 assert_eq!("False state", "");
             }
@@ -703,7 +703,7 @@ libs = ["dependencies"]
 
         write_to_config(&target_config, config_contents);
 
-        let _ = match read_config(String::from(target_config.clone().to_str().unwrap())).await {
+        match read_config(String::from(target_config.clone().to_str().unwrap())).await {
             Ok(_) => {
                 assert_eq!("False state", "");
             }
@@ -737,7 +737,7 @@ libs = ["dependencies"]
 
         write_to_config(&target_config, config_contents);
 
-        let _ = match read_config(String::from(target_config.clone().to_str().unwrap())).await {
+        match read_config(String::from(target_config.clone().to_str().unwrap())).await {
             Ok(_) => {
                 assert_eq!("False state", "");
             }
@@ -769,15 +769,12 @@ libs = ["dependencies"]
 
         write_to_config(&target_config, config_contents);
 
-        assert_eq!(
-            target_config
-                .file_name()
-                .unwrap()
-                .to_str()
-                .unwrap()
-                .contains("foundry"),
-            true
-        );
+        assert!(target_config
+            .file_name()
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .contains("foundry"));
         let _ = remove_file(target_config);
         Ok(())
     }
@@ -792,15 +789,12 @@ libs = ["dependencies"]
 
         write_to_config(&target_config, config_contents);
 
-        assert_eq!(
-            target_config
-                .file_name()
-                .unwrap()
-                .to_str()
-                .unwrap()
-                .contains("soldeer"),
-            true
-        );
+        assert!(target_config
+            .file_name()
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .contains("soldeer"));
         let _ = remove_file(target_config);
         Ok(())
     }
@@ -822,15 +816,12 @@ libs = ["dependencies"]
 
         let result = create_example_config("1").unwrap();
 
-        assert_eq!(
-            PathBuf::from(&result)
-                .file_name()
-                .unwrap()
-                .to_str()
-                .unwrap()
-                .contains("foundry"),
-            true
-        );
+        assert!(PathBuf::from(&result)
+            .file_name()
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .contains("foundry"));
         assert_eq!(read_file_to_string(&result), content);
         Ok(())
     }
@@ -846,15 +837,12 @@ enabled = true
 
         let result = create_example_config("2").unwrap();
 
-        assert_eq!(
-            PathBuf::from(&result)
-                .file_name()
-                .unwrap()
-                .to_str()
-                .unwrap()
-                .contains("soldeer"),
-            true
-        );
+        assert!(PathBuf::from(&result)
+            .file_name()
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .contains("soldeer"));
         assert_eq!(read_file_to_string(&result), content);
         Ok(())
     }
@@ -1250,7 +1238,7 @@ dep1 = { version = "1.0.0", url = "http://custom_url.com/custom.zip" }
         let mut file: std::fs::File = fs::OpenOptions::new()
             .create_new(true)
             .write(true)
-            .open(&target_file)
+            .open(target_file)
             .unwrap();
         if let Err(e) = write!(file, "{}", content) {
             eprintln!("Couldn't write to the config file: {}", e);

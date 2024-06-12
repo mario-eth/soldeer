@@ -192,8 +192,8 @@ mod tests {
         dependencies.push(dependency.clone());
         download_dependencies(&dependencies, false).await.unwrap();
         let path_zip =
-            DEPENDENCY_DIR.join(&format!("{}-{}.zip", &dependency.name, &dependency.version));
-        assert_eq!(Path::new(&path_zip).exists(), true);
+            DEPENDENCY_DIR.join(format!("{}-{}.zip", &dependency.name, &dependency.version));
+        assert!(Path::new(&path_zip).exists());
         clean_dependency_directory()
     }
 
@@ -216,17 +216,17 @@ mod tests {
 
         dependencies.push(dependency_two.clone());
         download_dependencies(&dependencies, false).await.unwrap();
-        let mut path_zip = DEPENDENCY_DIR.join(&format!(
+        let mut path_zip = DEPENDENCY_DIR.join(format!(
             "{}-{}.zip",
             &dependency_one.name, &dependency_one.version
         ));
-        assert_eq!(Path::new(&path_zip).exists(), true);
+        assert!(Path::new(&path_zip).exists());
 
-        path_zip = DEPENDENCY_DIR.join(&format!(
+        path_zip = DEPENDENCY_DIR.join(format!(
             "{}-{}.zip",
             &dependency_two.name, &dependency_two.version
         ));
-        assert_eq!(Path::new(&path_zip).exists(), true);
+        assert!(Path::new(&path_zip).exists());
         clean_dependency_directory()
     }
 
@@ -242,7 +242,7 @@ mod tests {
         dependencies.push(dependency_one.clone());
 
         download_dependencies(&dependencies, false).await.unwrap();
-        let path_zip = DEPENDENCY_DIR.join(&format!(
+        let path_zip = DEPENDENCY_DIR.join(format!(
             "{}-{}.zip",
             &dependency_one.name, &dependency_one.version
         ));
@@ -260,7 +260,7 @@ mod tests {
         download_dependencies(&dependencies, false).await.unwrap();
         let size_of_two = fs::metadata(Path::new(&path_zip)).unwrap().len();
 
-        assert_eq!(size_of_two > size_of_one, true);
+        assert!(size_of_two > size_of_one);
         clean_dependency_directory()
     }
 
@@ -278,11 +278,11 @@ mod tests {
         download_dependencies(&dependencies, false).await.unwrap();
 
         // making sure the dependency exists so we can check the deletion
-        let path_zip_old = DEPENDENCY_DIR.join(&format!(
+        let path_zip_old = DEPENDENCY_DIR.join(format!(
             "{}-{}.zip",
             &dependency_old.name, &dependency_old.version
         ));
-        assert_eq!(Path::new(&path_zip_old).exists(), true);
+        assert!(Path::new(&path_zip_old).exists());
 
         let dependency = Dependency {
             name: "@openzeppelin-contracts".to_string(),
@@ -294,9 +294,9 @@ mod tests {
 
         download_dependencies(&dependencies, true).await.unwrap();
         let path_zip =
-            DEPENDENCY_DIR.join(&format!("{}-{}.zip", &dependency.name, &dependency.version));
-        assert_eq!(Path::new(&path_zip_old).exists(), false);
-        assert_eq!(Path::new(&path_zip).exists(), true);
+            DEPENDENCY_DIR.join(format!("{}-{}.zip", &dependency.name, &dependency.version));
+        assert!(!Path::new(&path_zip_old).exists());
+        assert!(Path::new(&path_zip).exists());
         clean_dependency_directory()
     }
 
@@ -334,11 +334,11 @@ mod tests {
         };
         dependencies.push(dependency.clone());
         download_dependencies(&dependencies, false).await.unwrap();
-        let path = DEPENDENCY_DIR.join(&format!("{}-{}", &dependency.name, &dependency.version));
+        let path = DEPENDENCY_DIR.join(format!("{}-{}", &dependency.name, &dependency.version));
         match unzip_dependencies(&dependencies) {
             Ok(_) => {
-                assert_eq!(path.exists(), true);
-                assert_eq!(metadata(&path).unwrap().len() > 0, true);
+                assert!(path.exists());
+                assert!(metadata(&path).unwrap().len() > 0);
             }
             Err(_) => {
                 clean_dependency_directory();
@@ -393,8 +393,8 @@ mod tests {
             .unwrap();
 
         let path_zip =
-            DEPENDENCY_DIR.join(&format!("{}-{}.zip", &dependency.name, &dependency.version));
-        assert_eq!(Path::new(&path_zip).exists(), true);
+            DEPENDENCY_DIR.join(format!("{}-{}.zip", &dependency.name, &dependency.version));
+        assert!(Path::new(&path_zip).exists());
         clean_dependency_directory();
     }
 
@@ -440,17 +440,14 @@ mod tests {
         download_dependencies(&dependencies, false).await.unwrap();
         unzip_dependency(&dependencies[0].name, &dependencies[0].version).unwrap();
         healthcheck_dependency("@openzeppelin-contracts", "3.3.0-custom-test").unwrap();
-        assert_eq!(
-            Path::new(
-                &DEPENDENCY_DIR
-                    .join("@openzeppelin-contracts-3.3.0-custom-test")
-                    .join("token")
-                    .join("ERC20")
-                    .join("ERC20.sol")
-            )
-            .exists(),
-            true
-        );
+        assert!(Path::new(
+            &DEPENDENCY_DIR
+                .join("@openzeppelin-contracts-3.3.0-custom-test")
+                .join("token")
+                .join("ERC20")
+                .join("ERC20.sol")
+        )
+        .exists());
         clean_dependency_directory()
     }
 }

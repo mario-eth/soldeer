@@ -201,8 +201,8 @@ mod tests {
                 assert_eq!(results, "jwt_token_example");
                 let _ = remove_file("./test_save_jwt");
             }
-            Err(err) => {
-                println!("err {:?}", err);
+            Err(_) => {
+                assert_eq!("Invalid State", "");
             }
         };
     }

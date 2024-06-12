@@ -905,6 +905,7 @@ dep1 = "1.0.0"
             content
         );
 
+        let _ = remove_file(target_config);
         Ok(())
     }
 
@@ -954,6 +955,7 @@ dep1 = { version = "1.0.0", url = "http://custom_url.com/custom.zip" }
             content
         );
 
+        let _ = remove_file(target_config);
         Ok(())
     }
 
@@ -1005,6 +1007,7 @@ dep1 = "1.0.0"
             content
         );
 
+        let _ = remove_file(target_config);
         Ok(())
     }
 
@@ -1056,6 +1059,7 @@ dep1 = { version = "1.0.0", url = "http://custom_url.com/custom.zip" }
             content
         );
 
+        let _ = remove_file(target_config);
         Ok(())
     }
 
@@ -1106,6 +1110,7 @@ old_dep = { version = "1.0.0", url = "http://custom_url.com/custom.zip" }
             content
         );
 
+        let _ = remove_file(target_config);
         Ok(())
     }
 
@@ -1156,6 +1161,7 @@ old_dep = "1.0.0"
             content
         );
 
+        let _ = remove_file(target_config);
         Ok(())
     }
 
@@ -1193,6 +1199,7 @@ dep1 = "1.0.0"
             content
         );
 
+        let _ = remove_file(target_config);
         Ok(())
     }
 
@@ -1230,6 +1237,7 @@ dep1 = { version = "1.0.0", url = "http://custom_url.com/custom.zip" }
             content
         );
 
+        let _ = remove_file(target_config);
         Ok(())
     }
 

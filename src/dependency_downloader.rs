@@ -176,16 +176,9 @@ mod tests {
     use super::*;
     use crate::janitor::healthcheck_dependency;
     use serial_test::serial;
+    use std::env;
     use std::fs::metadata;
-    use std::{
-        env,
-        thread,
-        time,
-    };
-    use std::{
-        path::Path,
-        time::UNIX_EPOCH,
-    };
+    use std::path::Path;
 
     #[tokio::test]
     #[serial]
@@ -243,7 +236,7 @@ mod tests {
         let mut dependencies: Vec<Dependency> = Vec::new();
         let  dependency_one = Dependency {
             name: "@openzeppelin-contracts".to_string(),
-            version: "2.3.0".to_string(),
+            version: "download-dep-v1".to_string(),
             url: "https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@openzeppelin-contracts~2.3.0.zip".to_string(),
         };
         dependencies.push(dependency_one.clone());
@@ -253,28 +246,21 @@ mod tests {
             "{}-{}.zip",
             &dependency_one.name, &dependency_one.version
         ));
-        let created_at_one = fs::metadata(Path::new(&path_zip))
-            .unwrap()
-            .modified()
-            .unwrap()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
+        let size_of_one = fs::metadata(Path::new(&path_zip)).unwrap().len();
 
-        // waiting a bit to not download too fast
-        thread::sleep(time::Duration::from_millis(10));
+        let  dependency_two = Dependency {
+                name: "@openzeppelin-contracts".to_string(),
+                version: "download-dep-v1".to_string(),
+                url: "https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@openzeppelin-contracts~2.4.0.zip".to_string(),
+            };
+
+        dependencies = Vec::new();
+        dependencies.push(dependency_two.clone());
 
         download_dependencies(&dependencies, false).await.unwrap();
+        let size_of_two = fs::metadata(Path::new(&path_zip)).unwrap().len();
 
-        let created_at_two = fs::metadata(Path::new(&path_zip))
-            .unwrap()
-            .modified()
-            .unwrap()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
-
-        assert_eq!(created_at_two > created_at_one, true);
+        assert_eq!(size_of_two > size_of_one, true);
         clean_dependency_directory()
     }
 

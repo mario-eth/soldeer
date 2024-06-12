@@ -28,6 +28,7 @@ pub fn cleanup_after(dependencies: &[Dependency]) -> Result<(), MissingDependenc
         match cleanup_dependency(&dependency.name, &dependency.version, false) {
             Ok(_) => {}
             Err(err) => {
+                println!("returning error {:?}", err);
                 return Err(err);
             }
         }
@@ -59,13 +60,13 @@ pub fn cleanup_dependency(
 ) -> Result<(), MissingDependencies> {
     let file_name: String = format!("{}-{}.zip", dependency_name, dependency_version);
     let new_path: std::path::PathBuf = DEPENDENCY_DIR.clone().join(file_name);
-    let _ = match remove_file(new_path) {
-        Ok(_) => Ok(()),
+    match remove_file(new_path) {
+        Ok(_) => {}
         Err(_) => {
-            Err(MissingDependencies::new(
+            return Err(MissingDependencies::new(
                 dependency_name,
                 dependency_version,
-            ))
+            ));
         }
     };
     if full {
@@ -147,10 +148,10 @@ mod tests {
         let mut dependencies: Vec<Dependency> = Vec::new();
         dependencies.push(Dependency {
             name: "@openzeppelin-contracts".to_string(),
-            version: "2.3.0".to_string(),
+            version: "v-cleanup-nonexisting".to_string(),
             url: "https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@openzeppelin-contracts~2.3.0.zip".to_string(),
         });
-        cleanup_dependency("@openzeppelin-contracts", "2.3.0", false).unwrap_err();
+        cleanup_dependency("@openzeppelin-contracts", "v-cleanup-nonexisting", false).unwrap_err();
     }
 
     #[tokio::test]
@@ -185,7 +186,7 @@ mod tests {
         let mut dependencies: Vec<Dependency> = Vec::new();
         dependencies.push(Dependency {
             name: "@openzeppelin-contracts".to_string(),
-            version: "2.3.0".to_string(),
+            version: "cleanup-after-one-existing".to_string(),
             url: "https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@openzeppelin-contracts~2.3.0.zip".to_string(),
         });
 
@@ -193,11 +194,17 @@ mod tests {
         unzip_dependency(&dependencies[0].name, &dependencies[0].version).unwrap();
         dependencies.push(Dependency {
             name: "@openzeppelin-contracts".to_string(),
-            version: "2.4.0".to_string(),
+            version: "cleanup-after-one-existing-2".to_string(),
             url: "https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@openzeppelin-contracts~2.4.0.zip".to_string(),
         });
-        let error = cleanup_after(&dependencies).unwrap_err();
-        assert!(error.name == "@openzeppelin-contracts");
-        assert!(error.version == "2.4.0");
+        match cleanup_after(&dependencies) {
+            Ok(_) => {
+                assert_eq!("Invalid State", "");
+            }
+            Err(error) => {
+                assert!(error.name == "@openzeppelin-contracts");
+                assert!(error.version == "cleanup-after-one-existing-2");
+            }
+        }
     }
 }

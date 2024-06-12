@@ -190,12 +190,12 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
                     match cleanup_dependency(&dependency_name, &dependency_version, true) {
                         Ok(_) => {
                             return Err(SoldeerError {
-                                message: format!("Could define the config file"),
+                                message: "Could define the config file".to_string(),
                             });
                         }
                         Err(_) => {
                             return Err(SoldeerError {
-                                message: format!("Could not delete dependency artifacts"),
+                                message: "Could not delete dependency artifacts".to_string(),
                             });
                         }
                     }

@@ -41,10 +41,7 @@ struct LockType {
 }
 fn read_lock() -> Result<Vec<LockEntry>, LockError> {
     let lock_file: PathBuf = if cfg!(test) {
-        get_current_working_dir()
-            .unwrap()
-            .join("test")
-            .join("soldeer.lock")
+        get_current_working_dir().join("test").join("soldeer.lock")
     } else {
         LOCK_FILE.clone()
     };
@@ -113,10 +110,7 @@ pub fn lock_check(
 
 pub fn write_lock(dependencies: &[Dependency], clean: bool) -> Result<(), LockError> {
     let lock_file: PathBuf = if cfg!(test) {
-        get_current_working_dir()
-            .unwrap()
-            .join("test")
-            .join("soldeer.lock")
+        get_current_working_dir().join("test").join("soldeer.lock")
     } else {
         LOCK_FILE.clone()
     };
@@ -169,10 +163,7 @@ checksum = "{}"
 
 pub fn remove_lock(dependency_name: &str, dependency_version: &str) -> Result<(), LockError> {
     let lock_file: PathBuf = if cfg!(test) {
-        get_current_working_dir()
-            .unwrap()
-            .join("test")
-            .join("soldeer.lock")
+        get_current_working_dir().join("test").join("soldeer.lock")
     } else {
         LOCK_FILE.clone()
     };
@@ -213,7 +204,6 @@ checksum = "{}"
 fn sha256_digest(dependency_name: &str, dependency_version: &str) -> String {
     let bytes = std::fs::read(
         get_current_working_dir()
-            .unwrap()
             .join("dependencies")
             .join(format!("{}-{}.zip", dependency_name, dependency_version)),
     )
@@ -236,10 +226,7 @@ mod tests {
     use std::io::Write;
 
     fn check_lock_file() -> PathBuf {
-        let lock_file: PathBuf = get_current_working_dir()
-            .unwrap()
-            .join("test")
-            .join("soldeer.lock");
+        let lock_file: PathBuf = get_current_working_dir().join("test").join("soldeer.lock");
         if lock_file.exists() {
             fs::remove_file(&lock_file).unwrap();
         }

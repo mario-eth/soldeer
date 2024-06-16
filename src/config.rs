@@ -161,23 +161,6 @@ pub fn add_to_config(
     let contents = read_file_to_string(&String::from(config_file));
     let mut doc: DocumentMut = contents.parse::<DocumentMut>().expect("invalid doc");
 
-    if doc.contains_table("dependencies") {
-        let item = doc["dependencies"].get(dependency_name);
-        if doc.get("dependencies").is_some()
-            && item.is_some()
-            && item.unwrap()["version"].to_string().replace('"', "") == dependency_version
-        {
-            println!(
-                "{}",
-                Paint::yellow(&format!(
-                    "Dependency {}-{} already exists in the config file",
-                    dependency_name, dependency_version
-                ))
-            );
-            return Ok(());
-        }
-    }
-
     // in case we don't have dependencies defined in the config file, we add it and re-read the doc
     if !doc.contains_table("dependencies") {
         let mut file: std::fs::File = fs::OpenOptions::new()
@@ -224,7 +207,7 @@ pub fn add_to_config(
 }
 
 pub async fn remappings() -> Result<(), ConfigError> {
-    let remappings_path = get_current_working_dir().unwrap().join("remappings.txt");
+    let remappings_path = get_current_working_dir().join("remappings.txt");
     if !remappings_path.exists() {
         File::create(remappings_path.clone()).unwrap();
     }
@@ -1255,7 +1238,7 @@ dep1 = { version = "1.0.0", url = "http://custom_url.com/custom.zip" }
         if !foundry {
             target = format!("soldeer{}.toml", s);
         }
-        get_current_working_dir().unwrap().join("test").join(target)
+        get_current_working_dir().join("test").join(target)
     }
 
     fn get_return_data() -> String {

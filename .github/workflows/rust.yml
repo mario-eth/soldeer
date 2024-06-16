@@ -15,8 +15,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - name: Install forge
+      - name: Download foundry
         run: curl -L https://foundry.paradigm.xyz | bash
+      - name: Run foundryup
+        run: foundryup
       - name: Run tests
         run: cargo test
 

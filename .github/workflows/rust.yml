@@ -17,10 +17,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - name: Download foundry
         run: curl -L https://foundry.paradigm.xyz | bash
-      - name: Source bashrc
-        run: source /home/runner/.bashrc
       - name: Run foundryup
-        run: foundryup
+        run: source /home/runner/.bashrc & foundryup
       - name: Run tests
         run: cargo test
 

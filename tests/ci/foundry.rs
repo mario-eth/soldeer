@@ -95,18 +95,13 @@ contract Test {
         assert_eq!("Invalid state", "");
     }
 
-    let output: std::process::Output = Command::new("forge")
-        .arg("--version")
+    let output = Command::new("forge")
+        .arg("test")
+        .arg("--root")
+        .arg(&test_project)
         .output()
         .expect("failed to execute process");
-    // let output = Command::new("forge")
-    //     .arg("test")
-    //     .arg("--root")
-    //     .arg(&test_project)
-    //     .output()
-    //     .expect("failed to execute process");
-    println!("Output {:?}", output);
-    // assert!(String::from_utf8(output.stdout).unwrap().contains("[PASS]"));
+    assert!(String::from_utf8(output.stdout).unwrap().contains("[PASS]"));
     clean_test_env(&test_project);
 }
 

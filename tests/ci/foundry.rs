@@ -73,12 +73,12 @@ contract Test {
     "#;
 
     let _ = fs::create_dir(&test_project);
-    let _ = fs::create_dir(&test_project.join("src"));
-    let _ = fs::create_dir(&test_project.join("test"));
+    let _ = fs::create_dir(test_project.join("src"));
+    let _ = fs::create_dir(test_project.join("test"));
     let mut file: std::fs::File = fs::OpenOptions::new()
         .create_new(true)
         .write(true)
-        .open(&test_project.join("src").join("Increment.sol"))
+        .open(test_project.join("src").join("Increment.sol"))
         .unwrap();
     if write!(file, "{}", test_contract).is_err() {
         println!("Error on writing test file");
@@ -88,7 +88,7 @@ contract Test {
     let mut file: std::fs::File = fs::OpenOptions::new()
         .create_new(true)
         .write(true)
-        .open(&test_project.join("test").join("TestIncrement.sol"))
+        .open(test_project.join("test").join("TestIncrement.sol"))
         .unwrap();
     if write!(file, "{}", test).is_err() {
         println!("Error on writing test file");

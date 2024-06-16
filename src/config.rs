@@ -161,20 +161,6 @@ pub fn add_to_config(
     let contents = read_file_to_string(&String::from(config_file));
     let mut doc: DocumentMut = contents.parse::<DocumentMut>().expect("invalid doc");
 
-    if doc.contains_table("dependencies") {
-        let item = doc["dependencies"].get(dependency_name);
-        if doc.get("dependencies").is_some() && item.is_some() {
-            println!(
-                "{}",
-                Paint::yellow(&format!(
-                    "Dependency {}-{} already exists in the config file",
-                    dependency_name, dependency_version
-                ))
-            );
-            return Ok(());
-        }
-    }
-
     // in case we don't have dependencies defined in the config file, we add it and re-read the doc
     if !doc.contains_table("dependencies") {
         let mut file: std::fs::File = fs::OpenOptions::new()

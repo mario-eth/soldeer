@@ -15,8 +15,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - name: Download foundry
-        run: cargo install --git https://github.com/foundry-rs/foundry --profile local --locked forge cast chisel anvil
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
       - name: Run tests
         run: cargo test
 

@@ -47,13 +47,12 @@ use std::path::PathBuf;
 use yansi::Paint;
 
 pub static DEPENDENCY_DIR: Lazy<PathBuf> =
-    Lazy::new(|| get_current_working_dir().unwrap().join("dependencies/"));
-pub static LOCK_FILE: Lazy<PathBuf> =
-    Lazy::new(|| get_current_working_dir().unwrap().join("soldeer.lock"));
+    Lazy::new(|| get_current_working_dir().join("dependencies/"));
+pub static LOCK_FILE: Lazy<PathBuf> = Lazy::new(|| get_current_working_dir().join("soldeer.lock"));
 pub static SOLDEER_CONFIG_FILE: Lazy<PathBuf> =
-    Lazy::new(|| get_current_working_dir().unwrap().join("soldeer.toml"));
+    Lazy::new(|| get_current_working_dir().join("soldeer.toml"));
 pub static FOUNDRY_CONFIG_FILE: Lazy<PathBuf> =
-    Lazy::new(|| get_current_working_dir().unwrap().join("foundry.toml"));
+    Lazy::new(|| get_current_working_dir().join("foundry.toml"));
 
 #[derive(Debug)]
 pub struct FOUNDRY {
@@ -350,13 +349,9 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
             let dependency_version: String =
                 push.dependency.split('~').collect::<Vec<&str>>()[1].to_string();
 
-            let path = push.path.unwrap_or(
-                get_current_working_dir()
-                    .unwrap()
-                    .to_str()
-                    .unwrap()
-                    .to_string(),
-            );
+            let path = push
+                .path
+                .unwrap_or(get_current_working_dir().to_str().unwrap().to_string());
             let regex = Regex::new(r"^[@|a-z0-9][a-z0-9-]*[a-z0-9]$").unwrap();
 
             if !regex.is_match(&dependency_name) {

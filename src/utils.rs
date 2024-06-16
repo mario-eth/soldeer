@@ -18,8 +18,8 @@ use std::process::exit;
 use yansi::Paint;
 
 // get the current working directory
-pub fn get_current_working_dir() -> std::io::Result<PathBuf> {
-    env::current_dir()
+pub fn get_current_working_dir() -> PathBuf {
+    env::current_dir().unwrap()
 }
 
 pub fn read_file_to_string(path: &String) -> String {

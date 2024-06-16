@@ -195,7 +195,7 @@ fn filter_filles_to_copy(root_directory_path: &Path) -> Vec<FilePair> {
 }
 
 fn read_ignore_file() -> Vec<String> {
-    let ignore_file = get_current_working_dir().unwrap().join(".soldeerignore");
+    let ignore_file = get_current_working_dir().join(".soldeerignore");
     if !ignore_file.exists() {
         return Vec::new();
     }

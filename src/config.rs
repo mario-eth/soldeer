@@ -163,10 +163,7 @@ pub fn add_to_config(
 
     if doc.contains_table("dependencies") {
         let item = doc["dependencies"].get(dependency_name);
-        if doc.get("dependencies").is_some()
-            && item.is_some()
-            && item.unwrap()["version"].to_string().replace('"', "") == dependency_version
-        {
+        if doc.get("dependencies").is_some() && item.is_some() {
             println!(
                 "{}",
                 Paint::yellow(&format!(
@@ -224,7 +221,7 @@ pub fn add_to_config(
 }
 
 pub async fn remappings() -> Result<(), ConfigError> {
-    let remappings_path = get_current_working_dir().unwrap().join("remappings.txt");
+    let remappings_path = get_current_working_dir().join("remappings.txt");
     if !remappings_path.exists() {
         File::create(remappings_path.clone()).unwrap();
     }
@@ -1255,7 +1252,7 @@ dep1 = { version = "1.0.0", url = "http://custom_url.com/custom.zip" }
         if !foundry {
             target = format!("soldeer{}.toml", s);
         }
-        get_current_working_dir().unwrap().join("test").join(target)
+        get_current_working_dir().join("test").join(target)
     }
 
     fn get_return_data() -> String {

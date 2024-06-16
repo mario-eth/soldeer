@@ -19,6 +19,8 @@ jobs:
         run: curl -L https://foundry.paradigm.xyz | bash
       - name: Run foundryup
         run: foundryup
+      - name: Source bashrc
+        run: source /home/runner/.bashrc
       - name: Run tests
         run: cargo test
 

@@ -271,12 +271,18 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
             }
         }
         Subcommands::Push(push) => {
-            println!("{}", Paint::green("🦌 Running soldeer push 🦌\n"));
+            if push.dry_run.is_some() && push.dry_run.unwrap() {
+                println!(
+                    "{}",
+                    Paint::green("🦌 Running soldeer push with dry-run, zip file will be available for inspection 🦌\n")
+                );
+            } else {
+                println!("{}", Paint::green("🦌 Running soldeer push 🦌\n"));
+            }
             let dependency_name: String =
                 push.dependency.split('~').collect::<Vec<&str>>()[0].to_string();
             let dependency_version: String =
                 push.dependency.split('~').collect::<Vec<&str>>()[1].to_string();
-
             let path = push
                 .path
                 .unwrap_or(get_current_working_dir().to_str().unwrap().to_string());
@@ -285,7 +291,14 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
             if !regex.is_match(&dependency_name) {
                 return Err(SoldeerError{message:format!("Dependency name {} is not valid, you can use only alphanumeric characters `-` and `@`", &dependency_name)});
             }
-            match push_version(&dependency_name, &dependency_version, PathBuf::from(path)).await {
+            match push_version(
+                &dependency_name,
+                &dependency_version,
+                PathBuf::from(&path),
+                push.dry_run.unwrap(),
+            )
+            .await
+            {
                 Ok(_) => {}
                 Err(err) => {
                     return Err(SoldeerError {
@@ -389,10 +402,13 @@ async fn update() -> Result<(), SoldeerError> {
 #[cfg(test)]
 mod tests {
 
-    use std::env;
+    use std::env::{
+        self,
+    };
     use std::fs::{
         remove_dir_all,
         remove_file,
+        File,
     };
     use std::io::Write;
     use std::path::Path;
@@ -405,13 +421,15 @@ mod tests {
 
     use commands::{
         Install,
+        Push,
         Update,
     };
     use rand::{
         distributions::Alphanumeric,
         Rng,
     };
-    use serial_test::serial; // 0.8
+    use serial_test::serial;
+    use zip::ZipArchive; // 0.8
 
     use super::*;
 
@@ -547,13 +565,47 @@ libs = ["dependencies"]
         clean_test_env(target_config);
     }
 
+    #[test]
+    #[serial]
+    fn soldeer_push_dry_run() {
+        let _ = remove_dir_all(DEPENDENCY_DIR.clone());
+        let _ = remove_file(LOCK_FILE.clone());
+
+        let command = Subcommands::Push(Push {
+            dependency: "@test~1.1".to_string(),
+            path: Some(String::from(
+                env::current_dir().unwrap().join("test").to_str().unwrap(),
+            )),
+            dry_run: Some(true),
+        });
+
+        match run(command) {
+            Ok(_) => {}
+            Err(_) => {
+                clean_test_env(PathBuf::default());
+                assert_eq!("Invalid State", "")
+            }
+        }
+
+        let path_dependency = env::current_dir().unwrap().join("test").join("test.zip");
+
+        assert!(Path::new(&path_dependency).exists());
+        let archive = File::open(&path_dependency);
+        let archive = ZipArchive::new(archive.unwrap());
+        assert_eq!(archive.unwrap().len(), 2);
+        let _ = remove_file(&path_dependency);
+        clean_test_env(PathBuf::default());
+    }
+
     fn clean_test_env(target_config: PathBuf) {
         let _ = remove_dir_all(DEPENDENCY_DIR.clone());
         let _ = remove_file(LOCK_FILE.clone());
-        let _ = remove_file(&target_config);
-        let parent = target_config.parent();
-        let lock = parent.unwrap().join("soldeer.lock");
-        let _ = remove_file(lock);
+        if target_config != PathBuf::default() {
+            let _ = remove_file(&target_config);
+            let parent = target_config.parent();
+            let lock = parent.unwrap().join("soldeer.lock");
+            let _ = remove_file(lock);
+        }
     }
 
     fn write_to_config(target_file: &PathBuf, content: &str) {

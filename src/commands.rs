@@ -54,7 +54,7 @@ pub struct Login {}
 
 #[derive(Debug, Clone, Parser)]
 #[clap(
-    about = "Push a dependency to the repository. The PATH_TO_DEPENDENCY is optional and if not provided, the current directory will be used.\nExample: If the directory is /home/soldeer/my_project and you do not specify the PATH_TO_DEPENDENCY,\nthe files inside the /home/soldeer/my_project will be pushed to the repository.\nIf you specify the PATH_TO_DEPENDENCY, the files inside the specified directory will be pushed to the repository.\nIf you want to ignore certain files, you can create a .soldeerignore file in the root of the project and add the files you want to ignore.\nThe .soldeerignore works like .gitignore.",
+    about = "Push a dependency to the repository. The PATH_TO_DEPENDENCY is optional and if not provided, the current directory will be used.\nExample: If the directory is /home/soldeer/my_project and you do not specify the PATH_TO_DEPENDENCY,\nthe files inside the /home/soldeer/my_project will be pushed to the repository.\nIf you specify the PATH_TO_DEPENDENCY, the files inside the specified directory will be pushed to the repository.\nIf you want to ignore certain files, you can create a .soldeerignore file in the root of the project and add the files you want to ignore.\nThe .soldeerignore works like .gitignore.\nFor dry-run please use the --dry-run argument set to true, `soldeer push ... --dry-run true`. This will create a zip file that you can inspect and see what it will be pushed to the central repository.",
     after_help = "For more information, read the README.md",
     override_usage = "soldeer push <DEPENDENCY>~<VERSION> [PATH_TO_DEPENDENCY]"
 )]
@@ -62,4 +62,6 @@ pub struct Push {
     #[clap(required = true)]
     pub dependency: String,
     pub path: Option<String>,
+    #[arg(short, long)]
+    pub dry_run: Option<bool>,
 }

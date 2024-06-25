@@ -439,7 +439,7 @@ libs = ["dependencies"]
 
         write_to_config(&target_config, content);
 
-        env::set_var("base_url", "https://api.soldeer.xyz".to_string());
+        env::set_var("base_url", "https://api.soldeer.xyz");
 
         let command = Subcommands::Install(Install {
             dependency: None,
@@ -485,7 +485,7 @@ libs = ["dependencies"]
 
         write_to_config(&target_config, content);
 
-        env::set_var("base_url", "https://api.soldeer.xyz".to_string());
+        env::set_var("base_url", "https://api.soldeer.xyz");
 
         let command = Subcommands::Install(Install {
             dependency: None,
@@ -529,7 +529,7 @@ libs = ["dependencies"]
 
         write_to_config(&target_config, content);
 
-        env::set_var("base_url", "https://api.soldeer.xyz".to_string());
+        env::set_var("base_url", "https://api.soldeer.xyz");
 
         let command = Subcommands::Update(Update {});
 
@@ -581,7 +581,7 @@ libs = ["dependencies"]
             target = format!("soldeer{}.toml", s);
         }
 
-        let path = env::current_dir().unwrap().join("test").join(&target);
+        let path = env::current_dir().unwrap().join("test").join(target);
         env::set_var("config_file", path.clone().to_str().unwrap());
         path
     }

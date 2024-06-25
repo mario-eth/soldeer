@@ -52,6 +52,7 @@ pub async fn push_version(
     dependency_name: &String,
     dependency_version: &String,
     root_directory_path: PathBuf,
+    dry_run: bool,
 ) -> Result<(), PushError> {
     let file_name = root_directory_path
         .file_name()
@@ -76,6 +77,9 @@ pub async fn push_version(
         &file_name,
     )
     .unwrap();
+    if dry_run {
+        return Ok(());
+    }
     match push_to_repo(&zip_archive, dependency_name, dependency_version).await {
         Ok(_) => {}
         Err(error) => {

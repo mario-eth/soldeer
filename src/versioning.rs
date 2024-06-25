@@ -298,6 +298,13 @@ async fn push_to_repo(
                 cause: "Unauthorized. Please login".to_string(),
             });
         }
+        StatusCode::PAYLOAD_TOO_LARGE => {
+            return Err(PushError {
+                name: (&dependency_name).to_string(),
+                version: (&dependency_version).to_string(),
+                cause: "The package is too big, it has over 50 MB".to_string(),
+            });
+        }
         _ => {
             return Err(PushError {
                 name: (&dependency_name).to_string(),

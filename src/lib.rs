@@ -63,19 +63,23 @@ pub struct FOUNDRY {
 pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
     match command {
         Subcommands::Install(install) => {
+            if install.dependency.is_none() {
+                return update().await;
+            }
             println!("{}", Paint::green("🦌 Running soldeer install 🦌\n"));
-            if !install.dependency.contains('~') {
+            let dependency = install.dependency.unwrap();
+            if !dependency.contains('~') {
                 return Err(SoldeerError {
                     message: format!(
                         "Dependency {} does not specify a version.\nThe format should be [DEPENDENCY]~[VERSION]",
-                        install.dependency
+                        dependency
                     ),
                 });
             }
             let dependency_name: String =
-                install.dependency.split('~').collect::<Vec<&str>>()[0].to_string();
+                dependency.split('~').collect::<Vec<&str>>()[0].to_string();
             let dependency_version: String =
-                install.dependency.split('~').collect::<Vec<&str>>()[1].to_string();
+                dependency.split('~').collect::<Vec<&str>>()[1].to_string();
             let dependency_url: String;
             let mut custom_url = false;
             if install.remote_url.is_some() {
@@ -255,83 +259,7 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
             }
         }
         Subcommands::Update(_) => {
-            println!("{}", Paint::green("🦌 Running soldeer update 🦌\n"));
-
-            let dependencies: Vec<Dependency> = match read_config(String::new()).await {
-                Ok(dep) => dep,
-                Err(err) => return Err(SoldeerError { message: err.cause }),
-            };
-
-            match download_dependencies(&dependencies, true).await {
-                Ok(_) => {}
-                Err(err) => {
-                    return Err(SoldeerError {
-                        message: format!(
-                            "Error downloading a dependency {}~{}",
-                            err.name, err.version
-                        ),
-                    })
-                }
-            }
-
-            match unzip_dependencies(&dependencies) {
-                Ok(_) => {}
-                Err(err) => {
-                    return Err(SoldeerError {
-                        message: format!("Error unzipping dependency {}~{}", err.name, err.version),
-                    });
-                }
-            }
-
-            match healthcheck_dependencies(&dependencies) {
-                Ok(_) => {}
-                Err(err) => {
-                    return Err(SoldeerError {
-                        message: format!(
-                            "Error health-checking dependencies {}~{}",
-                            err.name, err.version
-                        ),
-                    });
-                }
-            }
-
-            match write_lock(&dependencies, true) {
-                Ok(_) => {}
-                Err(err) => {
-                    return Err(SoldeerError {
-                        message: format!("Error writing the lock: {}", err.cause),
-                    });
-                }
-            }
-
-            match cleanup_after(&dependencies) {
-                Ok(_) => {}
-                Err(err) => {
-                    return Err(SoldeerError {
-                        message: format!("Error cleanup dependencies {}~{}", err.name, err.version),
-                    });
-                }
-            }
-
-            // check the foundry setup, in case we have a foundry.toml, then the foundry.toml will be used for `dependencies`
-            let f_setup_vec: Vec<bool> = match get_foundry_setup() {
-                Ok(f_setup) => f_setup,
-                Err(err) => {
-                    return Err(SoldeerError { message: err.cause });
-                }
-            };
-            let foundry_setup: FOUNDRY = FOUNDRY {
-                remappings: f_setup_vec[0],
-            };
-
-            if foundry_setup.remappings {
-                match remappings().await {
-                    Ok(_) => {}
-                    Err(err) => {
-                        return Err(SoldeerError { message: err.cause });
-                    }
-                }
-            }
+            return update().await;
         }
         Subcommands::Login(_) => {
             println!("{}", Paint::green("🦌 Running soldeer login 🦌\n"));
@@ -375,4 +303,286 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
         }
     }
     Ok(())
+}
+
+async fn update() -> Result<(), SoldeerError> {
+    println!("{}", Paint::green("🦌 Running soldeer update 🦌\n"));
+
+    let dependencies: Vec<Dependency> = match read_config(String::new()).await {
+        Ok(dep) => dep,
+        Err(err) => return Err(SoldeerError { message: err.cause }),
+    };
+
+    match download_dependencies(&dependencies, true).await {
+        Ok(_) => {}
+        Err(err) => {
+            return Err(SoldeerError {
+                message: format!(
+                    "Error downloading a dependency {}~{}",
+                    err.name, err.version
+                ),
+            })
+        }
+    }
+
+    match unzip_dependencies(&dependencies) {
+        Ok(_) => {}
+        Err(err) => {
+            return Err(SoldeerError {
+                message: format!("Error unzipping dependency {}~{}", err.name, err.version),
+            });
+        }
+    }
+
+    match healthcheck_dependencies(&dependencies) {
+        Ok(_) => {}
+        Err(err) => {
+            return Err(SoldeerError {
+                message: format!(
+                    "Error health-checking dependencies {}~{}",
+                    err.name, err.version
+                ),
+            });
+        }
+    }
+
+    match write_lock(&dependencies, true) {
+        Ok(_) => {}
+        Err(err) => {
+            return Err(SoldeerError {
+                message: format!("Error writing the lock: {}", err.cause),
+            });
+        }
+    }
+
+    match cleanup_after(&dependencies) {
+        Ok(_) => {}
+        Err(err) => {
+            return Err(SoldeerError {
+                message: format!("Error cleanup dependencies {}~{}", err.name, err.version),
+            });
+        }
+    }
+
+    // check the foundry setup, in case we have a foundry.toml, then the foundry.toml will be used for `dependencies`
+    let f_setup_vec: Vec<bool> = match get_foundry_setup() {
+        Ok(f_setup) => f_setup,
+        Err(err) => {
+            return Err(SoldeerError { message: err.cause });
+        }
+    };
+    let foundry_setup: FOUNDRY = FOUNDRY {
+        remappings: f_setup_vec[0],
+    };
+
+    if foundry_setup.remappings {
+        match remappings().await {
+            Ok(_) => {}
+            Err(err) => {
+                return Err(SoldeerError { message: err.cause });
+            }
+        }
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+
+    use std::env;
+    use std::fs::{
+        remove_dir_all,
+        remove_file,
+    };
+    use std::io::Write;
+    use std::path::Path;
+    use std::{
+        fs::{
+            self,
+        },
+        path::PathBuf,
+    };
+
+    use commands::{
+        Install,
+        Update,
+    };
+    use rand::{
+        distributions::Alphanumeric,
+        Rng,
+    };
+    use serial_test::serial; // 0.8
+
+    use super::*;
+
+    #[test]
+    #[serial]
+    fn soldeer_install_moves_to_update_no_custom_link() {
+        let _ = remove_dir_all(DEPENDENCY_DIR.clone());
+        let _ = remove_file(LOCK_FILE.clone());
+        let content = r#"
+# Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
+
+[profile.default]
+script = "script"
+solc = "0.8.26"
+src = "src"
+test = "test"
+libs = ["dependencies"]
+
+[dependencies]
+"@gearbox-protocol-periphery-v3" = "1.6.1"
+"@openzeppelin-contracts" = "5.0.2"   
+"#;
+
+        let target_config = define_config(true);
+
+        write_to_config(&target_config, content);
+
+        env::set_var("base_url", "https://api.soldeer.xyz".to_string());
+
+        let command = Subcommands::Install(Install {
+            dependency: None,
+            remote_url: None,
+        });
+
+        match run(command) {
+            Ok(_) => {}
+            Err(_) => {
+                clean_test_env(target_config.clone());
+                assert_eq!("Invalid State", "")
+            }
+        }
+
+        let mut path_dependency = DEPENDENCY_DIR.join("@gearbox-protocol-periphery-v3-1.6.1");
+
+        assert!(Path::new(&path_dependency).exists());
+        path_dependency = DEPENDENCY_DIR.join("@openzeppelin-contracts-5.0.2");
+        assert!(Path::new(&path_dependency).exists());
+        clean_test_env(target_config);
+    }
+
+    #[test]
+    #[serial]
+    fn soldeer_install_moves_to_update_custom_link() {
+        let _ = remove_dir_all(DEPENDENCY_DIR.clone());
+        let _ = remove_file(LOCK_FILE.clone());
+        let content = r#"
+# Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
+
+[profile.default]
+script = "script"
+solc = "0.8.26"
+src = "src"
+test = "test"
+libs = ["dependencies"]
+
+[dependencies]
+"@tt" = {version = "1.6.1", url = "https://soldeer-revisions.s3.amazonaws.com/@openzeppelin-contracts/3_3_0-rc_2_22-01-2024_13:12:57_contracts.zip"}
+"#;
+
+        let target_config = define_config(true);
+
+        write_to_config(&target_config, content);
+
+        env::set_var("base_url", "https://api.soldeer.xyz".to_string());
+
+        let command = Subcommands::Install(Install {
+            dependency: None,
+            remote_url: None,
+        });
+
+        match run(command) {
+            Ok(_) => {}
+            Err(_) => {
+                clean_test_env(target_config.clone());
+                assert_eq!("Invalid State", "")
+            }
+        }
+
+        let path_dependency = DEPENDENCY_DIR.join("@tt-1.6.1");
+
+        assert!(Path::new(&path_dependency).exists());
+        clean_test_env(target_config);
+    }
+
+    #[test]
+    #[serial]
+    fn soldeer_update_success() {
+        let _ = remove_dir_all(DEPENDENCY_DIR.clone());
+        let _ = remove_file(LOCK_FILE.clone());
+        let content = r#"
+# Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
+
+[profile.default]
+script = "script"
+solc = "0.8.26"
+src = "src"
+test = "test"
+libs = ["dependencies"]
+
+[dependencies]
+"@tt" = {version = "1.6.1", url = "https://soldeer-revisions.s3.amazonaws.com/@openzeppelin-contracts/3_3_0-rc_2_22-01-2024_13:12:57_contracts.zip"}
+"#;
+
+        let target_config = define_config(true);
+
+        write_to_config(&target_config, content);
+
+        env::set_var("base_url", "https://api.soldeer.xyz".to_string());
+
+        let command = Subcommands::Update(Update {});
+
+        match run(command) {
+            Ok(_) => {}
+            Err(_) => {
+                clean_test_env(target_config.clone());
+                assert_eq!("Invalid State", "")
+            }
+        }
+
+        let path_dependency = DEPENDENCY_DIR.join("@tt-1.6.1");
+
+        assert!(Path::new(&path_dependency).exists());
+        clean_test_env(target_config);
+    }
+
+    fn clean_test_env(target_config: PathBuf) {
+        let _ = remove_dir_all(DEPENDENCY_DIR.clone());
+        let _ = remove_file(LOCK_FILE.clone());
+        let _ = remove_file(&target_config);
+        let parent = target_config.parent();
+        let lock = parent.unwrap().join("soldeer.lock");
+        let _ = remove_file(lock);
+    }
+
+    fn write_to_config(target_file: &PathBuf, content: &str) {
+        if target_file.exists() {
+            let _ = remove_file(target_file);
+        }
+        let mut file: std::fs::File = fs::OpenOptions::new()
+            .create_new(true)
+            .write(true)
+            .open(target_file)
+            .unwrap();
+        if let Err(e) = write!(file, "{}", content) {
+            eprintln!("Couldn't write to the config file: {}", e);
+        }
+    }
+
+    fn define_config(foundry: bool) -> PathBuf {
+        let s: String = rand::thread_rng()
+            .sample_iter(&Alphanumeric)
+            .take(7)
+            .map(char::from)
+            .collect();
+        let mut target = format!("foundry{}.toml", s);
+        if !foundry {
+            target = format!("soldeer{}.toml", s);
+        }
+
+        let path = env::current_dir().unwrap().join("test").join(&target);
+        env::set_var("config_file", path.clone().to_str().unwrap());
+        path
+    }
 }

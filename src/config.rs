@@ -14,9 +14,12 @@ use std::fs::{
     self,
     File,
 };
-use std::io;
 use std::io::Write;
 use std::path::Path;
+use std::{
+    env,
+    io,
+};
 use toml::Table;
 use toml_edit::{
     value,
@@ -111,7 +114,15 @@ pub async fn read_config(filename: String) -> Result<Vec<Dependency>, ConfigErro
 }
 
 pub fn define_config_file() -> Result<String, ConfigError> {
-    let mut filename: String = String::from(FOUNDRY_CONFIG_FILE.to_str().unwrap());
+    let mut filename: String;
+    if cfg!(test) {
+        filename =
+            env::var("config_file").unwrap_or(String::from(FOUNDRY_CONFIG_FILE.to_str().unwrap()))
+    } else {
+        filename = String::from(FOUNDRY_CONFIG_FILE.to_str().unwrap());
+    };
+
+    println!("confiog file {}", filename);
 
     // check if the foundry.toml has the dependencies defined, if so then we setup the foundry.toml as the config file
     if fs::metadata(&filename).is_ok() {

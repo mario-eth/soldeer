@@ -1,4 +1,4 @@
-# SolDeer ![Rust][rust-badge] [![License: MIT][license-badge]][license]
+# Soldeer ![Rust][rust-badge] [![License: MIT][license-badge]][license]
 
 [rust-badge]: https://img.shields.io/badge/Built%20with%20-Rust-e43716.svg
 [license]: https://opensource.org/licenses/MIT
@@ -122,6 +122,12 @@ soldeer install <dependency_name>~<version> <url>
 ```
 
 This command will download the zip file of the dependency, unzip it, install it in the `dependencies` directory.
+
+```bash
+soldeer install
+```
+
+This command will install all the dependencies from the `soldeer.toml`/`foundry.toml` file.
 
 ### How to push a new dependency to the repository
 

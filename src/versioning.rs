@@ -195,18 +195,21 @@ fn filter_filles_to_copy(root_directory_path: &Path) -> Vec<FilePair> {
 }
 
 fn read_ignore_file() -> Vec<String> {
-    let ignore_file = get_current_working_dir().join(".soldeerignore");
-    if !ignore_file.exists() {
+    let gitignore = get_current_working_dir().join(".gitignore");
+    let soldeerignore = get_current_working_dir().join(".soldeerignore");
+
+    if !gitignore.exists() && !soldeerignore.exists() {
         return Vec::new();
     }
 
-    let file_contents = read_file_to_string(&ignore_file.to_str().unwrap().to_string());
+    let gitignore = read_file_to_string(&gitignore.to_str().unwrap().to_string());
+    let soldeerignore = read_file_to_string(&soldeerignore.to_str().unwrap().to_string());
 
-    let mut ignore_list: Vec<String> = Vec::new();
-    for line in file_contents.lines() {
-        ignore_list.push(line.to_string());
-    }
-    ignore_list
+    soldeerignore
+        .lines()
+        .chain(gitignore.lines())
+        .map(ToString::to_string)
+        .collect()
 }
 
 async fn push_to_repo(

@@ -79,9 +79,6 @@ pub async fn download_dependency(
         fs::create_dir(&dependency_directory).unwrap();
     }
 
-    let mut file = File::create(&dependency_directory.join(dependency_name))
-        .await
-        .unwrap();
     let mut stream = match reqwest::get(dependency_url).await {
         Ok(res) => {
             if res.status() != 200 {
@@ -101,6 +98,10 @@ pub async fn download_dependency(
             });
         }
     };
+
+    let mut file = File::create(&dependency_directory.join(dependency_name))
+        .await
+        .unwrap();
 
     while let Some(chunk_result) = stream.next().await {
         match file.write_all(&chunk_result.unwrap()).await {

@@ -274,7 +274,7 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
             if push.dry_run.is_some() && push.dry_run.unwrap() {
                 println!(
                     "{}",
-                    Paint::green("🦌 Running soldeer push with dry-run, zip file will be available for inspection 🦌\n")
+                    Paint::green("🦌 Running soldeer push with dry-run, a zip file will be available for inspection 🦌\n")
                 );
             } else {
                 println!("{}", Paint::green("🦌 Running soldeer push 🦌\n"));

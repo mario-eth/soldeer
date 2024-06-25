@@ -137,6 +137,18 @@ Example:
 Create a project called `my-project` and then use the `soldeer push my-project~v1.0`. This will push the project to the repository and it will be available for everyone to use.
 Before using the push command you have to use `soldeer login` to login to the repository.
 
+#### Pushing a certain directory
+
+If you want to push a certain directory from your project you can use the `soldeer push my-project~v1.0 /my/path/to/source/files` option. This will push only the files from the specified directory.
+
+#### Ignoring files
+
+If you want to ignore certain files from the push you need to create a `.soldeerignore` file that will contain the files that you want to ignore. The file should be in the root of the project. This file mimics `.gitignore` syntax.
+
+#### Dry Run
+
+If you want to dry run a push to inspect what files will be pushed to the central repository, use `soldeer push my-project~v1.0 [PATH_TO_DEPENDENCY] --dry-run true`. This will create a zip file that you can unzip and inspect what was pushed. We recommend everyone to run a dry-run before pushing a new dependency to avoid pushing unwanted files.
+
 ### Full list of commands
 
 For more commands use `soldeer help`.
@@ -158,5 +170,9 @@ The goal of Soldeer is to be integrated into the pipelines of every open-source 
 
 For those who want an extra layer of security, a SHA is generated in the `soldeer.lock` file for the dependencies that are installed. Some of the projects are truncated, e.g., for OpenZeppelin, only the `contracts` directory is pushed to the repository, so you will have to check the SHA against the original version's contracts directory.
 
-**For Project Maintainers**  
+**For Project Maintainers**
 If you want to move your project from the Soldeer organization and take care of pushing the versions to Soldeer yourself, please open an issue or contact me on [X (formerly Twitter)](https://twitter.com/m4rio_eth).
+
+```
+
+```

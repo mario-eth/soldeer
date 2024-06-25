@@ -32,7 +32,7 @@ fn soldeer_install_valid_dependency() {
     let test_project = env::current_dir().unwrap().join("test_project");
     clean_test_env(&test_project);
     let command = Subcommands::Install(Install {
-        dependency: "forge-std~1.8.2".to_string(),
+        dependency: Some("forge-std~1.8.2".to_string()),
         remote_url: None,
     });
 
@@ -109,7 +109,7 @@ contract Test {
 #[serial]
 fn soldeer_install_invalid_dependency() {
     let command = Subcommands::Install(Install {
-        dependency: "forge-std".to_string(),
+        dependency: Some("forge-std".to_string()),
         remote_url: None,
     });
 

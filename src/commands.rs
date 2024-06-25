@@ -27,8 +27,8 @@ pub enum Subcommands {
     override_usage = "soldeer install <DEPENDENCY>~<VERSION> [URL]"
 )]
 pub struct Install {
-    #[clap(required = true)]
-    pub dependency: String,
+    #[clap(required = false)]
+    pub dependency: Option<String>,
     #[clap(required = false)]
     pub remote_url: Option<String>,
 }

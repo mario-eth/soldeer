@@ -1,19 +1,9 @@
 use simple_home_dir::home_dir;
 use std::env;
-use std::fs::{
-    self,
-    File,
-};
+use std::fs::{self, File};
 use std::io::Write;
-use std::io::{
-    BufRead,
-    BufReader,
-    Read,
-};
-use std::path::{
-    Path,
-    PathBuf,
-};
+use std::io::{BufRead, BufReader, Read};
+use std::path::{Path, PathBuf};
 use std::process::exit;
 use yansi::Paint;
 
@@ -126,4 +116,48 @@ pub fn get_base_url() -> String {
     } else {
         "https://api.soldeer.xyz".to_string()
     }
+}
+
+// Function to check for the presence of sensitive files or directories
+pub fn check_for_sensitive_files_or_directories(path: &Path) -> bool {
+    let env_file_exists = path.join(".env").exists();
+    let git_dir_exists = path.join(".git").exists();
+    env_file_exists || git_dir_exists
+}
+
+// Function to recursively check for sensitive files or directories in a given path
+pub fn check_for_sensitive_files_or_directories_recursive(path: &Path) -> bool {
+    if check_for_sensitive_files_or_directories(path) {
+        return true;
+    }
+
+    if path.is_dir() {
+        for entry in fs::read_dir(path).unwrap() {
+            let entry = entry.unwrap();
+            let entry_path = entry.path();
+            if check_for_sensitive_files_or_directories_recursive(&entry_path) {
+                return true;
+            }
+        }
+    }
+
+    false
+}
+
+// Function to prompt the user for confirmation
+pub fn prompt_user_for_confirmation() -> bool {
+    println!("{}", Paint::yellow(
+        "You are about to include some sensitive files in this version. Are you sure you want to continue?"
+    ));
+    println!("{}", Paint::cyan(
+        "If you are not sure what sensitive files, you can run the dry-run command to check what will be pushed."
+    ));
+
+    print!("{}", Paint::green("Do you want to continue? (y/n): "));
+    std::io::stdout().flush().unwrap();
+
+    let mut input = String::new();
+    std::io::stdin().read_line(&mut input).unwrap();
+    let input = input.trim().to_lowercase();
+    input == "y" || input == "yes"
 }

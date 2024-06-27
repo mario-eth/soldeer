@@ -13,32 +13,14 @@ mod versioning;
 
 use crate::auth::login;
 use crate::commands::Subcommands;
-use crate::config::{
-    get_foundry_setup,
-    read_config,
-    remappings,
-    Dependency,
-};
-use crate::dependency_downloader::{
-    download_dependencies,
-    unzip_dependencies,
-    unzip_dependency,
-};
+use crate::config::{get_foundry_setup, read_config, remappings, Dependency};
+use crate::dependency_downloader::{download_dependencies, unzip_dependencies, unzip_dependency};
 use crate::errors::SoldeerError;
-use crate::janitor::{
-    cleanup_after,
-    healthcheck_dependencies,
-};
-use crate::lock::{
-    lock_check,
-    write_lock,
-};
+use crate::janitor::{cleanup_after, healthcheck_dependencies};
+use crate::lock::{lock_check, write_lock};
 use crate::utils::get_current_working_dir;
 use crate::versioning::push_version;
-use config::{
-    add_to_config,
-    define_config_file,
-};
+use config::{add_to_config, define_config_file};
 use janitor::cleanup_dependency;
 use once_cell::sync::Lazy;
 use regex::Regex;
@@ -189,20 +171,18 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
             let config_file: String = match define_config_file() {
                 Ok(file) => file,
 
-                Err(_) => {
-                    match cleanup_dependency(&dependency_name, &dependency_version, true) {
-                        Ok(_) => {
-                            return Err(SoldeerError {
-                                message: "Could define the config file".to_string(),
-                            });
-                        }
-                        Err(_) => {
-                            return Err(SoldeerError {
-                                message: "Could not delete dependency artifacts".to_string(),
-                            });
-                        }
+                Err(_) => match cleanup_dependency(&dependency_name, &dependency_version, true) {
+                    Ok(_) => {
+                        return Err(SoldeerError {
+                            message: "Could define the config file".to_string(),
+                        });
                     }
-                }
+                    Err(_) => {
+                        return Err(SoldeerError {
+                            message: "Could not delete dependency artifacts".to_string(),
+                        });
+                    }
+                },
             };
 
             match add_to_config(
@@ -271,6 +251,19 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
             }
         }
         Subcommands::Push(push) => {
+            let path = push
+                .path
+                .unwrap_or(get_current_working_dir().to_str().unwrap().to_string());
+            let path_buf = PathBuf::from(&path);
+
+            // Check for sensitive files or directories
+            if utils::check_for_sensitive_files_or_directories_recursive(&path_buf) {
+                if !utils::prompt_user_for_confirmation() {
+                    println!("{}", Paint::yellow("Push operation aborted by the user."));
+                    return Ok(());
+                }
+            }
+
             if push.dry_run.is_some() && push.dry_run.unwrap() {
                 println!(
                     "{}",
@@ -283,9 +276,6 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
                 push.dependency.split('~').collect::<Vec<&str>>()[0].to_string();
             let dependency_version: String =
                 push.dependency.split('~').collect::<Vec<&str>>()[1].to_string();
-            let path = push
-                .path
-                .unwrap_or(get_current_working_dir().to_str().unwrap().to_string());
             let regex = Regex::new(r"^[@|a-z0-9][a-z0-9-]*[a-z0-9]$").unwrap();
 
             if !regex.is_match(&dependency_name) {
@@ -402,32 +392,17 @@ async fn update() -> Result<(), SoldeerError> {
 #[cfg(test)]
 mod tests {
 
-    use std::env::{
-        self,
-    };
-    use std::fs::{
-        remove_dir_all,
-        remove_file,
-        File,
-    };
+    use std::env::{self};
+    use std::fs::{remove_dir_all, remove_file, File};
     use std::io::Write;
     use std::path::Path;
     use std::{
-        fs::{
-            self,
-        },
+        fs::{self},
         path::PathBuf,
     };
 
-    use commands::{
-        Install,
-        Push,
-        Update,
-    };
-    use rand::{
-        distributions::Alphanumeric,
-        Rng,
-    };
+    use commands::{Install, Push, Update};
+    use rand::{distributions::Alphanumeric, Rng};
     use serial_test::serial;
     use zip::ZipArchive; // 0.8
 
@@ -636,5 +611,50 @@ libs = ["dependencies"]
         let path = env::current_dir().unwrap().join("test").join(target);
         env::set_var("config_file", path.clone().to_str().unwrap());
         path
+    }
+
+    #[test]
+    #[serial]
+    fn push_prompts_user_on_sensitive_files() {
+        let _ = remove_dir_all(DEPENDENCY_DIR.clone());
+        let _ = remove_file(LOCK_FILE.clone());
+        let test_dir = env::current_dir().unwrap().join("test_push_sensitive");
+
+        // Create test directory
+        if !test_dir.exists() {
+            std::fs::create_dir(&test_dir).unwrap();
+        }
+
+        // Create a .env file in the test directory
+        let env_file_path = test_dir.join(".env");
+        let mut env_file = File::create(&env_file_path).unwrap();
+        writeln!(env_file, "SENSITIVE_DATA=secret").unwrap();
+
+        // Mock the confirmation prompt to simulate user input
+        utils::prompt_user_for_confirmation;
+
+        let command = Subcommands::Push(Push {
+            dependency: "@test~1.1".to_string(),
+            path: Some(test_dir.to_str().unwrap().to_string()),
+            dry_run: None,
+        });
+
+        match run(command) {
+            Ok(_) => {}
+            Err(_) => {
+                clean_test_env(PathBuf::default());
+                assert_eq!("Invalid State", "")
+            }
+        }
+
+        // Check if the .env file exists
+        assert!(env_file_path.exists());
+
+        // Clean up
+        let _ = remove_file(&env_file_path);
+        let _ = remove_dir_all(&test_dir);
+
+        // Restore the original prompt function
+        // utils::prompt_user_for_confirmation = original_prompt;
     }
 }

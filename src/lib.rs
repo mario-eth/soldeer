@@ -13,14 +13,32 @@ mod versioning;
 
 use crate::auth::login;
 use crate::commands::Subcommands;
-use crate::config::{get_foundry_setup, read_config, remappings, Dependency};
-use crate::dependency_downloader::{download_dependencies, unzip_dependencies, unzip_dependency};
+use crate::config::{
+    get_foundry_setup,
+    read_config,
+    remappings,
+    Dependency,
+};
+use crate::dependency_downloader::{
+    download_dependencies,
+    unzip_dependencies,
+    unzip_dependency,
+};
 use crate::errors::SoldeerError;
-use crate::janitor::{cleanup_after, healthcheck_dependencies};
-use crate::lock::{lock_check, write_lock};
+use crate::janitor::{
+    cleanup_after,
+    healthcheck_dependencies,
+};
+use crate::lock::{
+    lock_check,
+    write_lock,
+};
 use crate::utils::get_current_working_dir;
 use crate::versioning::push_version;
-use config::{add_to_config, define_config_file};
+use config::{
+    add_to_config,
+    define_config_file,
+};
 use janitor::cleanup_dependency;
 use once_cell::sync::Lazy;
 use regex::Regex;
@@ -568,7 +586,6 @@ libs = ["dependencies"]
         let archive = File::open(&path_dependency);
         let archive = ZipArchive::new(archive.unwrap());
         assert_eq!(archive.unwrap().len(), 2);
-        let _ = remove_file(&path_dependency);
         clean_test_env(PathBuf::default());
     }
 
@@ -654,7 +671,5 @@ libs = ["dependencies"]
         let _ = remove_file(&env_file_path);
         let _ = remove_dir_all(&test_dir);
 
-        // Restore the original prompt function
-        // utils::prompt_user_for_confirmation = original_prompt;
     }
 }

@@ -120,9 +120,18 @@ pub fn get_base_url() -> String {
 
 // Function to check for the presence of sensitive files or directories
 pub fn check_for_sensitive_files_or_directories(path: &Path) -> bool {
-    let env_file_exists = path.join(".env").exists();
-    let git_dir_exists = path.join(".git").exists();
-    env_file_exists || git_dir_exists
+    if let Ok(entries) = fs::read_dir(path) {
+        for entry in entries {
+            if let Ok(entry) = entry {
+                let file_name = entry.file_name();
+                let file_name_str = file_name.to_string_lossy();
+                if file_name_str.starts_with('.') {
+                    return true;
+                }
+            }
+        }
+    }
+    false
 }
 
 // Function to recursively check for sensitive files or directories in a given path

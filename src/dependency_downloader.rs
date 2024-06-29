@@ -24,15 +24,16 @@ pub async fn download_dependencies(
         clean_dependency_directory();
     }
     // downloading dependencies to dependencies folder
-    for dependency in dependencies.iter() {
-        let file_name: String = format!("{}-{}.zip", dependency.name, dependency.version);
-        match download_dependency(&file_name, &dependency.url).await {
-            Ok(_) => {}
-            Err(err) => {
-                return Err(err);
-            }
+    futures::future::join_all(dependencies.iter().map(|dep| {
+        async {
+            let file_name: String = format!("{}-{}.zip", dep.name, dep.version);
+            download_dependency(&file_name, &dep.url).await
         }
-    }
+    }))
+    .await
+    .into_iter()
+    .collect::<Result<_, _>>()?;
+
     Ok(())
 }
 

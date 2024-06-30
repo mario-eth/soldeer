@@ -60,3 +60,6 @@ path = "src/main.rs"
 [features]
 default = ["rustls"]
 rustls = ["reqwest/rustls-tls"]
+
+[profile.test]
+opt-level = 2

@@ -73,17 +73,24 @@ pub async fn push_version(
     );
 
     let files_to_copy: Vec<FilePair> = filter_files_to_copy(&root_directory_path);
-    let zip_archive = zip_file(
+
+    let zip_archive = match zip_file(
         dependency_name,
         dependency_version,
         &root_directory_path,
         &files_to_copy,
         &file_name,
-    )
-    .unwrap();
+    ) {
+        Ok(zip) => zip,
+        Err(err) => {
+            return Err(err);
+        }
+    };
+
     if dry_run {
         return Ok(());
     }
+
     match push_to_repo(&zip_archive, dependency_name, dependency_version).await {
         Ok(_) => {}
         Err(error) => {

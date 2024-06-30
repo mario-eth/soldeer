@@ -570,6 +570,11 @@ libs = ["dependencies"]
     fn soldeer_push_dry_run() {
         let _ = remove_dir_all(DEPENDENCY_DIR.clone());
         let _ = remove_file(LOCK_FILE.clone());
+        // in case this exists we clean it before setting up the tests
+        let path_dependency = env::current_dir().unwrap().join("test").join("test.zip");
+        if path_dependency.exists() {
+            let _ = remove_file(&path_dependency);
+        }
 
         let command = Subcommands::Push(Push {
             dependency: "@test~1.1".to_string(),
@@ -586,8 +591,6 @@ libs = ["dependencies"]
                 assert_eq!("Invalid State", "")
             }
         }
-
-        let path_dependency = env::current_dir().unwrap().join("test").join("test.zip");
 
         assert!(Path::new(&path_dependency).exists());
         let archive = File::open(&path_dependency);

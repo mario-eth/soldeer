@@ -40,6 +40,7 @@ toml_edit = "0.22.13"
 uuid = {version = "1.8.0", features = ["serde", "v4"]}
 walkdir = "2.5.0"
 yansi = "1.0.1"
+yash-fnmatch = "1.1.1"
 zip = {version = "2.1.3", default-features = false, features = ["deflate"]}
 zip-extract = "0.1.3"
 

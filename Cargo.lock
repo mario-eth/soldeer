@@ -1546,6 +1546,7 @@ dependencies = [
  "uuid",
  "walkdir",
  "yansi",
+ "yash-fnmatch",
  "zip 2.1.3",
  "zip-extract",
 ]
@@ -2137,6 +2138,17 @@ name = "yansi"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cfe53a6657fd280eaa890a3bc59152892ffa3e30101319d168b781ed6529b049"
+
+[[package]]
+name = "yash-fnmatch"
+version = "1.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "697c20b479d2e6419e9a073bfdd20e90cbd8540d6c683ee46712e13de650e54f"
+dependencies = [
+ "regex",
+ "regex-syntax",
+ "thiserror",
+]
 
 [[package]]
 name = "zeroize"

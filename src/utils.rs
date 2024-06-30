@@ -119,7 +119,7 @@ pub fn get_base_url() -> String {
 }
 
 // Function to check for the presence of sensitive files or directories
-pub fn check_for_sensitive_files_or_directories(path: &Path) -> bool {
+pub fn check_dotfiles(path: &Path) -> bool {
     if let Ok(entries) = fs::read_dir(path) {
         for entry in entries {
             if let Ok(entry) = entry {
@@ -135,8 +135,8 @@ pub fn check_for_sensitive_files_or_directories(path: &Path) -> bool {
 }
 
 // Function to recursively check for sensitive files or directories in a given path
-pub fn check_for_sensitive_files_or_directories_recursive(path: &Path) -> bool {
-    if check_for_sensitive_files_or_directories(path) {
+pub fn check_dotfiles_recursive(path: &Path) -> bool {
+    if check_dotfiles(path) {
         return true;
     }
 
@@ -144,7 +144,7 @@ pub fn check_for_sensitive_files_or_directories_recursive(path: &Path) -> bool {
         for entry in fs::read_dir(path).unwrap() {
             let entry = entry.unwrap();
             let entry_path = entry.path();
-            if check_for_sensitive_files_or_directories_recursive(&entry_path) {
+            if check_dotfiles_recursive(&entry_path) {
                 return true;
             }
         }

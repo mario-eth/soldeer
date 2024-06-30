@@ -35,7 +35,7 @@ use crate::lock::{
 };
 use crate::utils::{
     get_current_working_dir,
-    check_for_sensitive_files_or_directories_recursive,
+    check_dotfiles_recursive,
     prompt_user_for_confirmation
 };
 use crate::versioning::push_version;
@@ -279,7 +279,7 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
             let path_buf = PathBuf::from(&path);
 
             // Check for sensitive files or directories
-            if check_for_sensitive_files_or_directories_recursive(&path_buf) {
+            if check_dotfiles_recursive(&path_buf) {
                 if !prompt_user_for_confirmation() {
                     println!("{}", Paint::yellow("Push operation aborted by the user."));
                     return Ok(());

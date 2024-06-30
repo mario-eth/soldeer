@@ -197,7 +197,7 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
                     match cleanup_dependency(&dependency_name, &dependency_version, true) {
                         Ok(_) => {
                             return Err(SoldeerError {
-                                message: "Could define the config file".to_string(),
+                                message: "Could not define the config file".to_string(),
                             });
                         }
                         Err(_) => {
@@ -418,6 +418,7 @@ mod tests {
         self,
     };
     use std::fs::{
+        create_dir_all,
         remove_dir_all,
         remove_file,
         File,
@@ -580,19 +581,24 @@ libs = ["dependencies"]
     #[test]
     #[serial]
     fn soldeer_push_dry_run() {
-        let _ = remove_dir_all(DEPENDENCY_DIR.clone());
-        let _ = remove_file(LOCK_FILE.clone());
         // in case this exists we clean it before setting up the tests
-        let path_dependency = env::current_dir().unwrap().join("test").join("test.zip");
+        let path_dependency = env::current_dir()
+            .unwrap()
+            .join("test")
+            .join("custom_dry_run");
+
         if path_dependency.exists() {
-            let _ = remove_file(&path_dependency);
+            let _ = remove_dir_all(&path_dependency);
         }
+
+        let _ = create_dir_all(&path_dependency);
+
+        create_random_file(path_dependency.as_path(), ".txt".to_string());
+        create_random_file(path_dependency.as_path(), ".txt".to_string());
 
         let command = Subcommands::Push(Push {
             dependency: "@test~1.1".to_string(),
-            path: Some(String::from(
-                env::current_dir().unwrap().join("test").to_str().unwrap(),
-            )),
+            path: Some(String::from(path_dependency.to_str().unwrap())),
             dry_run: Some(true),
         });
 
@@ -604,11 +610,13 @@ libs = ["dependencies"]
             }
         }
 
-        assert!(Path::new(&path_dependency).exists());
-        let archive = File::open(&path_dependency);
+        let archive = File::open(&path_dependency.join("custom_dry_run.zip"));
         let archive = ZipArchive::new(archive.unwrap());
+
+        assert!(Path::new(&path_dependency).exists());
         assert_eq!(archive.unwrap().len(), 2);
-        clean_test_env(PathBuf::default());
+
+        let _ = remove_dir_all(path_dependency);
     }
 
     fn clean_test_env(target_config: PathBuf) {
@@ -689,5 +697,23 @@ libs = ["dependencies"]
         // Clean up
         let _ = remove_file(&env_file_path);
         let _ = remove_dir_all(&test_dir);
+    }
+
+    fn create_random_file(target_dir: &Path, extension: String) -> String {
+        let s: String = rand::thread_rng()
+            .sample_iter(&Alphanumeric)
+            .take(7)
+            .map(char::from)
+            .collect();
+        let target = target_dir.join(format!("random{}.{}", s, extension));
+        let mut file: std::fs::File = fs::OpenOptions::new()
+            .create_new(true)
+            .write(true)
+            .open(&target)
+            .unwrap();
+        if let Err(e) = write!(file, "this is a test file") {
+            eprintln!("Couldn't write to the config file: {}", e);
+        }
+        String::from(target.to_str().unwrap())
     }
 }

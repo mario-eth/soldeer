@@ -279,9 +279,10 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
                 .path
                 .unwrap_or(get_current_working_dir().to_str().unwrap().to_string());
             let path_buf = PathBuf::from(&path);
+            let dry_run = push.dry_run.is_some() && push.dry_run.unwrap();
 
             // Check for sensitive files or directories
-            if check_dotfiles_recursive(&path_buf) && !prompt_user_for_confirmation() {
+            if !dry_run && check_dotfiles_recursive(&path_buf) && !prompt_user_for_confirmation() {
                 println!("{}", Paint::yellow("Push operation aborted by the user."));
                 return Ok(());
             }
@@ -307,7 +308,7 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
                 &dependency_name,
                 &dependency_version,
                 PathBuf::from(&path),
-                push.dry_run.unwrap(),
+                dry_run,
             )
             .await
             {

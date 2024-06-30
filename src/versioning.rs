@@ -440,7 +440,7 @@ mod tests {
 
         let soldeerignore = define_ignore_file(false);
         let gitignore = define_ignore_file(true);
-        let _ = remove_file(&soldeerignore);
+        let _ = remove_file(soldeerignore);
 
         let mut ignored_files = vec![];
         let mut filtered_files = vec![];
@@ -476,7 +476,7 @@ mod tests {
 
         let soldeerignore = define_ignore_file(false);
         let gitignore = define_ignore_file(true);
-        let _ = remove_file(&soldeerignore);
+        let _ = remove_file(soldeerignore);
 
         // divide ignored vs filtered files to check them later
         let mut ignored_files = vec![];
@@ -584,7 +584,7 @@ mod tests {
         }
     }
 
-    fn create_random_file(target_dir: &PathBuf, extension: String) -> String {
+    fn create_random_file(target_dir: &Path, extension: String) -> String {
         let s: String = rand::thread_rng()
             .sample_iter(&Alphanumeric)
             .take(7)
@@ -596,12 +596,12 @@ mod tests {
             .write(true)
             .open(&target)
             .unwrap();
-        if let Err(e) = write!(file, "{}", "this is a test file") {
+        if let Err(e) = write!(file, "this is a test file") {
             eprintln!("Couldn't write to the config file: {}", e);
         }
         String::from(target.to_str().unwrap())
     }
-    fn create_random_directory(target_dir: &PathBuf, name: String) -> String {
+    fn create_random_directory(target_dir: &Path, name: String) -> String {
         let s: String = rand::thread_rng()
             .sample_iter(&Alphanumeric)
             .take(7)

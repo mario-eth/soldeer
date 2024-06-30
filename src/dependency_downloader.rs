@@ -32,7 +32,7 @@ pub async fn download_dependencies(
     }))
     .await
     .into_iter()
-    .collect::<Result<_, _>>()?;
+    .collect::<Result<Vec<()>, DownloadError>>()?;
 
     Ok(())
 }

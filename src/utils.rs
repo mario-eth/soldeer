@@ -127,3 +127,54 @@ pub fn get_base_url() -> String {
         "https://api.soldeer.xyz".to_string()
     }
 }
+
+// Function to check for the presence of sensitive files or directories
+pub fn check_dotfiles(path: &Path) -> bool {
+    if let Ok(entries) = fs::read_dir(path) {
+        for entry in entries.flatten() {
+            let file_name = entry.file_name();
+            let file_name_str = file_name.to_string_lossy();
+            if file_name_str.starts_with('.') {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+// Function to recursively check for sensitive files or directories in a given path
+pub fn check_dotfiles_recursive(path: &Path) -> bool {
+    if check_dotfiles(path) {
+        return true;
+    }
+
+    if path.is_dir() {
+        for entry in fs::read_dir(path).unwrap() {
+            let entry = entry.unwrap();
+            let entry_path = entry.path();
+            if check_dotfiles_recursive(&entry_path) {
+                return true;
+            }
+        }
+    }
+
+    false
+}
+
+// Function to prompt the user for confirmation
+pub fn prompt_user_for_confirmation() -> bool {
+    println!("{}", Paint::yellow(
+        "You are about to include some sensitive files in this version. Are you sure you want to continue?"
+    ));
+    println!("{}", Paint::cyan(
+        "If you are not sure what sensitive files, you can run the dry-run command to check what will be pushed."
+    ));
+
+    print!("{}", Paint::green("Do you want to continue? (y/n): "));
+    std::io::stdout().flush().unwrap();
+
+    let mut input = String::new();
+    std::io::stdin().read_line(&mut input).unwrap();
+    let input = input.trim().to_lowercase();
+    input == "y" || input == "yes"
+}

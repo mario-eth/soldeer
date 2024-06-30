@@ -34,9 +34,9 @@ use crate::lock::{
     write_lock,
 };
 use crate::utils::{
-    get_current_working_dir,
     check_dotfiles_recursive,
-    prompt_user_for_confirmation
+    get_current_working_dir,
+    prompt_user_for_confirmation,
 };
 use crate::versioning::push_version;
 use config::{
@@ -193,18 +193,20 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
             let config_file: String = match define_config_file() {
                 Ok(file) => file,
 
-                Err(_) => match cleanup_dependency(&dependency_name, &dependency_version, true) {
-                    Ok(_) => {
-                        return Err(SoldeerError {
-                            message: "Could define the config file".to_string(),
-                        });
+                Err(_) => {
+                    match cleanup_dependency(&dependency_name, &dependency_version, true) {
+                        Ok(_) => {
+                            return Err(SoldeerError {
+                                message: "Could define the config file".to_string(),
+                            });
+                        }
+                        Err(_) => {
+                            return Err(SoldeerError {
+                                message: "Could not delete dependency artifacts".to_string(),
+                            });
+                        }
                     }
-                    Err(_) => {
-                        return Err(SoldeerError {
-                            message: "Could not delete dependency artifacts".to_string(),
-                        });
-                    }
-                },
+                }
             };
 
             match add_to_config(
@@ -414,17 +416,32 @@ async fn update() -> Result<(), SoldeerError> {
 #[cfg(test)]
 mod tests {
 
-    use std::env::{self};
-    use std::fs::{remove_dir_all, remove_file, File};
+    use std::env::{
+        self,
+    };
+    use std::fs::{
+        remove_dir_all,
+        remove_file,
+        File,
+    };
     use std::io::Write;
     use std::path::Path;
     use std::{
-        fs::{self},
+        fs::{
+            self,
+        },
         path::PathBuf,
     };
 
-    use commands::{Install, Push, Update};
-    use rand::{distributions::Alphanumeric, Rng};
+    use commands::{
+        Install,
+        Push,
+        Update,
+    };
+    use rand::{
+        distributions::Alphanumeric,
+        Rng,
+    };
     use serial_test::serial;
     use zip::ZipArchive; // 0.8
 
@@ -674,6 +691,5 @@ libs = ["dependencies"]
         // Clean up
         let _ = remove_file(&env_file_path);
         let _ = remove_dir_all(&test_dir);
-
     }
 }

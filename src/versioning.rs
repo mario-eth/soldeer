@@ -113,7 +113,7 @@ fn zip_file(
     }
 
     for file_path in files_to_copy {
-        let file = File::open(&file_path.path.clone()).unwrap();
+        let file = File::open(file_path.path.clone()).unwrap();
         let file_name = file_path.name.clone();
         let path = Path::new(&file_path.path);
         let mut buffer = Vec::new();

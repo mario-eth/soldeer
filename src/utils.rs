@@ -1,9 +1,19 @@
 use simple_home_dir::home_dir;
 use std::env;
-use std::fs::{self, File};
+use std::fs::{
+    self,
+    File,
+};
 use std::io::Write;
-use std::io::{BufRead, BufReader, Read};
-use std::path::{Path, PathBuf};
+use std::io::{
+    BufRead,
+    BufReader,
+    Read,
+};
+use std::path::{
+    Path,
+    PathBuf,
+};
 use std::process::exit;
 use yansi::Paint;
 
@@ -121,13 +131,11 @@ pub fn get_base_url() -> String {
 // Function to check for the presence of sensitive files or directories
 pub fn check_dotfiles(path: &Path) -> bool {
     if let Ok(entries) = fs::read_dir(path) {
-        for entry in entries {
-            if let Ok(entry) = entry {
-                let file_name = entry.file_name();
-                let file_name_str = file_name.to_string_lossy();
-                if file_name_str.starts_with('.') {
-                    return true;
-                }
+        for entry in entries.flatten() {
+            let file_name = entry.file_name();
+            let file_name_str = file_name.to_string_lossy();
+            if file_name_str.starts_with('.') {
+                return true;
             }
         }
     }

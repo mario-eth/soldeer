@@ -281,11 +281,9 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
             let path_buf = PathBuf::from(&path);
 
             // Check for sensitive files or directories
-            if check_dotfiles_recursive(&path_buf) {
-                if !prompt_user_for_confirmation() {
-                    println!("{}", Paint::yellow("Push operation aborted by the user."));
-                    return Ok(());
-                }
+            if check_dotfiles_recursive(&path_buf) && !prompt_user_for_confirmation() {
+                println!("{}", Paint::yellow("Push operation aborted by the user."));
+                return Ok(());
             }
 
             if push.dry_run.is_some() && push.dry_run.unwrap() {
@@ -667,9 +665,6 @@ libs = ["dependencies"]
         let env_file_path = test_dir.join(".env");
         let mut env_file = File::create(&env_file_path).unwrap();
         writeln!(env_file, "SENSITIVE_DATA=secret").unwrap();
-
-        // Mock the confirmation prompt to simulate user input
-        utils::prompt_user_for_confirmation;
 
         let command = Subcommands::Push(Push {
             dependency: "@test~1.1".to_string(),

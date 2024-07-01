@@ -611,7 +611,7 @@ libs = ["dependencies"]
             }
         }
 
-        let archive = File::open(&path_dependency.join("custom_dry_run.zip"));
+        let archive = File::open(path_dependency.join("custom_dry_run.zip"));
         let archive = ZipArchive::new(archive.unwrap());
 
         assert!(Path::new(&path_dependency).exists());

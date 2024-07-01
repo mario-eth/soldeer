@@ -1,6 +1,6 @@
 [package]
 authors = ["m4rio"]
-categories = ["development-tools", "package-management"]
+categories = ["development-tools", "development-tools"]
 description = "A solidity package manager written in rust. It's minimal and easy within your solidity project. Works best with foundry."
 edition = "2021"
 exclude = [".github/*", ".vscode/*"]

@@ -133,17 +133,20 @@ pub fn define_config_file() -> Result<String, ConfigError> {
     }
 
     filename = String::from(SOLDEER_CONFIG_FILE.to_str().unwrap());
-
     match fs::metadata(&filename) {
         Ok(_) => {}
         Err(_) => {
-            println!("{}", Paint::blue("No config file found. If you wish to proceed, please select how you want Soldeer to be configured:\n1. Using foundry.toml\n2. Using soldeer.toml\n(Press 1 or 2)"));
+            println!("{}", Paint::blue("No config file found. If you wish to proceed, please select how you want Soldeer to be configured:\n1. Using foundry.toml\n2. Using soldeer.toml\n(Press 1 or 2), default is foundry.toml"));
             std::io::stdout().flush().unwrap();
             let mut option = String::new();
             if io::stdin().read_line(&mut option).is_err() {
                 return Err(ConfigError {
                     cause: "Option invalid.".to_string(),
                 });
+            }
+
+            if option.is_empty() {
+                option = "1".to_string();
             }
             return create_example_config(&option);
         }

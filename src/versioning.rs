@@ -124,15 +124,15 @@ fn zip_file(
     }
 
     for file_path in files_to_copy {
-        let file = File::open(file_path.path.clone()).unwrap();
-        let file_name = file_path.name.clone();
+        let file_to_copy = File::open(file_path.path.clone()).unwrap();
+        let file_to_copy_name = file_path.name.clone();
         let path = Path::new(&file_path.path);
         let mut buffer = Vec::new();
 
         // Write file or directory explicitly
         // Some unzip tools unzip files with directory paths correctly, some do not!
         if path.is_file() {
-            match zip.start_file(file_name.as_str(), options) {
+            match zip.start_file(file_path.path.as_str(), options) {
                 Ok(_) => {}
                 Err(err) => {
                     return Err(PushError {
@@ -142,7 +142,7 @@ fn zip_file(
                     });
                 }
             }
-            match io::copy(&mut file.take(u64::MAX), &mut buffer) {
+            match io::copy(&mut file_to_copy.take(u64::MAX), &mut buffer) {
                 Ok(_) => {}
                 Err(err) => {
                     return Err(PushError {
@@ -150,7 +150,7 @@ fn zip_file(
                         version: dependency_version.to_string(),
                         cause: format!(
                             "Zipping failed, could not read file {} because of the error {}",
-                            file_name, err
+                            file_to_copy_name, err
                         ),
                     });
                 }
@@ -166,7 +166,7 @@ fn zip_file(
                 }
             }
         } else if !path.as_os_str().is_empty() {
-            let _ = zip.add_directory(&file_name, options);
+            let _ = zip.add_directory(&file_path.path, options);
         }
     }
     let _ = zip.finish();

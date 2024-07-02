@@ -64,4 +64,6 @@ pub struct Push {
     pub path: Option<String>,
     #[arg(short, long)]
     pub dry_run: Option<bool>,
+    #[arg(long, value_parser = clap::value_parser!(bool))]
+    pub skip_warnings: Option<bool>,
 }

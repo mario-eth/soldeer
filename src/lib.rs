@@ -280,21 +280,34 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
                 .unwrap_or(get_current_working_dir().to_str().unwrap().to_string());
             let path_buf = PathBuf::from(&path);
             let dry_run = push.dry_run.is_some() && push.dry_run.unwrap();
+            let skip_warnings = push.skip_warnings.unwrap_or(false);
 
             // Check for sensitive files or directories
-            if !dry_run && check_dotfiles_recursive(&path_buf) && !prompt_user_for_confirmation() {
+            if !dry_run
+                && !skip_warnings
+                && check_dotfiles_recursive(&path_buf)
+                && !prompt_user_for_confirmation()
+            {
                 println!("{}", Paint::yellow("Push operation aborted by the user."));
                 return Ok(());
             }
 
-            if push.dry_run.is_some() && push.dry_run.unwrap() {
+            if dry_run {
                 println!(
-                    "{}",
-                    Paint::green("🦌 Running soldeer push with dry-run, a zip file will be available for inspection 🦌\n")
-                );
+            "{}",
+            Paint::green("🦌 Running soldeer push with dry-run, a zip file will be available for inspection 🦌\n")
+        );
             } else {
                 println!("{}", Paint::green("🦌 Running soldeer push 🦌\n"));
             }
+
+            if skip_warnings {
+                println!(
+                    "{}",
+                    Paint::yellow("Warning: Skipping sensitive file checks as requested.")
+                );
+            }
+
             let dependency_name: String =
                 push.dependency.split('~').collect::<Vec<&str>>()[0].to_string();
             let dependency_version: String =
@@ -323,6 +336,7 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
                 }
             }
         }
+
         Subcommands::VersionDryRun(_) => {
             const VERSION: &str = env!("CARGO_PKG_VERSION");
             println!("{}", Paint::cyan(&format!("Current Soldeer {}", VERSION)));
@@ -601,6 +615,7 @@ libs = ["dependencies"]
             dependency: "@test~1.1".to_string(),
             path: Some(String::from(path_dependency.to_str().unwrap())),
             dry_run: Some(true),
+            skip_warnings: None,
         });
 
         match run(command) {
@@ -682,6 +697,7 @@ libs = ["dependencies"]
             dependency: "@test~1.1".to_string(),
             path: Some(test_dir.to_str().unwrap().to_string()),
             dry_run: None,
+            skip_warnings: None,
         });
 
         match run(command) {
@@ -694,6 +710,61 @@ libs = ["dependencies"]
 
         // Check if the .env file exists
         assert!(env_file_path.exists());
+
+        // Clean up
+        let _ = remove_file(&env_file_path);
+        let _ = remove_dir_all(&test_dir);
+    }
+
+    #[test]
+    #[serial]
+    fn push_skips_warning_on_sensitive_files() {
+        let _ = remove_dir_all(DEPENDENCY_DIR.clone());
+        let _ = remove_file(LOCK_FILE.clone());
+        let test_dir = env::current_dir().unwrap().join("test_push_skip_sensitive");
+
+        // Create test directory
+        if !test_dir.exists() {
+            std::fs::create_dir(&test_dir).unwrap();
+        }
+
+        // Create a .env file in the test directory
+        let env_file_path = test_dir.join(".env");
+        let mut env_file = File::create(&env_file_path).unwrap();
+        writeln!(env_file, "SENSITIVE_DATA=secret").unwrap();
+
+        let command = Subcommands::Push(Push {
+            dependency: "@test~1.1".to_string(),
+            path: Some(test_dir.to_str().unwrap().to_string()),
+            dry_run: None,
+            skip_warnings: Some(true),
+        });
+
+        match run(command) {
+            Ok(_) => {
+                println!("Push command succeeded as expected");
+            }
+            Err(e) => {
+                clean_test_env(PathBuf::default());
+
+                // Check if the error is due to not being logged in
+                if e.message.contains("You are not logged in") {
+                    println!(
+                        "Test skipped: User not logged in. This test requires a logged-in state."
+                    );
+                    return;
+                }
+
+                // If it's a different error, fail the test
+                panic!("Push command failed unexpectedly: {:?}", e);
+            }
+        }
+
+        // Check if the .env file still exists (it should)
+        assert!(
+            env_file_path.exists(),
+            "The .env file should still exist after the push operation"
+        );
 
         // Clean up
         let _ = remove_file(&env_file_path);

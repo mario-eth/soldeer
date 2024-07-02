@@ -16,3 +16,4 @@ src/soldeer.toml
 test/*
 !emptyfile
 !emptyfile2
+test_push_sensitive

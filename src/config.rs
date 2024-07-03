@@ -124,12 +124,7 @@ pub fn define_config_file() -> Result<String, ConfigError> {
 
     // check if the foundry.toml has the dependencies defined, if so then we setup the foundry.toml as the config file
     if fs::metadata(&filename).is_ok() {
-        let contents = read_file_to_string(&filename.clone());
-        let doc: DocumentMut = contents.parse::<DocumentMut>().expect("invalid doc");
-
-        if doc.get("dependencies").is_some() {
-            return Ok(filename);
-        }
+        return Ok(filename);
     }
 
     filename = String::from(SOLDEER_CONFIG_FILE.to_str().unwrap());
@@ -1137,6 +1132,60 @@ libs = ["dependencies"]
 
 [dependencies]
 old_dep = "1.0.0"
+"#;
+
+        assert_eq!(
+            read_file_to_string(&String::from(target_config.to_str().unwrap())),
+            content
+        );
+
+        let _ = remove_file(target_config);
+        Ok(())
+    }
+
+    #[test]
+    fn add_to_config_foundry_not_altering_the_existing_contents() -> Result<(), ConfigError> {
+        let mut content = r#"
+# Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
+
+[profile.default]
+script = "script"
+solc = "0.8.26"
+src = "src"
+test = "test"
+libs = ["dependencies"]
+gas_reports = ['*']
+
+# we don't have [dependencies] declared
+"#;
+
+        let target_config = define_config(true);
+
+        write_to_config(&target_config, content);
+
+        add_to_config(
+            "dep1",
+            "1.0.0",
+            "http://custom_url.com/custom.zip",
+            false,
+            target_config.to_str().unwrap(),
+        )
+        .unwrap();
+        content = r#"
+# Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
+
+[profile.default]
+script = "script"
+solc = "0.8.26"
+src = "src"
+test = "test"
+libs = ["dependencies"]
+gas_reports = ['*']
+
+# we don't have [dependencies] declared
+
+[dependencies]
+dep1 = "1.0.0"
 "#;
 
         assert_eq!(

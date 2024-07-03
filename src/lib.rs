@@ -434,6 +434,7 @@ mod tests {
     };
     use std::fs::{
         create_dir_all,
+        remove_dir,
         remove_dir_all,
         remove_file,
         File,
@@ -650,7 +651,7 @@ libs = ["dependencies"]
         if target_file.exists() {
             let _ = remove_file(target_file);
         }
-        let mut file: std::fs::File = fs::OpenOptions::new()
+        let mut file: File = fs::OpenOptions::new()
             .create_new(true)
             .write(true)
             .open(target_file)
@@ -682,11 +683,8 @@ libs = ["dependencies"]
         let _ = remove_dir_all(DEPENDENCY_DIR.clone());
         let _ = remove_file(LOCK_FILE.clone());
         let test_dir = env::current_dir().unwrap().join("test_push_sensitive");
-
-        // Create test directory
-        if !test_dir.exists() {
-            std::fs::create_dir(&test_dir).unwrap();
-        }
+        let _ = remove_dir(&test_dir);
+        let _ = create_dir_all(&test_dir);
 
         // Create a .env file in the test directory
         let env_file_path = test_dir.join(".env");

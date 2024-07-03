@@ -600,19 +600,20 @@ mod tests {
 
         let dep_name = "test_dep".to_string();
         let dep_version = "1.1".to_string();
-        let mut files_to_copy: Vec<FilePair> = Vec::new();
-        files_to_copy.push(FilePair {
-            name: "random_file_1".to_string(),
-            path: random_file_1.clone(),
-        });
-        files_to_copy.push(FilePair {
-            name: "random_file_1".to_string(),
-            path: random_file_2.clone(),
-        });
-        files_to_copy.push(FilePair {
-            name: "random_file_1".to_string(),
-            path: random_file_3.clone(),
-        });
+        let files_to_copy: Vec<FilePair> = vec![
+            FilePair {
+                name: "random_file_1".to_string(),
+                path: random_file_1.clone(),
+            },
+            FilePair {
+                name: "random_file_1".to_string(),
+                path: random_file_3.clone(),
+            },
+            FilePair {
+                name: "random_file_1".to_string(),
+                path: random_file_2.clone(),
+            },
+        ];
         let result = match zip_file(
             &dep_name,
             &dep_version,

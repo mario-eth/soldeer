@@ -98,24 +98,24 @@ contract TestSoldeer is Test {
         assert_eq!("Invalid state", "");
     }
 
-    let _ = create_dir_all(&test_project.join("dependencies").join("forge-std-1.8.2"));
+    let _ = create_dir_all(test_project.join("dependencies").join("forge-std-1.8.2"));
 
     let _ = copy_dir_all(
         env::current_dir()
             .unwrap()
             .join("dependencies")
             .join("forge-std-1.8.2"),
-        &test_project.join("dependencies").join("forge-std-1.8.2"),
+        test_project.join("dependencies").join("forge-std-1.8.2"),
     );
 
     let _ = fs::copy(
         env::current_dir().unwrap().join("foundry.toml"),
-        &test_project.join("foundry.toml"),
+        test_project.join("foundry.toml"),
     );
 
     let _ = fs::copy(
         env::current_dir().unwrap().join("remappings.txt"),
-        &test_project.join("remappings.txt"),
+        test_project.join("remappings.txt"),
     );
 
     let output = Command::new("forge")

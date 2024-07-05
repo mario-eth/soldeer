@@ -4,6 +4,7 @@
 [profile.default]
 libs = ["dependencies"]
 script = "script"
+solc = "0.8.20"
 src = "src"
 test = "test"
 

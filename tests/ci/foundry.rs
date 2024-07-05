@@ -1,7 +1,9 @@
+use std::io;
 use std::{
     env,
     fs::{
         self,
+        create_dir_all,
         remove_dir_all,
         remove_file,
     },
@@ -62,8 +64,9 @@ contract Increment {
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.20;
 import "../src/Increment.sol";
+import "@forge-std-1.8.2/src/Test.sol";
 
-contract Test {
+contract TestSoldeer is Test {
     Increment t = new Increment();
 
     function testIncrement() external {
@@ -95,12 +98,33 @@ contract Test {
         assert_eq!("Invalid state", "");
     }
 
+    let _ = create_dir_all(test_project.join("dependencies").join("forge-std-1.8.2"));
+
+    let _ = copy_dir_all(
+        env::current_dir()
+            .unwrap()
+            .join("dependencies")
+            .join("forge-std-1.8.2"),
+        test_project.join("dependencies").join("forge-std-1.8.2"),
+    );
+
+    let _ = fs::copy(
+        env::current_dir().unwrap().join("foundry.toml"),
+        test_project.join("foundry.toml"),
+    );
+
+    let _ = fs::copy(
+        env::current_dir().unwrap().join("remappings.txt"),
+        test_project.join("remappings.txt"),
+    );
+
     let output = Command::new("forge")
         .arg("test")
         .arg("--root")
         .arg(&test_project)
         .output()
         .expect("failed to execute process");
+
     assert!(String::from_utf8(output.stdout).unwrap().contains("[PASS]"));
     clean_test_env(&test_project);
 }
@@ -138,4 +162,18 @@ fn clean_test_env(test_project: &PathBuf) {
     let _ = remove_dir_all(DEPENDENCY_DIR.clone());
     let _ = remove_file(LOCK_FILE.clone());
     let _ = remove_dir_all(test_project);
+}
+
+fn copy_dir_all(src: impl AsRef<Path>, dst: impl AsRef<Path>) -> io::Result<()> {
+    fs::create_dir_all(&dst)?;
+    for entry in fs::read_dir(src)? {
+        let entry = entry?;
+        let ty = entry.file_type()?;
+        if ty.is_dir() {
+            copy_dir_all(entry.path(), dst.as_ref().join(entry.file_name()))?;
+        } else {
+            fs::copy(entry.path(), dst.as_ref().join(entry.file_name()))?;
+        }
+    }
+    Ok(())
 }

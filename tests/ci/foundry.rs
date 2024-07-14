@@ -36,6 +36,7 @@ fn soldeer_install_valid_dependency() {
     let command = Subcommands::Install(Install {
         dependency: Some("forge-std~1.8.2".to_string()),
         remote_url: None,
+        commit: None,
     });
 
     match soldeer::run(command) {
@@ -46,10 +47,10 @@ fn soldeer_install_valid_dependency() {
     }
 
     let path_dependency = DEPENDENCY_DIR.join("forge-std-1.8.2");
-    assert!(Path::new(&path_dependency).exists());
+    assert!(path_dependency.exists());
     let test_contract = r#"
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.20;
+pragma solidity >=  0.8.20;
 
 contract Increment {
     uint256 i;
@@ -62,7 +63,7 @@ contract Increment {
 
     let test = r#"
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.20;
+pragma solidity >= 0.8.20;
 import "../src/Increment.sol";
 import "@forge-std-1.8.2/src/Test.sol";
 
@@ -125,7 +126,14 @@ contract TestSoldeer is Test {
         .output()
         .expect("failed to execute process");
 
-    assert!(String::from_utf8(output.stdout).unwrap().contains("[PASS]"));
+    let passed = String::from_utf8(output.stdout).unwrap().contains("[PASS]");
+    if !passed {
+        println!(
+            "This will fail with: {:?}",
+            String::from_utf8(output.stderr).unwrap()
+        );
+    }
+    assert!(passed);
     clean_test_env(&test_project);
 }
 
@@ -135,6 +143,7 @@ fn soldeer_install_invalid_dependency() {
     let command = Subcommands::Install(Install {
         dependency: Some("forge-std".to_string()),
         remote_url: None,
+        commit: None,
     });
 
     match soldeer::run(command) {
@@ -154,8 +163,8 @@ fn soldeer_install_invalid_dependency() {
     let path_dependency = DEPENDENCY_DIR.join("forge-std");
     let path_zip = DEPENDENCY_DIR.join("forge-std.zip");
 
-    assert!(!Path::new(&path_zip).exists());
-    assert!(!Path::new(&path_dependency).exists());
+    assert!(!path_zip.exists());
+    assert!(!path_dependency.exists());
 }
 
 fn clean_test_env(test_project: &PathBuf) {

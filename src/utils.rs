@@ -1,3 +1,4 @@
+use regex::Regex;
 use simple_home_dir::home_dir;
 use std::env;
 use std::fs::{
@@ -177,4 +178,33 @@ pub fn prompt_user_for_confirmation() -> bool {
     std::io::stdin().read_line(&mut input).unwrap();
     let input = input.trim().to_lowercase();
     input == "y" || input == "yes"
+}
+
+pub fn get_download_tunnel(dependency_url: &str) -> String {
+    let pattern1 = r"^(git@github\.com|git@gitlab)";
+    let pattern2 = r"^(https://github\.com|https://gitlab\.com)";
+    let re1 = Regex::new(pattern1).unwrap();
+    let re2 = Regex::new(pattern2).unwrap();
+    if re1.is_match(dependency_url)
+        || (re2.is_match(dependency_url) && dependency_url.ends_with(".git"))
+    {
+        return "git".to_string();
+    }
+    "http".to_string()
+}
+
+#[cfg(not(test))]
+pub fn sha256_digest(dependency_name: &str, dependency_version: &str) -> String {
+    use crate::DEPENDENCY_DIR;
+
+    let bytes = std::fs::read(
+        DEPENDENCY_DIR.join(format!("{}-{}.zip", dependency_name, dependency_version)),
+    )
+    .unwrap(); // Vec<u8>
+    sha256::digest(bytes)
+}
+
+#[cfg(test)]
+pub fn sha256_digest(_dependency_name: &str, _dependency_version: &str) -> String {
+    "5019418b1e9128185398870f77a42e51d624c44315bb1572e7545be51d707016".to_string()
 }

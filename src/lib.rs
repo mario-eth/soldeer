@@ -43,11 +43,14 @@ use config::{
     add_to_config,
     define_config_file,
 };
+use dependency_downloader::download_dependency;
 use janitor::cleanup_dependency;
 use once_cell::sync::Lazy;
 use regex::Regex;
+use remote::get_dependency_url_remote;
 use std::env;
 use std::path::PathBuf;
+use utils::get_download_tunnel;
 use yansi::Paint;
 
 pub static DEPENDENCY_DIR: Lazy<PathBuf> =
@@ -85,108 +88,103 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
             let dependency_version: String =
                 dependency.split('~').collect::<Vec<&str>>()[1].to_string();
             let dependency_url: String;
+
             let mut custom_url = false;
+            let mut via_git = false;
+
             if install.remote_url.is_some() {
                 custom_url = true;
+
                 let remote_url = install.remote_url.unwrap();
-                let mut dependencies: Vec<Dependency> = Vec::new();
+                via_git = get_download_tunnel(&remote_url) == "git";
                 dependency_url = remote_url.clone();
-                let dependency = Dependency {
-                    name: dependency_name.clone(),
-                    version: dependency_version.clone(),
-                    url: dependency_url.clone(),
-                };
-                dependencies.push(dependency.clone());
+            } else {
+                dependency_url =
+                    match get_dependency_url_remote(&dependency_name, &dependency_version).await {
+                        Ok(url) => url,
+                        Err(err) => {
+                            return Err(SoldeerError {
+                                message: format!(
+                                    "Error downloading a dependency {}~{}. Cause {}",
+                                    err.name, err.version, err.cause
+                                ),
+                            });
+                        }
+                    };
+            }
 
-                match lock_check(&dependency, true) {
-                    Ok(dep) => dependencies = dep,
-                    Err(err) => {
-                        return Err(SoldeerError { message: err.cause });
-                    }
+            // retrieve the commit in case it's sent when using git
+            let mut hash = String::new();
+            if via_git && install.commit.is_some() {
+                hash = install.commit.unwrap();
+            } else if !via_git && install.commit.is_some() {
+                return Err(SoldeerError {
+                    message: format!("Error unknown param {}", install.commit.unwrap()),
+                });
+            }
+
+            let mut dependency = Dependency {
+                name: dependency_name.clone(),
+                version: dependency_version.clone(),
+                url: dependency_url.clone(),
+                hash,
+            };
+
+            match lock_check(&dependency, true) {
+                Ok(_) => {}
+                Err(err) => {
+                    return Err(SoldeerError { message: err.cause });
                 }
+            }
 
-                match download_dependencies(&dependencies, false).await {
+            dependency.hash = match download_dependency(&dependency).await {
+                Ok(h) => h,
+                Err(err) => {
+                    return Err(SoldeerError {
+                            message: format!(
+                                "Error downloading a dependency {}~{}. Cause: {}.\nCheck if the dependency name and version are correct.\nIf you are not sure check https://soldeer.xyz.",
+                                err.name, err.version, err.cause
+                            ),
+                        });
+                }
+            };
+
+            match write_lock(&[dependency.clone()], false) {
+                Ok(_) => {}
+                Err(err) => {
+                    return Err(SoldeerError {
+                        message: format!("Error writing the lock: {}", err.cause),
+                    });
+                }
+            }
+
+            if !via_git {
+                match unzip_dependency(&dependency.name, &dependency.version) {
                     Ok(_) => {}
-                    Err(err) => {
+                    Err(err_unzip) => {
+                        match janitor::cleanup_dependency(
+                            &dependency.name,
+                            &dependency.version,
+                            true,
+                            false,
+                        ) {
+                            Ok(_) => {}
+                            Err(err_cleanup) => {
+                                return Err(SoldeerError {
+                                    message: format!(
+                                        "Error cleaning up dependency {}~{}",
+                                        err_cleanup.name, err_cleanup.version
+                                    ),
+                                })
+                            }
+                        }
                         return Err(SoldeerError {
                             message: format!(
                                 "Error downloading a dependency {}~{}",
-                                err.name, err.version
+                                err_unzip.name, err_unzip.version
                             ),
                         });
                     }
-                }
-                match write_lock(&dependencies, false) {
-                    Ok(_) => {}
-                    Err(err) => {
-                        return Err(SoldeerError {
-                            message: format!("Error writing the lock: {}", err.cause),
-                        });
-                    }
-                }
-            } else {
-                let dependency = Dependency {
-                    name: dependency_name.clone(),
-                    version: dependency_version.clone(),
-                    url: String::new(),
-                };
-                let mut dependencies: Vec<Dependency>;
-                match lock_check(&dependency, true) {
-                    Ok(dep) => dependencies = dep,
-                    Err(err) => {
-                        return Err(SoldeerError { message: err.cause });
-                    }
-                }
-
-                match dependency_downloader::download_dependency_remote(
-                    &dependency_name,
-                    &dependency_version,
-                )
-                .await
-                {
-                    Ok(url) => {
-                        dependencies[0].url = url;
-                        dependency_url = dependencies[0].url.clone();
-                    }
-                    Err(err) => {
-                        return Err(SoldeerError {
-                            message: format!(
-                                "Error downloading a dependency {}~{}.\nCheck if the dependency name and version are correct.\nIf you are not sure check https://soldeer.xyz.",
-                                err.name, err.version
-                            ),
-                        });
-                    }
-                }
-
-                match write_lock(&dependencies, false) {
-                    Ok(_) => {}
-                    Err(err) => {
-                        return Err(SoldeerError {
-                            message: format!("Error writing the lock: {}", err.cause),
-                        });
-                    }
-                }
-            }
-            match unzip_dependency(&dependency_name, &dependency_version) {
-                Ok(_) => {}
-                Err(err_unzip) => {
-                    match janitor::cleanup_dependency(&dependency_name, &dependency_version, true) {
-                        Ok(_) => {}
-                        Err(err_cleanup) => {
-                            return Err(SoldeerError {
-                                message: format!(
-                                    "Error cleaning up dependency {}~{}",
-                                    err_cleanup.name, err_cleanup.version
-                                ),
-                            })
-                        }
-                    }
-                    return Err(SoldeerError {
-                        message: format!(
-                            "Error downloading a dependency {}~{}",
-                            err_unzip.name, err_unzip.version
-                        ),
-                    });
                 }
             }
 
@@ -194,7 +192,7 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
                 Ok(file) => file,
 
                 Err(_) => {
-                    match cleanup_dependency(&dependency_name, &dependency_version, true) {
+                    match cleanup_dependency(&dependency.name, &dependency.version, true, via_git) {
                         Ok(_) => {
                             return Err(SoldeerError {
                                 message: "Could not define the config file".to_string(),
@@ -209,13 +207,7 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
                 }
             };
 
-            match add_to_config(
-                &dependency_name,
-                &dependency_version,
-                &dependency_url,
-                custom_url,
-                &config_file,
-            ) {
+            match add_to_config(&dependency, custom_url, &config_file, via_git) {
                 Ok(_) => {}
                 Err(err) => {
                     return Err(SoldeerError { message: err.cause });
@@ -233,7 +225,9 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
                     });
                 }
             }
-            match janitor::cleanup_dependency(&dependency_name, &dependency_version, false) {
+
+            match janitor::cleanup_dependency(&dependency_name, &dependency_version, false, via_git)
+            {
                 Ok(_) => {}
                 Err(err) => {
                     return Err(SoldeerError {
@@ -348,13 +342,13 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
 async fn update() -> Result<(), SoldeerError> {
     println!("{}", Paint::green("🦌 Running soldeer update 🦌\n"));
 
-    let dependencies: Vec<Dependency> = match read_config(String::new()).await {
+    let mut dependencies: Vec<Dependency> = match read_config(String::new()).await {
         Ok(dep) => dep,
         Err(err) => return Err(SoldeerError { message: err.cause }),
     };
 
-    match download_dependencies(&dependencies, true).await {
-        Ok(_) => {}
+    let hashes = match download_dependencies(&dependencies, true).await {
+        Ok(h) => h,
         Err(err) => {
             return Err(SoldeerError {
                 message: format!(
@@ -363,6 +357,10 @@ async fn update() -> Result<(), SoldeerError> {
                 ),
             })
         }
+    };
+
+    for (index, dependency) in dependencies.iter_mut().enumerate() {
+        dependency.hash.clone_from(&hashes[index]);
     }
 
     match unzip_dependencies(&dependencies) {
@@ -491,6 +489,7 @@ libs = ["dependencies"]
         let command = Subcommands::Install(Install {
             dependency: None,
             remote_url: None,
+            commit: None,
         });
 
         match run(command) {
@@ -503,9 +502,9 @@ libs = ["dependencies"]
 
         let mut path_dependency = DEPENDENCY_DIR.join("@gearbox-protocol-periphery-v3-1.6.1");
 
-        assert!(Path::new(&path_dependency).exists());
+        assert!(path_dependency.exists());
         path_dependency = DEPENDENCY_DIR.join("@openzeppelin-contracts-5.0.2");
-        assert!(Path::new(&path_dependency).exists());
+        assert!(path_dependency.exists());
         clean_test_env(target_config);
     }
 
@@ -537,6 +536,7 @@ libs = ["dependencies"]
         let command = Subcommands::Install(Install {
             dependency: None,
             remote_url: None,
+            commit: None,
         });
 
         match run(command) {
@@ -549,7 +549,7 @@ libs = ["dependencies"]
 
         let path_dependency = DEPENDENCY_DIR.join("@tt-1.6.1");
 
-        assert!(Path::new(&path_dependency).exists());
+        assert!(path_dependency.exists());
         clean_test_env(target_config);
     }
 
@@ -590,7 +590,63 @@ libs = ["dependencies"]
 
         let path_dependency = DEPENDENCY_DIR.join("@tt-1.6.1");
 
-        assert!(Path::new(&path_dependency).exists());
+        assert!(path_dependency.exists());
+        clean_test_env(target_config);
+    }
+
+    #[test]
+    #[serial]
+    fn soldeer_update_dependencies_fails_when_one_dependency_fails() {
+        let _ = remove_dir_all(DEPENDENCY_DIR.clone());
+        let _ = remove_file(LOCK_FILE.clone());
+        let content = r#"
+# Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
+
+[profile.default]
+script = "script"
+solc = "0.8.26"
+src = "src"
+test = "test"
+libs = ["dependencies"]
+
+[dependencies]
+"@gearbox-protocol-periphery-v3" = "1.6.1"
+"@openzeppelin-contracts" = "5.0.2"   
+"will-not-fail" = {version = "1", url = "https://soldeer-revisions.s3.amazonaws.com/forge-std/v1_9_0_03-07-2024_14:44:57_forge-std-v1.9.0.zip"}  
+"will-fail" = {version = "1", url="https://will-not-work"}
+"#;
+
+        let target_config = define_config(true);
+
+        write_to_config(&target_config, content);
+
+        env::set_var("base_url", "https://api.soldeer.xyz");
+
+        let command = Subcommands::Install(Install {
+            dependency: None,
+            remote_url: None,
+            commit: None,
+        });
+
+        match run(command) {
+            Ok(_) => {}
+            Err(err) => {
+                clean_test_env(target_config.clone());
+                assert_eq!(
+                    err,
+                    SoldeerError {
+                        message: "Error downloading a dependency will-fail~https://will-not-work"
+                            .to_string()
+                    }
+                )
+            }
+        }
+
+        let mut path_dependency = DEPENDENCY_DIR.join("@gearbox-protocol-periphery-v3-1.6.1");
+
+        assert!(!path_dependency.exists());
+        path_dependency = DEPENDENCY_DIR.join("@openzeppelin-contracts-5.0.2");
+        assert!(!path_dependency.exists());
         clean_test_env(target_config);
     }
 
@@ -630,7 +686,7 @@ libs = ["dependencies"]
         let archive = File::open(path_dependency.join("custom_dry_run.zip"));
         let archive = ZipArchive::new(archive.unwrap());
 
-        assert!(Path::new(&path_dependency).exists());
+        assert!(path_dependency.exists());
         assert_eq!(archive.unwrap().len(), 2);
 
         let _ = remove_dir_all(path_dependency);
@@ -719,7 +775,10 @@ libs = ["dependencies"]
     fn push_skips_warning_on_sensitive_files() {
         let _ = remove_dir_all(DEPENDENCY_DIR.clone());
         let _ = remove_file(LOCK_FILE.clone());
-        let test_dir = env::current_dir().unwrap().join("test_push_skip_sensitive");
+        let test_dir = env::current_dir()
+            .unwrap()
+            .join("test")
+            .join("test_push_skip_sensitive");
 
         // Create test directory
         if !test_dir.exists() {
@@ -767,6 +826,297 @@ libs = ["dependencies"]
         // Clean up
         let _ = remove_file(&env_file_path);
         let _ = remove_dir_all(&test_dir);
+    }
+
+    #[test]
+    #[serial]
+    fn install_dependency_remote_url() {
+        let _ = remove_dir_all(DEPENDENCY_DIR.clone());
+        let _ = remove_file(LOCK_FILE.clone());
+        let test_dir = env::current_dir()
+            .unwrap()
+            .join("test")
+            .join("install_http");
+
+        // Create test directory
+        if !test_dir.exists() {
+            std::fs::create_dir(&test_dir).unwrap();
+        }
+
+        let content = r#"
+# Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
+
+[profile.default]
+script = "script"
+solc = "0.8.26"
+src = "src"
+test = "test"
+libs = ["dependencies"]
+
+[dependencies]
+"#;
+
+        let target_config = define_config(true);
+
+        write_to_config(&target_config, content);
+
+        env::set_var("base_url", "https://api.soldeer.xyz");
+
+        let command = Subcommands::Install(Install {
+            dependency: Some("forge-std~1.9.1".to_string()),
+            remote_url: Option::None,
+            commit: None,
+        });
+
+        match run(command) {
+            Ok(_) => {}
+            Err(err) => {
+                println!("Err {}", err);
+                clean_test_env(target_config.clone());
+                assert_eq!("Invalid State", "")
+            }
+        }
+
+        let path_dependency = DEPENDENCY_DIR
+            .join("forge-std-1.9.1")
+            .join("src")
+            .join("Test.sol");
+        assert!(path_dependency.exists());
+        clean_test_env(target_config);
+    }
+
+    #[test]
+    #[serial]
+    fn install_dependency_custom_url_chooses_http() {
+        let _ = remove_dir_all(DEPENDENCY_DIR.clone());
+        let _ = remove_file(LOCK_FILE.clone());
+        let test_dir = env::current_dir()
+            .unwrap()
+            .join("test")
+            .join("install_http");
+
+        // Create test directory
+        if !test_dir.exists() {
+            std::fs::create_dir(&test_dir).unwrap();
+        }
+
+        let content = r#"
+# Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
+
+[profile.default]
+script = "script"
+solc = "0.8.26"
+src = "src"
+test = "test"
+libs = ["dependencies"]
+
+[dependencies]
+"#;
+
+        let target_config = define_config(true);
+
+        write_to_config(&target_config, content);
+
+        env::set_var("base_url", "https://api.soldeer.xyz");
+
+        let command = Subcommands::Install(Install {
+            dependency: Some("forge-std~1.9.1".to_string()),
+            remote_url: Some("https://soldeer-revisions.s3.amazonaws.com/forge-std/v1_9_0_03-07-2024_14:44:57_forge-std-v1.9.0.zip".to_string()),
+            commit: None,
+        });
+
+        match run(command) {
+            Ok(_) => {}
+            Err(err) => {
+                println!("Err {}", err);
+                clean_test_env(target_config.clone());
+                assert_eq!("Invalid State", "")
+            }
+        }
+
+        let path_dependency = DEPENDENCY_DIR
+            .join("forge-std-1.9.1")
+            .join("src")
+            .join("Test.sol");
+        assert!(path_dependency.exists());
+        clean_test_env(target_config);
+    }
+
+    #[test]
+    #[serial]
+    fn install_dependency_custom_git_httpurl_chooses_git() {
+        let _ = remove_dir_all(DEPENDENCY_DIR.clone());
+        let _ = remove_file(LOCK_FILE.clone());
+        let test_dir = env::current_dir()
+            .unwrap()
+            .join("test")
+            .join("install_http");
+
+        // Create test directory
+        if !test_dir.exists() {
+            std::fs::create_dir(&test_dir).unwrap();
+        }
+
+        let content = r#"
+# Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
+
+[profile.default]
+script = "script"
+solc = "0.8.26"
+src = "src"
+test = "test"
+libs = ["dependencies"]
+
+[dependencies]
+"#;
+
+        let target_config = define_config(true);
+
+        write_to_config(&target_config, content);
+
+        env::set_var("base_url", "https://api.soldeer.xyz");
+
+        let command = Subcommands::Install(Install {
+            dependency: Some("forge-std~1.9.1".to_string()),
+            remote_url: Some("https://github.com/foundry-rs/forge-std.git".to_string()),
+            commit: None,
+        });
+
+        match run(command) {
+            Ok(_) => {}
+            Err(err) => {
+                println!("Err {}", err);
+                clean_test_env(target_config.clone());
+                assert_eq!("Invalid State", "")
+            }
+        }
+
+        let path_dependency = DEPENDENCY_DIR
+            .join("forge-std-1.9.1")
+            .join("src")
+            .join("Test.sol");
+        assert!(path_dependency.exists());
+        clean_test_env(target_config);
+    }
+
+    #[test]
+    #[serial]
+    fn install_dependency_custom_git_giturl_chooses_git() {
+        let _ = remove_dir_all(DEPENDENCY_DIR.clone());
+        let _ = remove_file(LOCK_FILE.clone());
+        let test_dir = env::current_dir()
+            .unwrap()
+            .join("test")
+            .join("install_http");
+
+        // Create test directory
+        if !test_dir.exists() {
+            std::fs::create_dir(&test_dir).unwrap();
+        }
+
+        let content = r#"
+# Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
+
+[profile.default]
+script = "script"
+solc = "0.8.26"
+src = "src"
+test = "test"
+libs = ["dependencies"]
+
+[dependencies]
+"#;
+
+        let target_config = define_config(true);
+
+        write_to_config(&target_config, content);
+
+        env::set_var("base_url", "https://api.soldeer.xyz");
+
+        let command = Subcommands::Install(Install {
+            dependency: Some("forge-std~1.9.1".to_string()),
+            remote_url: Some("git@github.com:foundry-rs/forge-std.git".to_string()),
+            commit: None,
+        });
+
+        match run(command) {
+            Ok(_) => {}
+            Err(err) => {
+                println!("Err {}", err);
+                clean_test_env(target_config.clone());
+                assert_eq!("Invalid State", "")
+            }
+        }
+
+        let path_dependency = DEPENDENCY_DIR
+            .join("forge-std-1.9.1")
+            .join("src")
+            .join("Test.sol");
+        assert!(path_dependency.exists());
+        clean_test_env(target_config);
+    }
+
+    #[test]
+    #[serial]
+    fn install_dependency_custom_git_giturl_custom_commit() {
+        let _ = remove_dir_all(DEPENDENCY_DIR.clone());
+        let _ = remove_file(LOCK_FILE.clone());
+        let test_dir = env::current_dir()
+            .unwrap()
+            .join("test")
+            .join("install_http");
+
+        // Create test directory
+        if !test_dir.exists() {
+            std::fs::create_dir(&test_dir).unwrap();
+        }
+
+        let content = r#"
+# Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
+
+[profile.default]
+script = "script"
+solc = "0.8.26"
+src = "src"
+test = "test"
+libs = ["dependencies"]
+
+[dependencies]
+"#;
+
+        let target_config = define_config(true);
+
+        write_to_config(&target_config, content);
+
+        env::set_var("base_url", "https://api.soldeer.xyz");
+
+        let command = Subcommands::Install(Install {
+            dependency: Some("forge-std~1.9.1".to_string()),
+            remote_url: Some("git@github.com:foundry-rs/forge-std.git".to_string()),
+            commit: Some("3778c3cb8e4244cb5a1c3ef3ce1c71a3683e324a".to_string()),
+        });
+
+        match run(command) {
+            Ok(_) => {}
+            Err(err) => {
+                println!("Err {}", err);
+                clean_test_env(target_config.clone());
+                assert_eq!("Invalid State", "")
+            }
+        }
+
+        let mut path_dependency = DEPENDENCY_DIR
+            .join("forge-std-1.9.1")
+            .join("src")
+            .join("mocks")
+            .join("MockERC721.sol");
+        assert!(!path_dependency.exists()); // this should not exists at that commit
+        path_dependency = DEPENDENCY_DIR
+            .join("forge-std-1.9.1")
+            .join("src")
+            .join("Test.sol");
+        assert!(path_dependency.exists()); // this should exists at that commit
+        clean_test_env(target_config);
     }
 
     fn create_random_file(target_dir: &Path, extension: String) -> String {

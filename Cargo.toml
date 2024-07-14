@@ -10,7 +10,7 @@ license = "MIT"
 name = "soldeer"
 readme = "./README.md"
 repository = "https://github.com/mario-eth/soldeer"
-version = "0.2.17"
+version = "0.2.18"
 
 [dependencies]
 chrono = {version = "0.4.38", default-features = false, features = [

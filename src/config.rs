@@ -40,6 +40,7 @@ pub struct Dependency {
     pub name: String,
     pub version: String,
     pub url: String,
+    pub hash: String,
 }
 
 #[derive(Deserialize, Debug)]
@@ -107,6 +108,7 @@ pub async fn read_config(filename: String) -> Result<Vec<Dependency>, ConfigErro
             name: name.to_string(),
             version,
             url,
+            hash: String::new(),
         });
     }
 
@@ -151,9 +153,7 @@ pub fn define_config_file() -> Result<String, ConfigError> {
 }
 
 pub fn add_to_config(
-    dependency_name: &str,
-    dependency_version: &str,
-    dependency_url: &str,
+    dependency: &Dependency,
     custom_url: bool,
     config_file: &str,
 ) -> Result<(), ConfigError> {
@@ -161,7 +161,7 @@ pub fn add_to_config(
         "{}",
         Paint::green(&format!(
             "Adding dependency {}-{} to the config file",
-            dependency_name, dependency_version
+            dependency.name, dependency.version
         ))
     );
 
@@ -186,21 +186,21 @@ pub fn add_to_config(
 
     new_dependencies.push_str(&format!(
         "  \"{}~{}\" = \"{}\"\n",
-        dependency_name, dependency_version, dependency_url
+        dependency.name, dependency.version, dependency.url
     ));
 
     let mut new_item: Item = Item::None;
     if custom_url {
-        new_item["version"] = value(dependency_version);
-        new_item["url"] = value(dependency_url);
+        new_item["version"] = value(dependency.version.clone());
+        new_item["url"] = value(dependency.url.clone());
     } else {
-        new_item = value(dependency_version)
+        new_item = value(dependency.version.clone())
     }
 
     doc["dependencies"]
         .as_table_mut()
         .unwrap()
-        .insert(dependency_name.to_string().as_str(), new_item);
+        .insert(dependency.name.to_string().as_str(), new_item);
     let mut file: std::fs::File = fs::OpenOptions::new()
         .write(true)
         .append(false)
@@ -443,7 +443,8 @@ libs = ["dependencies"]
             Dependency {
                 name: "@gearbox-protocol-periphery-v3".to_string(),
                 version: "1.6.1".to_string(),
-                url: "https://example_url.com/example_url.zip".to_string()
+                url: "https://example_url.com/example_url.zip".to_string(),
+                hash: String::new()
             }
         );
 
@@ -452,7 +453,8 @@ libs = ["dependencies"]
             Dependency {
                 name: "@openzeppelin-contracts".to_string(),
                 version: "5.0.2".to_string(),
-                url: "https://example_url.com/example_url.zip".to_string()
+                url: "https://example_url.com/example_url.zip".to_string(),
+                hash: String::new()
             }
         );
         let _ = remove_file(target_config);
@@ -505,7 +507,8 @@ libs = ["dependencies"]
             Dependency {
                 name: "@gearbox-protocol-periphery-v3".to_string(),
                 version: "1.6.1".to_string(),
-                url: "https://example_url.com/example_url.zip".to_string()
+                url: "https://example_url.com/example_url.zip".to_string(),
+                hash: String::new()
             }
         );
 
@@ -514,7 +517,8 @@ libs = ["dependencies"]
             Dependency {
                 name: "@openzeppelin-contracts".to_string(),
                 version: "5.0.2".to_string(),
-                url: "https://example_url.com/example_url.zip".to_string()
+                url: "https://example_url.com/example_url.zip".to_string(),
+                hash: String::new()
             }
         );
         let _ = remove_file(target_config);
@@ -565,7 +569,8 @@ enabled = true
             Dependency {
                 name: "@gearbox-protocol-periphery-v3".to_string(),
                 version: "1.6.1".to_string(),
-                url: "https://example_url.com/example_url.zip".to_string()
+                url: "https://example_url.com/example_url.zip".to_string(),
+                hash: String::new()
             }
         );
 
@@ -574,7 +579,8 @@ enabled = true
             Dependency {
                 name: "@openzeppelin-contracts".to_string(),
                 version: "5.0.2".to_string(),
-                url: "https://example_url.com/example_url.zip".to_string()
+                url: "https://example_url.com/example_url.zip".to_string(),
+                hash: String::new()
             }
         );
         let _ = remove_file(target_config);
@@ -625,7 +631,8 @@ enabled = true
             Dependency {
                 name: "@gearbox-protocol-periphery-v3".to_string(),
                 version: "1.6.1".to_string(),
-                url: "https://example_url.com/example_url.zip".to_string()
+                url: "https://example_url.com/example_url.zip".to_string(),
+                hash: String::new()
             }
         );
 
@@ -634,7 +641,8 @@ enabled = true
             Dependency {
                 name: "@openzeppelin-contracts".to_string(),
                 version: "5.0.2".to_string(),
-                url: "https://example_url.com/example_url.zip".to_string()
+                url: "https://example_url.com/example_url.zip".to_string(),
+                hash: String::new()
             }
         );
         let _ = remove_file(target_config);
@@ -855,15 +863,13 @@ libs = ["dependencies"]
         let target_config = define_config(true);
 
         write_to_config(&target_config, content);
-
-        add_to_config(
-            "dep1",
-            "1.0.0",
-            "http://custom_url.com/custom.zip",
-            false,
-            target_config.to_str().unwrap(),
-        )
-        .unwrap();
+        let dependency = Dependency {
+            name: "dep1".to_string(),
+            version: "1.0.0".to_string(),
+            url: "http://custom_url.com/custom.zip".to_string(),
+            hash: String::new(),
+        };
+        add_to_config(&dependency, false, target_config.to_str().unwrap()).unwrap();
         content = r#"
 # Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
 
@@ -906,14 +912,14 @@ libs = ["dependencies"]
 
         write_to_config(&target_config, content);
 
-        add_to_config(
-            "dep1",
-            "1.0.0",
-            "http://custom_url.com/custom.zip",
-            true,
-            target_config.to_str().unwrap(),
-        )
-        .unwrap();
+        let dependency = Dependency {
+            name: "dep1".to_string(),
+            version: "1.0.0".to_string(),
+            url: "http://custom_url.com/custom.zip".to_string(),
+            hash: String::new(),
+        };
+
+        add_to_config(&dependency, true, target_config.to_str().unwrap()).unwrap();
         content = r#"
 # Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
 
@@ -957,14 +963,14 @@ old_dep = "5.1.0-my-version-is-cool"
 
         write_to_config(&target_config, content);
 
-        add_to_config(
-            "dep1",
-            "1.0.0",
-            "http://custom_url.com/custom.zip",
-            false,
-            target_config.to_str().unwrap(),
-        )
-        .unwrap();
+        let dependency = Dependency {
+            name: "dep1".to_string(),
+            version: "1.0.0".to_string(),
+            url: "http://custom_url.com/custom.zip".to_string(),
+            hash: String::new(),
+        };
+
+        add_to_config(&dependency, false, target_config.to_str().unwrap()).unwrap();
         content = r#"
 # Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
 
@@ -1009,14 +1015,14 @@ old_dep = { version = "5.1.0-my-version-is-cool", url = "http://custom_url.com/c
 
         write_to_config(&target_config, content);
 
-        add_to_config(
-            "dep1",
-            "1.0.0",
-            "http://custom_url.com/custom.zip",
-            true,
-            target_config.to_str().unwrap(),
-        )
-        .unwrap();
+        let dependency = Dependency {
+            name: "dep1".to_string(),
+            version: "1.0.0".to_string(),
+            url: "http://custom_url.com/custom.zip".to_string(),
+            hash: String::new(),
+        };
+
+        add_to_config(&dependency, true, target_config.to_str().unwrap()).unwrap();
         content = r#"
 # Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
 
@@ -1061,14 +1067,14 @@ old_dep = { version = "5.1.0-my-version-is-cool", url = "http://custom_url.com/c
 
         write_to_config(&target_config, content);
 
-        add_to_config(
-            "old_dep",
-            "1.0.0",
-            "http://custom_url.com/custom.zip",
-            true,
-            target_config.to_str().unwrap(),
-        )
-        .unwrap();
+        let dependency = Dependency {
+            name: "old_dep".to_string(),
+            version: "1.0.0".to_string(),
+            url: "http://custom_url.com/custom.zip".to_string(),
+            hash: String::new(),
+        };
+
+        add_to_config(&dependency, true, target_config.to_str().unwrap()).unwrap();
         content = r#"
 # Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
 
@@ -1112,14 +1118,14 @@ old_dep = { version = "5.1.0-my-version-is-cool", url = "http://custom_url.com/c
 
         write_to_config(&target_config, content);
 
-        add_to_config(
-            "old_dep",
-            "1.0.0",
-            "http://custom_url.com/custom.zip",
-            false,
-            target_config.to_str().unwrap(),
-        )
-        .unwrap();
+        let dependency = Dependency {
+            name: "old_dep".to_string(),
+            version: "1.0.0".to_string(),
+            url: "http://custom_url.com/custom.zip".to_string(),
+            hash: String::new(),
+        };
+
+        add_to_config(&dependency, false, target_config.to_str().unwrap()).unwrap();
         content = r#"
 # Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
 
@@ -1163,14 +1169,14 @@ gas_reports = ['*']
 
         write_to_config(&target_config, content);
 
-        add_to_config(
-            "dep1",
-            "1.0.0",
-            "http://custom_url.com/custom.zip",
-            false,
-            target_config.to_str().unwrap(),
-        )
-        .unwrap();
+        let dependency = Dependency {
+            name: "dep1".to_string(),
+            version: "1.0.0".to_string(),
+            url: "http://custom_url.com/custom.zip".to_string(),
+            hash: String::new(),
+        };
+
+        add_to_config(&dependency, false, target_config.to_str().unwrap()).unwrap();
         content = r#"
 # Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
 
@@ -1210,14 +1216,14 @@ enabled = true
 
         write_to_config(&target_config, content);
 
-        add_to_config(
-            "dep1",
-            "1.0.0",
-            "http://custom_url.com/custom.zip",
-            false,
-            target_config.to_str().unwrap(),
-        )
-        .unwrap();
+        let dependency = Dependency {
+            name: "dep1".to_string(),
+            version: "1.0.0".to_string(),
+            url: "http://custom_url.com/custom.zip".to_string(),
+            hash: String::new(),
+        };
+
+        add_to_config(&dependency, false, target_config.to_str().unwrap()).unwrap();
         content = r#"
 [remappings]
 enabled = true
@@ -1248,14 +1254,14 @@ enabled = true
 
         write_to_config(&target_config, content);
 
-        add_to_config(
-            "dep1",
-            "1.0.0",
-            "http://custom_url.com/custom.zip",
-            true,
-            target_config.to_str().unwrap(),
-        )
-        .unwrap();
+        let dependency = Dependency {
+            name: "dep1".to_string(),
+            version: "1.0.0".to_string(),
+            url: "http://custom_url.com/custom.zip".to_string(),
+            hash: String::new(),
+        };
+
+        add_to_config(&dependency, true, target_config.to_str().unwrap()).unwrap();
         content = r#"
 [remappings]
 enabled = true

@@ -2,11 +2,11 @@
 # Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
 
 [profile.default]
-libs = ["dependencies"]
 script = "script"
-solc = "0.8.20"
+solc = "0.8.26"
 src = "src"
 test = "test"
+libs = ["dependencies"]
 
 [dependencies]
 forge-std = "1.8.2"

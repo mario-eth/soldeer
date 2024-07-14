@@ -127,7 +127,7 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
                 name: dependency_name.clone(),
                 version: dependency_version.clone(),
                 url: dependency_url.clone(),
-                hash: hash,
+                hash,
             };
 
             match lock_check(&dependency, true) {
@@ -207,7 +207,7 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
                 }
             };
 
-            match add_to_config(&dependency, custom_url, &config_file) {
+            match add_to_config(&dependency, custom_url, &config_file, via_git) {
                 Ok(_) => {}
                 Err(err) => {
                     return Err(SoldeerError { message: err.cause });
@@ -360,7 +360,7 @@ async fn update() -> Result<(), SoldeerError> {
     };
 
     for (index, dependency) in dependencies.iter_mut().enumerate() {
-        dependency.hash = hashes[index].clone();
+        dependency.hash.clone_from(&hashes[index]);
     }
 
     match unzip_dependencies(&dependencies) {

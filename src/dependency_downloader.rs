@@ -67,7 +67,7 @@ pub async fn download_dependency(dependency: &Dependency) -> Result<String, Down
     let tunnel = get_download_tunnel(&dependency.url);
     let hash: String;
     if tunnel == "http" {
-        match download_via_http(&dependency, &dependency_directory).await {
+        match download_via_http(dependency, &dependency_directory).await {
             Ok(_) => {}
             Err(err) => {
                 return Err(DownloadError {
@@ -79,7 +79,7 @@ pub async fn download_dependency(dependency: &Dependency) -> Result<String, Down
         }
         hash = sha256_digest(&dependency.name, &dependency.version);
     } else if tunnel == "git" {
-        hash = match download_via_git(&dependency, &dependency_directory).await {
+        hash = match download_via_git(dependency, &dependency_directory).await {
             Ok(h) => h,
             Err(err) => {
                 return Err(DownloadError {
@@ -259,11 +259,11 @@ async fn download_via_http(
 }
 
 fn transform_git_to_http(url: &str) -> String {
-    if url.starts_with("git@github.com:") {
-        let repo_path = &url["git@github.com:".len()..];
+    if let Some(stripped) = url.strip_prefix("git@github.com:") {
+        let repo_path = stripped;
         format!("https://github.com/{}", repo_path)
-    } else if url.starts_with("git@gitlab.com:") {
-        let repo_path = &url["git@gitlab.com:".len()..];
+    } else if let Some(stripped) = url.strip_prefix("git@gitlab.com:") {
+        let repo_path = stripped;
         format!("https://gitlab.com/{}", repo_path)
     } else {
         url.to_string()

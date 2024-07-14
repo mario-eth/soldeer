@@ -156,6 +156,7 @@ pub fn add_to_config(
     dependency: &Dependency,
     custom_url: bool,
     config_file: &str,
+    via_git: bool,
 ) -> Result<(), ConfigError> {
     println!(
         "{}",
@@ -193,6 +194,10 @@ pub fn add_to_config(
     if custom_url {
         new_item["version"] = value(dependency.version.clone());
         new_item["url"] = value(dependency.url.clone());
+
+        if via_git {
+            new_item["commit"] = value(dependency.hash.clone());
+        }
     } else {
         new_item = value(dependency.version.clone())
     }
@@ -869,7 +874,7 @@ libs = ["dependencies"]
             url: "http://custom_url.com/custom.zip".to_string(),
             hash: String::new(),
         };
-        add_to_config(&dependency, false, target_config.to_str().unwrap()).unwrap();
+        add_to_config(&dependency, false, target_config.to_str().unwrap(), false).unwrap();
         content = r#"
 # Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
 
@@ -919,7 +924,7 @@ libs = ["dependencies"]
             hash: String::new(),
         };
 
-        add_to_config(&dependency, true, target_config.to_str().unwrap()).unwrap();
+        add_to_config(&dependency, true, target_config.to_str().unwrap(), false).unwrap();
         content = r#"
 # Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
 
@@ -970,7 +975,7 @@ old_dep = "5.1.0-my-version-is-cool"
             hash: String::new(),
         };
 
-        add_to_config(&dependency, false, target_config.to_str().unwrap()).unwrap();
+        add_to_config(&dependency, false, target_config.to_str().unwrap(), false).unwrap();
         content = r#"
 # Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
 
@@ -1022,7 +1027,7 @@ old_dep = { version = "5.1.0-my-version-is-cool", url = "http://custom_url.com/c
             hash: String::new(),
         };
 
-        add_to_config(&dependency, true, target_config.to_str().unwrap()).unwrap();
+        add_to_config(&dependency, true, target_config.to_str().unwrap(), false).unwrap();
         content = r#"
 # Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
 
@@ -1074,7 +1079,7 @@ old_dep = { version = "5.1.0-my-version-is-cool", url = "http://custom_url.com/c
             hash: String::new(),
         };
 
-        add_to_config(&dependency, true, target_config.to_str().unwrap()).unwrap();
+        add_to_config(&dependency, true, target_config.to_str().unwrap(), false).unwrap();
         content = r#"
 # Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
 
@@ -1125,7 +1130,7 @@ old_dep = { version = "5.1.0-my-version-is-cool", url = "http://custom_url.com/c
             hash: String::new(),
         };
 
-        add_to_config(&dependency, false, target_config.to_str().unwrap()).unwrap();
+        add_to_config(&dependency, false, target_config.to_str().unwrap(), false).unwrap();
         content = r#"
 # Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
 
@@ -1176,7 +1181,7 @@ gas_reports = ['*']
             hash: String::new(),
         };
 
-        add_to_config(&dependency, false, target_config.to_str().unwrap()).unwrap();
+        add_to_config(&dependency, false, target_config.to_str().unwrap(), false).unwrap();
         content = r#"
 # Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
 
@@ -1223,7 +1228,7 @@ enabled = true
             hash: String::new(),
         };
 
-        add_to_config(&dependency, false, target_config.to_str().unwrap()).unwrap();
+        add_to_config(&dependency, false, target_config.to_str().unwrap(), false).unwrap();
         content = r#"
 [remappings]
 enabled = true
@@ -1261,10 +1266,179 @@ enabled = true
             hash: String::new(),
         };
 
-        add_to_config(&dependency, true, target_config.to_str().unwrap()).unwrap();
+        add_to_config(&dependency, true, target_config.to_str().unwrap(), false).unwrap();
         content = r#"
 [remappings]
 enabled = true
+
+[dependencies]
+dep1 = { version = "1.0.0", url = "http://custom_url.com/custom.zip" }
+"#;
+
+        assert_eq!(
+            read_file_to_string(&String::from(target_config.to_str().unwrap())),
+            content
+        );
+
+        let _ = remove_file(target_config);
+        Ok(())
+    }
+
+    #[test]
+    fn add_to_config_foundry_github_with_commit() -> Result<(), ConfigError> {
+        let mut content = r#"
+# Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
+
+[profile.default]
+script = "script"
+solc = "0.8.26"
+src = "src"
+test = "test"
+libs = ["dependencies"]
+gas_reports = ['*']
+
+# we don't have [dependencies] declared
+"#;
+
+        let target_config = define_config(true);
+
+        write_to_config(&target_config, content);
+
+        let dependency = Dependency {
+            name: "dep1".to_string(),
+            version: "1.0.0".to_string(),
+            url: "git@github.com:foundry-rs/forge-std.git".to_string(),
+            hash: "07263d193d621c4b2b0ce8b4d54af58f6957d97d".to_string(),
+        };
+
+        add_to_config(&dependency, true, target_config.to_str().unwrap(), true).unwrap();
+        content = r#"
+# Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
+
+[profile.default]
+script = "script"
+solc = "0.8.26"
+src = "src"
+test = "test"
+libs = ["dependencies"]
+gas_reports = ['*']
+
+# we don't have [dependencies] declared
+
+[dependencies]
+dep1 = { version = "1.0.0", url = "git@github.com:foundry-rs/forge-std.git", commit = "07263d193d621c4b2b0ce8b4d54af58f6957d97d" }
+"#;
+
+        assert_eq!(
+            read_file_to_string(&String::from(target_config.to_str().unwrap())),
+            content
+        );
+
+        let _ = remove_file(target_config);
+        Ok(())
+    }
+
+    #[test]
+    fn add_to_config_foundry_github_previous_no_commit_then_with_commit() -> Result<(), ConfigError>
+    {
+        let mut content = r#"
+# Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
+
+[profile.default]
+script = "script"
+solc = "0.8.26"
+src = "src"
+test = "test"
+libs = ["dependencies"]
+gas_reports = ['*']
+
+# we don't have [dependencies] declared
+
+[dependencies]
+dep1 = { version = "1.0.0", url = "git@github.com:foundry-rs/forge-std.git" }
+"#;
+
+        let target_config = define_config(true);
+
+        write_to_config(&target_config, content);
+
+        let dependency = Dependency {
+            name: "dep1".to_string(),
+            version: "1.0.0".to_string(),
+            url: "git@github.com:foundry-rs/forge-std.git".to_string(),
+            hash: "07263d193d621c4b2b0ce8b4d54af58f6957d97d".to_string(),
+        };
+
+        add_to_config(&dependency, true, target_config.to_str().unwrap(), true).unwrap();
+        content = r#"
+# Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
+
+[profile.default]
+script = "script"
+solc = "0.8.26"
+src = "src"
+test = "test"
+libs = ["dependencies"]
+gas_reports = ['*']
+
+# we don't have [dependencies] declared
+
+[dependencies]
+dep1 = { version = "1.0.0", url = "git@github.com:foundry-rs/forge-std.git", commit = "07263d193d621c4b2b0ce8b4d54af58f6957d97d" }
+"#;
+
+        assert_eq!(
+            read_file_to_string(&String::from(target_config.to_str().unwrap())),
+            content
+        );
+
+        let _ = remove_file(target_config);
+        Ok(())
+    }
+
+    #[test]
+    fn add_to_config_foundry_github_previous_commit_then_no_commit() -> Result<(), ConfigError> {
+        let mut content = r#"
+# Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
+
+[profile.default]
+script = "script"
+solc = "0.8.26"
+src = "src"
+test = "test"
+libs = ["dependencies"]
+gas_reports = ['*']
+
+# we don't have [dependencies] declared
+
+[dependencies]
+dep1 = { version = "1.0.0", url = "git@github.com:foundry-rs/forge-std.git", commit = "07263d193d621c4b2b0ce8b4d54af58f6957d97d" }
+"#;
+
+        let target_config = define_config(true);
+
+        write_to_config(&target_config, content);
+
+        let dependency = Dependency {
+            name: "dep1".to_string(),
+            version: "1.0.0".to_string(),
+            url: "http://custom_url.com/custom.zip".to_string(),
+            hash: String::new(),
+        };
+
+        add_to_config(&dependency, true, target_config.to_str().unwrap(), false).unwrap();
+        content = r#"
+# Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
+
+[profile.default]
+script = "script"
+solc = "0.8.26"
+src = "src"
+test = "test"
+libs = ["dependencies"]
+gas_reports = ['*']
+
+# we don't have [dependencies] declared
 
 [dependencies]
 dep1 = { version = "1.0.0", url = "http://custom_url.com/custom.zip" }

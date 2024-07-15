@@ -115,11 +115,11 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
 
             // retrieve the commit in case it's sent when using git
             let mut hash = String::new();
-            if via_git && install.commit.is_some() {
-                hash = install.commit.unwrap();
-            } else if !via_git && install.commit.is_some() {
+            if via_git && install.rev.is_some() {
+                hash = install.rev.unwrap();
+            } else if !via_git && install.rev.is_some() {
                 return Err(SoldeerError {
-                    message: format!("Error unknown param {}", install.commit.unwrap()),
+                    message: format!("Error unknown param {}", install.rev.unwrap()),
                 });
             }
 
@@ -141,11 +141,11 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
                 Ok(h) => h,
                 Err(err) => {
                     return Err(SoldeerError {
-                            message: format!(
-                                "Error downloading a dependency {}~{}. Cause: {}.\nCheck if the dependency name and version are correct.\nIf you are not sure check https://soldeer.xyz.",
-                                err.name, err.version, err.cause
-                            ),
-                        });
+                        message: format!(
+                            "Error downloading a dependency {}~{}. Cause: {}",
+                            err.name, err.version, err.cause
+                        ),
+                    });
                 }
             };
 
@@ -352,8 +352,8 @@ async fn update() -> Result<(), SoldeerError> {
         Err(err) => {
             return Err(SoldeerError {
                 message: format!(
-                    "Error downloading a dependency {}~{}",
-                    err.name, err.version
+                    "Error downloading a dependency {}~{}. Cause: {}",
+                    err.name, err.version, err.cause
                 ),
             })
         }
@@ -489,7 +489,7 @@ libs = ["dependencies"]
         let command = Subcommands::Install(Install {
             dependency: None,
             remote_url: None,
-            commit: None,
+            rev: None,
         });
 
         match run(command) {
@@ -536,7 +536,7 @@ libs = ["dependencies"]
         let command = Subcommands::Install(Install {
             dependency: None,
             remote_url: None,
-            commit: None,
+            rev: None,
         });
 
         match run(command) {
@@ -596,6 +596,63 @@ libs = ["dependencies"]
 
     #[test]
     #[serial]
+    fn soldeer_update_with_git_and_http_success() {
+        let _ = remove_dir_all(DEPENDENCY_DIR.clone());
+        let _ = remove_file(LOCK_FILE.clone());
+        let content = r#"
+# Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
+
+[profile.default]
+script = "script"
+solc = "0.8.26"
+src = "src"
+test = "test"
+libs = ["dependencies"]
+
+[dependencies]
+"@dep1" = {version = "1", url = "https://soldeer-revisions.s3.amazonaws.com/@openzeppelin-contracts/3_3_0-rc_2_22-01-2024_13:12:57_contracts.zip"}
+"@dep2" = {version = "2", git = "git@gitlab.com:mario4582928/Mario.git", rev="22868f426bd4dd0e682b5ec5f9bd55507664240c" }
+"@dep3" = {version = "3.3", git = "git@gitlab.com:mario4582928/Mario.git", rev="7a0663eaf7488732f39550be655bad6694974cb3" }
+"#;
+
+        let target_config = define_config(true);
+
+        write_to_config(&target_config, content);
+
+        env::set_var("base_url", "https://api.soldeer.xyz");
+
+        let command = Subcommands::Update(Update {});
+
+        match run(command) {
+            Ok(_) => {}
+            Err(err) => {
+                println!("Err {:?}", err);
+                clean_test_env(target_config.clone());
+                assert_eq!("Invalid State", "")
+            }
+        }
+
+        // http dependency should be there
+        let path_dependency = DEPENDENCY_DIR
+            .join("@dep1-1")
+            .join("token")
+            .join("ERC20")
+            .join("ERC20.sol");
+        assert!(path_dependency.exists());
+
+        // git dependency should be there without specified revision
+        let path_dependency = DEPENDENCY_DIR.join("@dep2-2").join("JustATest3.md");
+        assert!(path_dependency.exists());
+
+        // git dependency should be there with specified revision
+        let path_dependency = DEPENDENCY_DIR.join("@dep3-3.3").join("JustATest2.md");
+        assert!(path_dependency.exists());
+
+        clean_test_env(target_config);
+    }
+
+    #[test]
+    #[serial]
     fn soldeer_update_dependencies_fails_when_one_dependency_fails() {
         let _ = remove_dir_all(DEPENDENCY_DIR.clone());
         let _ = remove_file(LOCK_FILE.clone());
@@ -625,20 +682,17 @@ libs = ["dependencies"]
         let command = Subcommands::Install(Install {
             dependency: None,
             remote_url: None,
-            commit: None,
+            rev: None,
         });
 
         match run(command) {
             Ok(_) => {}
             Err(err) => {
                 clean_test_env(target_config.clone());
-                assert_eq!(
-                    err,
-                    SoldeerError {
-                        message: "Error downloading a dependency will-fail~https://will-not-work"
-                            .to_string()
-                    }
-                )
+                // can not generalize as diff systems return various dns errors
+                assert!(err
+                    .message
+                    .contains("Error downloading a dependency will-fail~1"))
             }
         }
 
@@ -865,7 +919,7 @@ libs = ["dependencies"]
         let command = Subcommands::Install(Install {
             dependency: Some("forge-std~1.9.1".to_string()),
             remote_url: Option::None,
-            commit: None,
+            rev: None,
         });
 
         match run(command) {
@@ -922,7 +976,7 @@ libs = ["dependencies"]
         let command = Subcommands::Install(Install {
             dependency: Some("forge-std~1.9.1".to_string()),
             remote_url: Some("https://soldeer-revisions.s3.amazonaws.com/forge-std/v1_9_0_03-07-2024_14:44:57_forge-std-v1.9.0.zip".to_string()),
-            commit: None,
+            rev: None,
         });
 
         match run(command) {
@@ -979,7 +1033,7 @@ libs = ["dependencies"]
         let command = Subcommands::Install(Install {
             dependency: Some("forge-std~1.9.1".to_string()),
             remote_url: Some("https://github.com/foundry-rs/forge-std.git".to_string()),
-            commit: None,
+            rev: None,
         });
 
         match run(command) {
@@ -1036,7 +1090,7 @@ libs = ["dependencies"]
         let command = Subcommands::Install(Install {
             dependency: Some("forge-std~1.9.1".to_string()),
             remote_url: Some("git@github.com:foundry-rs/forge-std.git".to_string()),
-            commit: None,
+            rev: None,
         });
 
         match run(command) {
@@ -1093,7 +1147,7 @@ libs = ["dependencies"]
         let command = Subcommands::Install(Install {
             dependency: Some("forge-std~1.9.1".to_string()),
             remote_url: Some("git@github.com:foundry-rs/forge-std.git".to_string()),
-            commit: Some("3778c3cb8e4244cb5a1c3ef3ce1c71a3683e324a".to_string()),
+            rev: Some("3778c3cb8e4244cb5a1c3ef3ce1c71a3683e324a".to_string()),
         });
 
         match run(command) {

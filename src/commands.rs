@@ -27,7 +27,7 @@ pub enum Subcommands {
     Example from remote repository: soldeer install @openzeppelin-contracts~2.3.0 
     Example custom url: soldeer install @openzeppelin-contracts~2.3.0 https://github.com/OpenZeppelin/openzeppelin-contracts/archive/refs/tags/v5.0.2.zip
     Example git: soldeer install @openzeppelin-contracts~2.3.0 git@github.com:OpenZeppelin/openzeppelin-contracts.git
-    Example git with specified commit: soldeer install @openzeppelin-contracts~2.3.0 git@github.com:OpenZeppelin/openzeppelin-contracts.git 05f218fb6617932e56bf5388c3b389c3028a7b73\n",
+    Example git with specified commit: soldeer install @openzeppelin-contracts~2.3.0 git@github.com:OpenZeppelin/openzeppelin-contracts.git --rev 05f218fb6617932e56bf5388c3b389c3028a7b73\n",
     after_help = "For more information, read the README.md",
     override_usage = "soldeer install <DEPENDENCY>~<VERSION> [URL]"
 )]
@@ -36,8 +36,8 @@ pub struct Install {
     pub dependency: Option<String>,
     #[clap(required = false)]
     pub remote_url: Option<String>,
-    #[clap(required = false)]
-    pub commit: Option<String>,
+    #[arg(long, value_parser = clap::value_parser!(String))]
+    pub rev: Option<String>,
 }
 
 #[derive(Debug, Clone, Parser)]

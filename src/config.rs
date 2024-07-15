@@ -74,6 +74,7 @@ pub async fn read_config(filename: String) -> Result<Vec<Dependency>, ConfigErro
         #[allow(clippy::needless_late_init)]
         let url;
         let version;
+        let mut rev = String::new();
 
         // checks if the format is dependency = {version = "1.1.1" }
         if v.get("version").is_some() {
@@ -92,6 +93,11 @@ pub async fn read_config(filename: String) -> Result<Vec<Dependency>, ConfigErro
         if v.get("url").is_some() {
             // clear any string quotes added by mistake
             url = v["url"].to_string().replace('\"', "");
+        } else if v.get("git").is_some() {
+            url = v["git"].to_string().replace('\"', "");
+            if v.get("rev").is_some() {
+                rev = v["rev"].to_string().replace('\"', "");
+            }
         } else {
             // we don't have a specified url, means we will rely on the remote server to give it to us
             url = match get_dependency_url_remote(name, &version).await {
@@ -108,7 +114,7 @@ pub async fn read_config(filename: String) -> Result<Vec<Dependency>, ConfigErro
             name: name.to_string(),
             version,
             url,
-            hash: String::new(),
+            hash: rev,
         });
     }
 
@@ -191,13 +197,13 @@ pub fn add_to_config(
     ));
 
     let mut new_item: Item = Item::None;
-    if custom_url {
+    if custom_url && !via_git {
         new_item["version"] = value(dependency.version.clone());
         new_item["url"] = value(dependency.url.clone());
-
-        if via_git {
-            new_item["commit"] = value(dependency.hash.clone());
-        }
+    } else if via_git {
+        new_item["version"] = value(dependency.version.clone());
+        new_item["git"] = value(dependency.url.clone());
+        new_item["rev"] = value(dependency.hash.clone());
     } else {
         new_item = value(dependency.version.clone())
     }
@@ -1326,7 +1332,7 @@ gas_reports = ['*']
 # we don't have [dependencies] declared
 
 [dependencies]
-dep1 = { version = "1.0.0", url = "git@github.com:foundry-rs/forge-std.git", commit = "07263d193d621c4b2b0ce8b4d54af58f6957d97d" }
+dep1 = { version = "1.0.0", git = "git@github.com:foundry-rs/forge-std.git", rev = "07263d193d621c4b2b0ce8b4d54af58f6957d97d" }
 "#;
 
         assert_eq!(
@@ -1355,7 +1361,7 @@ gas_reports = ['*']
 # we don't have [dependencies] declared
 
 [dependencies]
-dep1 = { version = "1.0.0", url = "git@github.com:foundry-rs/forge-std.git" }
+dep1 = { version = "1.0.0", git = "git@github.com:foundry-rs/forge-std.git" }
 "#;
 
         let target_config = define_config(true);
@@ -1384,7 +1390,7 @@ gas_reports = ['*']
 # we don't have [dependencies] declared
 
 [dependencies]
-dep1 = { version = "1.0.0", url = "git@github.com:foundry-rs/forge-std.git", commit = "07263d193d621c4b2b0ce8b4d54af58f6957d97d" }
+dep1 = { version = "1.0.0", git = "git@github.com:foundry-rs/forge-std.git", rev = "07263d193d621c4b2b0ce8b4d54af58f6957d97d" }
 "#;
 
         assert_eq!(
@@ -1412,7 +1418,7 @@ gas_reports = ['*']
 # we don't have [dependencies] declared
 
 [dependencies]
-dep1 = { version = "1.0.0", url = "git@github.com:foundry-rs/forge-std.git", commit = "07263d193d621c4b2b0ce8b4d54af58f6957d97d" }
+dep1 = { version = "1.0.0", git = "git@github.com:foundry-rs/forge-std.git", rev = "07263d193d621c4b2b0ce8b4d54af58f6957d97d" }
 "#;
 
         let target_config = define_config(true);

@@ -36,7 +36,7 @@ fn soldeer_install_valid_dependency() {
     let command = Subcommands::Install(Install {
         dependency: Some("forge-std~1.8.2".to_string()),
         remote_url: None,
-        commit: None,
+        rev: None,
     });
 
     match soldeer::run(command) {
@@ -143,7 +143,7 @@ fn soldeer_install_invalid_dependency() {
     let command = Subcommands::Install(Install {
         dependency: Some("forge-std".to_string()),
         remote_url: None,
-        commit: None,
+        rev: None,
     });
 
     match soldeer::run(command) {

@@ -1,12 +1,12 @@
 use futures::StreamExt;
-use git2::Oid;
-use git2::Repository;
 use std::error::Error;
 use std::fs;
 use std::fs::remove_dir_all;
 use std::io::Cursor;
 use std::path::Path;
 use std::path::PathBuf;
+use std::process::Command;
+use std::process::Stdio;
 use tokio::{
     fs::File,
     io::AsyncWriteExt,
@@ -20,6 +20,7 @@ use crate::utils::get_download_tunnel;
 use crate::utils::read_file;
 use crate::utils::sha256_digest;
 use crate::DEPENDENCY_DIR;
+use std::str;
 
 pub async fn download_dependencies(
     dependencies: &[Dependency],
@@ -72,7 +73,7 @@ pub async fn download_dependency(dependency: &Dependency) -> Result<String, Down
             Err(err) => {
                 return Err(DownloadError {
                     name: dependency.name.to_string(),
-                    version: dependency.url.to_string(),
+                    version: dependency.version.to_string(),
                     cause: err.cause,
                 });
             }
@@ -84,7 +85,7 @@ pub async fn download_dependency(dependency: &Dependency) -> Result<String, Down
             Err(err) => {
                 return Err(DownloadError {
                     name: dependency.name.to_string(),
-                    version: dependency.url.to_string(),
+                    version: dependency.version.to_string(),
                     cause: err.cause,
                 });
             }
@@ -92,7 +93,7 @@ pub async fn download_dependency(dependency: &Dependency) -> Result<String, Down
     } else {
         return Err(DownloadError {
             name: dependency.name.to_string(),
-            version: dependency.url.to_string(),
+            version: dependency.version.to_string(),
             cause: "Download tunnel unknown".to_string(),
         });
     }
@@ -149,53 +150,122 @@ async fn download_via_git(
 ) -> Result<String, DownloadError> {
     let target_dir = &format!("{}-{}", dependency.name, dependency.version);
     let path = dependency_directory.join(target_dir);
+    let dependency_path = path.as_os_str().to_str().unwrap();
     if path.exists() {
-        let _ = remove_dir_all(path);
+        let _ = remove_dir_all(&path);
     }
 
-    let http_url = transform_git_to_http(&dependency.url);
-    let repo = match Repository::clone(http_url.as_str(), dependency_directory.join(target_dir)) {
-        Ok(r) => {
-            println!(
-                "{}",
-                Paint::green(&format!("Successfully cloned dependency to {:?}", r.path()))
-            );
-            r
-        }
-        Err(err) => {
-            return Err(DownloadError {
-                name: dependency.name.to_string(),
-                version: dependency.version.to_string(),
-                cause: format!(
-                    "Dependency {}~{} could not be downloaded via git.\nCause: {}",
-                    dependency.name.clone(),
-                    dependency.version.clone(),
-                    err.message()
+    let http_url: String = transform_git_to_http(&dependency.url);
+    let mut git_clone = Command::new("git");
+    let mut git_checkout = Command::new("git");
+    let mut git_get_commit = Command::new("git");
+
+    let result = git_clone
+        .args(["clone", http_url.as_str(), dependency_path])
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+
+    let status = result.status().unwrap();
+
+    let mut success = status.success();
+    let out = result.output().unwrap();
+    let mut message = String::new();
+    let hash: String;
+    if !success {
+        message = format!(
+            "Could not clone the repository: {}",
+            str::from_utf8(&out.stderr).unwrap().trim()
+        );
+    }
+    if !dependency.hash.is_empty() && success {
+        let result = git_get_commit
+            .args([
+                format!("--work-tree={}", dependency_path),
+                format!(
+                    "--git-dir={}",
+                    path.join(".git").as_os_str().to_str().unwrap()
                 ),
-            });
+                "checkout".to_string(),
+                dependency.hash.clone(),
+            ])
+            .env("GIT_TERMINAL_PROMPT", "0")
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+
+        hash = dependency.hash.clone();
+
+        let out = result.output().unwrap();
+        let status = result.status().unwrap();
+        success = status.success();
+
+        if !success {
+            message = format!(
+                "Could not change the revision: {}",
+                str::from_utf8(&out.stderr).unwrap().trim()
+            );
         }
-    };
+    } else if success {
+        let result = git_checkout
+            .args([
+                format!("--work-tree={}", dependency_path),
+                format!(
+                    "--git-dir={}",
+                    path.join(".git").as_os_str().to_str().unwrap()
+                ),
+                "rev-parse".to_string(),
+                "--verify".to_string(),
+                "HEAD".to_string(),
+            ])
+            .env("GIT_TERMINAL_PROMPT", "0")
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
 
-    if !dependency.hash.is_empty() {
-        // Find the commit
-        let oid = Oid::from_str(&dependency.hash).unwrap();
-        let commit = repo.find_commit(oid).unwrap();
+        let out = result.output().unwrap();
+        let status = result.status().unwrap();
+        success = status.success();
+        if !success {
+            message = format!(
+                "Could not get the revision hash: {}",
+                str::from_utf8(&out.stderr).unwrap().trim()
+            );
+        }
 
-        // Checkout the commit
-        let tree: git2::Tree = commit.tree().unwrap();
-        repo.checkout_tree(tree.as_object(), None).unwrap();
-        repo.set_head_detached(commit.id()).unwrap();
-        return Ok(dependency.hash.clone());
+        hash = str::from_utf8(&out.stdout).unwrap().trim().to_string();
+
+        // check the commit integrity
+        if !hash.is_empty() && hash.len() != 40 {
+            message = "Could not get the revision hash, invalid hash".to_string();
+        }
+    } else {
+        // just abort and return empty hash
+        hash = String::new();
     }
 
-    let head = repo.head().unwrap();
+    if success {
+        println!(
+            "{}",
+            Paint::green(&format!(
+                "Successfully downloaded {}~{} the dependency via git",
+                dependency.name.clone(),
+                dependency.version.clone(),
+            ))
+        );
+    } else {
+        let _ = remove_dir_all(&path);
+        return Err(DownloadError {
+            name: dependency.name.to_string(),
+            version: dependency.version.to_string(),
+            cause: format!(
+                "Dependency {}~{} could not be downloaded via git.\nCause: {}",
+                dependency.name.clone(),
+                dependency.version.clone(),
+                message
+            ),
+        });
+    }
 
-    // Resolve the reference to the actual commit object
-    let commit = head.peel_to_commit().unwrap();
-
-    // Get the commit hash
-    let commit_hash = commit.id().to_string();
-    Ok(commit_hash)
+    Ok(hash.to_string())
 }
 
 async fn download_via_http(
@@ -223,7 +293,7 @@ async fn download_via_http(
             return Err(DownloadError {
                 name: dependency.name.clone().to_string(),
                 version: dependency.url.clone().to_string(),
-                cause: format!("Unknown error: {:?}", err.source()),
+                cause: format!("Unknown error: {:?}", err.source().unwrap()),
             });
         }
     };
@@ -239,7 +309,7 @@ async fn download_via_http(
                 return Err(DownloadError {
                     name: dependency.name.to_string(),
                     version: dependency.version.to_string(),
-                    cause: format!("Unknown error: {:?}", err.source()),
+                    cause: format!("Unknown error: {:?}", err.source().unwrap()),
                 });
             }
         }
@@ -251,7 +321,7 @@ async fn download_via_http(
             return Err(DownloadError {
                 name: dependency.name.to_string(),
                 version: dependency.url.to_string(),
-                cause: format!("Unknown error: {:?}", err.source()),
+                cause: format!("Unknown error: {:?}", err.source().unwrap()),
             });
         }
     };
@@ -335,9 +405,37 @@ mod tests {
         let hashes = download_dependencies(&dependencies, false).await.unwrap();
         let path_dir = DEPENDENCY_DIR.join(format!("{}-{}", &dependency.name, &dependency.version));
         assert!(path_dir.exists());
+        assert!(path_dir.join("JustATest3.md").exists());
+        assert!(hashes.len() == 1);
+        assert_eq!(hashes[0], "22868f426bd4dd0e682b5ec5f9bd55507664240c"); // this is the last commit, hash == commit
+        clean_dependency_directory()
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn download_dependency_gitlab_giturl_with_a_specific_revision() {
+        clean_dependency_directory();
+        let mut dependencies: Vec<Dependency> = Vec::new();
+        let dependency = Dependency {
+            name: "@openzeppelin-contracts".to_string(),
+            version: "2.3.0".to_string(),
+            url: "git@gitlab.com:mario4582928/Mario.git".to_string(),
+            hash: "7a0663eaf7488732f39550be655bad6694974cb3".to_string(),
+        };
+        dependencies.push(dependency.clone());
+        let hashes = download_dependencies(&dependencies, false).await.unwrap();
+        let path_dir = DEPENDENCY_DIR.join(format!("{}-{}", &dependency.name, &dependency.version));
+        assert!(path_dir.exists());
         assert!(path_dir.join("README.md").exists());
         assert!(hashes.len() == 1);
-        assert_eq!(hashes[0], "bedb1775bd60e3e142a6db863982254a4b891b20"); // this is the last commit, hash == commit
+        assert_eq!(hashes[0], "7a0663eaf7488732f39550be655bad6694974cb3"); // this is the last commit, hash == commit
+
+        // at this revision, this file should exists
+        let test_right_revision = DEPENDENCY_DIR
+            .join(format!("{}-{}", &dependency.name, &dependency.version))
+            .join("JustATest2.md");
+        assert!(test_right_revision.exists());
+
         clean_dependency_directory()
     }
 
@@ -358,7 +456,7 @@ mod tests {
         assert!(path_dir.exists());
         assert!(path_dir.join("README.md").exists());
         assert!(hashes.len() == 1);
-        assert_eq!(hashes[0], "bedb1775bd60e3e142a6db863982254a4b891b20"); // this is the last commit, hash == commit
+        assert_eq!(hashes[0], "22868f426bd4dd0e682b5ec5f9bd55507664240c"); // this is the last commit, hash == commit
         clean_dependency_directory()
     }
 
@@ -415,7 +513,7 @@ mod tests {
         let dependency_two = Dependency {
             name: "@uniswap-v2-core".to_string(),
             version: "1.0.0-beta.4".to_string(),
-            url: "https://github.com/OpenZeppelin/openzeppelin-contracts.git".to_string(),
+            url: "https://gitlab.com/mario4582928/Mario.git".to_string(),
             hash: String::new(),
         };
 
@@ -563,7 +661,8 @@ mod tests {
                 assert_eq!("Invalid state", "");
             }
             Err(err) => {
-                assert_eq!(err.cause, "Dependency @openzeppelin-contracts~2.3.0 could not be downloaded via git.\nCause: remote authentication required but no callback set");
+                // we assert this as the message contains various absolute paths that can not be hardcoded here
+                assert!(err.cause.contains("Cloning into"));
             }
         }
         clean_dependency_directory()

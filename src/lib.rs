@@ -689,13 +689,10 @@ libs = ["dependencies"]
             Ok(_) => {}
             Err(err) => {
                 clean_test_env(target_config.clone());
-                assert_eq!(
-                    err,
-                    SoldeerError {
-                        message: "Error downloading a dependency will-fail~1. Cause: Unknown error: Error { kind: Connect, source: Some(ConnectError(\"dns error\", Custom { kind: Uncategorized, error: \"failed to lookup address information: nodename nor servname provided, or not known\" })) }"
-                            .to_string()
-                    }
-                )
+                // can not generalize as diff systems return various dns errors
+                assert!(err
+                    .message
+                    .contains("Error downloading a dependency will-fail~1"))
             }
         }
 

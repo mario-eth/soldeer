@@ -17,9 +17,9 @@ This project was started to solve the following issues:
 - npmjs was built for the js ecosystem not for solidity
 - github versioning of the releases is a pain and not all the projects are using it correctly
 
-## Version 0.2.18
+## Version 0.2.19
 
-### Version 0.2.18 introduces the following breaking changes
+### Version 0.2.19 introduces the following breaking changes
 
 Now you can use git to install a dependency. Supported platforms: github and gitlab.
 For now, we support only public repositories.
@@ -47,7 +47,7 @@ soldeer install test-project~v1 https://gitlab.com/test/test.git
 Or using custom commit hashes
 
 ```bash
-soldeer install test-project~v1 git@github.com:test/test.git 345e611cd84bfb4e62c583fa1886c1928bc1a464
+soldeer install test-project~v1 git@github.com:test/test.git --rev 345e611cd84bfb4e62c583fa1886c1928bc1a464
 ```
 
 ### Version 0.2.7 introduces the following breaking changes

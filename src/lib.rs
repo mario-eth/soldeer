@@ -335,12 +335,6 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
         }
 
         Subcommands::Uninstall(uninstall) => {
-            // we need to make sure the dependency exists
-            // we need to delete it in the config
-            // we need to delete the dependency directory from the dependencies
-            // we need to remove it from remappings
-            // we need to remove it from the soldeer.lock
-
             let config_file: String = match define_config_file() {
                 Ok(file) => file,
 

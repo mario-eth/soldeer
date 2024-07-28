@@ -1,9 +1,15 @@
 use crate::config::Dependency;
 use crate::errors::LockError;
-use crate::utils::{get_current_working_dir, read_file_to_string};
+use crate::utils::{
+    get_current_working_dir,
+    read_file_to_string,
+};
 use crate::LOCK_FILE;
 use serde_derive::Deserialize;
-use std::fs::{self, remove_file};
+use std::fs::{
+    self,
+    remove_file,
+};
 use std::io::Write;
 use std::path::PathBuf;
 use yansi::Paint;
@@ -67,8 +73,10 @@ pub fn lock_check(
         Ok(entries) => entries,
         Err(_) => {
             if create_lock {
-                let _ = write_lock(&[], false).map_err(|_| LockError {
-                    cause: "Could not write lock file".to_string(),
+                let _ = write_lock(&[], false).map_err(|_| {
+                    LockError {
+                        cause: "Could not write lock file".to_string(),
+                    }
                 });
                 vec![]
             } else {

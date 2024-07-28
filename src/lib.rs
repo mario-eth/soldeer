@@ -13,18 +13,39 @@ mod versioning;
 
 use crate::auth::login;
 use crate::commands::Subcommands;
-use crate::config::{delete_config, get_foundry_setup, read_config, remappings, Dependency};
+use crate::config::{
+    delete_config,
+    get_foundry_setup,
+    read_config,
+    remappings,
+    Dependency,
+};
 use crate::dependency_downloader::{
-    delete_dependency_files, download_dependencies, unzip_dependencies, unzip_dependency,
+    delete_dependency_files,
+    download_dependencies,
+    unzip_dependencies,
+    unzip_dependency,
 };
 use crate::errors::SoldeerError;
-use crate::janitor::{cleanup_after, healthcheck_dependencies};
-use crate::lock::{lock_check, remove_lock, write_lock};
+use crate::janitor::{
+    cleanup_after,
+    healthcheck_dependencies,
+};
+use crate::lock::{
+    lock_check,
+    remove_lock,
+    write_lock,
+};
 use crate::utils::{
-    check_dotfiles_recursive, get_current_working_dir, prompt_user_for_confirmation,
+    check_dotfiles_recursive,
+    get_current_working_dir,
+    prompt_user_for_confirmation,
 };
 use crate::versioning::push_version;
-use config::{add_to_config, define_config_file};
+use config::{
+    add_to_config,
+    define_config_file,
+};
 use dependency_downloader::download_dependency;
 use janitor::cleanup_dependency;
 use once_cell::sync::Lazy;
@@ -337,10 +358,7 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
                 }
             };
 
-            match delete_dependency_files(&dependency) {
-                Ok(_) => {}
-                Err(_) => {}
-            }
+            let _ = delete_dependency_files(&dependency).is_ok();
 
             match remove_lock(&dependency.name, &dependency.version) {
                 Ok(d) => d,
@@ -446,17 +464,34 @@ async fn update() -> Result<(), SoldeerError> {
 #[cfg(test)]
 mod tests {
 
-    use std::env::{self};
-    use std::fs::{create_dir_all, remove_dir, remove_dir_all, remove_file, File};
+    use std::env::{
+        self,
+    };
+    use std::fs::{
+        create_dir_all,
+        remove_dir,
+        remove_dir_all,
+        remove_file,
+        File,
+    };
     use std::io::Write;
     use std::path::Path;
     use std::{
-        fs::{self},
+        fs::{
+            self,
+        },
         path::PathBuf,
     };
 
-    use commands::{Install, Push, Update};
-    use rand::{distributions::Alphanumeric, Rng};
+    use commands::{
+        Install,
+        Push,
+        Update,
+    };
+    use rand::{
+        distributions::Alphanumeric,
+        Rng,
+    };
     use serial_test::serial;
     use zip::ZipArchive; // 0.8
 

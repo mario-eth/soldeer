@@ -165,8 +165,8 @@ impl fmt::Display for DependencyError {
 }
 
 impl DependencyError {
-    pub fn new(name: &str, version: &str, cause: &str) -> DownloadError {
-        DownloadError {
+    pub fn new(name: &str, version: &str, cause: &str) -> DependencyError {
+        DependencyError {
             name: name.to_string(),
             version: version.to_string(),
             cause: cause.to_string(),

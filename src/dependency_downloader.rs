@@ -7,12 +7,23 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
 use std::process::Stdio;
-use tokio::{fs::File, io::AsyncWriteExt};
+use tokio::{
+    fs::File,
+    io::AsyncWriteExt,
+};
 use yansi::Paint;
 
 use crate::config::Dependency;
-use crate::errors::{DependencyError, DownloadError, UnzippingError};
-use crate::utils::{get_download_tunnel, read_file, sha256_digest};
+use crate::errors::{
+    DependencyError,
+    DownloadError,
+    UnzippingError,
+};
+use crate::utils::{
+    get_download_tunnel,
+    read_file,
+    sha256_digest,
+};
 use crate::DEPENDENCY_DIR;
 use std::str;
 

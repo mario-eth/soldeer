@@ -1,14 +1,31 @@
 use crate::errors::ConfigError;
 use crate::remote::get_dependency_url_remote;
-use crate::utils::{get_current_working_dir, read_file_to_string, remove_empty_lines};
-use crate::{FOUNDRY_CONFIG_FILE, SOLDEER_CONFIG_FILE};
+use crate::utils::{
+    get_current_working_dir,
+    read_file_to_string,
+    remove_empty_lines,
+};
+use crate::{
+    FOUNDRY_CONFIG_FILE,
+    SOLDEER_CONFIG_FILE,
+};
 use serde_derive::Deserialize;
-use std::fs::{self, File};
+use std::fs::{
+    self,
+    File,
+};
 use std::io::Write;
 use std::path::Path;
-use std::{env, io};
+use std::{
+    env,
+    io,
+};
 use toml::Table;
-use toml_edit::{value, DocumentMut, Item};
+use toml_edit::{
+    value,
+    DocumentMut,
+    Item,
+};
 use yansi::Paint;
 
 // Top level struct to hold the TOML data.
@@ -344,7 +361,7 @@ pub fn delete_config(
         .unwrap()
         .remove(dependency_name);
 
-    if !item_removed.is_some() {
+    if item_removed.is_none() {
         return Err(ConfigError {
             cause: format!(
                 "The dependency {} does not exists in the config file",
@@ -435,14 +452,19 @@ mod tests {
     use std::fs::remove_file;
     use std::io::Write;
     use std::{
-        fs::{self},
+        fs::{
+            self,
+        },
         path::PathBuf,
     };
 
     use crate::config::Dependency;
     use crate::errors::ConfigError;
     use crate::utils::get_current_working_dir;
-    use rand::{distributions::Alphanumeric, Rng};
+    use rand::{
+        distributions::Alphanumeric,
+        Rng,
+    };
     use serial_test::serial;
 
     use super::*;

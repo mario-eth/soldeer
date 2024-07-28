@@ -1,16 +1,28 @@
 use std::io;
 use std::{
     env,
-    fs::{self, create_dir_all, remove_dir_all, remove_file},
-    path::{Path, PathBuf},
+    fs::{
+        self,
+        create_dir_all,
+        remove_dir_all,
+        remove_file,
+    },
+    path::{
+        Path,
+        PathBuf,
+    },
     process::Command,
 };
 
 use serial_test::serial;
 use soldeer::{
-    commands::{Install, Subcommands},
+    commands::{
+        Install,
+        Subcommands,
+    },
     errors::SoldeerError,
-    DEPENDENCY_DIR, LOCK_FILE,
+    DEPENDENCY_DIR,
+    LOCK_FILE,
 };
 use std::io::Write;
 

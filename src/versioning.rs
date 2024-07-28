@@ -1,23 +1,50 @@
 use crate::auth::get_token;
 use crate::errors::PushError;
 use crate::remote::get_project_id;
-use crate::utils::{get_base_url, get_current_working_dir, read_file, read_file_to_string};
+use crate::utils::{
+    get_base_url,
+    get_current_working_dir,
+    read_file,
+    read_file_to_string,
+};
 use reqwest::StatusCode;
 use reqwest::{
-    header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE},
-    multipart::{Form, Part},
+    header::{
+        HeaderMap,
+        HeaderValue,
+        AUTHORIZATION,
+        CONTENT_TYPE,
+    },
+    multipart::{
+        Form,
+        Part,
+    },
     Client,
 };
 use std::fs::remove_file;
 use std::{
     fs::File,
-    io::{self, Read, Write},
-    path::{Path, PathBuf},
+    io::{
+        self,
+        Read,
+        Write,
+    },
+    path::{
+        Path,
+        PathBuf,
+    },
 };
 use walkdir::WalkDir;
 use yansi::Paint;
-use yash_fnmatch::{without_escape, Pattern};
-use zip::{write::SimpleFileOptions, CompressionMethod, ZipWriter};
+use yash_fnmatch::{
+    without_escape,
+    Pattern,
+};
+use zip::{
+    write::SimpleFileOptions,
+    CompressionMethod,
+    ZipWriter,
+};
 
 #[derive(Clone, Debug)]
 struct FilePair {
@@ -334,13 +361,21 @@ async fn push_to_repo(
 
 #[cfg(test)]
 mod tests {
-    use std::fs::{self, create_dir_all, remove_dir_all, remove_file};
+    use std::fs::{
+        self,
+        create_dir_all,
+        remove_dir_all,
+        remove_file,
+    };
 
     use io::Cursor;
     use serial_test::serial;
 
     use super::*;
-    use rand::{distributions::Alphanumeric, Rng};
+    use rand::{
+        distributions::Alphanumeric,
+        Rng,
+    };
 
     #[test]
     #[serial]

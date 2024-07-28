@@ -423,7 +423,7 @@ checksum = "5019418b1e9128185398870f77a42e51d624c44315bb1572e7545be51d707016"
         let dependencies = vec![dependency.clone()];
         write_lock(&dependencies, false).unwrap();
 
-        match remove_lock(&"non-existent".to_string(), &dependency.version) {
+        match remove_lock(&"non-existent", &dependency.version) {
             Ok(_) => {}
             Err(_) => {
                 assert_eq!("Invalid State", "");

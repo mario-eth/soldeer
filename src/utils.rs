@@ -1,20 +1,10 @@
 use regex::Regex;
 use simple_home_dir::home_dir;
 use std::env;
-use std::fs::{
-    self,
-    File,
-};
+use std::fs::{self, File};
 use std::io::Write;
-use std::io::{
-    BufRead,
-    BufReader,
-    Read,
-};
-use std::path::{
-    Path,
-    PathBuf,
-};
+use std::io::{BufRead, BufReader, Read};
+use std::path::{Path, PathBuf};
 use std::process::exit;
 use yansi::Paint;
 

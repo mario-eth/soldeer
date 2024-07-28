@@ -1,25 +1,12 @@
 use crate::errors::LoginError;
-use crate::utils::{
-    define_security_file_location,
-    get_base_url,
-    read_file,
-};
-use email_address_parser::{
-    EmailAddress,
-    ParsingOptions,
-};
+use crate::utils::{define_security_file_location, get_base_url, read_file};
+use email_address_parser::{EmailAddress, ParsingOptions};
 use reqwest::Client;
 use rpassword::read_password;
-use serde_derive::{
-    Deserialize,
-    Serialize,
-};
+use serde_derive::{Deserialize, Serialize};
 use std::{
     fs::OpenOptions,
-    io::{
-        self,
-        Write,
-    },
+    io::{self, Write},
 };
 use yansi::Paint;
 
@@ -63,15 +50,11 @@ pub fn get_token() -> Result<String, LoginError> {
     let security_file = define_security_file_location();
     let jwt = read_file(security_file);
     match jwt {
-        Ok(token) => {
-            Ok(String::from_utf8(token)
-                .expect("You are not logged in. Please login using the 'soldeer login' command"))
-        }
-        Err(_) => {
-            Err(LoginError {
-                cause: "You are not logged in. Please login using the 'login' command".to_string(),
-            })
-        }
+        Ok(token) => Ok(String::from_utf8(token)
+            .expect("You are not logged in. Please login using the 'soldeer login' command")),
+        Err(_) => Err(LoginError {
+            cause: "You are not logged in. Please login using the 'login' command".to_string(),
+        }),
     }
 }
 
@@ -144,10 +127,7 @@ async fn execute_login(login: Login) -> Result<(), LoginError> {
 
 #[cfg(test)]
 mod tests {
-    use std::{
-        env,
-        fs::remove_file,
-    };
+    use std::{env, fs::remove_file};
 
     use serial_test::serial;
 

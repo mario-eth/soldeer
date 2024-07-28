@@ -4,10 +4,7 @@ use crate::utils::get_base_url;
 use chrono::DateTime;
 use chrono::Utc;
 use reqwest::Client;
-use serde_derive::{
-    Deserialize,
-    Serialize,
-};
+use serde_derive::{Deserialize, Serialize};
 
 pub async fn get_dependency_url_remote(
     dependency_name: &String,

@@ -335,9 +335,9 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
         }
 
         Subcommands::Uninstall(uninstall) => {
+            // define the config file
             let config_file: String = match define_config_file() {
                 Ok(file) => file,
-
                 Err(_) => {
                     return Err(SoldeerError {
                         message: "Could not remove the dependency from the config file".to_string(),
@@ -345,6 +345,7 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
                 }
             };
 
+            // delete from the config file and return the dependency
             let dependency = match delete_config(&uninstall.dependency, &config_file) {
                 Ok(d) => d,
                 Err(err) => {
@@ -352,8 +353,10 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
                 }
             };
 
+            // deleting the files
             let _ = delete_dependency_files(&dependency).is_ok();
 
+            // removing the dependency from the lock file
             match remove_lock(&dependency.name, &dependency.version) {
                 Ok(d) => d,
                 Err(err) => {

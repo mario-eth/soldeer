@@ -391,7 +391,9 @@ pub fn delete_config(
         .open(config_file)
         .unwrap();
     if let Err(e) = write!(file, "{}", doc) {
-        eprintln!("Couldn't write to the config file: {}", e);
+        return Err(ConfigError {
+            cause: format!("Couldn't write to the config file {}", e),
+        });
     }
     Ok(dependency)
 }

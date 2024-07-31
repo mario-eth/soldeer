@@ -1,26 +1,21 @@
-use futures::StreamExt;
-use std::error::Error;
-use std::fs;
-use std::fs::remove_dir_all;
-use std::io::Cursor;
-use std::path::Path;
-use std::path::PathBuf;
-use std::process::Command;
-use std::process::Stdio;
-use tokio::{
-    fs::File,
-    io::AsyncWriteExt,
+use crate::{
+    config::Dependency,
+    errors::{DownloadError, UnzippingError},
+    utils::{get_download_tunnel, read_file, sha256_digest},
+    DEPENDENCY_DIR,
 };
+use futures::StreamExt;
+use std::{
+    error::Error,
+    fs,
+    fs::remove_dir_all,
+    io::Cursor,
+    path::{Path, PathBuf},
+    process::{Command, Stdio},
+    str,
+};
+use tokio::{fs::File, io::AsyncWriteExt};
 use yansi::Paint;
-
-use crate::config::Dependency;
-use crate::errors::DownloadError;
-use crate::errors::UnzippingError;
-use crate::utils::get_download_tunnel;
-use crate::utils::read_file;
-use crate::utils::sha256_digest;
-use crate::DEPENDENCY_DIR;
-use std::str;
 
 pub async fn download_dependencies(
     dependencies: &[Dependency],
@@ -32,9 +27,7 @@ pub async fn download_dependencies(
     }
     // downloading dependencies to dependencies folder
     let hashes: Vec<String> = futures::future::join_all(
-        dependencies
-            .iter()
-            .map(|dep| async { download_dependency(&dep.clone()).await }),
+        dependencies.iter().map(|dep| async { download_dependency(&dep.clone()).await }),
     )
     .await
     .into_iter()
@@ -99,10 +92,7 @@ pub async fn download_dependency(dependency: &Dependency) -> Result<String, Down
     }
     println!(
         "{}",
-        Paint::green(&format!(
-            "Dependency {}-{} downloaded!",
-            dependency.name, dependency.version
-        ))
+        Paint::green(&format!("Dependency {}-{} downloaded!", dependency.name, dependency.version))
     );
 
     Ok(hash)
@@ -182,10 +172,7 @@ async fn download_via_git(
         let result = git_get_commit
             .args([
                 format!("--work-tree={}", dependency_path),
-                format!(
-                    "--git-dir={}",
-                    path.join(".git").as_os_str().to_str().unwrap()
-                ),
+                format!("--git-dir={}", path.join(".git").as_os_str().to_str().unwrap()),
                 "checkout".to_string(),
                 dependency.hash.clone(),
             ])
@@ -209,10 +196,7 @@ async fn download_via_git(
         let result = git_checkout
             .args([
                 format!("--work-tree={}", dependency_path),
-                format!(
-                    "--git-dir={}",
-                    path.join(".git").as_os_str().to_str().unwrap()
-                ),
+                format!("--git-dir={}", path.join(".git").as_os_str().to_str().unwrap()),
                 "rev-parse".to_string(),
                 "--verify".to_string(),
                 "HEAD".to_string(),
@@ -298,9 +282,7 @@ async fn download_via_http(
         }
     };
 
-    let mut file = File::create(&dependency_directory.join(zip_to_download))
-        .await
-        .unwrap();
+    let mut file = File::create(&dependency_directory.join(zip_to_download)).await.unwrap();
 
     while let Some(chunk_result) = stream.next().await {
         match file.write_all(&chunk_result.unwrap()).await {
@@ -346,8 +328,7 @@ mod tests {
     use super::*;
     use crate::janitor::healthcheck_dependency;
     use serial_test::serial;
-    use std::fs::metadata;
-    use std::path::Path;
+    use std::{fs::metadata, path::Path};
 
     #[tokio::test]
     #[serial]
@@ -481,16 +462,12 @@ mod tests {
 
         dependencies.push(dependency_two.clone());
         let hashes = download_dependencies(&dependencies, false).await.unwrap();
-        let mut path_zip = DEPENDENCY_DIR.join(format!(
-            "{}-{}.zip",
-            &dependency_one.name, &dependency_one.version
-        ));
+        let mut path_zip = DEPENDENCY_DIR
+            .join(format!("{}-{}.zip", &dependency_one.name, &dependency_one.version));
         assert!(path_zip.exists());
 
-        path_zip = DEPENDENCY_DIR.join(format!(
-            "{}-{}.zip",
-            &dependency_two.name, &dependency_two.version
-        ));
+        path_zip = DEPENDENCY_DIR
+            .join(format!("{}-{}.zip", &dependency_two.name, &dependency_two.version));
         assert!(path_zip.exists());
         assert!(hashes.len() == 2);
         assert!(!hashes[0].is_empty());
@@ -519,25 +496,17 @@ mod tests {
 
         dependencies.push(dependency_two.clone());
         let hashes = download_dependencies(&dependencies, false).await.unwrap();
-        let mut path_dir = DEPENDENCY_DIR.join(format!(
-            "{}-{}",
-            &dependency_one.name, &dependency_one.version
-        ));
-        let mut path_dir_two = DEPENDENCY_DIR.join(format!(
-            "{}-{}",
-            &dependency_two.name, &dependency_two.version
-        ));
+        let mut path_dir =
+            DEPENDENCY_DIR.join(format!("{}-{}", &dependency_one.name, &dependency_one.version));
+        let mut path_dir_two =
+            DEPENDENCY_DIR.join(format!("{}-{}", &dependency_two.name, &dependency_two.version));
         assert!(path_dir.exists());
         assert!(path_dir_two.exists());
 
-        path_dir = DEPENDENCY_DIR.join(format!(
-            "{}-{}",
-            &dependency_one.name, &dependency_one.version
-        ));
-        path_dir_two = DEPENDENCY_DIR.join(format!(
-            "{}-{}",
-            &dependency_two.name, &dependency_two.version
-        ));
+        path_dir =
+            DEPENDENCY_DIR.join(format!("{}-{}", &dependency_one.name, &dependency_one.version));
+        path_dir_two =
+            DEPENDENCY_DIR.join(format!("{}-{}", &dependency_two.name, &dependency_two.version));
         assert!(path_dir.exists());
         assert!(path_dir_two.exists());
         assert!(hashes.len() == 2);
@@ -558,10 +527,8 @@ mod tests {
         dependencies.push(dependency_one.clone());
 
         download_dependencies(&dependencies, false).await.unwrap();
-        let path_zip = DEPENDENCY_DIR.join(format!(
-            "{}-{}.zip",
-            &dependency_one.name, &dependency_one.version
-        ));
+        let path_zip = DEPENDENCY_DIR
+            .join(format!("{}-{}.zip", &dependency_one.name, &dependency_one.version));
         let size_of_one = fs::metadata(Path::new(&path_zip)).unwrap().len();
 
         let  dependency_two = Dependency {
@@ -596,10 +563,8 @@ mod tests {
         download_dependencies(&dependencies, false).await.unwrap();
 
         // making sure the dependency exists so we can check the deletion
-        let path_zip_old = DEPENDENCY_DIR.join(format!(
-            "{}-{}.zip",
-            &dependency_old.name, &dependency_old.version
-        ));
+        let path_zip_old = DEPENDENCY_DIR
+            .join(format!("{}-{}.zip", &dependency_old.name, &dependency_old.version));
         assert!(path_zip_old.exists());
 
         let dependency = Dependency {
@@ -661,7 +626,8 @@ mod tests {
                 assert_eq!("Invalid state", "");
             }
             Err(err) => {
-                // we assert this as the message contains various absolute paths that can not be hardcoded here
+                // we assert this as the message contains various absolute paths that can not be
+                // hardcoded here
                 assert!(err.cause.contains("Cloning into"));
             }
         }
@@ -758,18 +724,12 @@ mod tests {
 
     #[test]
     fn get_download_tunnel_git_giturl() {
-        assert_eq!(
-            get_download_tunnel("git@github.com:foundry-rs/forge-std.git"),
-            "git"
-        );
+        assert_eq!(get_download_tunnel("git@github.com:foundry-rs/forge-std.git"), "git");
     }
 
     #[test]
     fn get_download_tunnel_git_githttp() {
-        assert_eq!(
-            get_download_tunnel("https://github.com/foundry-rs/forge-std.git"),
-            "git"
-        );
+        assert_eq!(get_download_tunnel("https://github.com/foundry-rs/forge-std.git"), "git");
     }
 
     #[test]

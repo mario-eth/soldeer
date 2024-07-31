@@ -1,13 +1,10 @@
-use crate::errors::DownloadError;
-use crate::errors::ProjectNotFound;
-use crate::utils::get_base_url;
-use chrono::DateTime;
-use chrono::Utc;
-use reqwest::Client;
-use serde_derive::{
-    Deserialize,
-    Serialize,
+use crate::{
+    errors::{DownloadError, ProjectNotFound},
+    utils::get_base_url,
 };
+use chrono::{DateTime, Utc};
+use reqwest::Client;
+use serde_derive::{Deserialize, Serialize};
 
 pub async fn get_dependency_url_remote(
     dependency_name: &String,
@@ -45,11 +42,7 @@ pub async fn get_dependency_url_remote(
 }
 //TODO clean this up and do error handling
 pub async fn get_project_id(dependency_name: &String) -> Result<String, ProjectNotFound> {
-    let url = format!(
-        "{}/api/v1/project?project_name={}",
-        get_base_url(),
-        dependency_name
-    );
+    let url = format!("{}/api/v1/project?project_name={}", get_base_url(), dependency_name);
     let req = Client::new().get(url);
     let get_project_response = req.send().await;
 

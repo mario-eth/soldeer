@@ -1,25 +1,14 @@
-use crate::errors::LoginError;
-use crate::utils::{
-    define_security_file_location,
-    get_base_url,
-    read_file,
+use crate::{
+    errors::LoginError,
+    utils::{define_security_file_location, get_base_url, read_file},
 };
-use email_address_parser::{
-    EmailAddress,
-    ParsingOptions,
-};
+use email_address_parser::{EmailAddress, ParsingOptions};
 use reqwest::Client;
 use rpassword::read_password;
-use serde_derive::{
-    Deserialize,
-    Serialize,
-};
+use serde_derive::{Deserialize, Serialize};
 use std::{
     fs::OpenOptions,
-    io::{
-        self,
-        Write,
-    },
+    io::{self, Write},
 };
 use yansi::Paint;
 
@@ -40,9 +29,7 @@ pub async fn login() -> Result<(), LoginError> {
     std::io::stdout().flush().unwrap();
     let mut email = String::new();
     if io::stdin().read_line(&mut email).is_err() {
-        return Err(LoginError {
-            cause: "Invalid email".to_string(),
-        });
+        return Err(LoginError { cause: "Invalid email".to_string() });
     }
     email = match check_email(email) {
         Ok(e) => e,
@@ -63,15 +50,11 @@ pub fn get_token() -> Result<String, LoginError> {
     let security_file = define_security_file_location();
     let jwt = read_file(security_file);
     match jwt {
-        Ok(token) => {
-            Ok(String::from_utf8(token)
-                .expect("You are not logged in. Please login using the 'soldeer login' command"))
-        }
-        Err(_) => {
-            Err(LoginError {
-                cause: "You are not logged in. Please login using the 'login' command".to_string(),
-            })
-        }
+        Ok(token) => Ok(String::from_utf8(token)
+            .expect("You are not logged in. Please login using the 'soldeer login' command")),
+        Err(_) => Err(LoginError {
+            cause: "You are not logged in. Please login using the 'login' command".to_string(),
+        }),
     }
 }
 
@@ -81,9 +64,7 @@ fn check_email(email_str: String) -> Result<String, LoginError> {
     let email: Option<EmailAddress> =
         EmailAddress::parse(&email_str, Some(ParsingOptions::default()));
     if email.is_none() {
-        Err(LoginError {
-            cause: "Invalid email".to_string(),
-        })
+        Err(LoginError { cause: "Invalid email".to_string() })
     } else {
         Ok(email_str)
     }
@@ -117,10 +98,7 @@ async fn execute_login(login: Login) -> Result<(), LoginError> {
                     ),
                 });
             }
-            println!(
-                "{}",
-                Paint::green(&format!("Login details saved in: {:?}", &security_file))
-            );
+            println!("{}", Paint::green(&format!("Login details saved in: {:?}", &security_file)));
 
             return Ok(());
         } else if response.status().as_u16() == 401 {
@@ -137,17 +115,12 @@ async fn execute_login(login: Login) -> Result<(), LoginError> {
         }
     }
 
-    Err(LoginError {
-        cause: format!("Authentication failed. Unknown error.{:?}", login_response),
-    })
+    Err(LoginError { cause: format!("Authentication failed. Unknown error.{:?}", login_response) })
 }
 
 #[cfg(test)]
 mod tests {
-    use std::{
-        env,
-        fs::remove_file,
-    };
+    use std::{env, fs::remove_file};
 
     use serial_test::serial;
 
@@ -163,9 +136,7 @@ mod tests {
 
         assert_eq!(check_email(valid_email.clone()).unwrap(), valid_email);
 
-        let expected_error = LoginError {
-            cause: "Invalid email".to_string(),
-        };
+        let expected_error = LoginError { cause: "Invalid email".to_string() };
         assert_eq!(check_email(invalid_email).err().unwrap(), expected_error);
     }
 
@@ -267,9 +238,8 @@ mod tests {
         {
             Ok(_) => {}
             Err(err) => {
-                let expected_error = LoginError {
-                    cause: "Authentication failed. Server response: 500".to_string(),
-                };
+                let expected_error =
+                    LoginError { cause: "Authentication failed. Server response: 500".to_string() };
                 assert_eq!(err, expected_error);
             }
         };

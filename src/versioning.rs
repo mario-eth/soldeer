@@ -1,50 +1,23 @@
-use crate::auth::get_token;
-use crate::errors::PushError;
-use crate::remote::get_project_id;
-use crate::utils::{
-    get_base_url,
-    get_current_working_dir,
-    read_file,
-    read_file_to_string,
+use crate::{
+    auth::get_token,
+    errors::PushError,
+    remote::get_project_id,
+    utils::{get_base_url, get_current_working_dir, read_file, read_file_to_string},
 };
-use reqwest::StatusCode;
 use reqwest::{
-    header::{
-        HeaderMap,
-        HeaderValue,
-        AUTHORIZATION,
-        CONTENT_TYPE,
-    },
-    multipart::{
-        Form,
-        Part,
-    },
-    Client,
+    header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE},
+    multipart::{Form, Part},
+    Client, StatusCode,
 };
-use std::fs::remove_file;
 use std::{
-    fs::File,
-    io::{
-        self,
-        Read,
-        Write,
-    },
-    path::{
-        Path,
-        PathBuf,
-    },
+    fs::{remove_file, File},
+    io::{self, Read, Write},
+    path::{Path, PathBuf},
 };
 use walkdir::WalkDir;
 use yansi::Paint;
-use yash_fnmatch::{
-    without_escape,
-    Pattern,
-};
-use zip::{
-    write::SimpleFileOptions,
-    CompressionMethod,
-    ZipWriter,
-};
+use yash_fnmatch::{without_escape, Pattern};
+use zip::{write::SimpleFileOptions, CompressionMethod, ZipWriter};
 
 #[derive(Clone, Debug)]
 struct FilePair {
@@ -58,18 +31,10 @@ pub async fn push_version(
     root_directory_path: PathBuf,
     dry_run: bool,
 ) -> Result<(), PushError> {
-    let file_name = root_directory_path
-        .file_name()
-        .unwrap()
-        .to_str()
-        .unwrap()
-        .to_string();
+    let file_name = root_directory_path.file_name().unwrap().to_str().unwrap().to_string();
     println!(
         "{}",
-        Paint::green(&format!(
-            "Pushing a dependency {}-{}:",
-            dependency_name, dependency_version
-        ))
+        Paint::green(&format!("Pushing a dependency {}-{}:", dependency_name, dependency_version))
     );
 
     let files_to_copy: Vec<FilePair> = filter_files_to_copy(&root_directory_path);
@@ -130,8 +95,9 @@ fn zip_file(
         let path = Path::new(&file_path.path);
         let mut buffer = Vec::new();
 
-        // This is the relative path, we basically get the relative path to the target folder that we want to push
-        // and zip that as a name so we won't screw up the file/dir hierarchy in the zip file.
+        // This is the relative path, we basically get the relative path to the target folder that
+        // we want to push and zip that as a name so we won't screw up the file/dir
+        // hierarchy in the zip file.
         let relative_file_path = file_path.path.to_string().replace(root_dir_as_string, "");
 
         // Write file or directory explicitly
@@ -183,10 +149,7 @@ fn filter_files_to_copy(root_directory_path: &Path) -> Vec<FilePair> {
 
     let root_directory: &str = &(root_directory_path.to_str().unwrap().to_owned() + "/");
     let mut files_to_copy: Vec<FilePair> = Vec::new();
-    for entry in WalkDir::new(root_directory)
-        .into_iter()
-        .filter_map(|e| e.ok())
-    {
+    for entry in WalkDir::new(root_directory).into_iter().filter_map(|e| e.ok()) {
         let is_dir = entry.path().is_dir();
         let file_path: String = entry.path().to_str().unwrap().to_string();
         if file_path.is_empty() || is_dir {
@@ -273,19 +236,14 @@ async fn push_to_repo(
     let header_string = format!("Bearer {}", token);
     let header_value = HeaderValue::from_str(&header_string);
 
-    headers.insert(
-        AUTHORIZATION,
-        header_value.expect("Could not set auth header"),
-    );
+    headers.insert(AUTHORIZATION, header_value.expect("Could not set auth header"));
 
     let file_fs = read_file(zip_file).unwrap();
     let mut part =
         Part::bytes(file_fs).file_name(zip_file.file_name().unwrap().to_str().unwrap().to_string());
 
     // set the mime as app zip
-    part = part
-        .mime_str("application/zip")
-        .expect("Could not set mime type");
+    part = part.mime_str("application/zip").expect("Could not set mime type");
 
     let project_id = match get_project_id(dependency_name).await {
         Ok(id) => id,
@@ -308,11 +266,7 @@ async fn push_to_repo(
         HeaderValue::from_str(&("multipart/form-data; boundary=".to_owned() + form.boundary()))
             .expect("Could not set content type"),
     );
-    let res = client
-        .post(url)
-        .headers(headers.clone())
-        .multipart(form)
-        .send();
+    let res = client.post(url).headers(headers.clone()).multipart(form).send();
 
     let response = res.await.unwrap();
     match response.status() {
@@ -349,10 +303,7 @@ async fn push_to_repo(
             return Err(PushError {
                 name: (&dependency_name).to_string(),
                 version: (&dependency_version).to_string(),
-                cause: format!(
-                    "The server returned an unexpected error {:?}",
-                    response.status()
-                ),
+                cause: format!("The server returned an unexpected error {:?}", response.status()),
             });
         }
     }
@@ -361,21 +312,13 @@ async fn push_to_repo(
 
 #[cfg(test)]
 mod tests {
-    use std::fs::{
-        self,
-        create_dir_all,
-        remove_dir_all,
-        remove_file,
-    };
+    use std::fs::{self, create_dir_all, remove_dir_all, remove_file};
 
     use io::Cursor;
     use serial_test::serial;
 
     use super::*;
-    use rand::{
-        distributions::Alphanumeric,
-        Rng,
-    };
+    use rand::{distributions::Alphanumeric, Rng};
 
     #[test]
     #[serial]
@@ -471,10 +414,7 @@ mod tests {
         let result = filter_files_to_copy(&target_dir);
         assert_eq!(filtered_files.len(), result.len());
         let file = Path::new(&filtered_files[0]);
-        assert_eq!(
-            String::from(file.file_name().unwrap().to_str().unwrap()),
-            result[0].name
-        );
+        assert_eq!(String::from(file.file_name().unwrap().to_str().unwrap()), result[0].name);
 
         let _ = remove_file(gitignore);
         let _ = remove_dir_all(target_dir);
@@ -517,19 +457,15 @@ mod tests {
         // --- --- --- --- toml <= ignored
 
         let random_dir = PathBuf::from(create_random_directory(&target_dir, "".to_string()));
-        let broadcast_dir = PathBuf::from(create_random_directory(
-            &target_dir,
-            "broadcast".to_string(),
-        ));
+        let broadcast_dir =
+            PathBuf::from(create_random_directory(&target_dir, "broadcast".to_string()));
 
         let the_31337_dir =
             PathBuf::from(create_random_directory(&broadcast_dir, "31337".to_string()));
         let random_dir_in_broadcast =
             PathBuf::from(create_random_directory(&broadcast_dir, "".to_string()));
-        let dry_run_dir = PathBuf::from(create_random_directory(
-            &random_dir_in_broadcast,
-            "dry_run".to_string(),
-        ));
+        let dry_run_dir =
+            PathBuf::from(create_random_directory(&random_dir_in_broadcast, "dry_run".to_string()));
 
         ignored_files.push(create_random_file(&random_dir, "toml".to_string()));
         filtered_files.push(create_random_file(&random_dir, "zip".to_string()));
@@ -540,14 +476,8 @@ mod tests {
         ignored_files.push(create_random_file(&the_31337_dir, "toml".to_string()));
         ignored_files.push(create_random_file(&the_31337_dir, "zip".to_string()));
 
-        filtered_files.push(create_random_file(
-            &random_dir_in_broadcast,
-            "zip".to_string(),
-        ));
-        filtered_files.push(create_random_file(
-            &random_dir_in_broadcast,
-            "toml".to_string(),
-        ));
+        filtered_files.push(create_random_file(&random_dir_in_broadcast, "zip".to_string()));
+        filtered_files.push(create_random_file(&random_dir_in_broadcast, "toml".to_string()));
 
         ignored_files.push(create_random_file(&dry_run_dir, "zip".to_string()));
         ignored_files.push(create_random_file(&dry_run_dir, "toml".to_string()));
@@ -601,18 +531,9 @@ mod tests {
         let dep_name = "test_dep".to_string();
         let dep_version = "1.1".to_string();
         let files_to_copy: Vec<FilePair> = vec![
-            FilePair {
-                name: "random_file_1".to_string(),
-                path: random_file_1.clone(),
-            },
-            FilePair {
-                name: "random_file_1".to_string(),
-                path: random_file_3.clone(),
-            },
-            FilePair {
-                name: "random_file_1".to_string(),
-                path: random_file_2.clone(),
-            },
+            FilePair { name: "random_file_1".to_string(), path: random_file_1.clone() },
+            FilePair { name: "random_file_1".to_string(), path: random_file_3.clone() },
+            FilePair { name: "random_file_1".to_string(), path: random_file_2.clone() },
         ];
         let result = match zip_file(
             &dep_name,
@@ -662,39 +583,27 @@ mod tests {
         if target_file.exists() {
             let _ = remove_file(target_file);
         }
-        let mut file: std::fs::File = fs::OpenOptions::new()
-            .create_new(true)
-            .write(true)
-            .open(target_file)
-            .unwrap();
+        let mut file: std::fs::File =
+            fs::OpenOptions::new().create_new(true).write(true).open(target_file).unwrap();
         if let Err(e) = write!(file, "{}", content) {
             eprintln!("Couldn't write to the config file: {}", e);
         }
     }
 
     fn create_random_file(target_dir: &Path, extension: String) -> String {
-        let s: String = rand::thread_rng()
-            .sample_iter(&Alphanumeric)
-            .take(7)
-            .map(char::from)
-            .collect();
+        let s: String =
+            rand::thread_rng().sample_iter(&Alphanumeric).take(7).map(char::from).collect();
         let target = target_dir.join(format!("random{}.{}", s, extension));
-        let mut file: std::fs::File = fs::OpenOptions::new()
-            .create_new(true)
-            .write(true)
-            .open(&target)
-            .unwrap();
+        let mut file: std::fs::File =
+            fs::OpenOptions::new().create_new(true).write(true).open(&target).unwrap();
         if let Err(e) = write!(file, "this is a test file") {
             eprintln!("Couldn't write to the config file: {}", e);
         }
         String::from(target.to_str().unwrap())
     }
     fn create_random_directory(target_dir: &Path, name: String) -> String {
-        let s: String = rand::thread_rng()
-            .sample_iter(&Alphanumeric)
-            .take(7)
-            .map(char::from)
-            .collect();
+        let s: String =
+            rand::thread_rng().sample_iter(&Alphanumeric).take(7).map(char::from).collect();
 
         if name.is_empty() {
             let target = target_dir.join(format!("random{}", s));

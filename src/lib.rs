@@ -1,4 +1,24 @@
 #![cfg_attr(docsrs, feature(doc_cfg, doc_auto_cfg))]
+use crate::{
+    auth::login,
+    commands::Subcommands,
+    config::{get_foundry_setup, read_config, remappings, Dependency},
+    dependency_downloader::{download_dependencies, unzip_dependencies, unzip_dependency},
+    errors::SoldeerError,
+    janitor::{cleanup_after, healthcheck_dependencies},
+    lock::{lock_check, write_lock},
+    utils::{check_dotfiles_recursive, get_current_working_dir, prompt_user_for_confirmation},
+    versioning::push_version,
+};
+use config::{add_to_config, define_config_file};
+use dependency_downloader::download_dependency;
+use janitor::cleanup_dependency;
+use once_cell::sync::Lazy;
+use regex::Regex;
+use remote::get_dependency_url_remote;
+use std::{env, path::PathBuf};
+use utils::get_download_tunnel;
+use yansi::Paint;
 
 mod auth;
 pub mod commands;
@@ -10,48 +30,6 @@ mod lock;
 mod remote;
 mod utils;
 mod versioning;
-
-use crate::auth::login;
-use crate::commands::Subcommands;
-use crate::config::{
-    get_foundry_setup,
-    read_config,
-    remappings,
-    Dependency,
-};
-use crate::dependency_downloader::{
-    download_dependencies,
-    unzip_dependencies,
-    unzip_dependency,
-};
-use crate::errors::SoldeerError;
-use crate::janitor::{
-    cleanup_after,
-    healthcheck_dependencies,
-};
-use crate::lock::{
-    lock_check,
-    write_lock,
-};
-use crate::utils::{
-    check_dotfiles_recursive,
-    get_current_working_dir,
-    prompt_user_for_confirmation,
-};
-use crate::versioning::push_version;
-use config::{
-    add_to_config,
-    define_config_file,
-};
-use dependency_downloader::download_dependency;
-use janitor::cleanup_dependency;
-use once_cell::sync::Lazy;
-use regex::Regex;
-use remote::get_dependency_url_remote;
-use std::env;
-use std::path::PathBuf;
-use utils::get_download_tunnel;
-use yansi::Paint;
 
 pub static DEPENDENCY_DIR: Lazy<PathBuf> =
     Lazy::new(|| get_current_working_dir().join("dependencies/"));
@@ -238,14 +216,13 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
                     });
                 }
             }
-            // check the foundry setup, in case we have a foundry.toml, then the foundry.toml will be used for `dependencies`
+            // check the foundry setup, in case we have a foundry.toml, then the foundry.toml will
+            // be used for `dependencies`
             let f_setup_vec: Vec<bool> = match get_foundry_setup() {
                 Ok(setup) => setup,
                 Err(err) => return Err(SoldeerError { message: err.cause }),
             };
-            let foundry_setup: FOUNDRY = FOUNDRY {
-                remappings: f_setup_vec[0],
-            };
+            let foundry_setup: FOUNDRY = FOUNDRY { remappings: f_setup_vec[0] };
 
             if foundry_setup.remappings {
                 match remappings().await {
@@ -269,18 +246,16 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
             }
         }
         Subcommands::Push(push) => {
-            let path = push
-                .path
-                .unwrap_or(get_current_working_dir().to_str().unwrap().to_string());
+            let path = push.path.unwrap_or(get_current_working_dir().to_str().unwrap().to_string());
             let path_buf = PathBuf::from(&path);
             let dry_run = push.dry_run.is_some() && push.dry_run.unwrap();
             let skip_warnings = push.skip_warnings.unwrap_or(false);
 
             // Check for sensitive files or directories
-            if !dry_run
-                && !skip_warnings
-                && check_dotfiles_recursive(&path_buf)
-                && !prompt_user_for_confirmation()
+            if !dry_run &&
+                !skip_warnings &&
+                check_dotfiles_recursive(&path_buf) &&
+                !prompt_user_for_confirmation()
             {
                 println!("{}", Paint::yellow("Push operation aborted by the user."));
                 return Ok(());
@@ -311,13 +286,8 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
             if !regex.is_match(&dependency_name) {
                 return Err(SoldeerError{message:format!("Dependency name {} is not valid, you can use only alphanumeric characters `-` and `@`", &dependency_name)});
             }
-            match push_version(
-                &dependency_name,
-                &dependency_version,
-                PathBuf::from(&path),
-                dry_run,
-            )
-            .await
+            match push_version(&dependency_name, &dependency_version, PathBuf::from(&path), dry_run)
+                .await
             {
                 Ok(_) => {}
                 Err(err) => {
@@ -376,10 +346,7 @@ async fn update() -> Result<(), SoldeerError> {
         Ok(_) => {}
         Err(err) => {
             return Err(SoldeerError {
-                message: format!(
-                    "Error health-checking dependencies {}~{}",
-                    err.name, err.version
-                ),
+                message: format!("Error health-checking dependencies {}~{}", err.name, err.version),
             });
         }
     }
@@ -387,9 +354,7 @@ async fn update() -> Result<(), SoldeerError> {
     match write_lock(&dependencies, true) {
         Ok(_) => {}
         Err(err) => {
-            return Err(SoldeerError {
-                message: format!("Error writing the lock: {}", err.cause),
-            });
+            return Err(SoldeerError { message: format!("Error writing the lock: {}", err.cause) });
         }
     }
 
@@ -402,16 +367,15 @@ async fn update() -> Result<(), SoldeerError> {
         }
     }
 
-    // check the foundry setup, in case we have a foundry.toml, then the foundry.toml will be used for `dependencies`
+    // check the foundry setup, in case we have a foundry.toml, then the foundry.toml will be used
+    // for `dependencies`
     let f_setup_vec: Vec<bool> = match get_foundry_setup() {
         Ok(f_setup) => f_setup,
         Err(err) => {
             return Err(SoldeerError { message: err.cause });
         }
     };
-    let foundry_setup: FOUNDRY = FOUNDRY {
-        remappings: f_setup_vec[0],
-    };
+    let foundry_setup: FOUNDRY = FOUNDRY { remappings: f_setup_vec[0] };
 
     if foundry_setup.remappings {
         match remappings().await {
@@ -427,34 +391,17 @@ async fn update() -> Result<(), SoldeerError> {
 #[cfg(test)]
 mod tests {
 
-    use std::env::{
-        self,
-    };
-    use std::fs::{
-        create_dir_all,
-        remove_dir,
-        remove_dir_all,
-        remove_file,
-        File,
-    };
-    use std::io::Write;
-    use std::path::Path;
     use std::{
+        env::{self},
         fs::{
-            self,
+            create_dir_all, remove_dir, remove_dir_all, remove_file, File, {self},
         },
-        path::PathBuf,
+        io::Write,
+        path::{Path, PathBuf},
     };
 
-    use commands::{
-        Install,
-        Push,
-        Update,
-    };
-    use rand::{
-        distributions::Alphanumeric,
-        Rng,
-    };
+    use commands::{Install, Push, Update};
+    use rand::{distributions::Alphanumeric, Rng};
     use serial_test::serial;
     use zip::ZipArchive; // 0.8
 
@@ -486,11 +433,8 @@ libs = ["dependencies"]
 
         env::set_var("base_url", "https://api.soldeer.xyz");
 
-        let command = Subcommands::Install(Install {
-            dependency: None,
-            remote_url: None,
-            rev: None,
-        });
+        let command =
+            Subcommands::Install(Install { dependency: None, remote_url: None, rev: None });
 
         match run(command) {
             Ok(_) => {}
@@ -533,11 +477,8 @@ libs = ["dependencies"]
 
         env::set_var("base_url", "https://api.soldeer.xyz");
 
-        let command = Subcommands::Install(Install {
-            dependency: None,
-            remote_url: None,
-            rev: None,
-        });
+        let command =
+            Subcommands::Install(Install { dependency: None, remote_url: None, rev: None });
 
         match run(command) {
             Ok(_) => {}
@@ -633,11 +574,8 @@ libs = ["dependencies"]
         }
 
         // http dependency should be there
-        let path_dependency = DEPENDENCY_DIR
-            .join("@dep1-1")
-            .join("token")
-            .join("ERC20")
-            .join("ERC20.sol");
+        let path_dependency =
+            DEPENDENCY_DIR.join("@dep1-1").join("token").join("ERC20").join("ERC20.sol");
         assert!(path_dependency.exists());
 
         // git dependency should be there without specified revision
@@ -679,20 +617,15 @@ libs = ["dependencies"]
 
         env::set_var("base_url", "https://api.soldeer.xyz");
 
-        let command = Subcommands::Install(Install {
-            dependency: None,
-            remote_url: None,
-            rev: None,
-        });
+        let command =
+            Subcommands::Install(Install { dependency: None, remote_url: None, rev: None });
 
         match run(command) {
             Ok(_) => {}
             Err(err) => {
                 clean_test_env(target_config.clone());
                 // can not generalize as diff systems return various dns errors
-                assert!(err
-                    .message
-                    .contains("Error downloading a dependency will-fail~1"))
+                assert!(err.message.contains("Error downloading a dependency will-fail~1"))
             }
         }
 
@@ -708,10 +641,7 @@ libs = ["dependencies"]
     #[serial]
     fn soldeer_push_dry_run() {
         // in case this exists we clean it before setting up the tests
-        let path_dependency = env::current_dir()
-            .unwrap()
-            .join("test")
-            .join("custom_dry_run");
+        let path_dependency = env::current_dir().unwrap().join("test").join("custom_dry_run");
 
         if path_dependency.exists() {
             let _ = remove_dir_all(&path_dependency);
@@ -761,22 +691,16 @@ libs = ["dependencies"]
         if target_file.exists() {
             let _ = remove_file(target_file);
         }
-        let mut file: File = fs::OpenOptions::new()
-            .create_new(true)
-            .write(true)
-            .open(target_file)
-            .unwrap();
+        let mut file: File =
+            fs::OpenOptions::new().create_new(true).write(true).open(target_file).unwrap();
         if let Err(e) = write!(file, "{}", content) {
             eprintln!("Couldn't write to the config file: {}", e);
         }
     }
 
     fn define_config(foundry: bool) -> PathBuf {
-        let s: String = rand::thread_rng()
-            .sample_iter(&Alphanumeric)
-            .take(7)
-            .map(char::from)
-            .collect();
+        let s: String =
+            rand::thread_rng().sample_iter(&Alphanumeric).take(7).map(char::from).collect();
         let mut target = format!("foundry{}.toml", s);
         if !foundry {
             target = format!("soldeer{}.toml", s);
@@ -829,10 +753,7 @@ libs = ["dependencies"]
     fn push_skips_warning_on_sensitive_files() {
         let _ = remove_dir_all(DEPENDENCY_DIR.clone());
         let _ = remove_file(LOCK_FILE.clone());
-        let test_dir = env::current_dir()
-            .unwrap()
-            .join("test")
-            .join("test_push_skip_sensitive");
+        let test_dir = env::current_dir().unwrap().join("test").join("test_push_skip_sensitive");
 
         // Create test directory
         if !test_dir.exists() {
@@ -887,10 +808,7 @@ libs = ["dependencies"]
     fn install_dependency_remote_url() {
         let _ = remove_dir_all(DEPENDENCY_DIR.clone());
         let _ = remove_file(LOCK_FILE.clone());
-        let test_dir = env::current_dir()
-            .unwrap()
-            .join("test")
-            .join("install_http");
+        let test_dir = env::current_dir().unwrap().join("test").join("install_http");
 
         // Create test directory
         if !test_dir.exists() {
@@ -931,10 +849,7 @@ libs = ["dependencies"]
             }
         }
 
-        let path_dependency = DEPENDENCY_DIR
-            .join("forge-std-1.9.1")
-            .join("src")
-            .join("Test.sol");
+        let path_dependency = DEPENDENCY_DIR.join("forge-std-1.9.1").join("src").join("Test.sol");
         assert!(path_dependency.exists());
         clean_test_env(target_config);
     }
@@ -944,10 +859,7 @@ libs = ["dependencies"]
     fn install_dependency_custom_url_chooses_http() {
         let _ = remove_dir_all(DEPENDENCY_DIR.clone());
         let _ = remove_file(LOCK_FILE.clone());
-        let test_dir = env::current_dir()
-            .unwrap()
-            .join("test")
-            .join("install_http");
+        let test_dir = env::current_dir().unwrap().join("test").join("install_http");
 
         // Create test directory
         if !test_dir.exists() {
@@ -988,10 +900,7 @@ libs = ["dependencies"]
             }
         }
 
-        let path_dependency = DEPENDENCY_DIR
-            .join("forge-std-1.9.1")
-            .join("src")
-            .join("Test.sol");
+        let path_dependency = DEPENDENCY_DIR.join("forge-std-1.9.1").join("src").join("Test.sol");
         assert!(path_dependency.exists());
         clean_test_env(target_config);
     }
@@ -1001,10 +910,7 @@ libs = ["dependencies"]
     fn install_dependency_custom_git_httpurl_chooses_git() {
         let _ = remove_dir_all(DEPENDENCY_DIR.clone());
         let _ = remove_file(LOCK_FILE.clone());
-        let test_dir = env::current_dir()
-            .unwrap()
-            .join("test")
-            .join("install_http");
+        let test_dir = env::current_dir().unwrap().join("test").join("install_http");
 
         // Create test directory
         if !test_dir.exists() {
@@ -1045,10 +951,7 @@ libs = ["dependencies"]
             }
         }
 
-        let path_dependency = DEPENDENCY_DIR
-            .join("forge-std-1.9.1")
-            .join("src")
-            .join("Test.sol");
+        let path_dependency = DEPENDENCY_DIR.join("forge-std-1.9.1").join("src").join("Test.sol");
         assert!(path_dependency.exists());
         clean_test_env(target_config);
     }
@@ -1058,10 +961,7 @@ libs = ["dependencies"]
     fn install_dependency_custom_git_giturl_chooses_git() {
         let _ = remove_dir_all(DEPENDENCY_DIR.clone());
         let _ = remove_file(LOCK_FILE.clone());
-        let test_dir = env::current_dir()
-            .unwrap()
-            .join("test")
-            .join("install_http");
+        let test_dir = env::current_dir().unwrap().join("test").join("install_http");
 
         // Create test directory
         if !test_dir.exists() {
@@ -1102,10 +1002,7 @@ libs = ["dependencies"]
             }
         }
 
-        let path_dependency = DEPENDENCY_DIR
-            .join("forge-std-1.9.1")
-            .join("src")
-            .join("Test.sol");
+        let path_dependency = DEPENDENCY_DIR.join("forge-std-1.9.1").join("src").join("Test.sol");
         assert!(path_dependency.exists());
         clean_test_env(target_config);
     }
@@ -1115,10 +1012,7 @@ libs = ["dependencies"]
     fn install_dependency_custom_git_giturl_custom_commit() {
         let _ = remove_dir_all(DEPENDENCY_DIR.clone());
         let _ = remove_file(LOCK_FILE.clone());
-        let test_dir = env::current_dir()
-            .unwrap()
-            .join("test")
-            .join("install_http");
+        let test_dir = env::current_dir().unwrap().join("test").join("install_http");
 
         // Create test directory
         if !test_dir.exists() {
@@ -1159,32 +1053,20 @@ libs = ["dependencies"]
             }
         }
 
-        let mut path_dependency = DEPENDENCY_DIR
-            .join("forge-std-1.9.1")
-            .join("src")
-            .join("mocks")
-            .join("MockERC721.sol");
+        let mut path_dependency =
+            DEPENDENCY_DIR.join("forge-std-1.9.1").join("src").join("mocks").join("MockERC721.sol");
         assert!(!path_dependency.exists()); // this should not exists at that commit
-        path_dependency = DEPENDENCY_DIR
-            .join("forge-std-1.9.1")
-            .join("src")
-            .join("Test.sol");
+        path_dependency = DEPENDENCY_DIR.join("forge-std-1.9.1").join("src").join("Test.sol");
         assert!(path_dependency.exists()); // this should exists at that commit
         clean_test_env(target_config);
     }
 
     fn create_random_file(target_dir: &Path, extension: String) -> String {
-        let s: String = rand::thread_rng()
-            .sample_iter(&Alphanumeric)
-            .take(7)
-            .map(char::from)
-            .collect();
+        let s: String =
+            rand::thread_rng().sample_iter(&Alphanumeric).take(7).map(char::from).collect();
         let target = target_dir.join(format!("random{}.{}", s, extension));
-        let mut file: std::fs::File = fs::OpenOptions::new()
-            .create_new(true)
-            .write(true)
-            .open(&target)
-            .unwrap();
+        let mut file: std::fs::File =
+            fs::OpenOptions::new().create_new(true).write(true).open(&target).unwrap();
         if let Err(e) = write!(file, "this is a test file") {
             eprintln!("Couldn't write to the config file: {}", e);
         }

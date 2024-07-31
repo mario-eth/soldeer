@@ -9,4 +9,4 @@ test = "test"
 libs = ["dependencies"]
 
 [dependencies]
-forge-std = "1.9.1"
+forge-std = "1.8.2"

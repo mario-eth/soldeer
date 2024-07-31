@@ -337,6 +337,15 @@ pub fn get_foundry_setup() -> Result<Vec<bool>, ConfigError> {
         .unwrap()])
 }
 
+pub fn remove_forge_lib() -> Result<(), ConfigError> {
+    let lib_dir = get_current_working_dir().join("lib/");
+    let gitmodules_file = get_current_working_dir().join(".gitmodules");
+
+    let _ = remove_file(gitmodules_file);
+    let _ = remove_dir_all(lib_dir);
+    Ok(())
+}
+
 fn create_example_config(option: &str) -> Result<String, ConfigError> {
     let config_file: &str;
     let content: &str;
@@ -1510,13 +1519,4 @@ dep1 = { version = "1.0.0", url = "http://custom_url.com/custom.zip" }
         "#
         .to_string()
     }
-}
-
-pub fn remove_forge_lib() -> Result<(), ConfigError> {
-    let lib_dir = get_current_working_dir().join("lib/");
-    let gitmodules_file = get_current_working_dir().join(".gitmodules");
-
-    let _ = remove_file(gitmodules_file);
-    let _ = remove_dir_all(lib_dir);
-    Ok(())
 }

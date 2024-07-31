@@ -18,6 +18,7 @@ pub enum Subcommands {
     Update(Update),
     Login(Login),
     Push(Push),
+    Uninstall(Uninstall),
     VersionDryRun(VersionDryRun),
 }
 
@@ -85,4 +86,15 @@ pub struct Push {
     pub dry_run: Option<bool>,
     #[arg(long, value_parser = clap::value_parser!(bool))]
     pub skip_warnings: Option<bool>,
+}
+
+#[derive(Debug, Clone, Parser)]
+#[clap(
+    about = "Uninstall a dependency. soldeer uninstall <DEPENDENCY>",
+    after_help = "For more information, read the README.md",
+    override_usage = "soldeer uninstall <DEPENDENCY>"
+)]
+pub struct Uninstall {
+    #[clap(required = true)]
+    pub dependency: String,
 }

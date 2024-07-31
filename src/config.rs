@@ -337,6 +337,69 @@ pub fn get_foundry_setup() -> Result<Vec<bool>, ConfigError> {
         .unwrap()])
 }
 
+pub fn delete_config(
+    dependency_name: &String,
+    config_file: &str,
+) -> Result<Dependency, ConfigError> {
+    println!(
+        "{}",
+        Paint::green(&format!(
+            "Removing the dependency {} from the config file",
+            dependency_name
+        ))
+    );
+
+    let contents = read_file_to_string(&String::from(config_file));
+    let mut doc: DocumentMut = contents.parse::<DocumentMut>().expect("invalid doc");
+
+    if !doc.contains_table("dependencies") {
+        return Err(ConfigError {
+            cause: format!("Could not read the config file {}", config_file),
+        });
+    }
+
+    let item_removed = doc["dependencies"]
+        .as_table_mut()
+        .unwrap()
+        .remove(dependency_name);
+
+    if item_removed.is_none() {
+        return Err(ConfigError {
+            cause: format!(
+                "The dependency {} does not exists in the config file",
+                dependency_name
+            ),
+        });
+    }
+
+    let dependency = Dependency {
+        name: dependency_name.clone(),
+        version: item_removed
+            .unwrap()
+            .as_value()
+            .unwrap()
+            .to_string()
+            .replace("\"", "")
+            .trim()
+            .to_string(),
+        hash: "".to_string(),
+        url: "".to_string(),
+    };
+
+    let mut file: std::fs::File = fs::OpenOptions::new()
+        .write(true)
+        .append(false)
+        .truncate(true)
+        .open(config_file)
+        .unwrap();
+    if let Err(e) = write!(file, "{}", doc) {
+        return Err(ConfigError {
+            cause: format!("Couldn't write to the config file {}", e),
+        });
+    }
+    Ok(dependency)
+}
+
 pub fn remove_forge_lib() -> Result<(), ConfigError> {
     let lib_dir = get_current_working_dir().join("lib/");
     let gitmodules_file = get_current_working_dir().join(".gitmodules");
@@ -415,7 +478,7 @@ mod tests {
         distributions::Alphanumeric,
         Rng,
     };
-    use serial_test::serial; // 0.8
+    use serial_test::serial;
 
     use super::*;
 
@@ -1460,6 +1523,153 @@ gas_reports = ['*']
 [dependencies]
 dep1 = { version = "1.0.0", url = "http://custom_url.com/custom.zip" }
 "#;
+
+        assert_eq!(
+            read_file_to_string(&String::from(target_config.to_str().unwrap())),
+            content
+        );
+
+        let _ = remove_file(target_config);
+        Ok(())
+    }
+
+    #[test]
+    fn remove_from_the_config_single() -> Result<(), ConfigError> {
+        let mut content = r#"
+# Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
+
+[profile.default]
+script = "script"
+solc = "0.8.26"
+src = "src"
+test = "test"
+libs = ["dependencies"]
+
+[dependencies]
+dep1 = { version = "1.0.0", url = "http://custom_url.com/custom.zip" }
+"#;
+
+        let target_config = define_config(true);
+
+        write_to_config(&target_config, content);
+
+        let dependency = Dependency {
+            name: "dep1".to_string(),
+            version: "1.0.0".to_string(),
+            url: "http://custom_url.com/custom.zip".to_string(),
+            hash: String::new(),
+        };
+
+        delete_config(&dependency.name, target_config.to_str().unwrap()).unwrap();
+        content = r#"
+# Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
+
+[profile.default]
+script = "script"
+solc = "0.8.26"
+src = "src"
+test = "test"
+libs = ["dependencies"]
+
+[dependencies]
+"#;
+
+        assert_eq!(
+            read_file_to_string(&String::from(target_config.to_str().unwrap())),
+            content
+        );
+
+        let _ = remove_file(target_config);
+        Ok(())
+    }
+
+    #[test]
+    fn remove_from_the_config_multiple() -> Result<(), ConfigError> {
+        let mut content = r#"
+# Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
+
+[profile.default]
+script = "script"
+solc = "0.8.26"
+src = "src"
+test = "test"
+libs = ["dependencies"]
+
+[dependencies]
+dep3 = { version = "1.0.0", url = "http://custom_url.com/custom.zip" }
+dep1 = { version = "1.0.0", url = "http://custom_url.com/custom.zip" }
+dep2 = { version = "1.0.0", url = "http://custom_url.com/custom.zip" }
+"#;
+
+        let target_config = define_config(true);
+
+        write_to_config(&target_config, content);
+
+        let dependency = Dependency {
+            name: "dep1".to_string(),
+            version: "1.0.0".to_string(),
+            url: "http://custom_url.com/custom.zip".to_string(),
+            hash: String::new(),
+        };
+
+        delete_config(&dependency.name, target_config.to_str().unwrap()).unwrap();
+        content = r#"
+# Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
+
+[profile.default]
+script = "script"
+solc = "0.8.26"
+src = "src"
+test = "test"
+libs = ["dependencies"]
+
+[dependencies]
+dep3 = { version = "1.0.0", url = "http://custom_url.com/custom.zip" }
+dep2 = { version = "1.0.0", url = "http://custom_url.com/custom.zip" }
+"#;
+
+        assert_eq!(
+            read_file_to_string(&String::from(target_config.to_str().unwrap())),
+            content
+        );
+
+        let _ = remove_file(target_config);
+        Ok(())
+    }
+
+    #[test]
+    fn remove_config_nonexistent_fails() -> Result<(), ConfigError> {
+        let content = r#"
+# Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
+
+[profile.default]
+script = "script"
+solc = "0.8.26"
+src = "src"
+test = "test"
+libs = ["dependencies"]
+
+[dependencies]
+dep1 = { version = "1.0.0", url = "http://custom_url.com/custom.zip" }
+"#;
+
+        let target_config = define_config(true);
+
+        write_to_config(&target_config, content);
+
+        match delete_config(&"dep2".to_string(), target_config.to_str().unwrap()) {
+            Ok(_) => {
+                assert_eq!("Invalid State", "");
+            }
+            Err(err) => {
+                assert_eq!(
+                    err,
+                    ConfigError {
+                        cause: "The dependency dep2 does not exists in the config file".to_string()
+                    }
+                )
+            }
+        }
 
         assert_eq!(
             read_file_to_string(&String::from(target_config.to_str().unwrap())),

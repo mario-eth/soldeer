@@ -14,12 +14,14 @@ mod versioning;
 use crate::auth::login;
 use crate::commands::Subcommands;
 use crate::config::{
+    delete_config,
     get_foundry_setup,
     read_config,
     remappings,
     Dependency,
 };
 use crate::dependency_downloader::{
+    delete_dependency_files,
     download_dependencies,
     unzip_dependencies,
     unzip_dependency,
@@ -31,6 +33,7 @@ use crate::janitor::{
 };
 use crate::lock::{
     lock_check,
+    remove_lock,
     write_lock,
 };
 use crate::utils::{
@@ -238,6 +241,37 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
                     });
                 }
             }
+        }
+
+        Subcommands::Uninstall(uninstall) => {
+            // define the config file
+            let config_file: String = match define_config_file() {
+                Ok(file) => file,
+                Err(_) => {
+                    return Err(SoldeerError {
+                        message: "Could not remove the dependency from the config file".to_string(),
+                    });
+                }
+            };
+
+            // delete from the config file and return the dependency
+            let dependency = match delete_config(&uninstall.dependency, &config_file) {
+                Ok(d) => d,
+                Err(err) => {
+                    return Err(SoldeerError { message: err.cause });
+                }
+            };
+
+            // deleting the files
+            let _ = delete_dependency_files(&dependency).is_ok();
+
+            // removing the dependency from the lock file
+            match remove_lock(&dependency.name, &dependency.version) {
+                Ok(d) => d,
+                Err(err) => {
+                    return Err(SoldeerError { message: err.cause });
+                }
+            };
         }
 
         Subcommands::VersionDryRun(_) => {

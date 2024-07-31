@@ -138,7 +138,8 @@ if you want to use just the `foundry.toml` file.
 
 ### DEPENDENCY INSTALLATION
 
-Initialize a fresh installation by using
+Initialize a fresh installation by using this command. It will generate either a `foundry.toml` or `soldeer.toml` file with the latest version of forge-std. This command is primarily used when you want to integrate Soldeer into your Foundry project or replace your old Foundry setup with Soldeer's setup. By using the `--clean true` argument, you can delete the old `.gitmodules` file and the `lib` directory.
+
 ```bash
 soldeer init
 ```

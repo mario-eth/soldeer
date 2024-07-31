@@ -1,4 +1,4 @@
-# SolDeer ![Rust][rust-badge] [![License: MIT][license-badge]][license]
+# Soldeer ![Rust][rust-badge] [![License: MIT][license-badge]][license]
 
 [rust-badge]: https://img.shields.io/badge/Built%20with%20-Rust-e43716.svg
 [license]: https://opensource.org/licenses/MIT
@@ -17,7 +17,38 @@ This project was started to solve the following issues:
 - npmjs was built for the js ecosystem not for solidity
 - github versioning of the releases is a pain and not all the projects are using it correctly
 
-## Version 0.2.15
+## Version 0.2.19
+
+### Version 0.2.19 introduces the following breaking changes
+
+Now you can use git to install a dependency. Supported platforms: github and gitlab.
+For now, we support only public repositories.
+
+The syntax is `soldeer install <dependency>~<version> git:<url>`. This will clone the repository and install the dependency in the `dependencies` folder.
+
+You can also use a certain commit as a dependency
+
+```bash
+soldeer install <dependency>~<version> git:<url> <commit>
+```
+
+Some example
+
+```bash
+soldeer install test-project~v1 git@github.com:test/test.git
+soldeer install test-project~v1 git@gitlab.com:test/test.git
+```
+
+```bash
+soldeer install test-project~v1 https://github.com/test/test.git
+soldeer install test-project~v1 https://gitlab.com/test/test.git
+```
+
+Or using custom commit hashes
+
+```bash
+soldeer install test-project~v1 git@github.com:test/test.git --rev 345e611cd84bfb4e62c583fa1886c1928bc1a464
+```
 
 ### Version 0.2.7 introduces the following breaking changes
 
@@ -128,6 +159,12 @@ soldeer install <dependency_name>~<version> <url>
 
 This command will download the zip file of the dependency, unzip it, install it in the `dependencies` directory.
 
+```bash
+soldeer install
+```
+
+This command will install all the dependencies from the `soldeer.toml`/`foundry.toml` file.
+
 ### How to push a new dependency to the repository
 
 In order to push a new dependency to the repository you have create an account on [https://soldeer.xyz](https://soldeer.xyz), create a project that it will match the dependency name.
@@ -135,6 +172,18 @@ In order to push a new dependency to the repository you have create an account o
 Example:
 Create a project called `my-project` and then use the `soldeer push my-project~v1.0`. This will push the project to the repository and it will be available for everyone to use.
 Before using the push command you have to use `soldeer login` to login to the repository.
+
+#### Pushing a certain directory
+
+If you want to push a certain directory from your project you can use the `soldeer push my-project~v1.0 /my/path/to/source/files` option. This will push only the files from the specified directory.
+
+#### Ignoring files
+
+If you want to ignore certain files from the push you need to create a `.soldeerignore` file that will contain the files that you want to ignore. The file should be in the root of the project. This file mimics `.gitignore` syntax.
+
+#### Dry Run
+
+If you want to dry run a push to inspect what files will be pushed to the central repository, use `soldeer push my-project~v1.0 [PATH_TO_DEPENDENCY] --dry-run true`. This will create a zip file that you can unzip and inspect what was pushed. We recommend everyone to run a dry-run before pushing a new dependency to avoid pushing unwanted files.
 
 ### Full list of commands
 
@@ -157,5 +206,9 @@ The goal of Soldeer is to be integrated into the pipelines of every open-source 
 
 For those who want an extra layer of security, a SHA is generated in the `soldeer.lock` file for the dependencies that are installed. Some of the projects are truncated, e.g., for OpenZeppelin, only the `contracts` directory is pushed to the repository, so you will have to check the SHA against the original version's contracts directory.
 
-**For Project Maintainers**  
+**For Project Maintainers**
 If you want to move your project from the Soldeer organization and take care of pushing the versions to Soldeer yourself, please open an issue or contact me on [X (formerly Twitter)](https://twitter.com/m4rio_eth).
+
+```
+
+```

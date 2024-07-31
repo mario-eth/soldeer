@@ -1,6 +1,5 @@
 /target
 dependencies/
-foundry.toml
 .dependency_reading.toml
 remappings.txt
 crawler/target/
@@ -13,3 +12,8 @@ crawler/zipped/*
 crawler/zipped/
 src/soldeer.toml
 *soldeer.lock
+test/*
+!emptyfile
+!emptyfile2
+test_push_sensitive
+test_push_skip_sensitive

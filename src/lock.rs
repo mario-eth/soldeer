@@ -41,10 +41,7 @@ struct LockType {
 }
 fn read_lock() -> Result<Vec<LockEntry>, LockError> {
     let lock_file: PathBuf = if cfg!(test) {
-        get_current_working_dir()
-            .unwrap()
-            .join("test")
-            .join("soldeer.lock")
+        get_current_working_dir().join("test").join("soldeer.lock")
     } else {
         LOCK_FILE.clone()
     };
@@ -113,10 +110,7 @@ pub fn lock_check(
 
 pub fn write_lock(dependencies: &[Dependency], clean: bool) -> Result<(), LockError> {
     let lock_file: PathBuf = if cfg!(test) {
-        get_current_working_dir()
-            .unwrap()
-            .join("test")
-            .join("soldeer.lock")
+        get_current_working_dir().join("test").join("soldeer.lock")
     } else {
         LOCK_FILE.clone()
     };
@@ -138,7 +132,6 @@ pub fn write_lock(dependencies: &[Dependency], clean: bool) -> Result<(), LockEr
 
     let mut new_lock_entries: String = String::new();
     dependencies.iter().for_each(|dependency| {
-        let hash = sha256_digest(&dependency.name, &dependency.version);
         new_lock_entries.push_str(&format!(
             r#"
 [[dependencies]]
@@ -147,7 +140,7 @@ version = "{}"
 source = "{}"
 checksum = "{}"
 "#,
-            dependency.name, dependency.version, dependency.url, hash
+            dependency.name, dependency.version, dependency.url, dependency.hash
         ));
         println!(
             "{}",
@@ -169,10 +162,7 @@ checksum = "{}"
 
 pub fn remove_lock(dependency_name: &str, dependency_version: &str) -> Result<(), LockError> {
     let lock_file: PathBuf = if cfg!(test) {
-        get_current_working_dir()
-            .unwrap()
-            .join("test")
-            .join("soldeer.lock")
+        get_current_working_dir().join("test").join("soldeer.lock")
     } else {
         LOCK_FILE.clone()
     };
@@ -209,23 +199,6 @@ checksum = "{}"
     Ok(())
 }
 
-#[cfg(not(test))]
-fn sha256_digest(dependency_name: &str, dependency_version: &str) -> String {
-    let bytes = std::fs::read(
-        get_current_working_dir()
-            .unwrap()
-            .join("dependencies")
-            .join(format!("{}-{}.zip", dependency_name, dependency_version)),
-    )
-    .unwrap(); // Vec<u8>
-    sha256::digest(bytes)
-}
-
-#[cfg(test)]
-fn sha256_digest(_dependency_name: &str, _dependency_version: &str) -> String {
-    "5019418b1e9128185398870f77a42e51d624c44315bb1572e7545be51d707016".to_string()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -236,10 +209,7 @@ mod tests {
     use std::io::Write;
 
     fn check_lock_file() -> PathBuf {
-        let lock_file: PathBuf = get_current_working_dir()
-            .unwrap()
-            .join("test")
-            .join("soldeer.lock");
+        let lock_file: PathBuf = get_current_working_dir().join("test").join("soldeer.lock");
         if lock_file.exists() {
             fs::remove_file(&lock_file).unwrap();
         }
@@ -275,6 +245,7 @@ checksum = "5019418b1e9128185398870f77a42e51d624c44315bb1572e7545be51d707016"
             name: "@openzeppelin-contracts".to_string(),
             version: "2.3.0".to_string(),
             url: "https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@openzeppelin-contracts~2.3.0.zip".to_string(),
+            hash: String::new()
         };
 
         assert!(
@@ -291,6 +262,7 @@ checksum = "5019418b1e9128185398870f77a42e51d624c44315bb1572e7545be51d707016"
             name: "@openzeppelin-contracts".to_string(),
             version: "2.3.0".to_string(),
             url: "https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@openzeppelin-contracts~2.3.0.zip".to_string(),
+            hash: String::new(),
         };
 
         assert!(lock_check(&dependency, true).is_err_and(|e| {
@@ -306,6 +278,7 @@ checksum = "5019418b1e9128185398870f77a42e51d624c44315bb1572e7545be51d707016"
             name: "@openzeppelin-contracts".to_string(),
             version: "2.5.0".to_string(),
             url: "https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@openzeppelin-contracts~2.5.0.zip".to_string(),
+            hash: "5019418b1e9128185398870f77a42e51d624c44315bb1572e7545be51d707016".to_string()
         };
         let dependencies = vec![dependency.clone()];
         write_lock(&dependencies, false).unwrap();
@@ -339,6 +312,7 @@ checksum = "5019418b1e9128185398870f77a42e51d624c44315bb1572e7545be51d707016"
             name: "@openzeppelin-contracts-2".to_string(),
             version: "2.6.0".to_string(),
             url: "https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@openzeppelin-contracts~2.6.0.zip".to_string(),
+            hash: "5019418b1e9128185398870f77a42e51d624c44315bb1572e7545be51d707016".to_string()
         };
         dependencies.push(dependency.clone());
         write_lock(&dependencies, false).unwrap();

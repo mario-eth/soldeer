@@ -1,3 +1,4 @@
+use regex::Regex;
 use simple_home_dir::home_dir;
 use std::env;
 use std::fs::{
@@ -18,8 +19,8 @@ use std::process::exit;
 use yansi::Paint;
 
 // get the current working directory
-pub fn get_current_working_dir() -> std::io::Result<PathBuf> {
-    env::current_dir()
+pub fn get_current_working_dir() -> PathBuf {
+    env::current_dir().unwrap()
 }
 
 pub fn read_file_to_string(path: &String) -> String {
@@ -118,4 +119,92 @@ pub fn remove_empty_lines(filename: &str) {
             eprintln!("Couldn't write to file: {}", e);
         }
     }
+}
+
+pub fn get_base_url() -> String {
+    if cfg!(test) {
+        env::var("base_url").unwrap_or("http://0.0.0.0".to_string())
+    } else {
+        "https://api.soldeer.xyz".to_string()
+    }
+}
+
+// Function to check for the presence of sensitive files or directories
+pub fn check_dotfiles(path: &Path) -> bool {
+    if let Ok(entries) = fs::read_dir(path) {
+        for entry in entries.flatten() {
+            let file_name = entry.file_name();
+            let file_name_str = file_name.to_string_lossy();
+            if file_name_str.starts_with('.') {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+// Function to recursively check for sensitive files or directories in a given path
+pub fn check_dotfiles_recursive(path: &Path) -> bool {
+    if check_dotfiles(path) {
+        return true;
+    }
+
+    if path.is_dir() {
+        for entry in fs::read_dir(path).unwrap() {
+            let entry = entry.unwrap();
+            let entry_path = entry.path();
+            if check_dotfiles_recursive(&entry_path) {
+                return true;
+            }
+        }
+    }
+
+    false
+}
+
+// Function to prompt the user for confirmation
+pub fn prompt_user_for_confirmation() -> bool {
+    println!("{}", Paint::yellow(
+        "You are about to include some sensitive files in this version. Are you sure you want to continue?"
+    ));
+    println!("{}", Paint::cyan(
+        "If you are not sure what sensitive files, you can run the dry-run command to check what will be pushed."
+    ));
+
+    print!("{}", Paint::green("Do you want to continue? (y/n): "));
+    std::io::stdout().flush().unwrap();
+
+    let mut input = String::new();
+    std::io::stdin().read_line(&mut input).unwrap();
+    let input = input.trim().to_lowercase();
+    input == "y" || input == "yes"
+}
+
+pub fn get_download_tunnel(dependency_url: &str) -> String {
+    let pattern1 = r"^(git@github\.com|git@gitlab)";
+    let pattern2 = r"^(https://github\.com|https://gitlab\.com)";
+    let re1 = Regex::new(pattern1).unwrap();
+    let re2 = Regex::new(pattern2).unwrap();
+    if re1.is_match(dependency_url)
+        || (re2.is_match(dependency_url) && dependency_url.ends_with(".git"))
+    {
+        return "git".to_string();
+    }
+    "http".to_string()
+}
+
+#[cfg(not(test))]
+pub fn sha256_digest(dependency_name: &str, dependency_version: &str) -> String {
+    use crate::DEPENDENCY_DIR;
+
+    let bytes = std::fs::read(
+        DEPENDENCY_DIR.join(format!("{}-{}.zip", dependency_name, dependency_version)),
+    )
+    .unwrap(); // Vec<u8>
+    sha256::digest(bytes)
+}
+
+#[cfg(test)]
+pub fn sha256_digest(_dependency_name: &str, _dependency_version: &str) -> String {
+    "5019418b1e9128185398870f77a42e51d624c44315bb1572e7545be51d707016".to_string()
 }

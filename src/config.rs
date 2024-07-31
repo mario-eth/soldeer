@@ -12,6 +12,8 @@ use crate::{
 use serde_derive::Deserialize;
 use std::fs::{
     self,
+    remove_dir_all,
+    remove_file,
     File,
 };
 use std::io::Write;
@@ -396,6 +398,15 @@ pub fn delete_config(
         });
     }
     Ok(dependency)
+}
+
+pub fn remove_forge_lib() -> Result<(), ConfigError> {
+    let lib_dir = get_current_working_dir().join("lib/");
+    let gitmodules_file = get_current_working_dir().join(".gitmodules");
+
+    let _ = remove_file(gitmodules_file);
+    let _ = remove_dir_all(lib_dir);
+    Ok(())
 }
 
 fn create_example_config(option: &str) -> Result<String, ConfigError> {

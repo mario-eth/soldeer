@@ -13,6 +13,7 @@ pub struct Args {
 
 #[derive(Debug, Clone, Subcommand)]
 pub enum Subcommands {
+    Init(Init),
     Install(Install),
     Update(Update),
     Login(Login),
@@ -23,7 +24,19 @@ pub enum Subcommands {
 
 #[derive(Debug, Clone, Parser)]
 #[clap(
-    about = "Install a dependency from soldeer repository or from a custom url that points to a zip file or from git using a git link. 
+    about = "Initialize a new Soldeer project for use with Foundry.
+Use --clean true if you want to delete .gitmodules and lib directory that were created in Foundry.",
+    after_help = "For more information, read the README.md",
+    override_usage = "soldeer init"
+)]
+pub struct Init {
+    #[arg(long, value_parser = clap::value_parser!(bool))]
+    pub clean: Option<bool>,
+}
+
+#[derive(Debug, Clone, Parser)]
+#[clap(
+    about = "Install a dependency from Soldeer repository or from a custom url that points to a zip file or from git using a git link. 
     IMPORTANT!! The `~` when specifying the dependency is very important to differentiate between the name and the version that needs to be installed.
     Example from remote repository: soldeer install @openzeppelin-contracts~2.3.0 
     Example custom url: soldeer install @openzeppelin-contracts~2.3.0 https://github.com/OpenZeppelin/openzeppelin-contracts/archive/refs/tags/v5.0.2.zip

@@ -51,6 +51,7 @@ use janitor::cleanup_dependency;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use remote::get_dependency_url_remote;
+use remote::get_latest_forge_std_dependency;
 use std::env;
 use std::path::PathBuf;
 use utils::get_download_tunnel;
@@ -72,11 +73,40 @@ pub struct FOUNDRY {
 #[tokio::main]
 pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
     match command {
+        Subcommands::Init(init) => {
+            Paint::green("🦌 Running Soldeer init 🦌\n");
+            Paint::green("Initializes a new Soldeer project in foundry\n");
+
+            if init.clean.is_some() && init.clean.unwrap() {
+                match config::remove_forge_lib() {
+                    Ok(_) => {}
+                    Err(err) => {
+                        return Err(SoldeerError { message: err.cause });
+                    }
+                }
+            }
+
+            let mut dependency: Dependency = match get_latest_forge_std_dependency().await {
+                Ok(dep) => dep,
+                Err(err) => {
+                    return Err(SoldeerError {
+                        message: format!(
+                            "Error downloading a dependency {}~{}",
+                            err.name, err.version
+                        ),
+                    });
+                }
+            };
+            match install_dependency(&mut dependency, false, false).await {
+                Ok(_) => {}
+                Err(err) => return Err(err),
+            }
+        }
         Subcommands::Install(install) => {
             if install.dependency.is_none() {
                 return update().await;
             }
-            println!("{}", Paint::green("🦌 Running soldeer install 🦌\n"));
+            Paint::green("🦌 Running Soldeer install 🦌\n");
             let dependency = install.dependency.unwrap();
             if !dependency.contains('~') {
                 return Err(SoldeerError {
@@ -133,137 +163,16 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
                 hash,
             };
 
-            match lock_check(&dependency, true) {
+            match install_dependency(&mut dependency, via_git, custom_url).await {
                 Ok(_) => {}
-                Err(err) => {
-                    return Err(SoldeerError { message: err.cause });
-                }
-            }
-
-            dependency.hash = match download_dependency(&dependency).await {
-                Ok(h) => h,
-                Err(err) => {
-                    return Err(SoldeerError {
-                        message: format!(
-                            "Error downloading a dependency {}~{}. Cause: {}",
-                            err.name, err.version, err.cause
-                        ),
-                    });
-                }
-            };
-
-            match write_lock(&[dependency.clone()], false) {
-                Ok(_) => {}
-                Err(err) => {
-                    return Err(SoldeerError {
-                        message: format!("Error writing the lock: {}", err.cause),
-                    });
-                }
-            }
-
-            if !via_git {
-                match unzip_dependency(&dependency.name, &dependency.version) {
-                    Ok(_) => {}
-                    Err(err_unzip) => {
-                        match janitor::cleanup_dependency(
-                            &dependency.name,
-                            &dependency.version,
-                            true,
-                            false,
-                        ) {
-                            Ok(_) => {}
-                            Err(err_cleanup) => {
-                                return Err(SoldeerError {
-                                    message: format!(
-                                        "Error cleaning up dependency {}~{}",
-                                        err_cleanup.name, err_cleanup.version
-                                    ),
-                                })
-                            }
-                        }
-                        return Err(SoldeerError {
-                            message: format!(
-                                "Error downloading a dependency {}~{}",
-                                err_unzip.name, err_unzip.version
-                            ),
-                        });
-                    }
-                }
-            }
-
-            let config_file: String = match define_config_file() {
-                Ok(file) => file,
-
-                Err(_) => {
-                    match cleanup_dependency(&dependency.name, &dependency.version, true, via_git) {
-                        Ok(_) => {
-                            return Err(SoldeerError {
-                                message: "Could not define the config file".to_string(),
-                            });
-                        }
-                        Err(_) => {
-                            return Err(SoldeerError {
-                                message: "Could not delete dependency artifacts".to_string(),
-                            });
-                        }
-                    }
-                }
-            };
-
-            match add_to_config(&dependency, custom_url, &config_file, via_git) {
-                Ok(_) => {}
-                Err(err) => {
-                    return Err(SoldeerError { message: err.cause });
-                }
-            }
-
-            match janitor::healthcheck_dependency(&dependency_name, &dependency_version) {
-                Ok(_) => {}
-                Err(err) => {
-                    return Err(SoldeerError {
-                        message: format!(
-                            "Error health-checking dependency {}~{}",
-                            err.name, err.version
-                        ),
-                    });
-                }
-            }
-
-            match janitor::cleanup_dependency(&dependency_name, &dependency_version, false, via_git)
-            {
-                Ok(_) => {}
-                Err(err) => {
-                    return Err(SoldeerError {
-                        message: format!(
-                            "Error cleaning up dependency {}~{}",
-                            err.name, err.version
-                        ),
-                    });
-                }
-            }
-            // check the foundry setup, in case we have a foundry.toml, then the foundry.toml will be used for `dependencies`
-            let f_setup_vec: Vec<bool> = match get_foundry_setup() {
-                Ok(setup) => setup,
-                Err(err) => return Err(SoldeerError { message: err.cause }),
-            };
-            let foundry_setup: FOUNDRY = FOUNDRY {
-                remappings: f_setup_vec[0],
-            };
-
-            if foundry_setup.remappings {
-                match remappings().await {
-                    Ok(_) => {}
-                    Err(err) => {
-                        return Err(SoldeerError { message: err.cause });
-                    }
-                }
+                Err(err) => return Err(err),
             }
         }
         Subcommands::Update(_) => {
             return update().await;
         }
         Subcommands::Login(_) => {
-            println!("{}", Paint::green("🦌 Running soldeer login 🦌\n"));
+            Paint::green("🦌 Running Soldeer login 🦌\n");
             match login().await {
                 Ok(_) => {}
                 Err(err) => {
@@ -285,17 +194,17 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
                 && check_dotfiles_recursive(&path_buf)
                 && !prompt_user_for_confirmation()
             {
-                println!("{}", Paint::yellow("Push operation aborted by the user."));
+                Paint::yellow("Push operation aborted by the user.");
                 return Ok(());
             }
 
             if dry_run {
                 println!(
             "{}",
-            Paint::green("🦌 Running soldeer push with dry-run, a zip file will be available for inspection 🦌\n")
+            Paint::green("🦌 Running Soldeer push with dry-run, a zip file will be available for inspection 🦌\n")
         );
             } else {
-                println!("{}", Paint::green("🦌 Running soldeer push 🦌\n"));
+                Paint::green("🦌 Running Soldeer push 🦌\n");
             }
 
             if skip_warnings {
@@ -367,14 +276,143 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
 
         Subcommands::VersionDryRun(_) => {
             const VERSION: &str = env!("CARGO_PKG_VERSION");
-            println!("{}", Paint::cyan(&format!("Current Soldeer {}", VERSION)));
+            Paint::cyan(&format!("Current Soldeer {}", VERSION));
+        }
+    }
+    Ok(())
+}
+
+async fn install_dependency(
+    dependency: &mut Dependency,
+    via_git: bool,
+    custom_url: bool,
+) -> Result<(), SoldeerError> {
+    match lock_check(dependency, true) {
+        Ok(_) => {}
+        Err(err) => {
+            return Err(SoldeerError { message: err.cause });
+        }
+    }
+
+    dependency.hash = match download_dependency(dependency).await {
+        Ok(h) => h,
+        Err(err) => {
+            return Err(SoldeerError {
+                message: format!(
+                    "Error downloading a dependency {}~{}. Cause: {}",
+                    err.name, err.version, err.cause
+                ),
+            });
+        }
+    };
+
+    match write_lock(&[dependency.clone()], false) {
+        Ok(_) => {}
+        Err(err) => {
+            return Err(SoldeerError {
+                message: format!("Error writing the lock: {}", err.cause),
+            });
+        }
+    }
+
+    if !via_git {
+        match unzip_dependency(&dependency.name, &dependency.version) {
+            Ok(_) => {}
+            Err(err_unzip) => {
+                match janitor::cleanup_dependency(
+                    &dependency.name,
+                    &dependency.version,
+                    true,
+                    false,
+                ) {
+                    Ok(_) => {}
+                    Err(err_cleanup) => {
+                        return Err(SoldeerError {
+                            message: format!(
+                                "Error cleaning up dependency {}~{}",
+                                err_cleanup.name, err_cleanup.version
+                            ),
+                        })
+                    }
+                }
+                return Err(SoldeerError {
+                    message: format!(
+                        "Error downloading a dependency {}~{}",
+                        err_unzip.name, err_unzip.version
+                    ),
+                });
+            }
+        }
+    }
+
+    let config_file: String = match define_config_file() {
+        Ok(file) => file,
+
+        Err(_) => {
+            match cleanup_dependency(&dependency.name, &dependency.version, true, via_git) {
+                Ok(_) => {
+                    return Err(SoldeerError {
+                        message: "Could not define the config file".to_string(),
+                    });
+                }
+                Err(_) => {
+                    return Err(SoldeerError {
+                        message: "Could not delete dependency artifacts".to_string(),
+                    });
+                }
+            }
+        }
+    };
+
+    match add_to_config(dependency, custom_url, &config_file, via_git) {
+        Ok(_) => {}
+        Err(err) => {
+            return Err(SoldeerError { message: err.cause });
+        }
+    }
+
+    match janitor::healthcheck_dependency(&dependency.name, &dependency.version) {
+        Ok(_) => {}
+        Err(err) => {
+            return Err(SoldeerError {
+                message: format!(
+                    "Error health-checking dependency {}~{}",
+                    err.name, err.version
+                ),
+            });
+        }
+    }
+
+    match janitor::cleanup_dependency(&dependency.name, &dependency.version, false, via_git) {
+        Ok(_) => {}
+        Err(err) => {
+            return Err(SoldeerError {
+                message: format!("Error cleaning up dependency {}~{}", err.name, err.version),
+            });
+        }
+    }
+    // check the foundry setup, in case we have a foundry.toml, then the foundry.toml will be used for `dependencies`
+    let f_setup_vec: Vec<bool> = match get_foundry_setup() {
+        Ok(setup) => setup,
+        Err(err) => return Err(SoldeerError { message: err.cause }),
+    };
+    let foundry_setup: FOUNDRY = FOUNDRY {
+        remappings: f_setup_vec[0],
+    };
+
+    if foundry_setup.remappings {
+        match remappings().await {
+            Ok(_) => {}
+            Err(err) => {
+                return Err(SoldeerError { message: err.cause });
+            }
         }
     }
     Ok(())
 }
 
 async fn update() -> Result<(), SoldeerError> {
-    println!("{}", Paint::green("🦌 Running soldeer update 🦌\n"));
+    Paint::green("🦌 Running Soldeer update 🦌\n");
 
     let mut dependencies: Vec<Dependency> = match read_config(String::new()).await {
         Ok(dep) => dep,
@@ -481,6 +519,7 @@ mod tests {
     };
 
     use commands::{
+        Init,
         Install,
         Push,
         Update,
@@ -778,47 +817,6 @@ libs = ["dependencies"]
         assert_eq!(archive.unwrap().len(), 2);
 
         let _ = remove_dir_all(path_dependency);
-    }
-
-    fn clean_test_env(target_config: PathBuf) {
-        let _ = remove_dir_all(DEPENDENCY_DIR.clone());
-        let _ = remove_file(LOCK_FILE.clone());
-        if target_config != PathBuf::default() {
-            let _ = remove_file(&target_config);
-            let parent = target_config.parent();
-            let lock = parent.unwrap().join("soldeer.lock");
-            let _ = remove_file(lock);
-        }
-    }
-
-    fn write_to_config(target_file: &PathBuf, content: &str) {
-        if target_file.exists() {
-            let _ = remove_file(target_file);
-        }
-        let mut file: File = fs::OpenOptions::new()
-            .create_new(true)
-            .write(true)
-            .open(target_file)
-            .unwrap();
-        if let Err(e) = write!(file, "{}", content) {
-            eprintln!("Couldn't write to the config file: {}", e);
-        }
-    }
-
-    fn define_config(foundry: bool) -> PathBuf {
-        let s: String = rand::thread_rng()
-            .sample_iter(&Alphanumeric)
-            .take(7)
-            .map(char::from)
-            .collect();
-        let mut target = format!("foundry{}.toml", s);
-        if !foundry {
-            target = format!("soldeer{}.toml", s);
-        }
-
-        let path = env::current_dir().unwrap().join("test").join(target);
-        env::set_var("config_file", path.clone().to_str().unwrap());
-        path
     }
 
     #[test]
@@ -1205,6 +1203,131 @@ libs = ["dependencies"]
             .join("Test.sol");
         assert!(path_dependency.exists()); // this should exists at that commit
         clean_test_env(target_config);
+    }
+
+    #[test]
+    #[serial]
+    fn soldeer_init_should_install_forge() {
+        let _ = remove_dir_all(DEPENDENCY_DIR.clone());
+        let _ = remove_file(LOCK_FILE.clone());
+
+        let target_config = define_config(true);
+        let content = String::new();
+        write_to_config(&target_config, &content);
+
+        env::set_var("base_url", "https://api.soldeer.xyz");
+
+        let command = Subcommands::Init(Init { clean: None });
+
+        match run(command) {
+            Ok(_) => {}
+            Err(err) => {
+                println!("{:?}", err);
+                clean_test_env(target_config.clone());
+                assert_eq!("Invalid State", "")
+            }
+        }
+
+        let path_dependency = DEPENDENCY_DIR.join("forge-std-1.9.1");
+        let lock_test = get_current_working_dir().join("test").join("soldeer.lock");
+        assert!(path_dependency.exists());
+        assert!(lock_test.exists());
+        clean_test_env(target_config);
+    }
+
+    #[test]
+    #[serial]
+    fn soldeer_init_clean_should_delete_git_submodules() {
+        let _ = remove_dir_all(DEPENDENCY_DIR.clone());
+        let _ = remove_file(LOCK_FILE.clone());
+
+        let submodules_path = get_current_working_dir().join(".gitmodules");
+        let lib_path = get_current_working_dir().join("lib");
+
+        let path_dependency = DEPENDENCY_DIR.join("forge-std-1.9.1");
+        let lock_test = get_current_working_dir().join("test").join("soldeer.lock");
+
+        //remove it just in case
+        let _ = remove_file(&submodules_path);
+        let _ = remove_dir_all(&lib_path);
+        let _ = remove_file(&lock_test);
+        let _ = remove_dir_all(&path_dependency);
+
+        let mut file: std::fs::File = fs::OpenOptions::new()
+            .create_new(true)
+            .write(true)
+            .open(&submodules_path)
+            .unwrap();
+        if let Err(e) = write!(file, "this is a test file") {
+            eprintln!("Couldn't write to the config file: {}", e);
+        }
+        let _ = create_dir_all(&lib_path);
+
+        let target_config = define_config(true);
+        let content = String::new();
+        write_to_config(&target_config, &content);
+
+        env::set_var("base_url", "https://api.soldeer.xyz");
+
+        let command = Subcommands::Init(Init { clean: Some(true) });
+
+        match run(command) {
+            Ok(_) => {}
+            Err(err) => {
+                println!("{:?}", err);
+                clean_test_env(target_config.clone());
+                assert_eq!("Invalid State", "")
+            }
+        }
+
+        assert!(path_dependency.exists());
+        assert!(lock_test.exists());
+        assert!(!submodules_path.exists());
+        assert!(!lib_path.exists());
+        clean_test_env(target_config);
+        let _ = remove_file(submodules_path);
+        let _ = remove_dir_all(lib_path);
+    }
+
+    fn clean_test_env(target_config: PathBuf) {
+        let _ = remove_dir_all(DEPENDENCY_DIR.clone());
+        let _ = remove_file(LOCK_FILE.clone());
+        if target_config != PathBuf::default() {
+            let _ = remove_file(&target_config);
+            let parent = target_config.parent();
+            let lock = parent.unwrap().join("soldeer.lock");
+            let _ = remove_file(lock);
+        }
+    }
+
+    fn write_to_config(target_file: &PathBuf, content: &str) {
+        if target_file.exists() {
+            let _ = remove_file(target_file);
+        }
+        let mut file: File = fs::OpenOptions::new()
+            .create_new(true)
+            .write(true)
+            .open(target_file)
+            .unwrap();
+        if let Err(e) = write!(file, "{}", content) {
+            eprintln!("Couldn't write to the config file: {}", e);
+        }
+    }
+
+    fn define_config(foundry: bool) -> PathBuf {
+        let s: String = rand::thread_rng()
+            .sample_iter(&Alphanumeric)
+            .take(7)
+            .map(char::from)
+            .collect();
+        let mut target = format!("foundry{}.toml", s);
+        if !foundry {
+            target = format!("Soldeer{}.toml", s);
+        }
+
+        let path = env::current_dir().unwrap().join("test").join(target);
+        env::set_var("config_file", path.clone().to_str().unwrap());
+        path
     }
 
     fn create_random_file(target_dir: &Path, extension: String) -> String {

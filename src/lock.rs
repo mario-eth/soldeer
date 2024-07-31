@@ -320,4 +320,101 @@ checksum = "5019418b1e9128185398870f77a42e51d624c44315bb1572e7545be51d707016"
             e.cause == "Dependency @openzeppelin-contracts-2-2.6.0 is already installed"
         }));
     }
+
+    #[test]
+    #[serial]
+    fn remove_lock_single_success() {
+        let lock_file = check_lock_file();
+        let dependency = Dependency {
+            name: "@openzeppelin-contracts".to_string(),
+            version: "2.5.0".to_string(),
+            url: "https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@openzeppelin-contracts~2.5.0.zip".to_string(),
+            hash: "5019418b1e9128185398870f77a42e51d624c44315bb1572e7545be51d707016".to_string()
+        };
+        let dependencies = vec![dependency.clone()];
+        write_lock(&dependencies, false).unwrap();
+
+        match remove_lock(&dependency.name, &dependency.version) {
+            Ok(_) => {}
+            Err(_) => {
+                assert_eq!("Invalid State", "");
+            }
+        }
+        let contents = read_file_to_string(&lock_file.to_str().unwrap().to_string());
+
+        assert_eq!(contents, "".to_string());
+    }
+
+    #[test]
+    #[serial]
+    fn remove_lock_multiple_success() {
+        let lock_file = check_lock_file();
+        let dependency = Dependency {
+            name: "@openzeppelin-contracts".to_string(),
+            version: "2.5.0".to_string(),
+            url: "https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@openzeppelin-contracts~2.5.0.zip".to_string(),
+            hash: "5019418b1e9128185398870f77a42e51d624c44315bb1572e7545be51d707016".to_string()
+        };
+        let dependency2= Dependency {
+            name: "@openzeppelin-contracts2".to_string(),
+            version: "2.5.0".to_string(),
+            url: "https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@openzeppelin-contracts~2.5.0.zip".to_string(),
+            hash: "5019418b1e9128185398870f77a42e51d624c44315bb1572e7545be51d707016".to_string()
+        };
+        let dependencies = vec![dependency.clone(), dependency2.clone()];
+        write_lock(&dependencies, false).unwrap();
+
+        match remove_lock(&dependency.name, &dependency.version) {
+            Ok(_) => {}
+            Err(_) => {
+                assert_eq!("Invalid State", "");
+            }
+        }
+        let contents = read_file_to_string(&lock_file.to_str().unwrap().to_string());
+
+        assert_eq!(
+            contents,
+            r#"
+[[dependencies]]
+name = "@openzeppelin-contracts2"
+version = "2.5.0"
+source = "https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@openzeppelin-contracts~2.5.0.zip"
+checksum = "5019418b1e9128185398870f77a42e51d624c44315bb1572e7545be51d707016"
+"#
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn remove_lock_one_fails() {
+        let lock_file = check_lock_file();
+        let dependency = Dependency {
+            name: "@openzeppelin-contracts".to_string(),
+            version: "2.5.0".to_string(),
+            url: "https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@openzeppelin-contracts~2.5.0.zip".to_string(),
+            hash: "5019418b1e9128185398870f77a42e51d624c44315bb1572e7545be51d707016".to_string()
+        };
+
+        let dependencies = vec![dependency.clone()];
+        write_lock(&dependencies, false).unwrap();
+
+        match remove_lock("non-existent", &dependency.version) {
+            Ok(_) => {}
+            Err(_) => {
+                assert_eq!("Invalid State", "");
+            }
+        }
+        let contents = read_file_to_string(&lock_file.to_str().unwrap().to_string());
+
+        assert_eq!(
+            contents,
+            r#"
+[[dependencies]]
+name = "@openzeppelin-contracts"
+version = "2.5.0"
+source = "https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@openzeppelin-contracts~2.5.0.zip"
+checksum = "5019418b1e9128185398870f77a42e51d624c44315bb1572e7545be51d707016"
+"#
+        );
+    }
 }

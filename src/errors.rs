@@ -126,3 +126,30 @@ impl ConfigError {
         ConfigError { cause: cause.to_string() }
     }
 }
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct DependencyError {
+    pub name: String,
+    pub version: String,
+    pub cause: String,
+}
+
+impl fmt::Display for DependencyError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "dependency operation failed for {}~{}",
+            &self.name, &self.version
+        )
+    }
+}
+
+impl DependencyError {
+    pub fn new(name: &str, version: &str, cause: &str) -> DependencyError {
+        DependencyError {
+            name: name.to_string(),
+            version: version.to_string(),
+            cause: cause.to_string(),
+        }
+    }
+}

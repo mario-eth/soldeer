@@ -14,11 +14,16 @@ use tokio::{
 use yansi::Paint;
 
 use crate::config::Dependency;
-use crate::errors::DownloadError;
-use crate::errors::UnzippingError;
-use crate::utils::get_download_tunnel;
-use crate::utils::read_file;
-use crate::utils::sha256_digest;
+use crate::errors::{
+    DependencyError,
+    DownloadError,
+    UnzippingError,
+};
+use crate::utils::{
+    get_download_tunnel,
+    read_file,
+    sha256_digest,
+};
 use crate::DEPENDENCY_DIR;
 use std::str;
 
@@ -325,6 +330,12 @@ async fn download_via_http(
             });
         }
     };
+    Ok(())
+}
+
+pub fn delete_dependency_files(dependency: &Dependency) -> Result<(), DependencyError> {
+    let _ =
+        remove_dir_all(DEPENDENCY_DIR.join(format!("{}-{}", dependency.name, dependency.version)));
     Ok(())
 }
 
@@ -802,5 +813,30 @@ mod tests {
             transform_git_to_http("https://gitlab.com/mario4582928/Mario.git"),
             "https://gitlab.com/mario4582928/Mario.git"
         );
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn remove_one_dependency() {
+        let mut dependencies: Vec<Dependency> = Vec::new();
+
+        let dependency = Dependency {
+            name: "@openzeppelin-contracts".to_string(),
+            version: "2.3.0".to_string(),
+            url: "git@github.com:transmissions11/solmate.git".to_string(),
+            hash: String::new(),
+        };
+        dependencies.push(dependency.clone());
+
+        match download_dependencies(&dependencies, false).await {
+            Ok(_) => {}
+            Err(_) => {
+                assert_eq!("Invalid state", "");
+            }
+        }
+        let _ = delete_dependency_files(&dependency);
+        assert!(!DEPENDENCY_DIR
+            .join(format!("{}~{}", dependency.name, dependency.version))
+            .exists());
     }
 }

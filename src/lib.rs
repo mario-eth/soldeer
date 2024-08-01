@@ -15,9 +15,9 @@ use crate::auth::login;
 use crate::commands::Subcommands;
 use crate::config::{
     delete_config,
-    get_foundry_setup,
-    read_config,
-    remappings,
+    read_config_deps,
+    read_config_soldeer,
+    remappings_txt,
     Dependency,
 };
 use crate::dependency_downloader::{
@@ -45,6 +45,7 @@ use crate::versioning::push_version;
 use config::{
     add_to_config,
     define_config_file,
+    remappings_foundry,
 };
 use dependency_downloader::download_dependency;
 use janitor::cleanup_dependency;
@@ -97,14 +98,19 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
                     });
                 }
             };
-            match install_dependency(&mut dependency, false, false).await {
+            match install_dependency(&mut dependency, false, false, true).await {
                 Ok(_) => {}
                 Err(err) => return Err(err),
             }
         }
         Subcommands::Install(install) => {
+            let mut reg_remappings = false;
+            if install.reg_remappings.is_some() {
+                reg_remappings = true;
+            }
+
             if install.dependency.is_none() {
-                return update().await;
+                return update(reg_remappings).await;
             }
             Paint::green("🦌 Running Soldeer install 🦌\n");
             let dependency = install.dependency.unwrap();
@@ -163,13 +169,17 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
                 hash,
             };
 
-            match install_dependency(&mut dependency, via_git, custom_url).await {
+            match install_dependency(&mut dependency, via_git, custom_url, reg_remappings).await {
                 Ok(_) => {}
                 Err(err) => return Err(err),
             }
         }
-        Subcommands::Update(_) => {
-            return update().await;
+        Subcommands::Update(update_args) => {
+            let mut reg_remappings = false;
+            if update_args.reg_remappings.is_some() {
+                reg_remappings = true;
+            }
+            return update(reg_remappings).await;
         }
         Subcommands::Login(_) => {
             Paint::green("🦌 Running Soldeer login 🦌\n");
@@ -286,6 +296,7 @@ async fn install_dependency(
     dependency: &mut Dependency,
     via_git: bool,
     custom_url: bool,
+    regenerate_remappings: bool,
 ) -> Result<(), SoldeerError> {
     match lock_check(dependency, true) {
         Ok(_) => {}
@@ -364,6 +375,21 @@ async fn install_dependency(
         }
     };
 
+    // We get the [soldeer] config
+    let mut soldeer_config = match read_config_soldeer(&config_file).await {
+        Ok(sc) => sc,
+        Err(err) => {
+            return Err(SoldeerError {
+                message: format!("Could get the Soldeer config {:?}", err.cause),
+            });
+        }
+    };
+
+    // if --reg-remappings true is sent as argument it will overwrite the soldeer_config's value
+    if regenerate_remappings {
+        soldeer_config.reg_remappings = regenerate_remappings;
+    }
+
     match add_to_config(dependency, custom_url, &config_file, via_git) {
         Ok(_) => {}
         Err(err) => {
@@ -391,30 +417,56 @@ async fn install_dependency(
             });
         }
     }
-    // check the foundry setup, in case we have a foundry.toml, then the foundry.toml will be used for `dependencies`
-    let f_setup_vec: Vec<bool> = match get_foundry_setup() {
-        Ok(setup) => setup,
-        Err(err) => return Err(SoldeerError { message: err.cause }),
-    };
-    let foundry_setup: FOUNDRY = FOUNDRY {
-        remappings: f_setup_vec[0],
-    };
 
-    if foundry_setup.remappings {
-        match remappings().await {
-            Ok(_) => {}
-            Err(err) => {
-                return Err(SoldeerError { message: err.cause });
+    if soldeer_config.generate_remappings {
+        if soldeer_config.remappings_type == "config" {
+            match remappings_foundry(&dependency, &config_file, soldeer_config).await {
+                Ok(_) => {}
+                Err(err) => {
+                    return Err(SoldeerError { message: err.cause });
+                }
+            }
+        } else {
+            match remappings_txt(&config_file).await {
+                Ok(_) => {}
+                Err(err) => {
+                    return Err(SoldeerError { message: err.cause });
+                }
             }
         }
     }
+
     Ok(())
 }
 
-async fn update() -> Result<(), SoldeerError> {
+async fn update(regenerate_remappings: bool) -> Result<(), SoldeerError> {
     Paint::green("🦌 Running Soldeer update 🦌\n");
 
-    let mut dependencies: Vec<Dependency> = match read_config(String::new()).await {
+    let config_file: String = match define_config_file() {
+        Ok(file) => file,
+        Err(_) => {
+            return Err(SoldeerError {
+                message: "Could not remove the dependency from the config file".to_string(),
+            });
+        }
+    };
+
+    // We get the [soldeer] config
+    let mut soldeer_config = match read_config_soldeer(&config_file).await {
+        Ok(sc) => sc,
+        Err(err) => {
+            return Err(SoldeerError {
+                message: format!("Could get the Soldeer config {:?}", err.cause),
+            });
+        }
+    };
+
+    // if --reg-remappings true is sent as argument it will overwrite the soldeer_config's value
+    if regenerate_remappings {
+        soldeer_config.reg_remappings = regenerate_remappings;
+    }
+
+    let mut dependencies: Vec<Dependency> = match read_config_deps(&config_file).await {
         Ok(dep) => dep,
         Err(err) => return Err(SoldeerError { message: err.cause }),
     };
@@ -474,22 +526,20 @@ async fn update() -> Result<(), SoldeerError> {
         }
     }
 
-    // check the foundry setup, in case we have a foundry.toml, then the foundry.toml will be used for `dependencies`
-    let f_setup_vec: Vec<bool> = match get_foundry_setup() {
-        Ok(f_setup) => f_setup,
-        Err(err) => {
-            return Err(SoldeerError { message: err.cause });
-        }
-    };
-    let foundry_setup: FOUNDRY = FOUNDRY {
-        remappings: f_setup_vec[0],
-    };
-
-    if foundry_setup.remappings {
-        match remappings().await {
-            Ok(_) => {}
-            Err(err) => {
-                return Err(SoldeerError { message: err.cause });
+    if soldeer_config.generate_remappings {
+        if soldeer_config.remappings_type == "config" {
+            match remappings_foundry(&Dependency::default(), &config_file, soldeer_config).await {
+                Ok(_) => {}
+                Err(err) => {
+                    return Err(SoldeerError { message: err.cause });
+                }
+            }
+        } else {
+            match remappings_txt(&config_file).await {
+                Ok(_) => {}
+                Err(err) => {
+                    return Err(SoldeerError { message: err.cause });
+                }
             }
         }
     }
@@ -563,6 +613,7 @@ libs = ["dependencies"]
             dependency: None,
             remote_url: None,
             rev: None,
+            reg_remappings: None,
         });
 
         match run(command) {
@@ -610,6 +661,7 @@ libs = ["dependencies"]
             dependency: None,
             remote_url: None,
             rev: None,
+            reg_remappings: None,
         });
 
         match run(command) {
@@ -651,7 +703,9 @@ libs = ["dependencies"]
 
         env::set_var("base_url", "https://api.soldeer.xyz");
 
-        let command = Subcommands::Update(Update {});
+        let command = Subcommands::Update(Update {
+            reg_remappings: None,
+        });
 
         match run(command) {
             Ok(_) => {}
@@ -694,7 +748,9 @@ libs = ["dependencies"]
 
         env::set_var("base_url", "https://api.soldeer.xyz");
 
-        let command = Subcommands::Update(Update {});
+        let command = Subcommands::Update(Update {
+            reg_remappings: None,
+        });
 
         match run(command) {
             Ok(_) => {}
@@ -756,6 +812,7 @@ libs = ["dependencies"]
             dependency: None,
             remote_url: None,
             rev: None,
+            reg_remappings: None,
         });
 
         match run(command) {
@@ -952,6 +1009,7 @@ libs = ["dependencies"]
             dependency: Some("forge-std~1.9.1".to_string()),
             remote_url: Option::None,
             rev: None,
+            reg_remappings: None,
         });
 
         match run(command) {
@@ -1009,6 +1067,7 @@ libs = ["dependencies"]
             dependency: Some("forge-std~1.9.1".to_string()),
             remote_url: Some("https://soldeer-revisions.s3.amazonaws.com/forge-std/v1_9_0_03-07-2024_14:44:57_forge-std-v1.9.0.zip".to_string()),
             rev: None,
+            reg_remappings:None
         });
 
         match run(command) {
@@ -1066,6 +1125,7 @@ libs = ["dependencies"]
             dependency: Some("forge-std~1.9.1".to_string()),
             remote_url: Some("https://github.com/foundry-rs/forge-std.git".to_string()),
             rev: None,
+            reg_remappings: None,
         });
 
         match run(command) {
@@ -1123,6 +1183,7 @@ libs = ["dependencies"]
             dependency: Some("forge-std~1.9.1".to_string()),
             remote_url: Some("git@github.com:foundry-rs/forge-std.git".to_string()),
             rev: None,
+            reg_remappings: None,
         });
 
         match run(command) {
@@ -1180,6 +1241,7 @@ libs = ["dependencies"]
             dependency: Some("forge-std~1.9.1".to_string()),
             remote_url: Some("git@github.com:foundry-rs/forge-std.git".to_string()),
             rev: Some("3778c3cb8e4244cb5a1c3ef3ce1c71a3683e324a".to_string()),
+            reg_remappings: None,
         });
 
         match run(command) {

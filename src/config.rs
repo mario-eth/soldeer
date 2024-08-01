@@ -25,15 +25,24 @@ use std::{
 use toml::Table;
 use toml_edit::{
     value,
+    Array,
     DocumentMut,
     Item,
+    Table as EditTable,
+    Value,
 };
 use yansi::Paint;
 
-// Top level struct to hold the TOML data.
+// Top level struct to hold the TOML data for [dependencies].
 #[derive(Deserialize, Debug)]
-struct Data {
+struct DependenciesFromConfig {
     dependencies: Table,
+}
+
+// Top level struct to hold the TOML data for [soldeer].
+#[derive(Deserialize, Debug)]
+struct SoldeerFromConfig {
+    soldeer: Table,
 }
 
 // Dependency object used to store a dependency data
@@ -45,13 +54,44 @@ pub struct Dependency {
     pub hash: String,
 }
 
+impl Default for Dependency {
+    fn default() -> Dependency {
+        Dependency {
+            name: String::new(),
+            version: String::new(),
+            url: String::new(),
+            hash: String::new(),
+        }
+    }
+}
+
+// Dependency object used to store a dependency data
+#[derive(Deserialize, Clone, Debug, PartialEq)]
+pub struct SoldeerConfig {
+    pub generate_remappings: bool,
+    pub append_at_in_remappings: bool,
+    pub reg_remappings: bool,
+    pub remappings_type: String,
+}
+
+impl Default for SoldeerConfig {
+    fn default() -> SoldeerConfig {
+        SoldeerConfig {
+            generate_remappings: false,
+            append_at_in_remappings: false,
+            reg_remappings: false,
+            remappings_type: "txt".to_string(),
+        }
+    }
+}
+
 #[derive(Deserialize, Debug)]
 struct Foundry {
     remappings: Table,
 }
 
-pub async fn read_config(filename: String) -> Result<Vec<Dependency>, ConfigError> {
-    let mut filename: String = filename;
+pub async fn read_config_deps(filename: &String) -> Result<Vec<Dependency>, ConfigError> {
+    let mut filename: String = filename.clone();
     if filename.is_empty() {
         filename = match define_config_file() {
             Ok(file) => file,
@@ -61,7 +101,7 @@ pub async fn read_config(filename: String) -> Result<Vec<Dependency>, ConfigErro
     let contents = read_file_to_string(&filename.clone());
 
     // reading the contents into a data structure using toml::from_str
-    let data: Data = match toml::from_str(&contents) {
+    let data: DependenciesFromConfig = match toml::from_str(&contents) {
         Ok(d) => d,
         Err(_) => {
             return Err(ConfigError {
@@ -119,8 +159,73 @@ pub async fn read_config(filename: String) -> Result<Vec<Dependency>, ConfigErro
             hash: rev,
         });
     }
-
     Ok(dependencies)
+}
+
+pub async fn read_config_soldeer(filename: &String) -> Result<SoldeerConfig, ConfigError> {
+    let mut filename: String = filename.clone();
+    if filename.is_empty() {
+        filename = match define_config_file() {
+            Ok(file) => file,
+            Err(err) => return Err(err),
+        }
+    }
+    let contents = read_file_to_string(&filename.clone());
+
+    // reading the contents into a data structure using toml::from_str
+    let data: SoldeerFromConfig = match toml::from_str(&contents) {
+        Ok(d) => d,
+        Err(_) => {
+            return Ok(SoldeerConfig::default());
+        }
+    };
+
+    let mut gen_remappings = false;
+    if data.soldeer.contains_key("generate-remappings") {
+        gen_remappings = data
+            .soldeer
+            .get("generate-remappings")
+            .unwrap()
+            .as_bool()
+            .unwrap();
+    }
+    let mut append_at_in_remappings = false;
+    if data.soldeer.contains_key("append-at-in-remappings") {
+        append_at_in_remappings = data
+            .soldeer
+            .get("append-at-in-remappings")
+            .unwrap()
+            .as_bool()
+            .unwrap();
+    }
+    let mut reg_remappings = false;
+    if data.soldeer.contains_key("reg-remappings") {
+        reg_remappings = data
+            .soldeer
+            .get("reg-remappings")
+            .unwrap()
+            .as_bool()
+            .unwrap();
+    }
+
+    let mut remappings_type = "txt".to_string();
+    if data.soldeer.contains_key("remappings-type") {
+        remappings_type = data
+            .soldeer
+            .get("remappings-type")
+            .unwrap()
+            .as_str()
+            .unwrap()
+            .to_string();
+    }
+
+    let config = SoldeerConfig {
+        generate_remappings: gen_remappings,
+        append_at_in_remappings: append_at_in_remappings,
+        reg_remappings: reg_remappings,
+        remappings_type: remappings_type,
+    };
+    Ok(config)
 }
 
 pub fn define_config_file() -> Result<String, ConfigError> {
@@ -226,7 +331,7 @@ pub fn add_to_config(
     Ok(())
 }
 
-pub async fn remappings() -> Result<(), ConfigError> {
+pub async fn remappings_txt(config_file: &String) -> Result<(), ConfigError> {
     let remappings_path = get_current_working_dir().join("remappings.txt");
     if !remappings_path.exists() {
         File::create(remappings_path.clone()).unwrap();
@@ -236,7 +341,7 @@ pub async fn remappings() -> Result<(), ConfigError> {
     let existing_remappings: Vec<String> = contents.split('\n').map(|s| s.to_string()).collect();
     let mut new_remappings: String = String::new();
 
-    let dependencies: Vec<Dependency> = match read_config(String::new()).await {
+    let dependencies: Vec<Dependency> = match read_config_deps(config_file).await {
         Ok(dep) => dep,
         Err(err) => {
             return Err(err);
@@ -299,42 +404,109 @@ pub async fn remappings() -> Result<(), ConfigError> {
     Ok(())
 }
 
-pub fn get_foundry_setup() -> Result<Vec<bool>, ConfigError> {
-    let filename = match define_config_file() {
-        Ok(file) => file,
-        Err(err) => {
-            return Err(err);
-        }
-    };
-    if filename.contains("foundry.toml") {
-        return Ok(vec![true]);
-    }
-    let contents: String = read_file_to_string(&filename.clone());
+pub async fn remappings_foundry(
+    dependency: &Dependency,
+    config_file: &str,
+    soldeer_config: SoldeerConfig,
+) -> Result<(), ConfigError> {
+    println!(
+        "{}",
+        Paint::green(&format!(
+            "Adding dependency {}-{} to the remappings",
+            dependency.name, dependency.version
+        ))
+    );
+    let contents = read_file_to_string(&String::from(config_file));
+    let mut doc: DocumentMut = contents.parse::<DocumentMut>().expect("invalid doc");
 
-    // reading the contents into a data structure using toml::from_str
-    let data: Foundry = match toml::from_str(&contents) {
-        Ok(d) => d,
-        Err(_) => {
-            println!(
-                "{}",
-                Paint::yellow(&"The remappings field not found in the soldeer.toml and no foundry config file found or the foundry.toml does not contain the `[dependencies]` field.\nThe foundry.toml file should contain the `[dependencies]` field if you want to use it as a config file. If you want to use the soldeer.toml file, please add the `[remappings]` field to it with the `enabled` key set to `true` or `false`.\nMore info on https://github.com/mario-eth/soldeer\nThe installation was successful but the remappings feature was skipped.".to_string())
-            );
-            return Ok(vec![false]);
-        }
-    };
-    if data.remappings.get("enabled").is_none() {
-        println!(
-            "{}",
-            Paint::yellow(&"The remappings field not found in the soldeer.toml and no foundry config file found or the foundry.toml does not contain the `[dependencies]` field.\nThe foundry.toml file should contain the `[dependencies]` field if you want to use it as a config file. If you want to use the soldeer.toml file, please add the `[remappings]` field to it with the `enabled` key set to `true` or `false`.\nMore info on https://github.com/mario-eth/soldeer\nThe installation was successful but the remappings feature was skipped.".to_string())
-        );
-        return Ok(vec![false]);
+    let mut dependencies: Vec<Dependency> = vec![];
+    if soldeer_config.reg_remappings {
+        dependencies = match read_config_deps(&config_file.to_string()).await {
+            Ok(deps) => deps,
+            Err(err) => {
+                return Err(err);
+            }
+        };
     }
-    Ok(vec![data
-        .remappings
-        .get("enabled")
-        .unwrap()
-        .as_bool()
-        .unwrap()])
+
+    dependencies.push(dependency.clone());
+
+    let profiles: &mut EditTable = doc["profile"].as_table_mut().unwrap();
+
+    for (_, profile) in profiles.iter_mut() {
+        if soldeer_config.reg_remappings {
+            profile["remappings"] = Item::Value(Value::Array(Array::new()));
+        }
+        for dep in &dependencies {
+            match add_dependency_to_remap(profile, dep) {
+                Ok(_) => {}
+                Err(err) => {
+                    return Err(err);
+                }
+            };
+        }
+    }
+
+    let mut file: std::fs::File = fs::OpenOptions::new()
+        .write(true)
+        .append(false)
+        .truncate(true)
+        .open(config_file)
+        .unwrap();
+    if let Err(e) = write!(file, "{}", doc) {
+        eprintln!("Couldn't write to the config file: {}", e);
+    }
+
+    Ok(())
+}
+
+fn add_dependency_to_remap(profile: &mut Item, dependency: &Dependency) -> Result<(), ConfigError> {
+    let profile_table = profile.as_table().unwrap();
+    if profile_table.contains_key("remappings") {
+        let remappings = profile_table
+            .get("remappings")
+            .clone()
+            .unwrap()
+            .as_array()
+            .unwrap();
+        let mut found = false;
+        for remapping in remappings.iter() {
+            let rem_split: Vec<&str> = remapping.as_str().unwrap().split("=").collect();
+            let to_search = dependency.name.clone();
+            if (!to_search.contains("@")
+                && rem_split[0] == format!("@{}-{}/", dependency.name, dependency.version))
+                || (to_search.contains("@")
+                    && rem_split[0] == format!("{}-{}/", dependency.name, dependency.version))
+            {
+                found = true;
+            }
+        }
+
+        if !found {
+            let mut new_remappings = remappings.clone();
+            if dependency.name.contains("@") {
+                new_remappings.insert(
+                    remappings.len(),
+                    format!(
+                        "{}-{}/=dependencies/{}-{}/",
+                        dependency.name, dependency.version, dependency.name, dependency.version
+                    ),
+                );
+            } else {
+                new_remappings.insert(
+                    remappings.len(),
+                    format!(
+                        "@{}-{}/=dependencies/@{}-{}/",
+                        dependency.name, dependency.version, dependency.name, dependency.version
+                    ),
+                );
+            }
+
+            profile.as_table_mut().unwrap()["remappings"] =
+                Item::Value(Value::Array(new_remappings));
+        }
+    }
+    Ok(())
 }
 
 pub fn delete_config(
@@ -516,7 +688,7 @@ libs = ["dependencies"]
 
         ////////////// END-MOCK //////////////
 
-        let result = match read_config(String::from(target_config.to_str().unwrap())).await {
+        let result = match read_config_deps(&String::from(target_config.to_str().unwrap())).await {
             Ok(dep) => dep,
             Err(err) => {
                 return Err(err);
@@ -580,7 +752,7 @@ libs = ["dependencies"]
 
         ////////////// END-MOCK //////////////
 
-        let result = match read_config(String::from(target_config.to_str().unwrap())).await {
+        let result = match read_config_deps(&String::from(target_config.to_str().unwrap())).await {
             Ok(dep) => dep,
             Err(err) => {
                 return Err(err);
@@ -642,7 +814,7 @@ enabled = true
 
         ////////////// END-MOCK //////////////
 
-        let result = match read_config(String::from(target_config.to_str().unwrap())).await {
+        let result = match read_config_deps(&String::from(target_config.to_str().unwrap())).await {
             Ok(dep) => dep,
             Err(err) => {
                 return Err(err);
@@ -704,7 +876,7 @@ enabled = true
 
         ////////////// END-MOCK //////////////
 
-        let result = match read_config(String::from(target_config.to_str().unwrap())).await {
+        let result = match read_config_deps(&String::from(target_config.to_str().unwrap())).await {
             Ok(dep) => dep,
             Err(err) => {
                 return Err(err);
@@ -750,7 +922,7 @@ libs = ["dependencies"]
 
         write_to_config(&target_config, config_contents);
 
-        match read_config(String::from(target_config.clone().to_str().unwrap())).await {
+        match read_config_deps(&String::from(target_config.clone().to_str().unwrap())).await {
             Ok(_) => {
                 assert_eq!("False state", "");
             }
@@ -786,7 +958,7 @@ libs = ["dependencies"]
 
         write_to_config(&target_config, config_contents);
 
-        match read_config(String::from(target_config.clone().to_str().unwrap())).await {
+        match read_config_deps(&String::from(target_config.clone().to_str().unwrap())).await {
             Ok(_) => {
                 assert_eq!("False state", "");
             }
@@ -820,7 +992,7 @@ libs = ["dependencies"]
 
         write_to_config(&target_config, config_contents);
 
-        match read_config(String::from(target_config.clone().to_str().unwrap())).await {
+        match read_config_deps(&String::from(target_config.clone().to_str().unwrap())).await {
             Ok(_) => {
                 assert_eq!("False state", "");
             }

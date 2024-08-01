@@ -52,6 +52,8 @@ pub struct Install {
     pub remote_url: Option<String>,
     #[arg(long, value_parser = clap::value_parser!(String))]
     pub rev: Option<String>,
+    #[arg(long, value_parser = clap::value_parser!(bool))]
+    pub reg_remappings: Option<bool>,
 }
 
 #[derive(Debug, Clone, Parser)]
@@ -60,7 +62,10 @@ pub struct Install {
     after_help = "For more information, read the README.md",
     override_usage = "soldeer update"
 )]
-pub struct Update {}
+pub struct Update {
+    #[arg(long, value_parser = clap::value_parser!(bool))]
+    pub reg_remappings: Option<bool>,
+}
 
 #[derive(Debug, Clone, Parser)]
 pub struct VersionDryRun {}

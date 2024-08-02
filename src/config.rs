@@ -7,7 +7,7 @@ use crate::{
 use serde_derive::Deserialize;
 use std::{
     env,
-    fs::{self, File},
+    fs::{self, remove_dir_all, remove_file, File},
     io,
     io::Write,
     path::Path,
@@ -346,6 +346,15 @@ pub fn delete_config(
     Ok(dependency)
 }
 
+pub fn remove_forge_lib() -> Result<(), ConfigError> {
+    let lib_dir = get_current_working_dir().join("lib/");
+    let gitmodules_file = get_current_working_dir().join(".gitmodules");
+
+    let _ = remove_file(gitmodules_file);
+    let _ = remove_dir_all(lib_dir);
+    Ok(())
+}
+
 fn create_example_config(option: &str) -> Result<String, ConfigError> {
     let config_file: &str;
     let content: &str;
@@ -411,11 +420,11 @@ mod tests {
 # Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
 
 [profile.default]
-libs = ["dependencies"] 
+libs = ["dependencies"]
 
 [dependencies]
 "@gearbox-protocol-periphery-v3" = "1.6.1"
-"@openzeppelin-contracts" = "5.0.2"   
+"@openzeppelin-contracts" = "5.0.2"
 "#;
         let target_config = define_config(true);
 
@@ -473,11 +482,11 @@ libs = ["dependencies"]
 # Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
 
 [profile.default]
-libs = ["dependencies"] 
+libs = ["dependencies"]
 
 [dependencies]
 "@gearbox-protocol-periphery-v3" = "1.6.1"
-"@openzeppelin-contracts" = "5.0.2"   
+"@openzeppelin-contracts" = "5.0.2"
 "#;
         let target_config = define_config(true);
 
@@ -537,7 +546,7 @@ enabled = true
 
 [dependencies]
 "@gearbox-protocol-periphery-v3" = "1.6.1"
-"@openzeppelin-contracts" = "5.0.2"   
+"@openzeppelin-contracts" = "5.0.2"
 "#;
         let target_config = define_config(false);
 
@@ -597,7 +606,7 @@ enabled = true
 
 [dependencies]
 "@gearbox-protocol-periphery-v3" = "1.6.1"
-"@openzeppelin-contracts" = "5.0.2"   
+"@openzeppelin-contracts" = "5.0.2"
 "#;
         let target_config = define_config(false);
 
@@ -655,7 +664,7 @@ enabled = true
 # Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
 
 [profile.default]
-libs = ["dependencies"] 
+libs = ["dependencies"]
 
 [dependencies]
 "@gearbox-protocol-periphery-v3" = 1.6.1"
@@ -691,7 +700,7 @@ libs = ["dependencies"]
 # Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
 
 [profile.default]
-libs = ["dependencies"] 
+libs = ["dependencies"]
 
 [dependencies]
 "@gearbox-protocol-periphery-v3" = ""
@@ -725,7 +734,7 @@ libs = ["dependencies"]
 # Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
 
 [profile.default]
-libs = ["dependencies"] 
+libs = ["dependencies"]
 
 [dependencies]
 "@gearbox-protocol-periphery-v3" = "1.1.1"
@@ -753,7 +762,7 @@ libs = ["dependencies"]
 # Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
 
 [profile.default]
-libs = ["dependencies"] 
+libs = ["dependencies"]
 
 [dependencies]
 "#;

@@ -6,7 +6,8 @@ script = "script"
 solc = "0.8.26"
 src = "src"
 test = "test"
-libs = ["dependencies"]
+libs = ["dependencies","libs"]
 
 [dependencies]
-forge-std = "1.8.2"
+forge-std = "1.9.1"
+

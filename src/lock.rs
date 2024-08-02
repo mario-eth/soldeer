@@ -31,12 +31,11 @@ impl From<&Dependency> for LockEntry {
     }
 }
 
-pub fn lock_check(dependency: &Dependency, create_lock: bool) -> Result<(), LockError> {
+pub fn lock_check(dependency: &Dependency, allow_missing_lockfile: bool) -> Result<(), LockError> {
     let lock_entries = match read_lock() {
         Ok(entries) => entries,
         Err(_) => {
-            if create_lock {
-                let _ = write_lock(&[], LockWriteMode::Append);
+            if allow_missing_lockfile {
                 return Ok(());
             }
             return Err(LockError { cause: "Lock does not exists".to_string() });
@@ -64,14 +63,14 @@ pub enum LockWriteMode {
     Append,
 }
 
-pub fn write_lock(dependencies: &[Dependency], clean: LockWriteMode) -> Result<(), LockError> {
+pub fn write_lock(dependencies: &[Dependency], mode: LockWriteMode) -> Result<(), LockError> {
     let lock_file: PathBuf = if cfg!(test) {
         get_current_working_dir().join("test").join("soldeer.lock")
     } else {
         LOCK_FILE.clone()
     };
 
-    if clean == LockWriteMode::Replace && lock_file.exists() {
+    if mode == LockWriteMode::Replace && lock_file.exists() {
         remove_file(&lock_file)
             .map_err(|_| LockError { cause: "Could not clean lock file".to_string() })?;
     }
@@ -87,6 +86,13 @@ pub fn write_lock(dependencies: &[Dependency], clean: LockWriteMode) -> Result<(
         // check for entry already existing
         match entries.iter().position(|e| e.name == entry.name && e.version == entry.version) {
             Some(pos) => {
+                println!(
+                    "{}",
+                    Paint::green(&format!(
+                        "Updating {}~{} in the lock file.",
+                        dep.name, dep.version
+                    ))
+                );
                 // replace the entry with the new data
                 entries[pos] = entry;
             }
@@ -167,7 +173,7 @@ fn read_lock() -> Result<Vec<LockEntry>, LockError> {
 
     let contents = read_file_to_string(lock_file);
 
-    // reading the contents into a data structure using toml::from_str
+    // parse file contents
     let data: LockType = toml::from_str(&contents).unwrap_or_default();
     Ok(data.dependencies)
 }

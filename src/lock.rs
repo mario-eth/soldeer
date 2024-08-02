@@ -17,7 +17,7 @@ pub struct LockEntry {
     name: String,
     version: String,
     source: String,
-    zip_checksum: String,
+    checksum: String,
 }
 
 impl From<&Dependency> for LockEntry {
@@ -26,7 +26,7 @@ impl From<&Dependency> for LockEntry {
             name: value.name.clone(),
             version: value.version.clone(),
             source: value.url.clone(),
-            zip_checksum: value.hash.clone(),
+            checksum: value.hash.clone(),
         }
     }
 }
@@ -194,13 +194,13 @@ mod tests {
 name = "@openzeppelin-contracts"
 version = "2.3.0"
 source = "registry+https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@openzeppelin-contracts~2.3.0.zip"
-zip_checksum = "a2d469062adeb62f7a4aada78237acae4ad3c168ba65c3ac9c76e290332c11ec"
+checksum = "a2d469062adeb62f7a4aada78237acae4ad3c168ba65c3ac9c76e290332c11ec"
 
 [[dependencies]]
 name = "@prb-test"
 version = "0.6.5"
 source = "registry+https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@prb-test~0.6.5.zip"
-zip_checksum = "5019418b1e9128185398870f77a42e51d624c44315bb1572e7545be51d707016"
+checksum = "5019418b1e9128185398870f77a42e51d624c44315bb1572e7545be51d707016"
 "#;
         File::create(lock_file).unwrap().write_all(lock_contents.as_bytes()).unwrap();
     }
@@ -261,7 +261,7 @@ zip_checksum = "5019418b1e9128185398870f77a42e51d624c44315bb1572e7545be51d707016
 name = "@openzeppelin-contracts"
 version = "2.5.0"
 source = "https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@openzeppelin-contracts~2.5.0.zip"
-zip_checksum = "5019418b1e9128185398870f77a42e51d624c44315bb1572e7545be51d707016"
+checksum = "5019418b1e9128185398870f77a42e51d624c44315bb1572e7545be51d707016"
 "#
         );
         assert!(lock_check(&dependency, true).is_err_and(|e| {
@@ -291,19 +291,19 @@ zip_checksum = "5019418b1e9128185398870f77a42e51d624c44315bb1572e7545be51d707016
 name = "@openzeppelin-contracts"
 version = "2.3.0"
 source = "registry+https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@openzeppelin-contracts~2.3.0.zip"
-zip_checksum = "a2d469062adeb62f7a4aada78237acae4ad3c168ba65c3ac9c76e290332c11ec"
+checksum = "a2d469062adeb62f7a4aada78237acae4ad3c168ba65c3ac9c76e290332c11ec"
 
 [[dependencies]]
 name = "@openzeppelin-contracts-2"
 version = "2.6.0"
 source = "https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@openzeppelin-contracts~2.6.0.zip"
-zip_checksum = "5019418b1e9128185398870f77a42e51d624c44315bb1572e7545be51d707016"
+checksum = "5019418b1e9128185398870f77a42e51d624c44315bb1572e7545be51d707016"
 
 [[dependencies]]
 name = "@prb-test"
 version = "0.6.5"
 source = "registry+https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@prb-test~0.6.5.zip"
-zip_checksum = "5019418b1e9128185398870f77a42e51d624c44315bb1572e7545be51d707016"
+checksum = "5019418b1e9128185398870f77a42e51d624c44315bb1572e7545be51d707016"
 "#
         );
 
@@ -367,7 +367,7 @@ zip_checksum = "5019418b1e9128185398870f77a42e51d624c44315bb1572e7545be51d707016
 name = "@openzeppelin-contracts2"
 version = "2.5.0"
 source = "https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@openzeppelin-contracts~2.5.0.zip"
-zip_checksum = "5019418b1e9128185398870f77a42e51d624c44315bb1572e7545be51d707016"
+checksum = "5019418b1e9128185398870f77a42e51d624c44315bb1572e7545be51d707016"
 "#
         );
     }
@@ -405,7 +405,7 @@ zip_checksum = "5019418b1e9128185398870f77a42e51d624c44315bb1572e7545be51d707016
 name = "@openzeppelin-contracts"
 version = "2.5.0"
 source = "https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@openzeppelin-contracts~2.5.0.zip"
-zip_checksum = "5019418b1e9128185398870f77a42e51d624c44315bb1572e7545be51d707016"
+checksum = "5019418b1e9128185398870f77a42e51d624c44315bb1572e7545be51d707016"
 "#
         );
     }

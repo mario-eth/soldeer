@@ -4,16 +4,15 @@ use crate::{
     utils::{get_current_working_dir, read_file_to_string},
     LOCK_FILE,
 };
-use serde_derive::Deserialize;
+use serde_derive::{Deserialize, Serialize};
 use std::{
     fs::{self, remove_file},
-    io::Write,
     path::PathBuf,
 };
 use yansi::Paint;
 
 // Top level struct to hold the TOML data.
-#[derive(Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
 pub struct LockEntry {
     name: String,
     version: String,
@@ -21,22 +20,140 @@ pub struct LockEntry {
     checksum: String,
 }
 
-impl Clone for LockEntry {
-    fn clone(&self) -> LockEntry {
+impl From<&Dependency> for LockEntry {
+    fn from(value: &Dependency) -> Self {
         LockEntry {
-            name: String::from(&self.name),
-            version: String::from(&self.version),
-            source: String::from(&self.source),
-            checksum: String::from(&self.checksum),
+            name: value.name.clone(),
+            version: value.version.clone(),
+            source: value.url.clone(),
+            checksum: value.hash.clone(),
         }
     }
 }
 
+pub fn lock_check(dependency: &Dependency, create_lock: bool) -> Result<(), LockError> {
+    let lock_entries = match read_lock() {
+        Ok(entries) => entries,
+        Err(_) => {
+            if create_lock {
+                let _ = write_lock(&[], LockWriteMode::Append);
+                return Ok(());
+            }
+            return Err(LockError { cause: "Lock does not exists".to_string() });
+        }
+    };
+
+    let is_locked = lock_entries.iter().any(|lock_entry| {
+        lock_entry.name == dependency.name && lock_entry.version == dependency.version
+    });
+
+    if is_locked {
+        return Err(LockError {
+            cause: format!(
+                "Dependency {}-{} is already installed",
+                dependency.name, dependency.version
+            ),
+        });
+    }
+    Ok(())
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum LockWriteMode {
+    Replace,
+    Append,
+}
+
+pub fn write_lock(dependencies: &[Dependency], clean: LockWriteMode) -> Result<(), LockError> {
+    let lock_file: PathBuf = if cfg!(test) {
+        get_current_working_dir().join("test").join("soldeer.lock")
+    } else {
+        LOCK_FILE.clone()
+    };
+
+    if clean == LockWriteMode::Replace && lock_file.exists() {
+        remove_file(&lock_file)
+            .map_err(|_| LockError { cause: "Could not clean lock file".to_string() })?;
+    }
+
+    if !lock_file.exists() {
+        fs::File::create(&lock_file)
+            .map_err(|_| LockError { cause: "Could not create lock file".to_string() })?;
+    }
+
+    let mut entries = read_lock()?;
+    for dep in dependencies {
+        let entry: LockEntry = dep.into();
+        // check for entry already existing
+        match entries.iter().position(|e| e.name == entry.name && e.version == entry.version) {
+            Some(pos) => {
+                // replace the entry with the new data
+                entries[pos] = entry;
+            }
+            None => {
+                println!(
+                    "{}",
+                    Paint::green(&format!(
+                        "Writing {}~{} to the lock file.",
+                        dep.name, dep.version
+                    ))
+                );
+                entries.push(entry);
+            }
+        }
+    }
+    // make sure the ordering is consistent
+    entries.sort_unstable_by(|a, b| a.name.cmp(&b.name).then_with(|| a.version.cmp(&b.version)));
+
+    if entries.is_empty() {
+        // remove lock file if there are no deps left
+        let _ = remove_file(&lock_file);
+        return Ok(());
+    }
+
+    let file_contents = toml::to_string(&LockType { dependencies: entries })
+        .map_err(|_| LockError { cause: "Could not serialize lock file".to_string() })?;
+
+    // replace contents of lockfile with new contents
+    fs::write(lock_file, file_contents)
+        .map_err(|_| LockError { cause: "Could not write to the lock file".to_string() })?;
+    Ok(())
+}
+
+pub fn remove_lock(dependency: &Dependency) -> Result<(), LockError> {
+    let lock_file: PathBuf = if cfg!(test) {
+        get_current_working_dir().join("test").join("soldeer.lock")
+    } else {
+        LOCK_FILE.clone()
+    };
+
+    let entries: Vec<_> = read_lock()?
+        .into_iter()
+        .filter(|e| e.name != dependency.name || e.version != dependency.version)
+        .collect();
+
+    if entries.is_empty() {
+        // remove lock file if there are no deps left
+        let _ = remove_file(&lock_file);
+        return Ok(());
+    }
+
+    let file_contents = toml::to_string(&LockType { dependencies: entries })
+        .map_err(|_| LockError { cause: "Could not serialize lock file".to_string() })?;
+
+    // replace contents of lockfile with new contents
+    fs::write(lock_file, file_contents)
+        .map_err(|_| LockError { cause: "Could not write to the lock file".to_string() })?;
+
+    Ok(())
+}
+
 // Top level struct to hold the TOML data.
-#[derive(Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Default)]
 struct LockType {
     dependencies: Vec<LockEntry>,
 }
+
 fn read_lock() -> Result<Vec<LockEntry>, LockError> {
     let lock_file: PathBuf = if cfg!(test) {
         get_current_working_dir().join("test").join("soldeer.lock")
@@ -47,136 +164,12 @@ fn read_lock() -> Result<Vec<LockEntry>, LockError> {
     if !lock_file.exists() {
         return Err(LockError { cause: "Lock does not exists".to_string() });
     }
-    let lock_path: String = lock_file.to_str().unwrap().to_string();
 
-    let contents = read_file_to_string(&lock_path);
+    let contents = read_file_to_string(lock_file);
 
     // reading the contents into a data structure using toml::from_str
-    let data: LockType = match toml::from_str(&contents) {
-        Ok(d) => d,
-        Err(_err) => {
-            return Ok(vec![]);
-        }
-    };
+    let data: LockType = toml::from_str(&contents).unwrap_or_default();
     Ok(data.dependencies)
-}
-
-pub fn lock_check(
-    dependency: &Dependency,
-    create_lock: bool,
-) -> Result<Vec<Dependency>, LockError> {
-    let lock_entries = match read_lock() {
-        Ok(entries) => entries,
-        Err(_) => {
-            if create_lock {
-                let _ = write_lock(&[], false)
-                    .map_err(|_| LockError { cause: "Could not write lock file".to_string() });
-                vec![]
-            } else {
-                return Err(LockError { cause: "Lock does not exists".to_string() });
-            }
-        }
-    };
-
-    let mut unlock_dependencies: Vec<Dependency> = Vec::new();
-    let mut is_locked: bool = false;
-    let mut string_err = String::new();
-    lock_entries.iter().for_each(|lock_entry| {
-        if lock_entry.name == dependency.name && lock_entry.version == dependency.version {
-            string_err = format!(
-                "Dependency {}-{} is already installed",
-                lock_entry.name, lock_entry.version
-            );
-            is_locked = true;
-        }
-    });
-
-    unlock_dependencies.push(dependency.clone());
-
-    if is_locked {
-        return Err(LockError { cause: string_err });
-    }
-    Ok(unlock_dependencies)
-}
-
-pub fn write_lock(dependencies: &[Dependency], clean: bool) -> Result<(), LockError> {
-    let lock_file: PathBuf = if cfg!(test) {
-        get_current_working_dir().join("test").join("soldeer.lock")
-    } else {
-        LOCK_FILE.clone()
-    };
-
-    if clean && (lock_file).exists() {
-        match remove_file(&lock_file) {
-            Ok(_) => {}
-            Err(_) => return Err(LockError { cause: "Could not clean lock file".to_string() }),
-        }
-    }
-
-    if !lock_file.exists() {
-        std::fs::File::create(lock_file.to_str().unwrap()).unwrap();
-    }
-
-    let mut new_lock_entries: String = String::new();
-    dependencies.iter().for_each(|dependency| {
-        new_lock_entries.push_str(&format!(
-            r#"
-[[dependencies]]
-name = "{}"
-version = "{}"
-source = "{}"
-checksum = "{}"
-"#,
-            dependency.name, dependency.version, dependency.url, dependency.hash
-        ));
-        println!(
-            "{}",
-            Paint::green(&format!(
-                "Writing {}~{} to the lock file.",
-                &dependency.name.to_string(),
-                &dependency.version.to_string()
-            ))
-        );
-    });
-    let mut file: std::fs::File = fs::OpenOptions::new().append(true).open(lock_file).unwrap();
-    if write!(file, "{}", new_lock_entries).is_err() {
-        return Err(LockError { cause: "Could not write to the lock file".to_string() });
-    }
-    Ok(())
-}
-
-pub fn remove_lock(dependency_name: &str, dependency_version: &str) -> Result<(), LockError> {
-    let lock_file: PathBuf = if cfg!(test) {
-        get_current_working_dir().join("test").join("soldeer.lock")
-    } else {
-        LOCK_FILE.clone()
-    };
-
-    let entries = match read_lock() {
-        Ok(entries) => entries,
-        Err(err) => return Err(err),
-    };
-    let mut new_lock_entries: String = String::new();
-    entries.iter().for_each(|entry| {
-        if entry.name != dependency_name || entry.version != dependency_version {
-            new_lock_entries.push_str(&format!(
-                r#"
-[[dependencies]]
-name = "{}"
-version = "{}"
-source = "{}"
-checksum = "{}"
-"#,
-                &entry.name, &entry.version, &entry.source, &entry.checksum
-            ));
-        }
-    });
-    let mut file: std::fs::File =
-        fs::OpenOptions::new().truncate(true).write(true).open(lock_file).unwrap();
-    if write!(file, "{}", new_lock_entries).is_err() {
-        return Err(LockError { cause: "Could not write to the lock file".to_string() });
-    }
-    Ok(())
 }
 
 #[cfg(test)]
@@ -202,7 +195,7 @@ name = "@openzeppelin-contracts"
 version = "2.3.0"
 source = "registry+https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@openzeppelin-contracts~2.3.0.zip"
 checksum = "a2d469062adeb62f7a4aada78237acae4ad3c168ba65c3ac9c76e290332c11ec"
-                    
+
 [[dependencies]]
 name = "@prb-test"
 version = "0.6.5"
@@ -256,16 +249,15 @@ checksum = "5019418b1e9128185398870f77a42e51d624c44315bb1572e7545be51d707016"
             hash: "5019418b1e9128185398870f77a42e51d624c44315bb1572e7545be51d707016".to_string()
         };
         let dependencies = vec![dependency.clone()];
-        write_lock(&dependencies, false).unwrap();
+        write_lock(&dependencies, LockWriteMode::Append).unwrap();
         assert!(lock_check(&dependency, true).is_err_and(|e| {
             e.cause == "Dependency @openzeppelin-contracts-2.5.0 is already installed"
         }));
-        let contents = read_file_to_string(&lock_file.to_str().unwrap().to_string());
+        let contents = read_file_to_string(lock_file);
 
         assert_eq!(
             contents,
-            r#"
-[[dependencies]]
+            r#"[[dependencies]]
 name = "@openzeppelin-contracts"
 version = "2.5.0"
 source = "https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@openzeppelin-contracts~2.5.0.zip"
@@ -290,28 +282,27 @@ checksum = "5019418b1e9128185398870f77a42e51d624c44315bb1572e7545be51d707016"
             hash: "5019418b1e9128185398870f77a42e51d624c44315bb1572e7545be51d707016".to_string()
         };
         dependencies.push(dependency.clone());
-        write_lock(&dependencies, false).unwrap();
-        let contents = read_file_to_string(&lock_file.to_str().unwrap().to_string());
+        write_lock(&dependencies, LockWriteMode::Append).unwrap();
+        let contents = read_file_to_string(lock_file);
 
         assert_eq!(
             contents,
-            r#"
-[[dependencies]]
+            r#"[[dependencies]]
 name = "@openzeppelin-contracts"
 version = "2.3.0"
 source = "registry+https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@openzeppelin-contracts~2.3.0.zip"
 checksum = "a2d469062adeb62f7a4aada78237acae4ad3c168ba65c3ac9c76e290332c11ec"
-                    
-[[dependencies]]
-name = "@prb-test"
-version = "0.6.5"
-source = "registry+https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@prb-test~0.6.5.zip"
-checksum = "5019418b1e9128185398870f77a42e51d624c44315bb1572e7545be51d707016"
 
 [[dependencies]]
 name = "@openzeppelin-contracts-2"
 version = "2.6.0"
 source = "https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@openzeppelin-contracts~2.6.0.zip"
+checksum = "5019418b1e9128185398870f77a42e51d624c44315bb1572e7545be51d707016"
+
+[[dependencies]]
+name = "@prb-test"
+version = "0.6.5"
+source = "registry+https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@prb-test~0.6.5.zip"
 checksum = "5019418b1e9128185398870f77a42e51d624c44315bb1572e7545be51d707016"
 "#
         );
@@ -332,17 +323,15 @@ checksum = "5019418b1e9128185398870f77a42e51d624c44315bb1572e7545be51d707016"
             hash: "5019418b1e9128185398870f77a42e51d624c44315bb1572e7545be51d707016".to_string()
         };
         let dependencies = vec![dependency.clone()];
-        write_lock(&dependencies, false).unwrap();
+        write_lock(&dependencies, LockWriteMode::Append).unwrap();
 
-        match remove_lock(&dependency.name, &dependency.version) {
+        match remove_lock(&dependency) {
             Ok(_) => {}
             Err(_) => {
                 assert_eq!("Invalid State", "");
             }
         }
-        let contents = read_file_to_string(&lock_file.to_str().unwrap().to_string());
-
-        assert_eq!(contents, "".to_string());
+        assert!(!lock_file.exists());
     }
 
     #[test]
@@ -362,20 +351,19 @@ checksum = "5019418b1e9128185398870f77a42e51d624c44315bb1572e7545be51d707016"
             hash: "5019418b1e9128185398870f77a42e51d624c44315bb1572e7545be51d707016".to_string()
         };
         let dependencies = vec![dependency.clone(), dependency2.clone()];
-        write_lock(&dependencies, false).unwrap();
+        write_lock(&dependencies, LockWriteMode::Append).unwrap();
 
-        match remove_lock(&dependency.name, &dependency.version) {
+        match remove_lock(&dependency) {
             Ok(_) => {}
             Err(_) => {
                 assert_eq!("Invalid State", "");
             }
         }
-        let contents = read_file_to_string(&lock_file.to_str().unwrap().to_string());
+        let contents = read_file_to_string(lock_file);
 
         assert_eq!(
             contents,
-            r#"
-[[dependencies]]
+            r#"[[dependencies]]
 name = "@openzeppelin-contracts2"
 version = "2.5.0"
 source = "https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@openzeppelin-contracts~2.5.0.zip"
@@ -396,20 +384,24 @@ checksum = "5019418b1e9128185398870f77a42e51d624c44315bb1572e7545be51d707016"
         };
 
         let dependencies = vec![dependency.clone()];
-        write_lock(&dependencies, false).unwrap();
+        write_lock(&dependencies, LockWriteMode::Append).unwrap();
 
-        match remove_lock("non-existent", &dependency.version) {
+        match remove_lock(&Dependency {
+            name: "non-existent".to_string(),
+            version: dependency.version.clone(),
+            url: String::new(),
+            hash: String::new(),
+        }) {
             Ok(_) => {}
             Err(_) => {
                 assert_eq!("Invalid State", "");
             }
         }
-        let contents = read_file_to_string(&lock_file.to_str().unwrap().to_string());
+        let contents = read_file_to_string(lock_file);
 
         assert_eq!(
             contents,
-            r#"
-[[dependencies]]
+            r#"[[dependencies]]
 name = "@openzeppelin-contracts"
 version = "2.5.0"
 source = "https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@openzeppelin-contracts~2.5.0.zip"

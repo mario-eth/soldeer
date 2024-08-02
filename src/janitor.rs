@@ -7,7 +7,7 @@ use std::fs::{metadata, remove_dir_all, remove_file};
 // Health-check dependencies before we clean them, this one checks if they were unzipped
 pub fn healthcheck_dependencies(dependencies: &[Dependency]) -> Result<(), MissingDependencies> {
     for dependency in dependencies.iter() {
-        match healthcheck_dependency(&dependency.name, &dependency.version) {
+        match healthcheck_dependency(dependency) {
             Ok(_) => {}
             Err(err) => {
                 return Err(err);
@@ -21,7 +21,7 @@ pub fn healthcheck_dependencies(dependencies: &[Dependency]) -> Result<(), Missi
 pub fn cleanup_after(dependencies: &[Dependency]) -> Result<(), MissingDependencies> {
     for dependency in dependencies.iter() {
         let via_git: bool = get_download_tunnel(&dependency.url) == "git";
-        match cleanup_dependency(&dependency.name, &dependency.version, false, via_git) {
+        match cleanup_dependency(dependency, CleanupParams { full: false, via_git }) {
             Ok(_) => {}
             Err(err) => {
                 println!("returning error {:?}", err);
@@ -32,40 +32,41 @@ pub fn cleanup_after(dependencies: &[Dependency]) -> Result<(), MissingDependenc
     Ok(())
 }
 
-pub fn healthcheck_dependency(
-    dependency_name: &str,
-    dependency_version: &str,
-) -> Result<(), MissingDependencies> {
-    let file_name: String = format!("{dependency_name}-{dependency_version}");
+pub fn healthcheck_dependency(dependency: &Dependency) -> Result<(), MissingDependencies> {
+    let file_name: String = format!("{}-{}", dependency.name, dependency.version);
     let new_path = DEPENDENCY_DIR.join(file_name);
     match metadata(new_path) {
         Ok(_) => Ok(()),
-        Err(_) => Err(MissingDependencies::new(dependency_name, dependency_version)),
+        Err(_) => Err(MissingDependencies::new(&dependency.name, &dependency.version)),
     }
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct CleanupParams {
+    pub full: bool,
+    pub via_git: bool,
+}
+
 pub fn cleanup_dependency(
-    dependency_name: &str,
-    dependency_version: &str,
-    full: bool,
-    via_git: bool,
+    dependency: &Dependency,
+    params: CleanupParams,
 ) -> Result<(), MissingDependencies> {
-    let file_name: String = format!("{}-{}.zip", dependency_name, dependency_version);
+    let file_name: String = format!("{}-{}.zip", dependency.name, dependency.version);
     let new_path: std::path::PathBuf = DEPENDENCY_DIR.clone().join(file_name);
-    if !via_git {
+    if !params.via_git {
         match remove_file(new_path) {
             Ok(_) => {}
             Err(_) => {
-                return Err(MissingDependencies::new(dependency_name, dependency_version));
+                return Err(MissingDependencies::new(&dependency.name, &dependency.version));
             }
         };
     }
-    if full {
-        let dir = DEPENDENCY_DIR.join(dependency_name);
+    if params.full {
+        let dir = DEPENDENCY_DIR.join(&dependency.name);
         remove_dir_all(dir).unwrap();
-        match remove_lock(dependency_name, dependency_version) {
+        match remove_lock(dependency) {
             Ok(_) => {}
-            Err(_) => return Err(MissingDependencies::new(dependency_name, dependency_version)),
+            Err(_) => return Err(MissingDependencies::new(&dependency.name, &dependency.version)),
         }
     }
     Ok(())
@@ -89,7 +90,13 @@ mod tests {
 
     #[tokio::test]
     async fn healthcheck_dependency_not_found() {
-        let _ = healthcheck_dependency("test", "1.0.0").unwrap_err();
+        let _ = healthcheck_dependency(&Dependency {
+            name: "test".to_string(),
+            version: "1.0.0".to_string(),
+            url: String::new(),
+            hash: String::new(),
+        })
+        .unwrap_err();
     }
 
     #[tokio::test]
@@ -105,7 +112,7 @@ mod tests {
             hash: String::new()});
         download_dependencies(&dependencies, false).await.unwrap();
         unzip_dependency(&dependencies[0].name, &dependencies[0].version).unwrap();
-        healthcheck_dependency("@openzeppelin-contracts", "2.3.0").unwrap();
+        healthcheck_dependency(&dependencies[0]).unwrap();
     }
 
     #[tokio::test]
@@ -121,7 +128,7 @@ mod tests {
             hash: String::new() });
         download_dependencies(&dependencies, false).await.unwrap();
         unzip_dependency(&dependencies[0].name, &dependencies[0].version).unwrap();
-        cleanup_dependency("@openzeppelin-contracts", "2.3.0", false, false).unwrap();
+        cleanup_dependency(&dependencies[0], CleanupParams::default()).unwrap();
     }
 
     #[test]
@@ -135,8 +142,7 @@ mod tests {
             version: "v-cleanup-nonexisting".to_string(),
             url: "https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@openzeppelin-contracts~2.3.0.zip".to_string(),
             hash: String::new()});
-        cleanup_dependency("@openzeppelin-contracts", "v-cleanup-nonexisting", false, false)
-            .unwrap_err();
+        cleanup_dependency(&dependencies[0], CleanupParams::default()).unwrap_err();
     }
 
     #[tokio::test]

@@ -5,7 +5,6 @@ use std::{
     fs::{self, File},
     io::{BufRead, BufReader, Read, Write},
     path::{Path, PathBuf},
-    process::exit,
 };
 use yansi::Paint;
 
@@ -14,20 +13,14 @@ pub fn get_current_working_dir() -> PathBuf {
     env::current_dir().unwrap()
 }
 
-pub fn read_file_to_string(path: &String) -> String {
-    let contents: String = match fs::read_to_string(path) {
-        // If successful return the files text as `contents`.
-        // `c` is a local variable.
-        Ok(c) => c,
-        // Handle the `error` case.
-        Err(_) => {
-            // Write `msg` to `stderr`.
-            eprintln!("Could not read file `{}`", path);
-            // Exit the program with exit code `1`.
-            exit(1);
-        }
-    };
-    contents
+/// Read contents of file at path into a string, or panic
+///
+/// # Panics
+/// If the file cannot be read, due to it being non-existent, not a valid UTF-8 string, etc.
+pub fn read_file_to_string(path: impl AsRef<Path>) -> String {
+    fs::read_to_string(path.as_ref()).unwrap_or_else(|_| {
+        panic!("Could not read file `{:?}`", path.as_ref());
+    })
 }
 
 // read a file contents into a vector of bytes so we can unzip it

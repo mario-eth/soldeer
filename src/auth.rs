@@ -165,7 +165,7 @@ mod tests {
         .await
         {
             Ok(_) => {
-                let results = read_file_to_string(&"./test_save_jwt".to_string());
+                let results = read_file_to_string("./test_save_jwt");
                 assert_eq!(results, "jwt_token_example");
                 let _ = remove_file("./test_save_jwt");
             }

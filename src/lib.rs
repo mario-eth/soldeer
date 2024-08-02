@@ -16,7 +16,8 @@ use crate::{
     versioning::push_version,
 };
 use dependency_downloader::download_dependency;
-use janitor::cleanup_dependency;
+use janitor::{cleanup_dependency, CleanupParams};
+use lock::LockWriteMode;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use remote::{get_dependency_url_remote, get_latest_forge_std_dependency};
@@ -163,15 +164,14 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
             }
         }
         Subcommands::Push(push) => {
-            let path = push.path.unwrap_or(get_current_working_dir().to_str().unwrap().to_string());
-            let path_buf = PathBuf::from(&path);
+            let path = push.path.unwrap_or(get_current_working_dir());
             let dry_run = push.dry_run.is_some() && push.dry_run.unwrap();
             let skip_warnings = push.skip_warnings.unwrap_or(false);
 
             // Check for sensitive files or directories
             if !dry_run &&
                 !skip_warnings &&
-                check_dotfiles_recursive(&path_buf) &&
+                check_dotfiles_recursive(&path) &&
                 !prompt_user_for_confirmation()
             {
                 Paint::yellow("Push operation aborted by the user.");
@@ -203,9 +203,7 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
             if !regex.is_match(&dependency_name) {
                 return Err(SoldeerError{message:format!("Dependency name {} is not valid, you can use only alphanumeric characters `-` and `@`", &dependency_name)});
             }
-            match push_version(&dependency_name, &dependency_version, PathBuf::from(&path), dry_run)
-                .await
-            {
+            match push_version(&dependency_name, &dependency_version, path, dry_run).await {
                 Ok(_) => {}
                 Err(err) => {
                     return Err(SoldeerError {
@@ -241,7 +239,7 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
             let _ = delete_dependency_files(&dependency).is_ok();
 
             // removing the dependency from the lock file
-            match remove_lock(&dependency.name, &dependency.version) {
+            match remove_lock(&dependency) {
                 Ok(d) => d,
                 Err(err) => {
                     return Err(SoldeerError { message: err.cause });
@@ -282,7 +280,7 @@ async fn install_dependency(
         }
     };
 
-    match write_lock(&[dependency.clone()], false) {
+    match write_lock(&[dependency.clone()], LockWriteMode::Append) {
         Ok(_) => {}
         Err(err) => {
             return Err(SoldeerError { message: format!("Error writing the lock: {}", err.cause) });
@@ -294,10 +292,8 @@ async fn install_dependency(
             Ok(_) => {}
             Err(err_unzip) => {
                 match janitor::cleanup_dependency(
-                    &dependency.name,
-                    &dependency.version,
-                    true,
-                    false,
+                    dependency,
+                    CleanupParams { full: true, via_git: false },
                 ) {
                     Ok(_) => {}
                     Err(err_cleanup) => {
@@ -322,7 +318,7 @@ async fn install_dependency(
     let config_file: String = match define_config_file() {
         Ok(file) => file,
 
-        Err(_) => match cleanup_dependency(&dependency.name, &dependency.version, true, via_git) {
+        Err(_) => match cleanup_dependency(dependency, CleanupParams { full: true, via_git }) {
             Ok(_) => {
                 return Err(SoldeerError {
                     message: "Could not define the config file".to_string(),
@@ -358,7 +354,7 @@ async fn install_dependency(
         }
     }
 
-    match janitor::healthcheck_dependency(&dependency.name, &dependency.version) {
+    match janitor::healthcheck_dependency(dependency) {
         Ok(_) => {}
         Err(err) => {
             return Err(SoldeerError {
@@ -367,7 +363,7 @@ async fn install_dependency(
         }
     }
 
-    match janitor::cleanup_dependency(&dependency.name, &dependency.version, false, via_git) {
+    match janitor::cleanup_dependency(dependency, CleanupParams { full: false, via_git }) {
         Ok(_) => {}
         Err(err) => {
             return Err(SoldeerError {
@@ -463,7 +459,7 @@ async fn update(regenerate_remappings: bool) -> Result<(), SoldeerError> {
         }
     }
 
-    match write_lock(&dependencies, true) {
+    match write_lock(&dependencies, LockWriteMode::Replace) {
         Ok(_) => {}
         Err(err) => {
             return Err(SoldeerError { message: format!("Error writing the lock: {}", err.cause) });
@@ -774,7 +770,7 @@ libs = ["dependencies"]
 
         let command = Subcommands::Push(Push {
             dependency: "@test~1.1".to_string(),
-            path: Some(String::from(path_dependency.to_str().unwrap())),
+            path: Some(path_dependency.clone()),
             dry_run: Some(true),
             skip_warnings: None,
         });
@@ -812,7 +808,7 @@ libs = ["dependencies"]
 
         let command = Subcommands::Push(Push {
             dependency: "@test~1.1".to_string(),
-            path: Some(test_dir.to_str().unwrap().to_string()),
+            path: Some(test_dir.clone()),
             dry_run: None,
             skip_warnings: None,
         });
@@ -852,7 +848,7 @@ libs = ["dependencies"]
 
         let command = Subcommands::Push(Push {
             dependency: "@test~1.1".to_string(),
-            path: Some(test_dir.to_str().unwrap().to_string()),
+            path: Some(test_dir.clone()),
             dry_run: None,
             skip_warnings: Some(true),
         });

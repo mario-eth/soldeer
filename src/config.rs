@@ -76,7 +76,7 @@ pub async fn read_config_deps(filename: &String) -> Result<Vec<Dependency>, Conf
             Err(err) => return Err(err),
         }
     }
-    let contents = read_file_to_string(&filename.clone());
+    let contents = read_file_to_string(&filename);
 
     // reading the contents into a data structure using toml::from_str
     let data: DependenciesFromConfig = match toml::from_str(&contents) {
@@ -231,7 +231,7 @@ pub fn add_to_config(
         ))
     );
 
-    let contents = read_file_to_string(&String::from(config_file));
+    let contents = read_file_to_string(config_file);
     let mut doc: DocumentMut = contents.parse::<DocumentMut>().expect("invalid doc");
 
     // in case we don't have dependencies defined in the config file, we add it and re-read the doc
@@ -242,9 +242,7 @@ pub fn add_to_config(
             eprintln!("Couldn't write to the config file: {}", e);
         }
 
-        doc = read_file_to_string(&String::from(config_file))
-            .parse::<DocumentMut>()
-            .expect("invalid doc");
+        doc = read_file_to_string(config_file).parse::<DocumentMut>().expect("invalid doc");
     }
     let mut new_dependencies: String = String::new();
 
@@ -282,7 +280,7 @@ pub async fn remappings_txt(config_file: &String) -> Result<(), ConfigError> {
     if !remappings_path.exists() {
         File::create(remappings_path.clone()).unwrap();
     }
-    let contents = read_file_to_string(&remappings_path.to_str().unwrap().to_string());
+    let contents = read_file_to_string(&remappings_path);
 
     let existing_remappings: Vec<String> = contents.split('\n').map(|s| s.to_string()).collect();
     let mut new_remappings: String = String::new();
@@ -448,7 +446,7 @@ pub fn delete_config(
         Paint::green(&format!("Removing the dependency {} from the config file", dependency_name))
     );
 
-    let contents = read_file_to_string(&String::from(config_file));
+    let contents = read_file_to_string(config_file);
     let mut doc: DocumentMut = contents.parse::<DocumentMut>().expect("invalid doc");
 
     if !doc.contains_table("dependencies") {
@@ -911,7 +909,7 @@ libs = ["dependencies"]
 
         write_to_config(&target_config, config_contents);
 
-        assert!(target_config.file_name().unwrap().to_str().unwrap().contains("foundry"));
+        assert!(target_config.file_name().unwrap().to_string_lossy().contains("foundry"));
         let _ = remove_file(target_config);
         Ok(())
     }
@@ -926,7 +924,7 @@ libs = ["dependencies"]
 
         write_to_config(&target_config, config_contents);
 
-        assert!(target_config.file_name().unwrap().to_str().unwrap().contains("soldeer"));
+        assert!(target_config.file_name().unwrap().to_string_lossy().contains("soldeer"));
         let _ = remove_file(target_config);
         Ok(())
     }
@@ -948,7 +946,7 @@ libs = ["dependencies"]
 
         let result = create_example_config("1").unwrap();
 
-        assert!(PathBuf::from(&result).file_name().unwrap().to_str().unwrap().contains("foundry"));
+        assert!(PathBuf::from(&result).file_name().unwrap().to_string_lossy().contains("foundry"));
         assert_eq!(read_file_to_string(&result), content);
         Ok(())
     }
@@ -964,7 +962,7 @@ enabled = true
 
         let result = create_example_config("2").unwrap();
 
-        assert!(PathBuf::from(&result).file_name().unwrap().to_str().unwrap().contains("soldeer"));
+        assert!(PathBuf::from(&result).file_name().unwrap().to_string_lossy().contains("soldeer"));
         assert_eq!(read_file_to_string(&result), content);
         Ok(())
     }
@@ -1008,7 +1006,7 @@ libs = ["dependencies"]
 dep1 = "1.0.0"
 "#;
 
-        assert_eq!(read_file_to_string(&String::from(target_config.to_str().unwrap())), content);
+        assert_eq!(read_file_to_string(&target_config), content);
 
         let _ = remove_file(target_config);
         Ok(())
@@ -1055,7 +1053,7 @@ libs = ["dependencies"]
 dep1 = { version = "1.0.0", url = "http://custom_url.com/custom.zip" }
 "#;
 
-        assert_eq!(read_file_to_string(&String::from(target_config.to_str().unwrap())), content);
+        assert_eq!(read_file_to_string(&target_config), content);
 
         let _ = remove_file(target_config);
         Ok(())
@@ -1104,7 +1102,7 @@ old_dep = "5.1.0-my-version-is-cool"
 dep1 = "1.0.0"
 "#;
 
-        assert_eq!(read_file_to_string(&String::from(target_config.to_str().unwrap())), content);
+        assert_eq!(read_file_to_string(&target_config), content);
 
         let _ = remove_file(target_config);
         Ok(())
@@ -1153,7 +1151,7 @@ old_dep = { version = "5.1.0-my-version-is-cool", url = "http://custom_url.com/c
 dep1 = { version = "1.0.0", url = "http://custom_url.com/custom.zip" }
 "#;
 
-        assert_eq!(read_file_to_string(&String::from(target_config.to_str().unwrap())), content);
+        assert_eq!(read_file_to_string(&target_config), content);
 
         let _ = remove_file(target_config);
         Ok(())
@@ -1201,7 +1199,7 @@ libs = ["dependencies"]
 old_dep = { version = "1.0.0", url = "http://custom_url.com/custom.zip" }
 "#;
 
-        assert_eq!(read_file_to_string(&String::from(target_config.to_str().unwrap())), content);
+        assert_eq!(read_file_to_string(&target_config), content);
 
         let _ = remove_file(target_config);
         Ok(())
@@ -1249,7 +1247,7 @@ libs = ["dependencies"]
 old_dep = "1.0.0"
 "#;
 
-        assert_eq!(read_file_to_string(&String::from(target_config.to_str().unwrap())), content);
+        assert_eq!(read_file_to_string(&target_config), content);
 
         let _ = remove_file(target_config);
         Ok(())
@@ -1300,7 +1298,7 @@ gas_reports = ['*']
 dep1 = "1.0.0"
 "#;
 
-        assert_eq!(read_file_to_string(&String::from(target_config.to_str().unwrap())), content);
+        assert_eq!(read_file_to_string(&target_config), content);
 
         let _ = remove_file(target_config);
         Ok(())
@@ -1335,7 +1333,7 @@ enabled = true
 dep1 = "1.0.0"
 "#;
 
-        assert_eq!(read_file_to_string(&String::from(target_config.to_str().unwrap())), content);
+        assert_eq!(read_file_to_string(&target_config), content);
 
         let _ = remove_file(target_config);
         Ok(())
@@ -1370,7 +1368,7 @@ enabled = true
 dep1 = { version = "1.0.0", url = "http://custom_url.com/custom.zip" }
 "#;
 
-        assert_eq!(read_file_to_string(&String::from(target_config.to_str().unwrap())), content);
+        assert_eq!(read_file_to_string(&target_config), content);
 
         let _ = remove_file(target_config);
         Ok(())
@@ -1421,7 +1419,7 @@ gas_reports = ['*']
 dep1 = { version = "1.0.0", git = "git@github.com:foundry-rs/forge-std.git", rev = "07263d193d621c4b2b0ce8b4d54af58f6957d97d" }
 "#;
 
-        assert_eq!(read_file_to_string(&String::from(target_config.to_str().unwrap())), content);
+        assert_eq!(read_file_to_string(&target_config), content);
 
         let _ = remove_file(target_config);
         Ok(())
@@ -1476,7 +1474,7 @@ gas_reports = ['*']
 dep1 = { version = "1.0.0", git = "git@github.com:foundry-rs/forge-std.git", rev = "07263d193d621c4b2b0ce8b4d54af58f6957d97d" }
 "#;
 
-        assert_eq!(read_file_to_string(&String::from(target_config.to_str().unwrap())), content);
+        assert_eq!(read_file_to_string(&target_config), content);
 
         let _ = remove_file(target_config);
         Ok(())
@@ -1530,7 +1528,7 @@ gas_reports = ['*']
 dep1 = { version = "1.0.0", url = "http://custom_url.com/custom.zip" }
 "#;
 
-        assert_eq!(read_file_to_string(&String::from(target_config.to_str().unwrap())), content);
+        assert_eq!(read_file_to_string(&target_config), content);
 
         let _ = remove_file(target_config);
         Ok(())
@@ -1577,7 +1575,7 @@ libs = ["dependencies"]
 [dependencies]
 "#;
 
-        assert_eq!(read_file_to_string(&String::from(target_config.to_str().unwrap())), content);
+        assert_eq!(read_file_to_string(&target_config), content);
 
         let _ = remove_file(target_config);
         Ok(())
@@ -1628,7 +1626,7 @@ dep3 = { version = "1.0.0", url = "http://custom_url.com/custom.zip" }
 dep2 = { version = "1.0.0", url = "http://custom_url.com/custom.zip" }
 "#;
 
-        assert_eq!(read_file_to_string(&String::from(target_config.to_str().unwrap())), content);
+        assert_eq!(read_file_to_string(&target_config), content);
 
         let _ = remove_file(target_config);
         Ok(())
@@ -1668,7 +1666,7 @@ dep1 = { version = "1.0.0", url = "http://custom_url.com/custom.zip" }
             }
         }
 
-        assert_eq!(read_file_to_string(&String::from(target_config.to_str().unwrap())), content);
+        assert_eq!(read_file_to_string(&target_config), content);
 
         let _ = remove_file(target_config);
         Ok(())

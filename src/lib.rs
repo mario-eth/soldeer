@@ -453,7 +453,10 @@ async fn update() -> Result<(), SoldeerError> {
 
 #[cfg(test)]
 mod tests {
-
+    use super::*;
+    use commands::{Init, Install, Push, Update};
+    use rand::{distributions::Alphanumeric, Rng};
+    use serial_test::serial;
     use std::{
         env::{self},
         fs::{
@@ -462,13 +465,7 @@ mod tests {
         io::Write,
         path::{Path, PathBuf},
     };
-
-    use commands::{Init, Install, Push, Update};
-    use rand::{distributions::Alphanumeric, Rng};
-    use serial_test::serial;
     use zip::ZipArchive; // 0.8
-
-    use super::*;
 
     #[test]
     #[serial]

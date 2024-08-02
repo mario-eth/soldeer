@@ -120,13 +120,10 @@ async fn execute_login(login: Login) -> Result<(), LoginError> {
 
 #[cfg(test)]
 mod tests {
-    use std::{env, fs::remove_file};
-
-    use serial_test::serial;
-
-    use crate::utils::read_file_to_string;
-
     use super::*;
+    use crate::utils::read_file_to_string;
+    use serial_test::serial;
+    use std::{env, fs::remove_file};
 
     #[test]
     #[serial]

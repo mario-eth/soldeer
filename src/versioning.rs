@@ -312,13 +312,11 @@ async fn push_to_repo(
 
 #[cfg(test)]
 mod tests {
-    use std::fs::{self, create_dir_all, remove_dir_all, remove_file};
-
-    use io::Cursor;
-    use serial_test::serial;
-
     use super::*;
+    use io::Cursor;
     use rand::{distributions::Alphanumeric, Rng};
+    use serial_test::serial;
+    use std::fs::{self, create_dir_all, remove_dir_all, remove_file};
 
     #[test]
     #[serial]

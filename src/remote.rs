@@ -1,5 +1,5 @@
 use crate::{
-    config::Dependency,
+    config::{Dependency, HttpDependency},
     errors::{DownloadError, ProjectNotFound},
     utils::get_base_url,
 };
@@ -8,8 +8,8 @@ use reqwest::Client;
 use serde_derive::{Deserialize, Serialize};
 
 pub async fn get_dependency_url_remote(
-    dependency_name: &String,
-    dependency_version: &String,
+    dependency_name: &str,
+    dependency_version: &str,
 ) -> Result<String, DownloadError> {
     let url = format!(
         "{}/api/v1/revision-cli?project_name={}&revision={}",
@@ -90,12 +90,12 @@ pub async fn get_latest_forge_std_dependency() -> Result<Dependency, DownloadErr
                         cause: "Could not get the last forge dependency".to_string(),
                     });
                 }
-                return Ok(Dependency {
+                return Ok(Dependency::Http(HttpDependency {
                     name: dependency_name.to_string(),
                     version: revision.data[0].clone().version,
-                    url: revision.data[0].clone().url,
-                    hash: "".to_string(),
-                });
+                    url: Some(revision.data[0].clone().url),
+                    checksum: None,
+                }));
             }
         }
     }

@@ -2,7 +2,7 @@
 use crate::{
     auth::login,
     commands::Subcommands,
-    config::{delete_config, get_foundry_setup, read_config, remappings, Dependency},
+    config::{delete_config, read_config, remappings, Dependency},
     dependency_downloader::{
         delete_dependency_files, download_dependencies, unzip_dependencies, unzip_dependency,
     },
@@ -12,7 +12,7 @@ use crate::{
     utils::{check_dotfiles_recursive, get_current_working_dir, prompt_user_for_confirmation},
     versioning::push_version,
 };
-use config::{add_to_config, define_config_file};
+use config::{add_to_config, get_config_path};
 use dependency_downloader::download_dependency;
 use janitor::{cleanup_dependency, CleanupParams};
 use lock::LockWriteMode;
@@ -20,7 +20,7 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 use remote::{get_dependency_url_remote, get_latest_forge_std_dependency};
 use std::{env, path::PathBuf};
-use utils::get_download_tunnel;
+use utils::{get_dependency_type, DependencyType};
 use yansi::Paint;
 
 mod auth;
@@ -106,7 +106,7 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
                 custom_url = true;
 
                 let remote_url = install.remote_url.unwrap();
-                via_git = get_download_tunnel(&remote_url) == "git";
+                via_git = get_dependency_type(&remote_url) == DependencyType::Git;
                 dependency_url = remote_url.clone();
             } else {
                 dependency_url =
@@ -212,7 +212,7 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
 
         Subcommands::Uninstall(uninstall) => {
             // define the config file
-            let config_file: String = match define_config_file() {
+            let config_file: String = match get_config_path() {
                 Ok(file) => file,
                 Err(_) => {
                     return Err(SoldeerError {
@@ -308,7 +308,7 @@ async fn install_dependency(
         }
     }
 
-    let config_file: String = match define_config_file() {
+    let config_file = match get_config_path() {
         Ok(file) => file,
 
         Err(_) => match cleanup_dependency(dependency, CleanupParams { full: true, via_git }) {
@@ -349,22 +349,9 @@ async fn install_dependency(
             });
         }
     }
-    // check the foundry setup, in case we have a foundry.toml, then the foundry.toml will be used
-    // for `dependencies`
-    let f_setup_vec: Vec<bool> = match get_foundry_setup() {
-        Ok(setup) => setup,
-        Err(err) => return Err(SoldeerError { message: err.cause }),
-    };
-    let foundry_setup: FOUNDRY = FOUNDRY { remappings: f_setup_vec[0] };
 
-    if foundry_setup.remappings {
-        match remappings().await {
-            Ok(_) => {}
-            Err(err) => {
-                return Err(SoldeerError { message: err.cause });
-            }
-        }
-    }
+    // TODO: check the config to know whether we should write remappings
+    remappings().await.map_err(|e| SoldeerError { message: e.cause })?;
     Ok(())
 }
 
@@ -426,24 +413,8 @@ async fn update() -> Result<(), SoldeerError> {
         }
     }
 
-    // check the foundry setup, in case we have a foundry.toml, then the foundry.toml will be used
-    // for `dependencies`
-    let f_setup_vec: Vec<bool> = match get_foundry_setup() {
-        Ok(f_setup) => f_setup,
-        Err(err) => {
-            return Err(SoldeerError { message: err.cause });
-        }
-    };
-    let foundry_setup: FOUNDRY = FOUNDRY { remappings: f_setup_vec[0] };
-
-    if foundry_setup.remappings {
-        match remappings().await {
-            Ok(_) => {}
-            Err(err) => {
-                return Err(SoldeerError { message: err.cause });
-            }
-        }
-    }
+    // TODO: check the config to know whether we should write remappings
+    remappings().await.map_err(|e| SoldeerError { message: e.cause })?;
     Ok(())
 }
 

@@ -1,43 +1,29 @@
-use crate::{
-    config::Dependency, errors::MissingDependencies, lock::remove_lock, utils::get_download_tunnel,
-    DEPENDENCY_DIR,
-};
+use crate::{config::Dependency, errors::MissingDependencies, lock::remove_lock, DEPENDENCY_DIR};
 use std::fs::{metadata, remove_dir_all, remove_file};
 
 // Health-check dependencies before we clean them, this one checks if they were unzipped
 pub fn healthcheck_dependencies(dependencies: &[Dependency]) -> Result<(), MissingDependencies> {
-    for dependency in dependencies.iter() {
-        match healthcheck_dependency(dependency) {
-            Ok(_) => {}
-            Err(err) => {
-                return Err(err);
-            }
-        }
-    }
+    dependencies.iter().try_for_each(healthcheck_dependency)?;
     Ok(())
 }
 
 // Cleanup zips after the download
 pub fn cleanup_after(dependencies: &[Dependency]) -> Result<(), MissingDependencies> {
-    for dependency in dependencies.iter() {
-        let via_git: bool = get_download_tunnel(&dependency.url) == "git";
-        match cleanup_dependency(dependency, CleanupParams { full: false, via_git }) {
-            Ok(_) => {}
-            Err(err) => {
-                println!("returning error {:?}", err);
-                return Err(err);
-            }
-        }
-    }
+    dependencies.iter().try_for_each(|d| {
+        cleanup_dependency(
+            d,
+            CleanupParams { full: false, via_git: matches!(d, Dependency::Git(_)) },
+        )
+    })?;
     Ok(())
 }
 
 pub fn healthcheck_dependency(dependency: &Dependency) -> Result<(), MissingDependencies> {
-    let file_name: String = format!("{}-{}", dependency.name, dependency.version);
+    let file_name: String = format!("{}-{}", dependency.name(), dependency.version());
     let new_path = DEPENDENCY_DIR.join(file_name);
     match metadata(new_path) {
         Ok(_) => Ok(()),
-        Err(_) => Err(MissingDependencies::new(&dependency.name, &dependency.version)),
+        Err(_) => Err(MissingDependencies::new(&dependency.name(), &dependency.version())),
     }
 }
 
@@ -51,22 +37,24 @@ pub fn cleanup_dependency(
     dependency: &Dependency,
     params: CleanupParams,
 ) -> Result<(), MissingDependencies> {
-    let file_name: String = format!("{}-{}.zip", dependency.name, dependency.version);
+    let file_name: String = format!("{}-{}.zip", dependency.name(), dependency.version());
     let new_path: std::path::PathBuf = DEPENDENCY_DIR.clone().join(file_name);
     if !params.via_git {
         match remove_file(new_path) {
             Ok(_) => {}
             Err(_) => {
-                return Err(MissingDependencies::new(&dependency.name, &dependency.version));
+                return Err(MissingDependencies::new(&dependency.name(), &dependency.version()));
             }
         };
     }
     if params.full {
-        let dir = DEPENDENCY_DIR.join(&dependency.name);
+        let dir = DEPENDENCY_DIR.join(&dependency.name());
         remove_dir_all(dir).unwrap();
         match remove_lock(dependency) {
             Ok(_) => {}
-            Err(_) => return Err(MissingDependencies::new(&dependency.name, &dependency.version)),
+            Err(_) => {
+                return Err(MissingDependencies::new(&dependency.name(), &dependency.version()))
+            }
         }
     }
     Ok(())

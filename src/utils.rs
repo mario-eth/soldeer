@@ -1,3 +1,4 @@
+use once_cell::sync::Lazy;
 use regex::Regex;
 use simple_home_dir::home_dir;
 use std::{
@@ -7,6 +8,14 @@ use std::{
     path::{Path, PathBuf},
 };
 use yansi::Paint;
+
+static GIT_SSH_REGEX: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"^(?:git@github\.com|git@gitlab)").expect("git ssh regex should compile")
+});
+static GIT_HTTPS_REGEX: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"^(?:https://github\.com|https://gitlab\.com).*\.git$")
+        .expect("git https regex should compile")
+});
 
 // get the current working directory
 pub fn get_current_working_dir() -> PathBuf {
@@ -164,17 +173,17 @@ pub fn prompt_user_for_confirmation() -> bool {
     input == "y" || input == "yes"
 }
 
-pub fn get_download_tunnel(dependency_url: &str) -> String {
-    let pattern1 = r"^(git@github\.com|git@gitlab)";
-    let pattern2 = r"^(https://github\.com|https://gitlab\.com)";
-    let re1 = Regex::new(pattern1).unwrap();
-    let re2 = Regex::new(pattern2).unwrap();
-    if re1.is_match(dependency_url) ||
-        (re2.is_match(dependency_url) && dependency_url.ends_with(".git"))
-    {
-        return "git".to_string();
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum DependencyType {
+    Git,
+    Http,
+}
+
+pub fn get_dependency_type(dependency_url: &str) -> DependencyType {
+    if GIT_SSH_REGEX.is_match(dependency_url) || GIT_HTTPS_REGEX.is_match(dependency_url) {
+        return DependencyType::Git;
     }
-    "http".to_string()
+    DependencyType::Http
 }
 
 #[cfg(not(test))]

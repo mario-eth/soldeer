@@ -31,7 +31,7 @@ pub async fn push_version(
     root_directory_path: PathBuf,
     dry_run: bool,
 ) -> Result<(), PushError> {
-    let file_name = root_directory_path.file_name().unwrap().to_str().unwrap().to_string();
+    let file_name = root_directory_path.file_name().expect("path should have a last component");
     println!(
         "{}",
         Paint::green(&format!("Pushing a dependency {}-{}:", dependency_name, dependency_version))
@@ -44,7 +44,7 @@ pub async fn push_version(
         dependency_version,
         &root_directory_path,
         &files_to_copy,
-        &file_name,
+        file_name,
     ) {
         Ok(zip) => zip,
         Err(err) => {
@@ -74,10 +74,12 @@ fn zip_file(
     dependency_version: &String,
     root_directory_path: &Path,
     files_to_copy: &Vec<FilePair>,
-    file_name: &String,
+    file_name: impl Into<PathBuf>,
 ) -> Result<PathBuf, PushError> {
     let root_dir_as_string = root_directory_path.to_str().unwrap();
-    let zip_file_path = root_directory_path.join(file_name.to_owned() + ".zip");
+    let mut file_name: PathBuf = file_name.into();
+    file_name.set_extension("zip");
+    let zip_file_path = root_directory_path.join(file_name);
     let file = File::create(zip_file_path.to_str().unwrap()).unwrap();
     let mut zip = ZipWriter::new(file);
     let options = SimpleFileOptions::default().compression_method(CompressionMethod::DEFLATE);
@@ -170,7 +172,12 @@ fn filter_files_to_copy(root_directory_path: &Path) -> Vec<FilePair> {
         }
 
         files_to_copy.push(FilePair {
-            name: String::from(entry.path().file_name().unwrap().to_str().unwrap()),
+            name: entry
+                .path()
+                .file_name()
+                .expect("path should have a last component")
+                .to_string_lossy()
+                .into_owned(),
             path: entry.path().to_str().unwrap().to_string(),
         });
     }
@@ -188,13 +195,13 @@ fn read_ignore_file() -> Vec<String> {
     let mut files: Vec<String> = Vec::new();
 
     if soldeerignore.exists() {
-        let contents = read_file_to_string(&soldeerignore.to_str().unwrap().to_string());
+        let contents = read_file_to_string(&soldeerignore);
         let current_read_file = contents.lines();
         files.append(&mut escape_lines(current_read_file.collect()));
     }
 
     if gitignore.exists() {
-        let contents = read_file_to_string(&gitignore.to_str().unwrap().to_string());
+        let contents = read_file_to_string(&gitignore);
         let current_read_file = contents.lines();
         files.append(&mut escape_lines(current_read_file.collect()));
     }
@@ -239,8 +246,13 @@ async fn push_to_repo(
     headers.insert(AUTHORIZATION, header_value.expect("Could not set auth header"));
 
     let file_fs = read_file(zip_file).unwrap();
-    let mut part =
-        Part::bytes(file_fs).file_name(zip_file.file_name().unwrap().to_str().unwrap().to_string());
+    let mut part = Part::bytes(file_fs).file_name(
+        zip_file
+            .file_name()
+            .expect("path should have a last component")
+            .to_string_lossy()
+            .into_owned(),
+    );
 
     // set the mime as app zip
     part = part.mime_str("application/zip").expect("Could not set mime type");
@@ -412,7 +424,7 @@ mod tests {
         let result = filter_files_to_copy(&target_dir);
         assert_eq!(filtered_files.len(), result.len());
         let file = Path::new(&filtered_files[0]);
-        assert_eq!(String::from(file.file_name().unwrap().to_str().unwrap()), result[0].name);
+        assert_eq!(file.file_name().unwrap().to_string_lossy(), result[0].name);
 
         let _ = remove_file(gitignore);
         let _ = remove_dir_all(target_dir);
@@ -533,19 +545,14 @@ mod tests {
             FilePair { name: "random_file_1".to_string(), path: random_file_3.clone() },
             FilePair { name: "random_file_1".to_string(), path: random_file_2.clone() },
         ];
-        let result = match zip_file(
-            &dep_name,
-            &dep_version,
-            &target_dir,
-            &files_to_copy,
-            &"test_zip".to_string(),
-        ) {
-            Ok(r) => r,
-            Err(_) => {
-                assert_eq!("Invalid State", "");
-                return;
-            }
-        };
+        let result =
+            match zip_file(&dep_name, &dep_version, &target_dir, &files_to_copy, "test_zip") {
+                Ok(r) => r,
+                Err(_) => {
+                    assert_eq!("Invalid State", "");
+                    return;
+                }
+            };
 
         // unzipping for checks
         let archive = read_file(result).unwrap();

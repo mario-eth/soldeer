@@ -708,7 +708,7 @@ mod tests {
         });
         download_dependencies(&dependencies, false).await.unwrap();
         unzip_dependency(&dependencies[0].name, &dependencies[0].version).unwrap();
-        healthcheck_dependency("@openzeppelin-contracts", "3.3.0-custom-test").unwrap();
+        healthcheck_dependency(&dependencies[0]).unwrap();
         assert!(DEPENDENCY_DIR
             .join("@openzeppelin-contracts-3.3.0-custom-test")
             .join("token")

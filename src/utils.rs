@@ -1,21 +1,12 @@
 use regex::Regex;
 use simple_home_dir::home_dir;
-use std::env;
-use std::fs::{
-    self,
-    File,
+use std::{
+    env,
+    fs::{self, File},
+    io::{BufRead, BufReader, Read, Write},
+    path::{Path, PathBuf},
+    process::exit,
 };
-use std::io::Write;
-use std::io::{
-    BufRead,
-    BufReader,
-    Read,
-};
-use std::path::{
-    Path,
-    PathBuf,
-};
-use std::process::exit;
 use yansi::Paint;
 
 // get the current working directory
@@ -185,8 +176,8 @@ pub fn get_download_tunnel(dependency_url: &str) -> String {
     let pattern2 = r"^(https://github\.com|https://gitlab\.com)";
     let re1 = Regex::new(pattern1).unwrap();
     let re2 = Regex::new(pattern2).unwrap();
-    if re1.is_match(dependency_url)
-        || (re2.is_match(dependency_url) && dependency_url.ends_with(".git"))
+    if re1.is_match(dependency_url) ||
+        (re2.is_match(dependency_url) && dependency_url.ends_with(".git"))
     {
         return "git".to_string();
     }

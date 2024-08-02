@@ -1,17 +1,15 @@
-use crate::config::Dependency;
-use crate::errors::LockError;
-use crate::utils::{
-    get_current_working_dir,
-    read_file_to_string,
+use crate::{
+    config::Dependency,
+    errors::LockError,
+    utils::{get_current_working_dir, read_file_to_string},
+    LOCK_FILE,
 };
-use crate::LOCK_FILE;
 use serde_derive::Deserialize;
-use std::fs::{
-    self,
-    remove_file,
+use std::{
+    fs::{self, remove_file},
+    io::Write,
+    path::PathBuf,
 };
-use std::io::Write;
-use std::path::PathBuf;
 use yansi::Paint;
 
 // Top level struct to hold the TOML data.
@@ -47,9 +45,7 @@ fn read_lock() -> Result<Vec<LockEntry>, LockError> {
     };
 
     if !lock_file.exists() {
-        return Err(LockError {
-            cause: "Lock does not exists".to_string(),
-        });
+        return Err(LockError { cause: "Lock does not exists".to_string() });
     }
     let lock_path: String = lock_file.to_str().unwrap().to_string();
 
@@ -73,16 +69,11 @@ pub fn lock_check(
         Ok(entries) => entries,
         Err(_) => {
             if create_lock {
-                let _ = write_lock(&[], false).map_err(|_| {
-                    LockError {
-                        cause: "Could not write lock file".to_string(),
-                    }
-                });
+                let _ = write_lock(&[], false)
+                    .map_err(|_| LockError { cause: "Could not write lock file".to_string() });
                 vec![]
             } else {
-                return Err(LockError {
-                    cause: "Lock does not exists".to_string(),
-                });
+                return Err(LockError { cause: "Lock does not exists".to_string() });
             }
         }
     };
@@ -118,11 +109,7 @@ pub fn write_lock(dependencies: &[Dependency], clean: bool) -> Result<(), LockEr
     if clean && (lock_file).exists() {
         match remove_file(&lock_file) {
             Ok(_) => {}
-            Err(_) => {
-                return Err(LockError {
-                    cause: "Could not clean lock file".to_string(),
-                })
-            }
+            Err(_) => return Err(LockError { cause: "Could not clean lock file".to_string() }),
         }
     }
 
@@ -153,9 +140,7 @@ checksum = "{}"
     });
     let mut file: std::fs::File = fs::OpenOptions::new().append(true).open(lock_file).unwrap();
     if write!(file, "{}", new_lock_entries).is_err() {
-        return Err(LockError {
-            cause: "Could not write to the lock file".to_string(),
-        });
+        return Err(LockError { cause: "Could not write to the lock file".to_string() });
     }
     Ok(())
 }
@@ -186,15 +171,10 @@ checksum = "{}"
             ));
         }
     });
-    let mut file: std::fs::File = fs::OpenOptions::new()
-        .truncate(true)
-        .write(true)
-        .open(lock_file)
-        .unwrap();
+    let mut file: std::fs::File =
+        fs::OpenOptions::new().truncate(true).write(true).open(lock_file).unwrap();
     if write!(file, "{}", new_lock_entries).is_err() {
-        return Err(LockError {
-            cause: "Could not write to the lock file".to_string(),
-        });
+        return Err(LockError { cause: "Could not write to the lock file".to_string() });
     }
     Ok(())
 }
@@ -202,11 +182,9 @@ checksum = "{}"
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::Dependency;
-    use crate::utils::read_file_to_string;
+    use crate::{config::Dependency, utils::read_file_to_string};
     use serial_test::serial;
-    use std::fs::File;
-    use std::io::Write;
+    use std::{fs::File, io::Write};
 
     fn check_lock_file() -> PathBuf {
         let lock_file: PathBuf = get_current_working_dir().join("test").join("soldeer.lock");
@@ -231,10 +209,7 @@ version = "0.6.5"
 source = "registry+https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@prb-test~0.6.5.zip"
 checksum = "5019418b1e9128185398870f77a42e51d624c44315bb1572e7545be51d707016"
 "#;
-        File::create(lock_file)
-            .unwrap()
-            .write_all(lock_contents.as_bytes())
-            .unwrap();
+        File::create(lock_file).unwrap().write_all(lock_contents.as_bytes()).unwrap();
     }
 
     #[test]

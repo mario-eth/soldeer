@@ -1,14 +1,8 @@
-use std::fs::{
-    metadata,
-    remove_dir_all,
-    remove_file,
+use crate::{
+    config::Dependency, errors::MissingDependencies, lock::remove_lock, utils::get_download_tunnel,
+    DEPENDENCY_DIR,
 };
-
-use crate::config::Dependency;
-use crate::errors::MissingDependencies;
-use crate::lock::remove_lock;
-use crate::utils::get_download_tunnel;
-use crate::DEPENDENCY_DIR;
+use std::fs::{metadata, remove_dir_all, remove_file};
 
 // Health-check dependencies before we clean them, this one checks if they were unzipped
 pub fn healthcheck_dependencies(dependencies: &[Dependency]) -> Result<(), MissingDependencies> {
@@ -46,12 +40,7 @@ pub fn healthcheck_dependency(
     let new_path = DEPENDENCY_DIR.join(file_name);
     match metadata(new_path) {
         Ok(_) => Ok(()),
-        Err(_) => {
-            Err(MissingDependencies::new(
-                dependency_name,
-                dependency_version,
-            ))
-        }
+        Err(_) => Err(MissingDependencies::new(dependency_name, dependency_version)),
     }
 }
 
@@ -67,10 +56,7 @@ pub fn cleanup_dependency(
         match remove_file(new_path) {
             Ok(_) => {}
             Err(_) => {
-                return Err(MissingDependencies::new(
-                    dependency_name,
-                    dependency_version,
-                ));
+                return Err(MissingDependencies::new(dependency_name, dependency_version));
             }
         };
     }
@@ -79,12 +65,7 @@ pub fn cleanup_dependency(
         remove_dir_all(dir).unwrap();
         match remove_lock(dependency_name, dependency_version) {
             Ok(_) => {}
-            Err(_) => {
-                return Err(MissingDependencies::new(
-                    dependency_name,
-                    dependency_version,
-                ))
-            }
+            Err(_) => return Err(MissingDependencies::new(dependency_name, dependency_version)),
         }
     }
     Ok(())
@@ -95,9 +76,7 @@ pub fn cleanup_dependency(
 mod tests {
     use super::*;
     use crate::dependency_downloader::{
-        clean_dependency_directory,
-        download_dependencies,
-        unzip_dependency,
+        clean_dependency_directory, download_dependencies, unzip_dependency,
     };
     use serial_test::serial;
 
@@ -156,13 +135,8 @@ mod tests {
             version: "v-cleanup-nonexisting".to_string(),
             url: "https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@openzeppelin-contracts~2.3.0.zip".to_string(),
             hash: String::new()});
-        cleanup_dependency(
-            "@openzeppelin-contracts",
-            "v-cleanup-nonexisting",
-            false,
-            false,
-        )
-        .unwrap_err();
+        cleanup_dependency("@openzeppelin-contracts", "v-cleanup-nonexisting", false, false)
+            .unwrap_err();
     }
 
     #[tokio::test]

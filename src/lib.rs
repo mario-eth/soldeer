@@ -2,7 +2,10 @@
 use crate::{
     auth::login,
     commands::Subcommands,
-    config::{delete_config, get_foundry_setup, read_config, remappings, Dependency},
+    config::{
+        add_to_config, define_config_file, delete_config, read_config_deps, read_config_soldeer,
+        remappings_foundry, remappings_txt, Dependency,
+    },
     dependency_downloader::{
         delete_dependency_files, download_dependencies, unzip_dependencies, unzip_dependency,
     },
@@ -12,7 +15,6 @@ use crate::{
     utils::{check_dotfiles_recursive, get_current_working_dir, prompt_user_for_confirmation},
     versioning::push_version,
 };
-use config::{add_to_config, define_config_file};
 use dependency_downloader::download_dependency;
 use janitor::cleanup_dependency;
 use once_cell::sync::Lazy;
@@ -40,11 +42,6 @@ pub static SOLDEER_CONFIG_FILE: Lazy<PathBuf> =
     Lazy::new(|| get_current_working_dir().join("soldeer.toml"));
 pub static FOUNDRY_CONFIG_FILE: Lazy<PathBuf> =
     Lazy::new(|| get_current_working_dir().join("foundry.toml"));
-
-#[derive(Debug)]
-pub struct FOUNDRY {
-    remappings: bool,
-}
 
 #[tokio::main]
 pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
@@ -638,9 +635,7 @@ libs = ["dependencies"]
 
         env::set_var("base_url", "https://api.soldeer.xyz");
 
-        let command = Subcommands::Update(Update {
-            reg_remappings: None,
-        });
+        let command = Subcommands::Update(Update { reg_remappings: None });
 
         match run(command) {
             Ok(_) => {}
@@ -683,9 +678,7 @@ libs = ["dependencies"]
 
         env::set_var("base_url", "https://api.soldeer.xyz");
 
-        let command = Subcommands::Update(Update {
-            reg_remappings: None,
-        });
+        let command = Subcommands::Update(Update { reg_remappings: None });
 
         match run(command) {
             Ok(_) => {}

@@ -13,7 +13,7 @@ use std::{
     path::Path,
 };
 use toml::Table;
-use toml_edit::{value, DocumentMut,Array,Table as EditTable, Value Item};
+use toml_edit::{value, Array, DocumentMut, Item, Table as EditTable, Value};
 use yansi::Paint;
 
 // Top level struct to hold the TOML data for [dependencies].
@@ -66,11 +66,6 @@ impl Default for SoldeerConfig {
             remappings_type: "txt".to_string(),
         }
     }
-}
-
-#[derive(Deserialize, Debug)]
-struct Foundry {
-    remappings: Table,
 }
 
 pub async fn read_config_deps(filename: &String) -> Result<Vec<Dependency>, ConfigError> {
@@ -159,48 +154,29 @@ pub async fn read_config_soldeer(filename: &String) -> Result<SoldeerConfig, Con
 
     let mut gen_remappings = false;
     if data.soldeer.contains_key("generate-remappings") {
-        gen_remappings = data
-            .soldeer
-            .get("generate-remappings")
-            .unwrap()
-            .as_bool()
-            .unwrap();
+        gen_remappings = data.soldeer.get("generate-remappings").unwrap().as_bool().unwrap();
     }
     let mut append_at_in_remappings = false;
     if data.soldeer.contains_key("append-at-in-remappings") {
-        append_at_in_remappings = data
-            .soldeer
-            .get("append-at-in-remappings")
-            .unwrap()
-            .as_bool()
-            .unwrap();
+        append_at_in_remappings =
+            data.soldeer.get("append-at-in-remappings").unwrap().as_bool().unwrap();
     }
     let mut reg_remappings = false;
     if data.soldeer.contains_key("reg-remappings") {
-        reg_remappings = data
-            .soldeer
-            .get("reg-remappings")
-            .unwrap()
-            .as_bool()
-            .unwrap();
+        reg_remappings = data.soldeer.get("reg-remappings").unwrap().as_bool().unwrap();
     }
 
     let mut remappings_type = "txt".to_string();
     if data.soldeer.contains_key("remappings-type") {
-        remappings_type = data
-            .soldeer
-            .get("remappings-type")
-            .unwrap()
-            .as_str()
-            .unwrap()
-            .to_string();
+        remappings_type =
+            data.soldeer.get("remappings-type").unwrap().as_str().unwrap().to_string();
     }
 
     let config = SoldeerConfig {
         generate_remappings: gen_remappings,
-        append_at_in_remappings: append_at_in_remappings,
-        reg_remappings: reg_remappings,
-        remappings_type: remappings_type,
+        append_at_in_remappings,
+        reg_remappings,
+        remappings_type,
     };
     Ok(config)
 }
@@ -410,12 +386,8 @@ pub async fn remappings_foundry(
         }
     }
 
-    let mut file: std::fs::File = fs::OpenOptions::new()
-        .write(true)
-        .append(false)
-        .truncate(true)
-        .open(config_file)
-        .unwrap();
+    let mut file: std::fs::File =
+        fs::OpenOptions::new().write(true).append(false).truncate(true).open(config_file).unwrap();
     if let Err(e) = write!(file, "{}", doc) {
         eprintln!("Couldn't write to the config file: {}", e);
     }
@@ -426,20 +398,15 @@ pub async fn remappings_foundry(
 fn add_dependency_to_remap(profile: &mut Item, dependency: &Dependency) -> Result<(), ConfigError> {
     let profile_table = profile.as_table().unwrap();
     if profile_table.contains_key("remappings") {
-        let remappings = profile_table
-            .get("remappings")
-            .clone()
-            .unwrap()
-            .as_array()
-            .unwrap();
+        let remappings = profile_table.get("remappings").clone().unwrap().as_array().unwrap();
         let mut found = false;
         for remapping in remappings.iter() {
             let rem_split: Vec<&str> = remapping.as_str().unwrap().split("=").collect();
             let to_search = dependency.name.clone();
-            if (!to_search.contains("@")
-                && rem_split[0] == format!("@{}-{}/", dependency.name, dependency.version))
-                || (to_search.contains("@")
-                    && rem_split[0] == format!("{}-{}/", dependency.name, dependency.version))
+            if (!to_search.contains("@") &&
+                rem_split[0] == format!("@{}-{}/", dependency.name, dependency.version)) ||
+                (to_search.contains("@") &&
+                    rem_split[0] == format!("{}-{}/", dependency.name, dependency.version))
             {
                 found = true;
             }

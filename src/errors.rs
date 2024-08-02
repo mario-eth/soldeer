@@ -19,10 +19,7 @@ pub struct MissingDependencies {
 
 impl MissingDependencies {
     pub fn new(name: &str, version: &str) -> MissingDependencies {
-        MissingDependencies {
-            name: name.to_string(),
-            version: version.to_string(),
-        }
+        MissingDependencies { name: name.to_string(), version: version.to_string() }
     }
 }
 
@@ -34,10 +31,7 @@ pub struct UnzippingError {
 
 impl UnzippingError {
     pub fn new(name: &str, version: &str) -> UnzippingError {
-        UnzippingError {
-            name: name.to_string(),
-            version: version.to_string(),
-        }
+        UnzippingError { name: name.to_string(), version: version.to_string() }
     }
 }
 
@@ -49,10 +43,7 @@ pub struct IncorrectDependency {
 
 impl IncorrectDependency {
     pub fn new(name: &str, version: &str) -> IncorrectDependency {
-        IncorrectDependency {
-            name: name.to_string(),
-            version: version.to_string(),
-        }
+        IncorrectDependency { name: name.to_string(), version: version.to_string() }
     }
 }
 
@@ -98,10 +89,7 @@ pub struct ProjectNotFound {
 
 impl ProjectNotFound {
     pub fn new(name: &str, cause: &str) -> ProjectNotFound {
-        ProjectNotFound {
-            name: name.to_string(),
-            cause: cause.to_string(),
-        }
+        ProjectNotFound { name: name.to_string(), cause: cause.to_string() }
     }
 }
 
@@ -114,11 +102,7 @@ pub struct PushError {
 
 impl PushError {
     pub fn new(name: &str, version: &str, cause: &str) -> PushError {
-        PushError {
-            name: name.to_string(),
-            version: version.to_string(),
-            cause: cause.to_string(),
-        }
+        PushError { name: name.to_string(), version: version.to_string(), cause: cause.to_string() }
     }
 }
 
@@ -129,9 +113,7 @@ pub struct LoginError {
 
 impl LoginError {
     pub fn new(cause: &str) -> LoginError {
-        LoginError {
-            cause: cause.to_string(),
-        }
+        LoginError { cause: cause.to_string() }
     }
 }
 #[derive(Debug, Clone, PartialEq)]
@@ -141,9 +123,7 @@ pub struct ConfigError {
 
 impl ConfigError {
     pub fn new(cause: &str) -> ConfigError {
-        ConfigError {
-            cause: cause.to_string(),
-        }
+        ConfigError { cause: cause.to_string() }
     }
 }
 
@@ -156,11 +136,7 @@ pub struct DependencyError {
 
 impl fmt::Display for DependencyError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            f,
-            "dependency operation failed for {}~{}",
-            &self.name, &self.version
-        )
+        write!(f, "dependency operation failed for {}~{}", &self.name, &self.version)
     }
 }
 

@@ -1,30 +1,17 @@
-use std::io;
-use std::{
-    env,
-    fs::{
-        self,
-        create_dir_all,
-        remove_dir_all,
-        remove_file,
-    },
-    path::{
-        Path,
-        PathBuf,
-    },
-    process::Command,
-};
-
 use serial_test::serial;
 use soldeer::{
-    commands::{
-        Install,
-        Subcommands,
-    },
+    commands::{Install, Subcommands},
     errors::SoldeerError,
-    DEPENDENCY_DIR,
-    LOCK_FILE,
+    DEPENDENCY_DIR, LOCK_FILE,
 };
-use std::io::Write;
+use std::{
+    env,
+    fs::{self, create_dir_all, remove_dir_all, remove_file},
+    io,
+    io::Write,
+    path::{Path, PathBuf},
+    process::Command,
+};
 
 extern crate soldeer;
 
@@ -102,10 +89,7 @@ contract TestSoldeer is Test {
     let _ = create_dir_all(test_project.join("dependencies").join("forge-std-1.8.2"));
 
     let _ = copy_dir_all(
-        env::current_dir()
-            .unwrap()
-            .join("dependencies")
-            .join("forge-std-1.8.2"),
+        env::current_dir().unwrap().join("dependencies").join("forge-std-1.8.2"),
         test_project.join("dependencies").join("forge-std-1.8.2"),
     );
 
@@ -128,10 +112,7 @@ contract TestSoldeer is Test {
 
     let passed = String::from_utf8(output.stdout).unwrap().contains("[PASS]");
     if !passed {
-        println!(
-            "This will fail with: {:?}",
-            String::from_utf8(output.stderr).unwrap()
-        );
+        println!("This will fail with: {:?}", String::from_utf8(output.stderr).unwrap());
     }
     assert!(passed);
     clean_test_env(&test_project);

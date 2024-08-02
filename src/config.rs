@@ -1,33 +1,19 @@
-use crate::errors::ConfigError;
-use crate::remote::get_dependency_url_remote;
-use crate::utils::{
-    get_current_working_dir,
-    read_file_to_string,
-    remove_empty_lines,
-};
 use crate::{
-    FOUNDRY_CONFIG_FILE,
-    SOLDEER_CONFIG_FILE,
+    errors::ConfigError,
+    remote::get_dependency_url_remote,
+    utils::{get_current_working_dir, read_file_to_string, remove_empty_lines},
+    FOUNDRY_CONFIG_FILE, SOLDEER_CONFIG_FILE,
 };
 use serde_derive::Deserialize;
-use std::fs::{
-    self,
-    remove_dir_all,
-    remove_file,
-    File,
-};
-use std::io::Write;
-use std::path::Path;
 use std::{
     env,
+    fs::{self, remove_dir_all, remove_file, File},
     io,
+    io::Write,
+    path::Path,
 };
 use toml::Table;
-use toml_edit::{
-    value,
-    DocumentMut,
-    Item,
-};
+use toml_edit::{value, DocumentMut, Item};
 use yansi::Paint;
 
 // Top level struct to hold the TOML data.
@@ -101,23 +87,17 @@ pub async fn read_config(filename: String) -> Result<Vec<Dependency>, ConfigErro
                 rev = v["rev"].to_string().replace('\"', "");
             }
         } else {
-            // we don't have a specified url, means we will rely on the remote server to give it to us
+            // we don't have a specified url, means we will rely on the remote server to give it to
+            // us
             url = match get_dependency_url_remote(name, &version).await {
                 Ok(u) => u,
                 Err(_) => {
-                    return Err(ConfigError {
-                        cause: "Could not get the url".to_string(),
-                    });
+                    return Err(ConfigError { cause: "Could not get the url".to_string() });
                 }
             }
         }
 
-        dependencies.push(Dependency {
-            name: name.to_string(),
-            version,
-            url,
-            hash: rev,
-        });
+        dependencies.push(Dependency { name: name.to_string(), version, url, hash: rev });
     }
 
     Ok(dependencies)
@@ -132,7 +112,8 @@ pub fn define_config_file() -> Result<String, ConfigError> {
         filename = String::from(FOUNDRY_CONFIG_FILE.to_str().unwrap());
     };
 
-    // check if the foundry.toml has the dependencies defined, if so then we setup the foundry.toml as the config file
+    // check if the foundry.toml has the dependencies defined, if so then we setup the foundry.toml
+    // as the config file
     if fs::metadata(&filename).is_ok() {
         return Ok(filename);
     }
@@ -145,9 +126,7 @@ pub fn define_config_file() -> Result<String, ConfigError> {
             std::io::stdout().flush().unwrap();
             let mut option = String::new();
             if io::stdin().read_line(&mut option).is_err() {
-                return Err(ConfigError {
-                    cause: "Option invalid.".to_string(),
-                });
+                return Err(ConfigError { cause: "Option invalid.".to_string() });
             }
 
             if option.is_empty() {
@@ -179,10 +158,8 @@ pub fn add_to_config(
 
     // in case we don't have dependencies defined in the config file, we add it and re-read the doc
     if !doc.contains_table("dependencies") {
-        let mut file: std::fs::File = fs::OpenOptions::new()
-            .append(true)
-            .open(config_file)
-            .unwrap();
+        let mut file: std::fs::File =
+            fs::OpenOptions::new().append(true).open(config_file).unwrap();
         if let Err(e) = write!(file, "{}", String::from("\n[dependencies]\n")) {
             eprintln!("Couldn't write to the config file: {}", e);
         }
@@ -214,12 +191,8 @@ pub fn add_to_config(
         .as_table_mut()
         .unwrap()
         .insert(dependency.name.to_string().as_str(), new_item);
-    let mut file: std::fs::File = fs::OpenOptions::new()
-        .write(true)
-        .append(false)
-        .truncate(true)
-        .open(config_file)
-        .unwrap();
+    let mut file: std::fs::File =
+        fs::OpenOptions::new().write(true).append(false).truncate(true).open(config_file).unwrap();
     if let Err(e) = write!(file, "{}", doc) {
         eprintln!("Couldn't write to the config file: {}", e);
     }
@@ -258,9 +231,7 @@ pub async fn remappings() -> Result<(), ConfigError> {
         if !dependency_name_formatted.contains('@') {
             dependency_name_formatted = format!("@{}", dependency_name_formatted);
         }
-        let index = existing_remap
-            .iter()
-            .position(|r| r == &dependency_name_formatted);
+        let index = existing_remap.iter().position(|r| r == &dependency_name_formatted);
         if index.is_none() {
             println!(
                 "{}",
@@ -281,18 +252,13 @@ pub async fn remappings() -> Result<(), ConfigError> {
         return Ok(());
     }
 
-    let mut file: std::fs::File = fs::OpenOptions::new()
-        .append(true)
-        .open(Path::new("remappings.txt"))
-        .unwrap();
+    let mut file: std::fs::File =
+        fs::OpenOptions::new().append(true).open(Path::new("remappings.txt")).unwrap();
 
     match write!(file, "{}", &new_remappings) {
         Ok(_) => {}
         Err(_) => {
-            println!(
-                "{}",
-                Paint::yellow(&"Could not write to the remappings file".to_string())
-            );
+            println!("{}", Paint::yellow(&"Could not write to the remappings file".to_string()));
         }
     }
     remove_empty_lines("remappings.txt");
@@ -329,12 +295,7 @@ pub fn get_foundry_setup() -> Result<Vec<bool>, ConfigError> {
         );
         return Ok(vec![false]);
     }
-    Ok(vec![data
-        .remappings
-        .get("enabled")
-        .unwrap()
-        .as_bool()
-        .unwrap()])
+    Ok(vec![data.remappings.get("enabled").unwrap().as_bool().unwrap()])
 }
 
 pub fn delete_config(
@@ -343,10 +304,7 @@ pub fn delete_config(
 ) -> Result<Dependency, ConfigError> {
     println!(
         "{}",
-        Paint::green(&format!(
-            "Removing the dependency {} from the config file",
-            dependency_name
-        ))
+        Paint::green(&format!("Removing the dependency {} from the config file", dependency_name))
     );
 
     let contents = read_file_to_string(&String::from(config_file));
@@ -358,17 +316,11 @@ pub fn delete_config(
         });
     }
 
-    let item_removed = doc["dependencies"]
-        .as_table_mut()
-        .unwrap()
-        .remove(dependency_name);
+    let item_removed = doc["dependencies"].as_table_mut().unwrap().remove(dependency_name);
 
     if item_removed.is_none() {
         return Err(ConfigError {
-            cause: format!(
-                "The dependency {} does not exists in the config file",
-                dependency_name
-            ),
+            cause: format!("The dependency {} does not exists in the config file", dependency_name),
         });
     }
 
@@ -386,16 +338,10 @@ pub fn delete_config(
         url: "".to_string(),
     };
 
-    let mut file: std::fs::File = fs::OpenOptions::new()
-        .write(true)
-        .append(false)
-        .truncate(true)
-        .open(config_file)
-        .unwrap();
+    let mut file: std::fs::File =
+        fs::OpenOptions::new().write(true).append(false).truncate(true).open(config_file).unwrap();
     if let Err(e) = write!(file, "{}", doc) {
-        return Err(ConfigError {
-            cause: format!("Couldn't write to the config file {}", e),
-        });
+        return Err(ConfigError { cause: format!("Couldn't write to the config file {}", e) });
     }
     Ok(dependency)
 }
@@ -435,20 +381,13 @@ enabled = true
 [dependencies]
 "#;
     } else {
-        return Err(ConfigError {
-            cause: "Option invalid".to_string(),
-        });
+        return Err(ConfigError { cause: "Option invalid".to_string() });
     }
 
     std::fs::File::create(config_file).unwrap();
-    let mut file: std::fs::File = fs::OpenOptions::new()
-        .write(true)
-        .open(config_file)
-        .unwrap();
+    let mut file: std::fs::File = fs::OpenOptions::new().write(true).open(config_file).unwrap();
     if write!(file, "{}", content).is_err() {
-        return Err(ConfigError {
-            cause: "Could not create a new config file".to_string(),
-        });
+        return Err(ConfigError { cause: "Could not create a new config file".to_string() });
     }
     let mut filename = String::from(FOUNDRY_CONFIG_FILE.to_str().unwrap());
     if option.trim() == "2" {
@@ -461,26 +400,18 @@ enabled = true
 
 #[cfg(test)]
 mod tests {
-    use std::env;
-    use std::fs::remove_file;
-    use std::io::Write;
+    use super::*;
+    use crate::{config::Dependency, errors::ConfigError, utils::get_current_working_dir};
+    use rand::{distributions::Alphanumeric, Rng};
+    use serial_test::serial;
     use std::{
+        env,
         fs::{
-            self,
+            remove_file, {self},
         },
+        io::Write,
         path::PathBuf,
     };
-
-    use crate::config::Dependency;
-    use crate::errors::ConfigError;
-    use crate::utils::get_current_working_dir;
-    use rand::{
-        distributions::Alphanumeric,
-        Rng,
-    };
-    use serial_test::serial;
-
-    use super::*;
 
     #[tokio::test] // check dependencies as {version = "1.1.1"}
     #[serial]
@@ -489,26 +420,24 @@ mod tests {
 # Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
 
 [profile.default]
-libs = ["dependencies"] 
+libs = ["dependencies"]
 
 [dependencies]
 "@gearbox-protocol-periphery-v3" = "1.6.1"
-"@openzeppelin-contracts" = "5.0.2"   
+"@openzeppelin-contracts" = "5.0.2"
 "#;
         let target_config = define_config(true);
 
         write_to_config(&target_config, config_contents);
 
         ////////////// MOCK //////////////
-        // Request a new server from the pool, TODO i tried to move this into a fn but the mock is dropped at the end of the function...
+        // Request a new server from the pool, TODO i tried to move this into a fn but the mock is
+        // dropped at the end of the function...
         let mut server = mockito::Server::new_async().await;
         env::set_var("base_url", format!("http://{}", server.host_with_port()));
 
         let _ = server
-            .mock(
-                "GET",
-                mockito::Matcher::Regex(r"^/api/v1/revision-cli.*".to_string()),
-            )
+            .mock("GET", mockito::Matcher::Regex(r"^/api/v1/revision-cli.*".to_string()))
             .with_status(201)
             .with_header("content-type", "application/json")
             .with_body(get_return_data())
@@ -553,26 +482,24 @@ libs = ["dependencies"]
 # Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
 
 [profile.default]
-libs = ["dependencies"] 
+libs = ["dependencies"]
 
 [dependencies]
 "@gearbox-protocol-periphery-v3" = "1.6.1"
-"@openzeppelin-contracts" = "5.0.2"   
+"@openzeppelin-contracts" = "5.0.2"
 "#;
         let target_config = define_config(true);
 
         write_to_config(&target_config, config_contents);
 
         ////////////// MOCK //////////////
-        // Request a new server from the pool, TODO i tried to move this into a fn but the mock is dropped at the end of the function...
+        // Request a new server from the pool, TODO i tried to move this into a fn but the mock is
+        // dropped at the end of the function...
         let mut server = mockito::Server::new_async().await;
         env::set_var("base_url", format!("http://{}", server.host_with_port()));
 
         let _ = server
-            .mock(
-                "GET",
-                mockito::Matcher::Regex(r"^/api/v1/revision-cli.*".to_string()),
-            )
+            .mock("GET", mockito::Matcher::Regex(r"^/api/v1/revision-cli.*".to_string()))
             .with_status(201)
             .with_header("content-type", "application/json")
             .with_body(get_return_data())
@@ -619,22 +546,20 @@ enabled = true
 
 [dependencies]
 "@gearbox-protocol-periphery-v3" = "1.6.1"
-"@openzeppelin-contracts" = "5.0.2"   
+"@openzeppelin-contracts" = "5.0.2"
 "#;
         let target_config = define_config(false);
 
         write_to_config(&target_config, config_contents);
 
         ////////////// MOCK //////////////
-        // Request a new server from the pool, TODO i tried to move this into a fn but the mock is dropped at the end of the function...
+        // Request a new server from the pool, TODO i tried to move this into a fn but the mock is
+        // dropped at the end of the function...
         let mut server = mockito::Server::new_async().await;
         env::set_var("base_url", format!("http://{}", server.host_with_port()));
 
         let _ = server
-            .mock(
-                "GET",
-                mockito::Matcher::Regex(r"^/api/v1/revision-cli.*".to_string()),
-            )
+            .mock("GET", mockito::Matcher::Regex(r"^/api/v1/revision-cli.*".to_string()))
             .with_status(201)
             .with_header("content-type", "application/json")
             .with_body(get_return_data())
@@ -681,22 +606,20 @@ enabled = true
 
 [dependencies]
 "@gearbox-protocol-periphery-v3" = "1.6.1"
-"@openzeppelin-contracts" = "5.0.2"   
+"@openzeppelin-contracts" = "5.0.2"
 "#;
         let target_config = define_config(false);
 
         write_to_config(&target_config, config_contents);
 
         ////////////// MOCK //////////////
-        // Request a new server from the pool, TODO i tried to move this into a fn but the mock is dropped at the end of the function...
+        // Request a new server from the pool, TODO i tried to move this into a fn but the mock is
+        // dropped at the end of the function...
         let mut server = mockito::Server::new_async().await;
         env::set_var("base_url", format!("http://{}", server.host_with_port()));
 
         let _ = server
-            .mock(
-                "GET",
-                mockito::Matcher::Regex(r"^/api/v1/revision-cli.*".to_string()),
-            )
+            .mock("GET", mockito::Matcher::Regex(r"^/api/v1/revision-cli.*".to_string()))
             .with_status(201)
             .with_header("content-type", "application/json")
             .with_body(get_return_data())
@@ -741,7 +664,7 @@ enabled = true
 # Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
 
 [profile.default]
-libs = ["dependencies"] 
+libs = ["dependencies"]
 
 [dependencies]
 "@gearbox-protocol-periphery-v3" = 1.6.1"
@@ -777,7 +700,7 @@ libs = ["dependencies"]
 # Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
 
 [profile.default]
-libs = ["dependencies"] 
+libs = ["dependencies"]
 
 [dependencies]
 "@gearbox-protocol-periphery-v3" = ""
@@ -811,7 +734,7 @@ libs = ["dependencies"]
 # Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
 
 [profile.default]
-libs = ["dependencies"] 
+libs = ["dependencies"]
 
 [dependencies]
 "@gearbox-protocol-periphery-v3" = "1.1.1"
@@ -825,12 +748,7 @@ libs = ["dependencies"]
                 assert_eq!("False state", "");
             }
             Err(err) => {
-                assert_eq!(
-                    err,
-                    ConfigError {
-                        cause: "Could not get the url".to_string(),
-                    }
-                )
+                assert_eq!(err, ConfigError { cause: "Could not get the url".to_string() })
             }
         };
         let _ = remove_file(target_config);
@@ -844,7 +762,7 @@ libs = ["dependencies"]
 # Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
 
 [profile.default]
-libs = ["dependencies"] 
+libs = ["dependencies"]
 
 [dependencies]
 "#;
@@ -852,12 +770,7 @@ libs = ["dependencies"]
 
         write_to_config(&target_config, config_contents);
 
-        assert!(target_config
-            .file_name()
-            .unwrap()
-            .to_str()
-            .unwrap()
-            .contains("foundry"));
+        assert!(target_config.file_name().unwrap().to_str().unwrap().contains("foundry"));
         let _ = remove_file(target_config);
         Ok(())
     }
@@ -872,12 +785,7 @@ libs = ["dependencies"]
 
         write_to_config(&target_config, config_contents);
 
-        assert!(target_config
-            .file_name()
-            .unwrap()
-            .to_str()
-            .unwrap()
-            .contains("soldeer"));
+        assert!(target_config.file_name().unwrap().to_str().unwrap().contains("soldeer"));
         let _ = remove_file(target_config);
         Ok(())
     }
@@ -899,12 +807,7 @@ libs = ["dependencies"]
 
         let result = create_example_config("1").unwrap();
 
-        assert!(PathBuf::from(&result)
-            .file_name()
-            .unwrap()
-            .to_str()
-            .unwrap()
-            .contains("foundry"));
+        assert!(PathBuf::from(&result).file_name().unwrap().to_str().unwrap().contains("foundry"));
         assert_eq!(read_file_to_string(&result), content);
         Ok(())
     }
@@ -920,12 +823,7 @@ enabled = true
 
         let result = create_example_config("2").unwrap();
 
-        assert!(PathBuf::from(&result)
-            .file_name()
-            .unwrap()
-            .to_str()
-            .unwrap()
-            .contains("soldeer"));
+        assert!(PathBuf::from(&result).file_name().unwrap().to_str().unwrap().contains("soldeer"));
         assert_eq!(read_file_to_string(&result), content);
         Ok(())
     }
@@ -969,10 +867,7 @@ libs = ["dependencies"]
 dep1 = "1.0.0"
 "#;
 
-        assert_eq!(
-            read_file_to_string(&String::from(target_config.to_str().unwrap())),
-            content
-        );
+        assert_eq!(read_file_to_string(&String::from(target_config.to_str().unwrap())), content);
 
         let _ = remove_file(target_config);
         Ok(())
@@ -1019,10 +914,7 @@ libs = ["dependencies"]
 dep1 = { version = "1.0.0", url = "http://custom_url.com/custom.zip" }
 "#;
 
-        assert_eq!(
-            read_file_to_string(&String::from(target_config.to_str().unwrap())),
-            content
-        );
+        assert_eq!(read_file_to_string(&String::from(target_config.to_str().unwrap())), content);
 
         let _ = remove_file(target_config);
         Ok(())
@@ -1071,10 +963,7 @@ old_dep = "5.1.0-my-version-is-cool"
 dep1 = "1.0.0"
 "#;
 
-        assert_eq!(
-            read_file_to_string(&String::from(target_config.to_str().unwrap())),
-            content
-        );
+        assert_eq!(read_file_to_string(&String::from(target_config.to_str().unwrap())), content);
 
         let _ = remove_file(target_config);
         Ok(())
@@ -1123,10 +1012,7 @@ old_dep = { version = "5.1.0-my-version-is-cool", url = "http://custom_url.com/c
 dep1 = { version = "1.0.0", url = "http://custom_url.com/custom.zip" }
 "#;
 
-        assert_eq!(
-            read_file_to_string(&String::from(target_config.to_str().unwrap())),
-            content
-        );
+        assert_eq!(read_file_to_string(&String::from(target_config.to_str().unwrap())), content);
 
         let _ = remove_file(target_config);
         Ok(())
@@ -1174,10 +1060,7 @@ libs = ["dependencies"]
 old_dep = { version = "1.0.0", url = "http://custom_url.com/custom.zip" }
 "#;
 
-        assert_eq!(
-            read_file_to_string(&String::from(target_config.to_str().unwrap())),
-            content
-        );
+        assert_eq!(read_file_to_string(&String::from(target_config.to_str().unwrap())), content);
 
         let _ = remove_file(target_config);
         Ok(())
@@ -1225,10 +1108,7 @@ libs = ["dependencies"]
 old_dep = "1.0.0"
 "#;
 
-        assert_eq!(
-            read_file_to_string(&String::from(target_config.to_str().unwrap())),
-            content
-        );
+        assert_eq!(read_file_to_string(&String::from(target_config.to_str().unwrap())), content);
 
         let _ = remove_file(target_config);
         Ok(())
@@ -1279,10 +1159,7 @@ gas_reports = ['*']
 dep1 = "1.0.0"
 "#;
 
-        assert_eq!(
-            read_file_to_string(&String::from(target_config.to_str().unwrap())),
-            content
-        );
+        assert_eq!(read_file_to_string(&String::from(target_config.to_str().unwrap())), content);
 
         let _ = remove_file(target_config);
         Ok(())
@@ -1317,10 +1194,7 @@ enabled = true
 dep1 = "1.0.0"
 "#;
 
-        assert_eq!(
-            read_file_to_string(&String::from(target_config.to_str().unwrap())),
-            content
-        );
+        assert_eq!(read_file_to_string(&String::from(target_config.to_str().unwrap())), content);
 
         let _ = remove_file(target_config);
         Ok(())
@@ -1355,10 +1229,7 @@ enabled = true
 dep1 = { version = "1.0.0", url = "http://custom_url.com/custom.zip" }
 "#;
 
-        assert_eq!(
-            read_file_to_string(&String::from(target_config.to_str().unwrap())),
-            content
-        );
+        assert_eq!(read_file_to_string(&String::from(target_config.to_str().unwrap())), content);
 
         let _ = remove_file(target_config);
         Ok(())
@@ -1409,10 +1280,7 @@ gas_reports = ['*']
 dep1 = { version = "1.0.0", git = "git@github.com:foundry-rs/forge-std.git", rev = "07263d193d621c4b2b0ce8b4d54af58f6957d97d" }
 "#;
 
-        assert_eq!(
-            read_file_to_string(&String::from(target_config.to_str().unwrap())),
-            content
-        );
+        assert_eq!(read_file_to_string(&String::from(target_config.to_str().unwrap())), content);
 
         let _ = remove_file(target_config);
         Ok(())
@@ -1467,10 +1335,7 @@ gas_reports = ['*']
 dep1 = { version = "1.0.0", git = "git@github.com:foundry-rs/forge-std.git", rev = "07263d193d621c4b2b0ce8b4d54af58f6957d97d" }
 "#;
 
-        assert_eq!(
-            read_file_to_string(&String::from(target_config.to_str().unwrap())),
-            content
-        );
+        assert_eq!(read_file_to_string(&String::from(target_config.to_str().unwrap())), content);
 
         let _ = remove_file(target_config);
         Ok(())
@@ -1524,10 +1389,7 @@ gas_reports = ['*']
 dep1 = { version = "1.0.0", url = "http://custom_url.com/custom.zip" }
 "#;
 
-        assert_eq!(
-            read_file_to_string(&String::from(target_config.to_str().unwrap())),
-            content
-        );
+        assert_eq!(read_file_to_string(&String::from(target_config.to_str().unwrap())), content);
 
         let _ = remove_file(target_config);
         Ok(())
@@ -1574,10 +1436,7 @@ libs = ["dependencies"]
 [dependencies]
 "#;
 
-        assert_eq!(
-            read_file_to_string(&String::from(target_config.to_str().unwrap())),
-            content
-        );
+        assert_eq!(read_file_to_string(&String::from(target_config.to_str().unwrap())), content);
 
         let _ = remove_file(target_config);
         Ok(())
@@ -1628,10 +1487,7 @@ dep3 = { version = "1.0.0", url = "http://custom_url.com/custom.zip" }
 dep2 = { version = "1.0.0", url = "http://custom_url.com/custom.zip" }
 "#;
 
-        assert_eq!(
-            read_file_to_string(&String::from(target_config.to_str().unwrap())),
-            content
-        );
+        assert_eq!(read_file_to_string(&String::from(target_config.to_str().unwrap())), content);
 
         let _ = remove_file(target_config);
         Ok(())
@@ -1671,10 +1527,7 @@ dep1 = { version = "1.0.0", url = "http://custom_url.com/custom.zip" }
             }
         }
 
-        assert_eq!(
-            read_file_to_string(&String::from(target_config.to_str().unwrap())),
-            content
-        );
+        assert_eq!(read_file_to_string(&String::from(target_config.to_str().unwrap())), content);
 
         let _ = remove_file(target_config);
         Ok(())
@@ -1686,22 +1539,16 @@ dep1 = { version = "1.0.0", url = "http://custom_url.com/custom.zip" }
         if target_file.exists() {
             let _ = remove_file(target_file);
         }
-        let mut file: std::fs::File = fs::OpenOptions::new()
-            .create_new(true)
-            .write(true)
-            .open(target_file)
-            .unwrap();
+        let mut file: std::fs::File =
+            fs::OpenOptions::new().create_new(true).write(true).open(target_file).unwrap();
         if let Err(e) = write!(file, "{}", content) {
             eprintln!("Couldn't write to the config file: {}", e);
         }
     }
 
     fn define_config(foundry: bool) -> PathBuf {
-        let s: String = rand::thread_rng()
-            .sample_iter(&Alphanumeric)
-            .take(7)
-            .map(char::from)
-            .collect();
+        let s: String =
+            rand::thread_rng().sample_iter(&Alphanumeric).take(7).map(char::from).collect();
         let mut target = format!("foundry{}.toml", s);
         if !foundry {
             target = format!("soldeer{}.toml", s);

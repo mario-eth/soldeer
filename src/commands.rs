@@ -1,7 +1,4 @@
-use clap::{
-    Parser,
-    Subcommand,
-};
+use clap::{Parser, Subcommand};
 
 /// A minimal solidity dependency manager.
 #[derive(Parser, Debug)]

@@ -12,13 +12,13 @@ use crate::{
     utils::{check_dotfiles_recursive, get_current_working_dir, prompt_user_for_confirmation},
     versioning::push_version,
 };
-use config::{add_to_config, get_config_path};
+use config::{add_to_config, get_config_path, GitDependency, HttpDependency};
 use dependency_downloader::download_dependency;
-use janitor::{cleanup_dependency, CleanupParams};
+use janitor::cleanup_dependency;
 use lock::LockWriteMode;
 use once_cell::sync::Lazy;
 use regex::Regex;
-use remote::{get_dependency_url_remote, get_latest_forge_std_dependency};
+use remote::get_latest_forge_std_dependency;
 use std::{env, path::PathBuf};
 use utils::{get_dependency_type, DependencyType};
 use yansi::Paint;
@@ -42,11 +42,6 @@ pub static SOLDEER_CONFIG_FILE: Lazy<PathBuf> =
 pub static FOUNDRY_CONFIG_FILE: Lazy<PathBuf> =
     Lazy::new(|| get_current_working_dir().join("foundry.toml"));
 
-#[derive(Debug)]
-pub struct FOUNDRY {
-    remappings: bool,
-}
-
 #[tokio::main]
 pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
     match command {
@@ -63,7 +58,7 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
                 }
             }
 
-            let mut dependency: Dependency = match get_latest_forge_std_dependency().await {
+            let dependency: Dependency = match get_latest_forge_std_dependency().await {
                 Ok(dep) => dep,
                 Err(err) => {
                     return Err(SoldeerError {
@@ -74,73 +69,45 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
                     });
                 }
             };
-            match install_dependency(&mut dependency, false, false).await {
+            match install_dependency(dependency).await {
                 Ok(_) => {}
                 Err(err) => return Err(err),
             }
         }
         Subcommands::Install(install) => {
-            if install.dependency.is_none() {
-                return update().await;
-            }
-            Paint::green("🦌 Running Soldeer install 🦌\n");
-            let dependency = install.dependency.unwrap();
-            if !dependency.contains('~') {
-                return Err(SoldeerError {
-                    message: format!(
-                        "Dependency {} does not specify a version.\nThe format should be [DEPENDENCY]~[VERSION]",
-                        dependency
-                    ),
-                });
-            }
-            let dependency_name: String =
-                dependency.split('~').collect::<Vec<&str>>()[0].to_string();
-            let dependency_version: String =
-                dependency.split('~').collect::<Vec<&str>>()[1].to_string();
-            let dependency_url: String;
-
-            let mut custom_url = false;
-            let mut via_git = false;
-
-            if install.remote_url.is_some() {
-                custom_url = true;
-
-                let remote_url = install.remote_url.unwrap();
-                via_git = get_dependency_type(&remote_url) == DependencyType::Git;
-                dependency_url = remote_url.clone();
-            } else {
-                dependency_url =
-                    match get_dependency_url_remote(&dependency_name, &dependency_version).await {
-                        Ok(url) => url,
-                        Err(err) => {
-                            return Err(SoldeerError {
-                                message: format!(
-                                    "Error downloading a dependency {}~{}. Cause {}",
-                                    err.name, err.version, err.cause
-                                ),
-                            });
-                        }
-                    };
-            }
-
-            // retrieve the commit in case it's sent when using git
-            let mut hash = String::new();
-            if via_git && install.rev.is_some() {
-                hash = install.rev.unwrap();
-            } else if !via_git && install.rev.is_some() {
-                return Err(SoldeerError {
-                    message: format!("Error unknown param {}", install.rev.unwrap()),
-                });
-            }
-
-            let mut dependency = Dependency {
-                name: dependency_name.clone(),
-                version: dependency_version.clone(),
-                url: dependency_url.clone(),
-                hash,
+            let Some(dependency) = install.dependency else {
+                return update().await; // TODO: instead, check which dependencies do not match the
+                                       // integrity checksum and install those
             };
 
-            match install_dependency(&mut dependency, via_git, custom_url).await {
+            Paint::green("🦌 Running Soldeer install 🦌\n");
+            let (dependency_name, dependency_version) =
+                dependency.split_once('~').expect("dependency string should have name and version");
+
+            let dep = match install.remote_url {
+                Some(url) => match get_dependency_type(&url) {
+                    DependencyType::Git => Dependency::Git(GitDependency {
+                        name: dependency_name.to_string(),
+                        version: dependency_version.to_string(),
+                        git: url,
+                        rev: install.rev,
+                    }),
+                    DependencyType::Http => Dependency::Http(HttpDependency {
+                        name: dependency_name.to_string(),
+                        version: dependency_version.to_string(),
+                        url: Some(url),
+                        checksum: None,
+                    }),
+                },
+                None => Dependency::Http(HttpDependency {
+                    name: dependency_name.to_string(),
+                    version: dependency_version.to_string(),
+                    url: None,
+                    checksum: None,
+                }),
+            };
+
+            match install_dependency(dep).await {
                 Ok(_) => {}
                 Err(err) => return Err(err),
             }
@@ -212,8 +179,8 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
 
         Subcommands::Uninstall(uninstall) => {
             // define the config file
-            let config_file: String = match get_config_path() {
-                Ok(file) => file,
+            let path = match get_config_path() {
+                Ok(path) => path,
                 Err(_) => {
                     return Err(SoldeerError {
                         message: "Could not remove the dependency from the config file".to_string(),
@@ -222,7 +189,7 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
             };
 
             // delete from the config file and return the dependency
-            let dependency = match delete_config(&uninstall.dependency, &config_file) {
+            let dependency = match delete_config(&uninstall.dependency, &path) {
                 Ok(d) => d,
                 Err(err) => {
                     return Err(SoldeerError { message: err.cause });
@@ -249,19 +216,15 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
     Ok(())
 }
 
-async fn install_dependency(
-    dependency: &mut Dependency,
-    via_git: bool,
-    custom_url: bool,
-) -> Result<(), SoldeerError> {
-    match lock_check(dependency, true) {
+async fn install_dependency(mut dependency: Dependency) -> Result<(), SoldeerError> {
+    match lock_check(&dependency, true) {
         Ok(_) => {}
         Err(err) => {
             return Err(SoldeerError { message: err.cause });
         }
     }
 
-    dependency.hash = match download_dependency(dependency).await {
+    let result = match download_dependency(&dependency).await {
         Ok(h) => h,
         Err(err) => {
             return Err(SoldeerError {
@@ -272,6 +235,13 @@ async fn install_dependency(
             });
         }
     };
+    match dependency {
+        Dependency::Http(ref mut dep) => {
+            dep.checksum = Some(result.hash);
+            dep.url = Some(result.url);
+        }
+        Dependency::Git(ref mut dep) => dep.rev = Some(result.hash),
+    }
 
     match write_lock(&[dependency.clone()], LockWriteMode::Append) {
         Ok(_) => {}
@@ -280,14 +250,11 @@ async fn install_dependency(
         }
     }
 
-    if !via_git {
-        match unzip_dependency(&dependency.name, &dependency.version) {
+    if let Dependency::Http(dep) = &dependency {
+        match unzip_dependency(&dep.name, &dep.version) {
             Ok(_) => {}
             Err(err_unzip) => {
-                match janitor::cleanup_dependency(
-                    dependency,
-                    CleanupParams { full: true, via_git: false },
-                ) {
+                match janitor::cleanup_dependency(&dependency, true) {
                     Ok(_) => {}
                     Err(err_cleanup) => {
                         return Err(SoldeerError {
@@ -311,7 +278,7 @@ async fn install_dependency(
     let config_file = match get_config_path() {
         Ok(file) => file,
 
-        Err(_) => match cleanup_dependency(dependency, CleanupParams { full: true, via_git }) {
+        Err(_) => match cleanup_dependency(&dependency, true) {
             Ok(_) => {
                 return Err(SoldeerError {
                     message: "Could not define the config file".to_string(),
@@ -325,14 +292,14 @@ async fn install_dependency(
         },
     };
 
-    match add_to_config(dependency, custom_url, &config_file, via_git) {
+    match add_to_config(&dependency, &config_file) {
         Ok(_) => {}
         Err(err) => {
             return Err(SoldeerError { message: err.cause });
         }
     }
 
-    match janitor::healthcheck_dependency(dependency) {
+    match janitor::healthcheck_dependency(&dependency) {
         Ok(_) => {}
         Err(err) => {
             return Err(SoldeerError {
@@ -341,7 +308,7 @@ async fn install_dependency(
         }
     }
 
-    match janitor::cleanup_dependency(dependency, CleanupParams { full: false, via_git }) {
+    match janitor::cleanup_dependency(&dependency, false) {
         Ok(_) => {}
         Err(err) => {
             return Err(SoldeerError {
@@ -358,12 +325,12 @@ async fn install_dependency(
 async fn update() -> Result<(), SoldeerError> {
     Paint::green("🦌 Running Soldeer update 🦌\n");
 
-    let mut dependencies: Vec<Dependency> = match read_config(String::new()).await {
+    let mut dependencies: Vec<Dependency> = match read_config(None).await {
         Ok(dep) => dep,
         Err(err) => return Err(SoldeerError { message: err.cause }),
     };
 
-    let hashes = match download_dependencies(&dependencies, true).await {
+    let results = match download_dependencies(&dependencies, true).await {
         Ok(h) => h,
         Err(err) => {
             return Err(SoldeerError {
@@ -375,9 +342,15 @@ async fn update() -> Result<(), SoldeerError> {
         }
     };
 
-    for (index, dependency) in dependencies.iter_mut().enumerate() {
-        dependency.hash.clone_from(&hashes[index]);
-    }
+    dependencies.iter_mut().zip(results.into_iter()).for_each(|(dependency, result)| {
+        match dependency {
+            Dependency::Http(ref mut dep) => {
+                dep.checksum = Some(result.hash);
+                dep.url = Some(result.url);
+            }
+            Dependency::Git(ref mut dep) => dep.rev = Some(result.hash),
+        }
+    });
 
     match unzip_dependencies(&dependencies) {
         Ok(_) => {}

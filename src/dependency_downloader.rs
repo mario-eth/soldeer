@@ -1,15 +1,14 @@
 use crate::{
     config::{Dependency, GitDependency, HttpDependency},
     errors::{DependencyError, DownloadError, UnzippingError},
+    remote::get_dependency_url_remote,
     utils::{read_file, sha256_digest},
     DEPENDENCY_DIR,
 };
-use futures::StreamExt as _;
 use reqwest::IntoUrl;
 use std::{
-    error::Error,
-    fs,
-    fs::remove_dir_all,
+    ffi::{OsStr, OsString},
+    fs::{self, remove_dir_all},
     io::Cursor,
     path::{Path, PathBuf},
     process::{Command, Stdio},
@@ -21,20 +20,20 @@ use yansi::Paint;
 pub async fn download_dependencies(
     dependencies: &[Dependency],
     clean: bool,
-) -> Result<Vec<String>, DownloadError> {
+) -> Result<Vec<DownloadResult>, DownloadError> {
     // clean dependencies folder if flag is true
     if clean {
         clean_dependency_directory();
     }
     // downloading dependencies to dependencies folder
-    let hashes: Vec<String> = futures::future::join_all(
+    let results: Vec<DownloadResult> = futures::future::join_all(
         dependencies.iter().map(|dep| async { download_dependency(dep).await }),
     )
     .await
     .into_iter()
-    .collect::<Result<Vec<String>, DownloadError>>()?;
+    .collect::<Result<Vec<DownloadResult>, DownloadError>>()?;
 
-    Ok(hashes)
+    Ok(results)
 }
 
 // un-zip-ing dependencies to dependencies folder
@@ -49,36 +48,41 @@ pub fn unzip_dependencies(dependencies: &[Dependency]) -> Result<(), UnzippingEr
     Ok(())
 }
 
-pub async fn download_dependency(dependency: &Dependency) -> Result<String, DownloadError> {
+pub struct DownloadResult {
+    pub hash: String,
+    pub url: String,
+}
+
+pub async fn download_dependency(dependency: &Dependency) -> Result<DownloadResult, DownloadError> {
     let dependency_directory: PathBuf = DEPENDENCY_DIR.clone();
     if !DEPENDENCY_DIR.is_dir() {
         fs::create_dir(&dependency_directory).unwrap();
     }
 
-    let hash = match dependency {
+    let res = match dependency {
         Dependency::Http(dep) => {
-            let Some(url) = &dep.url else {
-                return Err(DownloadError {
-                    name: dep.name.to_string(),
-                    version: dep.version.to_string(),
-                    cause: "Dependency URL is missing".to_string(),
-                });
+            let url = match &dep.url {
+                Some(url) => url.clone(),
+                None => get_dependency_url_remote(&dep.name, &dep.version).await?,
             };
-            download_via_http(url, dep, &dependency_directory).await.map_err(|err| {
+            download_via_http(&url, dep, &dependency_directory).await.map_err(|err| {
                 DownloadError {
                     name: dep.name.to_string(),
                     version: dep.version.to_string(),
                     cause: err.cause,
                 }
             })?;
-            sha256_digest(&dep.name, &dep.version)
+            DownloadResult { hash: sha256_digest(&dep.name, &dep.version), url }
         }
         Dependency::Git(dep) => {
-            download_via_git(dep, &dependency_directory).await.map_err(|err| DownloadError {
-                name: dep.name.to_string(),
-                version: dep.version.to_string(),
-                cause: err.cause,
-            })?
+            let hash = download_via_git(dep, &dependency_directory).await.map_err(|err| {
+                DownloadError {
+                    name: dep.name.to_string(),
+                    version: dep.version.to_string(),
+                    cause: err.cause,
+                }
+            })?;
+            DownloadResult { hash, url: dep.git.clone() }
         }
     };
     println!(
@@ -90,7 +94,7 @@ pub async fn download_dependency(dependency: &Dependency) -> Result<String, Down
         ))
     );
 
-    Ok(hash)
+    Ok(res)
 }
 
 pub fn unzip_dependency(
@@ -135,18 +139,17 @@ async fn download_via_git(
 ) -> Result<String, DownloadError> {
     let target_dir = &format!("{}-{}", dependency.name, dependency.version);
     let path = dependency_directory.join(target_dir);
-    let dependency_path = path.as_os_str().to_str().unwrap();
     if path.exists() {
         let _ = remove_dir_all(&path);
     }
 
-    let http_url: String = transform_git_to_http(&dependency.git);
+    let http_url = transform_git_to_http(&dependency.git);
     let mut git_clone = Command::new("git");
     let mut git_checkout = Command::new("git");
     let mut git_get_commit = Command::new("git");
 
     let result = git_clone
-        .args(["clone", http_url.as_str(), dependency_path])
+        .args([OsStr::new("clone"), http_url.as_os_str(), path.as_os_str()])
         .env("GIT_TERMINAL_PROMPT", "0")
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
@@ -177,7 +180,7 @@ async fn download_via_git(
         Some(rev) => {
             let result = git_get_commit
                 .args([
-                    format!("--work-tree={}", dependency_path),
+                    format!("--work-tree={:?}", path),
                     format!("--git-dir={}", path.join(".git").to_string_lossy()),
                     "checkout".to_string(),
                     rev.to_string(),
@@ -202,7 +205,7 @@ async fn download_via_git(
         None => {
             let result = git_checkout
                 .args([
-                    format!("--work-tree={}", dependency_path),
+                    format!("--work-tree={:?}", path),
                     format!("--git-dir={}", path.join(".git").to_string_lossy()),
                     "rev-parse".to_string(),
                     "--verify".to_string(),
@@ -288,15 +291,15 @@ pub fn delete_dependency_files(dependency: &Dependency) -> Result<(), Dependency
     Ok(())
 }
 
-fn transform_git_to_http(url: &str) -> String {
+fn transform_git_to_http(url: &str) -> OsString {
     if let Some(stripped) = url.strip_prefix("git@github.com:") {
         let repo_path = stripped;
-        format!("https://github.com/{}", repo_path)
+        format!("https://github.com/{}", repo_path).into()
     } else if let Some(stripped) = url.strip_prefix("git@gitlab.com:") {
         let repo_path = stripped;
-        format!("https://gitlab.com/{}", repo_path)
+        format!("https://gitlab.com/{}", repo_path).into()
     } else {
-        url.to_string()
+        url.to_string().into()
     }
 }
 
@@ -322,12 +325,12 @@ mod tests {
             checksum: None
         });
         dependencies.push(dependency.clone());
-        let hashes = download_dependencies(&dependencies, false).await.unwrap();
+        let results = download_dependencies(&dependencies, false).await.unwrap();
         let path_zip =
             DEPENDENCY_DIR.join(format!("{}-{}.zip", &dependency.name(), &dependency.version()));
         assert!(path_zip.exists());
-        assert!(hashes.len() == 1);
-        assert!(!hashes[0].is_empty());
+        assert!(results.len() == 1);
+        assert!(!results[0].hash.is_empty());
         clean_dependency_directory()
     }
 
@@ -343,13 +346,13 @@ mod tests {
             rev: None,
         });
         dependencies.push(dependency.clone());
-        let hashes = download_dependencies(&dependencies, false).await.unwrap();
+        let results = download_dependencies(&dependencies, false).await.unwrap();
         let path_dir =
             DEPENDENCY_DIR.join(format!("{}-{}", &dependency.name(), &dependency.version()));
         assert!(path_dir.exists());
         assert!(path_dir.join("src").join("auth").join("Owned.sol").exists());
-        assert!(hashes.len() == 1);
-        assert!(!hashes[0].is_empty());
+        assert!(results.len() == 1);
+        assert!(!results[0].hash.is_empty());
         clean_dependency_directory()
     }
 
@@ -365,13 +368,13 @@ mod tests {
             rev: None,
         });
         dependencies.push(dependency.clone());
-        let hashes = download_dependencies(&dependencies, false).await.unwrap();
+        let results = download_dependencies(&dependencies, false).await.unwrap();
         let path_dir =
             DEPENDENCY_DIR.join(format!("{}-{}", &dependency.name(), &dependency.version()));
         assert!(path_dir.exists());
         assert!(path_dir.join("JustATest3.md").exists());
-        assert!(hashes.len() == 1);
-        assert_eq!(hashes[0], "22868f426bd4dd0e682b5ec5f9bd55507664240c"); // this is the last commit, hash == commit
+        assert!(results.len() == 1);
+        assert_eq!(results[0].hash, "22868f426bd4dd0e682b5ec5f9bd55507664240c"); // this is the last commit, hash == commit
         clean_dependency_directory()
     }
 
@@ -387,13 +390,13 @@ mod tests {
             rev: Some("7a0663eaf7488732f39550be655bad6694974cb3".to_string()),
         });
         dependencies.push(dependency.clone());
-        let hashes = download_dependencies(&dependencies, false).await.unwrap();
+        let results = download_dependencies(&dependencies, false).await.unwrap();
         let path_dir =
             DEPENDENCY_DIR.join(format!("{}-{}", &dependency.name(), &dependency.version()));
         assert!(path_dir.exists());
         assert!(path_dir.join("README.md").exists());
-        assert!(hashes.len() == 1);
-        assert_eq!(hashes[0], "7a0663eaf7488732f39550be655bad6694974cb3"); // this is the last commit, hash == commit
+        assert!(results.len() == 1);
+        assert_eq!(results[0].hash, "7a0663eaf7488732f39550be655bad6694974cb3"); // this is the last commit, hash == commit
 
         // at this revision, this file should exists
         let test_right_revision = DEPENDENCY_DIR
@@ -416,13 +419,13 @@ mod tests {
             checksum: None,
         });
         dependencies.push(dependency.clone());
-        let hashes = download_dependencies(&dependencies, false).await.unwrap();
+        let results = download_dependencies(&dependencies, false).await.unwrap();
         let path_dir =
             DEPENDENCY_DIR.join(format!("{}-{}", &dependency.name(), &dependency.version()));
         assert!(path_dir.exists());
         assert!(path_dir.join("README.md").exists());
-        assert!(hashes.len() == 1);
-        assert_eq!(hashes[0], "22868f426bd4dd0e682b5ec5f9bd55507664240c"); // this is the last commit, hash == commit
+        assert!(results.len() == 1);
+        assert_eq!(results[0].hash, "22868f426bd4dd0e682b5ec5f9bd55507664240c"); // this is the last commit, hash == commit
         clean_dependency_directory()
     }
 
@@ -446,7 +449,7 @@ mod tests {
         });
 
         dependencies.push(dependency_two.clone());
-        let hashes = download_dependencies(&dependencies, false).await.unwrap();
+        let results = download_dependencies(&dependencies, false).await.unwrap();
         let mut path_zip = DEPENDENCY_DIR.join(format!(
             "{}-{}.zip",
             &dependency_one.name(),
@@ -460,9 +463,9 @@ mod tests {
             &dependency_two.version()
         ));
         assert!(path_zip.exists());
-        assert!(hashes.len() == 2);
-        assert!(!hashes[0].is_empty());
-        assert!(!hashes[1].is_empty());
+        assert!(results.len() == 2);
+        assert!(!results[0].hash.is_empty());
+        assert!(!results[1].hash.is_empty());
         clean_dependency_directory()
     }
 
@@ -486,7 +489,7 @@ mod tests {
         });
 
         dependencies.push(dependency_two.clone());
-        let hashes = download_dependencies(&dependencies, false).await.unwrap();
+        let results = download_dependencies(&dependencies, false).await.unwrap();
         let mut path_dir = DEPENDENCY_DIR.join(format!(
             "{}-{}",
             &dependency_one.name(),
@@ -512,9 +515,9 @@ mod tests {
         ));
         assert!(path_dir.exists());
         assert!(path_dir_two.exists());
-        assert!(hashes.len() == 2);
-        assert!(!hashes[0].is_empty());
-        assert!(!hashes[1].is_empty());
+        assert!(results.len() == 2);
+        assert!(!results[0].hash.is_empty());
+        assert!(!results[1].hash.is_empty());
         clean_dependency_directory()
     }
 
@@ -548,12 +551,12 @@ mod tests {
         dependencies = Vec::new();
         dependencies.push(dependency_two.clone());
 
-        let hashes = download_dependencies(&dependencies, false).await.unwrap();
+        let results = download_dependencies(&dependencies, false).await.unwrap();
         let size_of_two = fs::metadata(Path::new(&path_zip)).unwrap().len();
 
         assert!(size_of_two > size_of_one);
-        assert!(hashes.len() == 1);
-        assert!(!hashes[0].is_empty());
+        assert!(results.len() == 1);
+        assert!(!results[0].hash.is_empty());
         clean_dependency_directory()
     }
 
@@ -588,13 +591,13 @@ mod tests {
         dependencies = Vec::new();
         dependencies.push(dependency.clone());
 
-        let hashes = download_dependencies(&dependencies, true).await.unwrap();
+        let results = download_dependencies(&dependencies, true).await.unwrap();
         let path_zip =
             DEPENDENCY_DIR.join(format!("{}-{}.zip", &dependency.name(), &dependency.version()));
         assert!(!path_zip_old.exists());
         assert!(path_zip.exists());
-        assert!(hashes.len() == 1);
-        assert!(!hashes[0].is_empty());
+        assert!(results.len() == 1);
+        assert!(!results[0].hash.is_empty());
         clean_dependency_directory()
     }
 
@@ -718,7 +721,7 @@ mod tests {
             checksum: None,
         }));
         download_dependencies(&dependencies, false).await.unwrap();
-        unzip_dependency(&dependencies[0].name(), &dependencies[0].version()).unwrap();
+        unzip_dependency(dependencies[0].name(), dependencies[0].version()).unwrap();
         healthcheck_dependency(&dependencies[0]).unwrap();
         assert!(DEPENDENCY_DIR
             .join("@openzeppelin-contracts-3.3.0-custom-test")

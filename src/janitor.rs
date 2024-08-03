@@ -9,12 +9,7 @@ pub fn healthcheck_dependencies(dependencies: &[Dependency]) -> Result<(), Missi
 
 // Cleanup zips after the download
 pub fn cleanup_after(dependencies: &[Dependency]) -> Result<(), MissingDependencies> {
-    dependencies.iter().try_for_each(|d| {
-        cleanup_dependency(
-            d,
-            CleanupParams { full: false, via_git: matches!(d, Dependency::Git(_)) },
-        )
-    })?;
+    dependencies.iter().try_for_each(|d| cleanup_dependency(d, false))?;
     Ok(())
 }
 
@@ -23,38 +18,27 @@ pub fn healthcheck_dependency(dependency: &Dependency) -> Result<(), MissingDepe
     let new_path = DEPENDENCY_DIR.join(file_name);
     match metadata(new_path) {
         Ok(_) => Ok(()),
-        Err(_) => Err(MissingDependencies::new(&dependency.name(), &dependency.version())),
+        Err(_) => Err(MissingDependencies::new(dependency.name(), dependency.version())),
     }
 }
 
-#[derive(Debug, Clone, Default)]
-pub struct CleanupParams {
-    pub full: bool,
-    pub via_git: bool,
-}
-
-pub fn cleanup_dependency(
-    dependency: &Dependency,
-    params: CleanupParams,
-) -> Result<(), MissingDependencies> {
+pub fn cleanup_dependency(dependency: &Dependency, full: bool) -> Result<(), MissingDependencies> {
     let file_name: String = format!("{}-{}.zip", dependency.name(), dependency.version());
     let new_path: std::path::PathBuf = DEPENDENCY_DIR.clone().join(file_name);
-    if !params.via_git {
+    if let Dependency::Http(dep) = dependency {
         match remove_file(new_path) {
             Ok(_) => {}
             Err(_) => {
-                return Err(MissingDependencies::new(&dependency.name(), &dependency.version()));
+                return Err(MissingDependencies::new(&dep.name, &dep.version));
             }
         };
     }
-    if params.full {
-        let dir = DEPENDENCY_DIR.join(&dependency.name());
+    if full {
+        let dir = DEPENDENCY_DIR.join(dependency.name());
         remove_dir_all(dir).unwrap();
         match remove_lock(dependency) {
             Ok(_) => {}
-            Err(_) => {
-                return Err(MissingDependencies::new(&dependency.name(), &dependency.version()))
-            }
+            Err(_) => return Err(MissingDependencies::new(dependency.name(), dependency.version())),
         }
     }
     Ok(())
@@ -64,8 +48,11 @@ pub fn cleanup_dependency(
 #[allow(clippy::vec_init_then_push)]
 mod tests {
     use super::*;
-    use crate::dependency_downloader::{
-        clean_dependency_directory, download_dependencies, unzip_dependency,
+    use crate::{
+        config::HttpDependency,
+        dependency_downloader::{
+            clean_dependency_directory, download_dependencies, unzip_dependency,
+        },
     };
     use serial_test::serial;
 
@@ -78,12 +65,12 @@ mod tests {
 
     #[tokio::test]
     async fn healthcheck_dependency_not_found() {
-        let _ = healthcheck_dependency(&Dependency {
+        let _ = healthcheck_dependency(&Dependency::Http(HttpDependency {
             name: "test".to_string(),
             version: "1.0.0".to_string(),
-            url: String::new(),
-            hash: String::new(),
-        })
+            url: None,
+            checksum: None,
+        }))
         .unwrap_err();
     }
 
@@ -93,13 +80,13 @@ mod tests {
         let _cleanup = CleanupDependency;
 
         let mut dependencies: Vec<Dependency> = Vec::new();
-        dependencies.push(Dependency {
+        dependencies.push(Dependency::Http(HttpDependency {
             name: "@openzeppelin-contracts".to_string(),
             version: "2.3.0".to_string(),
-            url: "https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@openzeppelin-contracts~2.3.0.zip".to_string(),
-            hash: String::new()});
+            url: Some("https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@openzeppelin-contracts~2.3.0.zip".to_string()),
+            checksum: None}));
         download_dependencies(&dependencies, false).await.unwrap();
-        unzip_dependency(&dependencies[0].name, &dependencies[0].version).unwrap();
+        unzip_dependency(dependencies[0].name(), dependencies[0].version()).unwrap();
         healthcheck_dependency(&dependencies[0]).unwrap();
     }
 
@@ -109,14 +96,14 @@ mod tests {
         let _cleanup = CleanupDependency;
 
         let mut dependencies: Vec<Dependency> = Vec::new();
-        dependencies.push(Dependency {
+        dependencies.push(Dependency::Http(HttpDependency {
             name: "@openzeppelin-contracts".to_string(),
             version: "2.3.0".to_string(),
-            url: "https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@openzeppelin-contracts~2.3.0.zip".to_string(),
-            hash: String::new() });
+            url: Some("https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@openzeppelin-contracts~2.3.0.zip".to_string()),
+            checksum: None }));
         download_dependencies(&dependencies, false).await.unwrap();
-        unzip_dependency(&dependencies[0].name, &dependencies[0].version).unwrap();
-        cleanup_dependency(&dependencies[0], CleanupParams::default()).unwrap();
+        unzip_dependency(dependencies[0].name(), dependencies[0].version()).unwrap();
+        cleanup_dependency(&dependencies[0], false).unwrap();
     }
 
     #[test]
@@ -125,12 +112,12 @@ mod tests {
         let _cleanup = CleanupDependency;
 
         let mut dependencies: Vec<Dependency> = Vec::new();
-        dependencies.push(Dependency {
+        dependencies.push(Dependency::Http(HttpDependency {
             name: "@openzeppelin-contracts".to_string(),
             version: "v-cleanup-nonexisting".to_string(),
-            url: "https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@openzeppelin-contracts~2.3.0.zip".to_string(),
-            hash: String::new()});
-        cleanup_dependency(&dependencies[0], CleanupParams::default()).unwrap_err();
+            url: Some("https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@openzeppelin-contracts~2.3.0.zip".to_string()),
+            checksum: None}));
+        cleanup_dependency(&dependencies[0], false).unwrap_err();
     }
 
     #[tokio::test]
@@ -139,19 +126,19 @@ mod tests {
         let _cleanup = CleanupDependency;
 
         let mut dependencies: Vec<Dependency> = Vec::new();
-        dependencies.push(Dependency {
+        dependencies.push(Dependency::Http(HttpDependency {
             name: "@openzeppelin-contracts".to_string(),
             version: "2.3.0".to_string(),
-            url: "https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@openzeppelin-contracts~2.3.0.zip".to_string(),
-            hash: String::new()});
-        dependencies.push(Dependency {
+            url: Some("https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@openzeppelin-contracts~2.3.0.zip".to_string()),
+            checksum: None}));
+        dependencies.push(Dependency::Http(HttpDependency {
             name: "@openzeppelin-contracts".to_string(),
             version: "2.4.0".to_string(),
-            url: "https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@openzeppelin-contracts~2.4.0.zip".to_string(),
-            hash: String::new() });
+            url:Some("https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@openzeppelin-contracts~2.4.0.zip".to_string()),
+            checksum: None }));
 
         download_dependencies(&dependencies, false).await.unwrap();
-        let _ = unzip_dependency(&dependencies[0].name, &dependencies[0].version);
+        let _ = unzip_dependency(dependencies[0].name(), dependencies[0].version());
         let result: Result<(), MissingDependencies> = cleanup_after(&dependencies);
         assert!(result.is_ok());
         clean_dependency_directory();
@@ -163,19 +150,19 @@ mod tests {
         let _cleanup = CleanupDependency;
 
         let mut dependencies: Vec<Dependency> = Vec::new();
-        dependencies.push(Dependency {
+        dependencies.push(Dependency::Http(HttpDependency {
             name: "@openzeppelin-contracts".to_string(),
             version: "cleanup-after-one-existing".to_string(),
-            url: "https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@openzeppelin-contracts~2.3.0.zip".to_string(),
-            hash: String::new()});
+            url: Some("https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@openzeppelin-contracts~2.3.0.zip".to_string()),
+            checksum: None}));
 
         download_dependencies(&dependencies, false).await.unwrap();
-        unzip_dependency(&dependencies[0].name, &dependencies[0].version).unwrap();
-        dependencies.push(Dependency {
+        unzip_dependency(dependencies[0].name(), dependencies[0].version()).unwrap();
+        dependencies.push(Dependency::Http(HttpDependency {
             name: "@openzeppelin-contracts".to_string(),
             version: "cleanup-after-one-existing-2".to_string(),
-            url: "https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@openzeppelin-contracts~2.4.0.zip".to_string(),
-            hash: String::new()});
+            url: Some("https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@openzeppelin-contracts~2.4.0.zip".to_string()),
+            checksum: None}));
         match cleanup_after(&dependencies) {
             Ok(_) => {
                 assert_eq!("Invalid State", "");

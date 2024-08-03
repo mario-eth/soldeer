@@ -27,7 +27,7 @@ pub struct HttpDependency {
     pub name: String,
     pub version: String,
     pub url: Option<String>,
-    pub checksum: Option<Vec<u8>>,
+    pub checksum: Option<String>,
 }
 
 // Dependency object used to store a dependency data
@@ -148,9 +148,7 @@ pub fn get_config_path() -> Result<PathBuf, ConfigError> {
 
     let soldeer_path = SOLDEER_CONFIG_FILE.clone();
     match fs::metadata(&soldeer_path) {
-        Ok(_) => {
-            return Ok(soldeer_path);
-        }
+        Ok(_) => Ok(soldeer_path),
         Err(_) => {
             println!("{}", Paint::blue("No config file found. If you wish to proceed, please select how you want Soldeer to be configured:\n1. Using foundry.toml\n2. Using soldeer.toml\n(Press 1 or 2), default is foundry.toml"));
             std::io::stdout().flush().unwrap();
@@ -162,7 +160,7 @@ pub fn get_config_path() -> Result<PathBuf, ConfigError> {
             if option.is_empty() {
                 option = "1".to_string();
             }
-            return create_example_config(&option);
+            create_example_config(&option)
         }
     }
 }
@@ -376,15 +374,9 @@ fn parse_dependency_sync(name: impl Into<String>, value: &Item) -> Result<Depend
     // we should have a HTTP dependency
     match table.get("url").map(|v| v.as_str()) {
         Some(None) => {
-            return Err(ConfigError {
-                cause: format!("Field `url` for dependency {name} is invalid"),
-            });
+            Err(ConfigError { cause: format!("Field `url` for dependency {name} is invalid") })
         }
-        None => {
-            return Err(ConfigError {
-                cause: format!("Field `url` for dependency {name} is missing"),
-            });
-        }
+        None => Err(ConfigError { cause: format!("Field `url` for dependency {name} is missing") }),
         Some(Some(url)) => Ok(Dependency::Http(HttpDependency {
             name: name.to_string(),
             version,
@@ -731,10 +723,7 @@ libs = ["dependencies"]
                 assert_eq!(
                     err,
                     ConfigError {
-                        cause: format!(
-                            "Could not read the config file {}",
-                            target_config.to_str().unwrap()
-                        ),
+                        cause: format!("Could not read the config file {:?}", target_config),
                     }
                 )
             }
@@ -1549,7 +1538,7 @@ dep1 = { version = "1.0.0", url = "http://custom_url.com/custom.zip" }
 
         write_to_config(&target_config, content);
 
-        match delete_config(&"dep2".to_string(), target_config.to_str().unwrap()) {
+        match delete_config("dep2", &target_config) {
             Ok(_) => {
                 assert_eq!("Invalid State", "");
             }

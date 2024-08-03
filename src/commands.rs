@@ -32,6 +32,13 @@ pub struct Init {
     pub clean: Option<bool>,
 }
 
+fn validate_dependency(dep: &str) -> Result<String, String> {
+    if dep.split('~').count() != 2 {
+        return Err("The dependency should be in the format <DEPENDENCY>~<VERSION>".to_string());
+    }
+    Ok(dep.to_string())
+}
+
 #[derive(Debug, Clone, Parser)]
 #[clap(
     about = "Install a dependency from Soldeer repository or from a custom url that points to a zip file or from git using a git link.
@@ -44,11 +51,11 @@ pub struct Init {
     override_usage = "soldeer install <DEPENDENCY>~<VERSION> [URL]"
 )]
 pub struct Install {
-    #[clap(required = false)]
+    #[arg(value_parser = validate_dependency, value_name = "DEPENDENCY~VERSION")]
     pub dependency: Option<String>,
-    #[clap(required = false)]
+    #[arg(value_name = "URL")]
     pub remote_url: Option<String>,
-    #[arg(long, value_parser = clap::value_parser!(String))]
+    #[arg(long)]
     pub rev: Option<String>,
 }
 

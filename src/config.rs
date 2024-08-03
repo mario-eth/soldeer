@@ -349,6 +349,11 @@ pub fn remove_forge_lib() -> Result<(), ConfigError> {
 fn parse_dependency(name: impl Into<String>, value: &Item) -> Result<Dependency, ConfigError> {
     let name: String = name.into();
     if let Some(version) = value.as_str() {
+        if version.is_empty() {
+            return Err(ConfigError {
+                cause: format!("Field `version` for dependency {name} is empty"),
+            });
+        }
         // this function does not retrieve the url
         return Ok(Dependency::Http(HttpDependency {
             name,
@@ -724,7 +729,7 @@ libs = ["dependencies"]
                     err,
                     ConfigError {
                         cause:
-                            "Could not retrieve URL for dependency @gearbox-protocol-periphery-v3"
+                            "Field `version` for dependency @gearbox-protocol-periphery-v3 is empty"
                                 .to_string(),
                     }
                 )

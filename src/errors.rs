@@ -1,18 +1,130 @@
 use std::{
-    fmt, io,
+    io,
     path::{PathBuf, StripPrefixError},
 };
 use thiserror::Error;
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct SoldeerError {
-    pub message: String,
+#[derive(Error, Debug)]
+pub enum SoldeerError {
+    #[error("error during login: {0}")]
+    AuthError(#[from] AuthError),
+
+    #[error("error during config operation: {0}")]
+    ConfigError(#[from] ConfigError),
+
+    #[error("error during downloading of {dep}: {source}")]
+    DownloadError { dep: String, source: DownloadError },
+
+    #[error("error during janitor operation: {0}")]
+    JanitorError(#[from] JanitorError),
+
+    #[error("error during lockfile operation: {0}")]
+    LockError(#[from] LockError),
+
+    #[error("error during publishing: {0}")]
+    PublishError(#[from] PublishError),
 }
 
-impl fmt::Display for SoldeerError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.message)
-    }
+#[derive(Error, Debug)]
+pub enum AuthError {
+    #[error("login error: invalid email")]
+    InvalidEmail,
+
+    #[error("login error: invalid email or password")]
+    InvalidCredentials,
+
+    #[error("missing token, you are not connected")]
+    MissingToken,
+
+    #[error("error during IO operation for the security file: {0}")]
+    IOError(#[from] io::Error),
+
+    #[error("http error during login: {0}")]
+    HttpError(#[from] reqwest::Error),
+}
+
+#[derive(Error, Debug)]
+pub enum ConfigError {
+    #[error("config file is not valid: {0}")]
+    Parsing(#[from] toml_edit::TomlError),
+
+    #[error("config file is missing the `[dependencies]` section")]
+    MissingDependencies,
+
+    #[error("invalid user input: {source}")]
+    PromptError { source: io::Error },
+
+    #[error("invalid prompt option")]
+    InvalidPromptOption,
+
+    #[error("error writing to config file: {0}")]
+    FileWriteError(#[from] io::Error),
+
+    #[error("empty `version` field in {0}")]
+    EmptyVersion(String),
+
+    #[error("missing `{field}` field in {dep}")]
+    MissingField { field: String, dep: String },
+
+    #[error("invalid `{field}` field in {dep}")]
+    InvalidField { field: String, dep: String },
+
+    #[error("dependency {0} is not valid")]
+    InvalidDependency(String),
+
+    #[error("dependency {0} was not found")]
+    MissingDependency(String),
+}
+
+#[derive(Error, Debug)]
+pub enum DownloadError {
+    #[error("error downloading dependency: {0}")]
+    HttpError(#[from] reqwest::Error),
+
+    #[error("error extracting dependency: {0}")]
+    UnzipError(#[from] zip_extract::ZipExtractError),
+
+    #[error("error during git operation: {0}")]
+    GitError(String),
+
+    #[error("error during IO operation for {path:?}: {source}")]
+    IOError { path: PathBuf, source: io::Error },
+
+    #[error("Project {0} not found, please check the dependency name (project name) or create a new project on https://soldeer.xyz")]
+    ProjectNotFound(String),
+
+    #[error("Could not get the dependency URL for {0}")]
+    URLNotFound(String),
+
+    #[error("Could not get the last forge dependency")]
+    ForgeStdError,
+}
+
+#[derive(Error, Debug)]
+pub enum JanitorError {
+    #[error("missing dependency {0}")]
+    MissingDependency(String),
+
+    #[error("error during IO operation for {path:?}: {source}")]
+    IOError { path: PathBuf, source: io::Error },
+
+    #[error("error during lockfile operation: {0}")]
+    LockError(LockError), // TODO: derive from LockError
+}
+
+#[derive(Error, Debug)]
+pub enum LockError {
+    #[error("soldeer.lock is missing")]
+    Missing,
+
+    #[error("dependency {0} is already installed")]
+    DependencyInstalled(String),
+
+    #[error("IO error for soldeer.lock: {0}")]
+    IOError(#[from] io::Error),
+
+    #[error("error generating soldeer.lock contents: {0}")]
+    SerializeError(#[from] toml_edit::ser::Error),
 }
 
 #[derive(Error, Debug)]
@@ -47,108 +159,9 @@ pub enum PublishError {
     #[error("http error during publishing: {0}")]
     HttpError(#[from] reqwest::Error),
 
+    #[error("invalid package name, only alphanumeric characters, `-` and `@` are allowed")]
+    InvalidName,
+
     #[error("unknown http error")]
     UnknownError,
-}
-
-#[derive(Error, Debug)]
-pub enum AuthError {
-    #[error("login error: invalid email")]
-    InvalidEmail,
-
-    #[error("login error: invalid email or password")]
-    InvalidCredentials,
-
-    #[error("missing token, you are not connected")]
-    MissingToken,
-
-    #[error("error during IO operation for the security file: {0}")]
-    IOError(#[from] io::Error),
-
-    #[error("http error during login: {0}")]
-    HttpError(#[from] reqwest::Error),
-}
-
-#[derive(Error, Debug)]
-pub enum LockError {
-    #[error("soldeer.lock is missing")]
-    Missing,
-
-    #[error("dependency {0} is already installed")]
-    DependencyInstalled(String),
-
-    #[error("IO error for soldeer.lock: {0}")]
-    IOError(#[from] io::Error),
-
-    #[error("error generating soldeer.lock contents: {0}")]
-    SerializeError(#[from] toml_edit::ser::Error),
-}
-
-#[derive(Error, Debug)]
-pub enum JanitorError {
-    #[error("missing dependency {0}")]
-    MissingDependency(String),
-
-    #[error("error during IO operation for {path:?}: {source}")]
-    IOError { path: PathBuf, source: io::Error },
-
-    #[error("error during lockfile operation: {0}")]
-    LockError(LockError), // TODO: derive from LockError
-}
-
-#[derive(Error, Debug)]
-pub enum DownloadError {
-    #[error("error downloading dependency: {0}")]
-    HttpError(#[from] reqwest::Error),
-
-    #[error("error extracting dependency: {0}")]
-    UnzipError(#[from] zip_extract::ZipExtractError),
-
-    #[error("error during git operation: {0}")]
-    GitError(String),
-
-    #[error("error during IO operation for {path:?}: {source}")]
-    IOError { path: PathBuf, source: io::Error },
-
-    #[error("Project {0} not found, please check the dependency name (project name) or create a new project on https://soldeer.xyz")]
-    ProjectNotFound(String),
-
-    #[error("Could not get the dependency URL for {0}")]
-    URLNotFound(String),
-
-    #[error("Could not get the last forge dependency")]
-    ForgeStdError,
-}
-
-#[derive(Error, Debug)]
-pub enum ConfigError {
-    #[error("config file is not valid: {0}")]
-    Parsing(#[from] toml_edit::TomlError),
-
-    #[error("config file is missing the `[dependencies]` section")]
-    MissingDependencies,
-
-    #[error("invalid user input: {source}")]
-    PromptError { source: io::Error },
-
-    #[error("invalid prompt option")]
-    InvalidPromptOption,
-
-    #[error("error writing to config file: {0}")]
-    FileWriteError(#[from] io::Error),
-
-    #[error("empty `version` field in {0}")]
-    EmptyVersion(String),
-
-    #[error("missing `{field}` field in {dep}")]
-    MissingField { field: String, dep: String },
-
-    #[error("invalid `{field}` field in {dep}")]
-    InvalidField { field: String, dep: String },
-
-    #[error("dependency {0} is not valid")]
-    InvalidDependency(String),
-
-    #[error("dependency {0} was not found")]
-    MissingDependency(String),
 }

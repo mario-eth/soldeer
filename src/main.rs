@@ -7,7 +7,7 @@ fn main() {
     match soldeer::run(args.command) {
         Ok(_) => {}
         Err(err) => {
-            eprintln!("{}", Paint::red(&err.message))
+            eprintln!("{}", Paint::red(&err.to_string()))
         }
     }
 }

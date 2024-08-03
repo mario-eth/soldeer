@@ -17,10 +17,10 @@ use dependency_downloader::download_dependency;
 use janitor::cleanup_dependency;
 use lock::LockWriteMode;
 use once_cell::sync::Lazy;
-use regex::Regex;
 use remote::get_latest_forge_std_dependency;
 use std::{env, path::PathBuf};
 use utils::{get_dependency_type, DependencyType};
+use versioning::validate_name;
 use yansi::Paint;
 
 mod auth;
@@ -50,29 +50,13 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
             Paint::green("Initializes a new Soldeer project in foundry\n");
 
             if init.clean.is_some() && init.clean.unwrap() {
-                match config::remove_forge_lib() {
-                    Ok(_) => {}
-                    Err(err) => {
-                        return Err(SoldeerError { message: err.to_string() }); // TODO: derive
-                                                                               // SoldeerError from
-                                                                               // module errors
-                                                                               // automatically,
-                                                                               // will enable use of
-                                                                               // ? operator
-                    }
-                }
+                config::remove_forge_lib()?;
             }
 
-            let dependency: Dependency = match get_latest_forge_std_dependency().await {
-                Ok(dep) => dep,
-                Err(err) => {
-                    return Err(SoldeerError { message: err.to_string() });
-                }
-            };
-            match install_dependency(dependency).await {
-                Ok(_) => {}
-                Err(err) => return Err(err),
-            }
+            let dependency: Dependency = get_latest_forge_std_dependency().await.map_err(|e| {
+                SoldeerError::DownloadError { dep: "forge-std".to_string(), source: e }
+            })?;
+            install_dependency(dependency).await?;
         }
         Subcommands::Install(install) => {
             let Some(dependency) = install.dependency else {
@@ -107,22 +91,14 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
                 }),
             };
 
-            match install_dependency(dep).await {
-                Ok(_) => {}
-                Err(err) => return Err(err),
-            }
+            install_dependency(dep).await?;
         }
         Subcommands::Update(_) => {
             return update().await;
         }
         Subcommands::Login(_) => {
             Paint::green("🦌 Running Soldeer login 🦌\n");
-            match login().await {
-                Ok(_) => {}
-                Err(err) => {
-                    return Err(SoldeerError { message: err.to_string() });
-                }
-            }
+            login().await?;
         }
         Subcommands::Push(push) => {
             let path = push.path.unwrap_or(get_current_working_dir());
@@ -141,9 +117,9 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
 
             if dry_run {
                 println!(
-            "{}",
-            Paint::green("🦌 Running Soldeer push with dry-run, a zip file will be available for inspection 🦌\n")
-        );
+                    "{}",
+                    Paint::green("🦌 Running Soldeer push with dry-run, a zip file will be available for inspection 🦌\n")
+                );
             } else {
                 Paint::green("🦌 Running Soldeer push 🦌\n");
             }
@@ -155,52 +131,31 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
                 );
             }
 
-            let dependency_name: String =
-                push.dependency.split('~').collect::<Vec<&str>>()[0].to_string();
-            let dependency_version: String =
-                push.dependency.split('~').collect::<Vec<&str>>()[1].to_string();
-            let regex = Regex::new(r"^[@|a-z0-9][a-z0-9-]*[a-z0-9]$").unwrap();
+            let (dependency_name, dependency_version) = push
+                .dependency
+                .split_once('~')
+                .expect("dependency string should have name and version");
 
-            if !regex.is_match(&dependency_name) {
-                return Err(SoldeerError{message:format!("Dependency name {} is not valid, you can use only alphanumeric characters `-` and `@`", &dependency_name)});
-            }
-            match push_version(&dependency_name, &dependency_version, path, dry_run).await {
-                Ok(_) => {}
-                Err(err) => {
-                    return Err(SoldeerError { message: err.to_string() });
-                }
-            }
+            validate_name(dependency_name)?;
+
+            push_version(dependency_name, dependency_version, path, dry_run).await?;
         }
 
         Subcommands::Uninstall(uninstall) => {
             // define the config file
-            let path = match get_config_path() {
-                Ok(path) => path,
-                Err(_) => {
-                    return Err(SoldeerError {
-                        message: "Could not remove the dependency from the config file".to_string(),
-                    });
-                }
-            };
+            let path = get_config_path()?;
 
             // delete from the config file and return the dependency
-            let dependency = match delete_config(&uninstall.dependency, &path) {
-                Ok(d) => d,
-                Err(err) => {
-                    return Err(SoldeerError { message: err.to_string() });
-                }
-            };
+            let dependency = delete_config(&uninstall.dependency, &path)?;
 
             // deleting the files
-            let _ = delete_dependency_files(&dependency).is_ok();
+            delete_dependency_files(&dependency).map_err(|e| SoldeerError::DownloadError {
+                dep: dependency.to_string(),
+                source: e,
+            })?;
 
             // removing the dependency from the lock file
-            match remove_lock(&dependency) {
-                Ok(d) => d,
-                Err(err) => {
-                    return Err(SoldeerError { message: err.to_string() });
-                }
-            };
+            remove_lock(&dependency)?;
         }
 
         Subcommands::VersionDryRun(_) => {
@@ -212,19 +167,11 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
 }
 
 async fn install_dependency(mut dependency: Dependency) -> Result<(), SoldeerError> {
-    match lock_check(&dependency, true) {
-        Ok(_) => {}
-        Err(err) => {
-            return Err(SoldeerError { message: err.to_string() });
-        }
-    }
+    lock_check(&dependency, true)?;
 
-    let result = match download_dependency(&dependency).await {
-        Ok(h) => h,
-        Err(err) => {
-            return Err(SoldeerError { message: err.to_string() });
-        }
-    };
+    let result = download_dependency(&dependency)
+        .await
+        .map_err(|e| SoldeerError::DownloadError { dep: dependency.to_string(), source: e })?;
     match dependency {
         Dependency::Http(ref mut dep) => {
             dep.checksum = Some(result.hash);
@@ -233,83 +180,42 @@ async fn install_dependency(mut dependency: Dependency) -> Result<(), SoldeerErr
         Dependency::Git(ref mut dep) => dep.rev = Some(result.hash),
     }
 
-    match write_lock(&[dependency.clone()], LockWriteMode::Append) {
-        Ok(_) => {}
-        Err(err) => {
-            return Err(SoldeerError { message: err.to_string() });
-        }
-    }
+    write_lock(&[dependency.clone()], LockWriteMode::Append)?;
 
     if let Dependency::Http(dep) = &dependency {
-        match unzip_dependency(&dep.name, &dep.version) {
-            Ok(_) => {}
-            Err(err_unzip) => {
-                match janitor::cleanup_dependency(&dependency, true) {
-                    Ok(_) => {}
-                    Err(err_cleanup) => {
-                        return Err(SoldeerError { message: err_cleanup.to_string() })
-                    }
-                }
-                return Err(SoldeerError { message: err_unzip.to_string() });
-            }
+        if let Err(e) = unzip_dependency(&dep.name, &dep.version) {
+            cleanup_dependency(&dependency, true)?;
+            return Err(SoldeerError::DownloadError { dep: dependency.to_string(), source: e });
         }
     }
 
     let config_file = match get_config_path() {
         Ok(file) => file,
-
-        Err(_) => match cleanup_dependency(&dependency, true) {
-            Ok(_) => {
-                return Err(SoldeerError {
-                    message: "Could not define the config file".to_string(),
-                });
-            }
-            Err(_) => {
-                return Err(SoldeerError {
-                    message: "Could not delete dependency artifacts".to_string(),
-                });
-            }
-        },
+        Err(e) => {
+            cleanup_dependency(&dependency, true)?;
+            return Err(e.into());
+        }
     };
 
-    match add_to_config(&dependency, &config_file) {
-        Ok(_) => {}
-        Err(err) => {
-            return Err(SoldeerError { message: err.to_string() });
-        }
-    }
+    add_to_config(&dependency, &config_file)?;
 
-    match janitor::healthcheck_dependency(&dependency) {
-        Ok(_) => {}
-        Err(err) => {
-            return Err(SoldeerError { message: err.to_string() });
-        }
-    }
+    janitor::healthcheck_dependency(&dependency)?;
 
-    match janitor::cleanup_dependency(&dependency, false) {
-        Ok(_) => {}
-        Err(err) => {
-            return Err(SoldeerError { message: err.to_string() });
-        }
-    }
+    janitor::cleanup_dependency(&dependency, false)?;
 
     // TODO: check the config to know whether we should write remappings
-    remappings().await.map_err(|e| SoldeerError { message: e.to_string() })?;
+    remappings().await?;
     Ok(())
 }
 
 async fn update() -> Result<(), SoldeerError> {
     Paint::green("🦌 Running Soldeer update 🦌\n");
 
-    let mut dependencies: Vec<Dependency> = match read_config(None) {
-        Ok(dep) => dep,
-        Err(err) => return Err(SoldeerError { message: err.to_string() }),
-    };
+    let mut dependencies: Vec<Dependency> = read_config(None)?;
 
-    let results = match download_dependencies(&dependencies, true).await {
-        Ok(h) => h,
-        Err(err) => return Err(SoldeerError { message: err.to_string() }),
-    };
+    let results = download_dependencies(&dependencies, true)
+        .await
+        .map_err(|e| SoldeerError::DownloadError { dep: String::new(), source: e })?;
 
     dependencies.iter_mut().zip(results.into_iter()).for_each(|(dependency, result)| {
         match dependency {
@@ -321,36 +227,17 @@ async fn update() -> Result<(), SoldeerError> {
         }
     });
 
-    match unzip_dependencies(&dependencies) {
-        Ok(_) => {}
-        Err(err) => {
-            return Err(SoldeerError { message: err.to_string() });
-        }
-    }
+    unzip_dependencies(&dependencies)
+        .map_err(|e| SoldeerError::DownloadError { dep: String::new(), source: e })?;
 
-    match healthcheck_dependencies(&dependencies) {
-        Ok(_) => {}
-        Err(err) => {
-            return Err(SoldeerError { message: err.to_string() });
-        }
-    }
+    healthcheck_dependencies(&dependencies)?;
 
-    match write_lock(&dependencies, LockWriteMode::Replace) {
-        Ok(_) => {}
-        Err(err) => {
-            return Err(SoldeerError { message: err.to_string() });
-        }
-    }
+    write_lock(&dependencies, LockWriteMode::Replace)?;
 
-    match cleanup_after(&dependencies) {
-        Ok(_) => {}
-        Err(err) => {
-            return Err(SoldeerError { message: err.to_string() });
-        }
-    }
+    cleanup_after(&dependencies)?;
 
     // TODO: check the config to know whether we should write remappings
-    remappings().await.map_err(|e| SoldeerError { message: e.to_string() })?;
+    remappings().await?;
     Ok(())
 }
 
@@ -588,7 +475,7 @@ libs = ["dependencies"]
             Err(err) => {
                 clean_test_env(target_config.clone());
                 // can not generalize as diff systems return various dns errors
-                assert!(err.message.contains("error sending request for url"))
+                assert!(err.to_string().contains("error sending request for url"))
             }
         }
 
@@ -708,7 +595,7 @@ libs = ["dependencies"]
                 clean_test_env(PathBuf::default());
 
                 // Check if the error is due to not being logged in
-                if e.message.contains("you are not connected") {
+                if e.to_string().contains("you are not connected") {
                     println!(
                         "Test skipped: User not logged in. This test requires a logged-in state."
                     );

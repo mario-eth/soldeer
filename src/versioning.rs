@@ -4,6 +4,7 @@ use crate::{
     remote::get_project_id,
     utils::{get_base_url, get_current_working_dir, read_file, read_file_to_string},
 };
+use regex::Regex;
 use reqwest::{
     header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE},
     multipart::{Form, Part},
@@ -22,8 +23,8 @@ use zip::{write::SimpleFileOptions, CompressionMethod, ZipWriter};
 pub type Result<T> = std::result::Result<T, PublishError>;
 
 pub async fn push_version(
-    dependency_name: &String,
-    dependency_version: &String,
+    dependency_name: &str,
+    dependency_version: &str,
     root_directory_path: PathBuf,
     dry_run: bool,
 ) -> Result<()> {
@@ -56,6 +57,14 @@ pub async fn push_version(
     // deleting zip archive
     let _ = remove_file(zip_archive);
 
+    Ok(())
+}
+
+pub fn validate_name(name: &str) -> Result<()> {
+    let regex = Regex::new(r"^[@|a-z0-9][a-z0-9-]*[a-z0-9]$").unwrap();
+    if !regex.is_match(name) {
+        return Err(PublishError::InvalidName);
+    }
     Ok(())
 }
 

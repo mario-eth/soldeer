@@ -475,7 +475,6 @@ mod tests {
     use rand::{distributions::Alphanumeric, Rng};
     use serial_test::serial;
     use std::{
-        env,
         fs::{
             remove_file, {self},
         },
@@ -1521,6 +1520,7 @@ dep1 = { version = "1.0.0", url = "http://custom_url.com/custom.zip" }
         get_current_working_dir().join("test").join(target)
     }
 
+    #[allow(unused)]
     fn get_return_data() -> String {
         r#"
         {

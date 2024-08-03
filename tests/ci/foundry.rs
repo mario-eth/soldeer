@@ -2,7 +2,6 @@ use clap::Parser as _;
 use serial_test::serial;
 use soldeer::{
     commands::{Args, Install, Subcommands},
-    errors::SoldeerError,
     DEPENDENCY_DIR, LOCK_FILE,
 };
 use std::{

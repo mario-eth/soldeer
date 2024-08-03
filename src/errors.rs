@@ -1,5 +1,4 @@
 use std::{fmt, io};
-
 use thiserror::Error;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -120,9 +119,6 @@ impl LoginError {
 }
 #[derive(Error, Debug)]
 pub enum ConfigError {
-    #[error("config file not found")]
-    NotFound,
-
     #[error("config file is not valid: {0}")]
     Parsing(#[from] toml_edit::TomlError),
 

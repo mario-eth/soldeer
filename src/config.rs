@@ -11,7 +11,7 @@ use std::{
     io::{self, Write},
     path::{Path, PathBuf},
 };
-use toml_edit::{value, DocumentMut, Item, Table};
+use toml_edit::{value, DocumentMut, InlineTable, Item, Table};
 use yansi::Paint;
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -65,10 +65,18 @@ impl Dependency {
                 dep.name.clone(),
                 match &dep.url {
                     Some(url) => {
-                        let mut table = Table::new();
-                        table["version"] = value(&dep.version);
-                        table["url"] = value(url);
-                        Item::Table(table)
+                        let mut table = InlineTable::new();
+                        table.insert(
+                            "version",
+                            value(&dep.version)
+                                .into_value()
+                                .expect("version should be a valid toml value"),
+                        );
+                        table.insert(
+                            "url",
+                            value(url).into_value().expect("url should be a valid toml value"),
+                        );
+                        value(table)
                     }
                     None => value(&dep.version),
                 },
@@ -77,17 +85,41 @@ impl Dependency {
                 dep.name.clone(),
                 match &dep.rev {
                     Some(rev) => {
-                        let mut table = Table::new();
-                        table["version"] = value(&dep.version);
-                        table["git"] = value(&dep.git);
-                        table["rev"] = value(rev);
-                        Item::Table(table)
+                        let mut table = InlineTable::new();
+                        table.insert(
+                            "version",
+                            value(&dep.version)
+                                .into_value()
+                                .expect("version should be a valid toml value"),
+                        );
+                        table.insert(
+                            "git",
+                            value(&dep.git)
+                                .into_value()
+                                .expect("git URL should be a valid toml value"),
+                        );
+                        table.insert(
+                            "rev",
+                            value(rev).into_value().expect("rev should be a valid toml value"),
+                        );
+                        value(table)
                     }
                     None => {
-                        let mut table = Table::new();
-                        table["version"] = value(&dep.version);
-                        table["git"] = value(&dep.git);
-                        Item::Table(table)
+                        let mut table = InlineTable::new();
+                        table.insert(
+                            "version",
+                            value(&dep.version)
+                                .into_value()
+                                .expect("version should be a valid toml value"),
+                        );
+                        table.insert(
+                            "git",
+                            value(&dep.git)
+                                .into_value()
+                                .expect("git URL should be a valid toml value"),
+                        );
+
+                        value(table)
                     }
                 },
             ),
@@ -1192,10 +1224,10 @@ test = "test"
 libs = ["dependencies"]
 gas_reports = ['*']
 
-# we don't have [dependencies] declared
-
 [dependencies]
 dep1 = "1.0.0"
+
+# we don't have [dependencies] declared
 "#;
 
         assert_eq!(read_file_to_string(&target_config), content);

@@ -1,6 +1,7 @@
+use clap::Parser as _;
 use serial_test::serial;
 use soldeer::{
-    commands::{Install, Subcommands},
+    commands::{Args, Install, Subcommands},
     errors::SoldeerError,
     DEPENDENCY_DIR, LOCK_FILE,
 };
@@ -121,25 +122,7 @@ contract TestSoldeer is Test {
 #[test]
 #[serial]
 fn soldeer_install_invalid_dependency() {
-    let command = Subcommands::Install(Install {
-        dependency: Some("forge-std".to_string()),
-        remote_url: None,
-        rev: None,
-    });
-
-    match soldeer::run(command) {
-        Ok(_) => {
-            assert_eq!("Invalid State", "")
-        }
-        Err(err) => {
-            assert_eq!(
-                err,
-                SoldeerError{
-                   message: "Dependency forge-std does not specify a version.\nThe format should be [DEPENDENCY]~[VERSION]".to_string()
-                }
-            );
-        }
-    }
+    assert!(Args::try_parse_from(["soldeer", "install", "forge-std"]).is_err());
 
     let path_dependency = DEPENDENCY_DIR.join("forge-std");
     let path_zip = DEPENDENCY_DIR.join("forge-std.zip");

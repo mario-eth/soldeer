@@ -13,6 +13,8 @@ use std::{
 use toml_edit::{value, DocumentMut, InlineTable, Item, Table};
 use yansi::Paint;
 
+pub type Result<T> = std::result::Result<T, ConfigError>;
+
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct GitDependency {
     pub name: String,
@@ -21,12 +23,24 @@ pub struct GitDependency {
     pub rev: Option<String>,
 }
 
+impl core::fmt::Display for GitDependency {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        write!(f, "{}~{}", self.name, self.version)
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct HttpDependency {
     pub name: String,
     pub version: String,
     pub url: Option<String>,
     pub checksum: Option<String>,
+}
+
+impl core::fmt::Display for HttpDependency {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        write!(f, "{}~{}", self.name, self.version)
+    }
 }
 
 // Dependency object used to store a dependency data
@@ -126,6 +140,15 @@ impl Dependency {
     }
 }
 
+impl core::fmt::Display for Dependency {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        match self {
+            Dependency::Http(dep) => write!(f, "{}", dep),
+            Dependency::Git(dep) => write!(f, "{}", dep),
+        }
+    }
+}
+
 impl From<HttpDependency> for Dependency {
     fn from(dep: HttpDependency) -> Self {
         Dependency::Http(dep)
@@ -138,24 +161,15 @@ impl From<GitDependency> for Dependency {
     }
 }
 
-pub fn read_config(path: Option<PathBuf>) -> Result<Vec<Dependency>, ConfigError> {
+pub fn read_config(path: Option<PathBuf>) -> Result<Vec<Dependency>> {
     let path: PathBuf = match path {
         Some(p) => p,
         None => get_config_path()?,
     };
     let contents = read_file_to_string(&path);
-    let doc: DocumentMut = contents
-        .parse::<DocumentMut>()
-        .map_err(|_| ConfigError { cause: format!("Could not read the config file {path:?}") })?;
-    if !doc.contains_table("dependencies") {
-        return Err(ConfigError {
-            cause: format!("`[dependencies]` is missing from the config file {path:?}"),
-        });
-    }
+    let doc: DocumentMut = contents.parse::<DocumentMut>()?;
     let Some(Some(data)) = doc.get("dependencies").map(|v| v.as_table()) else {
-        return Err(ConfigError {
-            cause: format!("`[dependencies]` is missing from the config file {path:?}"),
-        });
+        return Err(ConfigError::MissingDependencies);
     };
 
     let mut dependencies: Vec<Dependency> = Vec::new();
@@ -165,7 +179,7 @@ pub fn read_config(path: Option<PathBuf>) -> Result<Vec<Dependency>, ConfigError
     Ok(dependencies)
 }
 
-pub fn get_config_path() -> Result<PathBuf, ConfigError> {
+pub fn get_config_path() -> Result<PathBuf> {
     let foundry_path: PathBuf = if cfg!(test) {
         env::var("config_file").map(|s| s.into()).unwrap_or(FOUNDRY_CONFIG_FILE.clone())
     } else {
@@ -173,9 +187,7 @@ pub fn get_config_path() -> Result<PathBuf, ConfigError> {
     };
 
     if let Ok(contents) = fs::read_to_string(&foundry_path) {
-        let doc: DocumentMut = contents.parse::<DocumentMut>().map_err(|_| ConfigError {
-            cause: format!("Could not read the config file {foundry_path:?}"),
-        })?;
+        let doc: DocumentMut = contents.parse::<DocumentMut>()?;
         if doc.contains_table("dependencies") {
             return Ok(foundry_path);
         }
@@ -185,12 +197,12 @@ pub fn get_config_path() -> Result<PathBuf, ConfigError> {
     match fs::metadata(&soldeer_path) {
         Ok(_) => Ok(soldeer_path),
         Err(_) => {
-            println!("{}", Paint::blue("No config file found. If you wish to proceed, please select how you want Soldeer to be configured:\n1. Using foundry.toml\n2. Using soldeer.toml\n(Press 1 or 2), default is foundry.toml"));
+            println!("{}", "No config file found. If you wish to proceed, please select how you want Soldeer to be configured:\n1. Using foundry.toml\n2. Using soldeer.toml\n(Press 1 or 2), default is foundry.toml".blue());
             std::io::stdout().flush().unwrap();
             let mut option = String::new();
-            if io::stdin().read_line(&mut option).is_err() {
-                return Err(ConfigError { cause: "Option invalid.".to_string() });
-            }
+            io::stdin()
+                .read_line(&mut option)
+                .map_err(|e| ConfigError::PromptError { source: e })?;
 
             if option.is_empty() {
                 option = "1".to_string();
@@ -200,10 +212,7 @@ pub fn get_config_path() -> Result<PathBuf, ConfigError> {
     }
 }
 
-pub fn add_to_config(
-    dependency: &Dependency,
-    config_path: impl AsRef<Path>,
-) -> Result<(), ConfigError> {
+pub fn add_to_config(dependency: &Dependency, config_path: impl AsRef<Path>) -> Result<()> {
     println!(
         "{}",
         Paint::green(&format!(
@@ -214,9 +223,7 @@ pub fn add_to_config(
     );
 
     let contents = read_file_to_string(&config_path);
-    let mut doc: DocumentMut = contents.parse::<DocumentMut>().map_err(|_| ConfigError {
-        cause: format!("Could not read the config file {:?}", config_path.as_ref()),
-    })?;
+    let mut doc: DocumentMut = contents.parse::<DocumentMut>()?;
 
     // in case we don't have the dependencies section defined in the config file, we add it
     if !doc.contains_table("dependencies") {
@@ -229,13 +236,12 @@ pub fn add_to_config(
         .expect("dependencies should be a table")
         .insert(&name, value);
 
-    fs::write(config_path, doc.to_string())
-        .map_err(|e| ConfigError { cause: format!("Couldn't write to the config file: {e:?}") })?;
+    fs::write(config_path, doc.to_string())?;
 
     Ok(())
 }
 
-pub async fn remappings() -> Result<(), ConfigError> {
+pub async fn remappings() -> Result<()> {
     let remappings_path = get_current_working_dir().join("remappings.txt");
     if !remappings_path.exists() {
         File::create(remappings_path.clone()).unwrap();
@@ -245,12 +251,7 @@ pub async fn remappings() -> Result<(), ConfigError> {
     let existing_remappings: Vec<String> = contents.split('\n').map(|s| s.to_string()).collect();
     let mut new_remappings: String = String::new();
 
-    let dependencies: Vec<Dependency> = match read_config(None) {
-        Ok(dep) => dep,
-        Err(err) => {
-            return Err(err);
-        }
-    };
+    let dependencies: Vec<Dependency> = read_config(None)?;
 
     let mut existing_remap: Vec<String> = Vec::new();
     existing_remappings.iter().for_each(|remapping| {
@@ -291,23 +292,12 @@ pub async fn remappings() -> Result<(), ConfigError> {
         return Ok(());
     }
 
-    let mut file: std::fs::File =
-        fs::OpenOptions::new().append(true).open(Path::new("remappings.txt")).unwrap();
-
-    match write!(file, "{}", &new_remappings) {
-        Ok(_) => {}
-        Err(_) => {
-            println!("{}", Paint::yellow(&"Could not write to the remappings file".to_string()));
-        }
-    }
+    fs::write("remappings.txt", new_remappings)?;
     remove_empty_lines("remappings.txt");
     Ok(())
 }
 
-pub fn delete_config(
-    dependency_name: &str,
-    path: impl AsRef<Path>,
-) -> Result<Dependency, ConfigError> {
+pub fn delete_config(dependency_name: &str, path: impl AsRef<Path>) -> Result<Dependency> {
     println!(
         "{}",
         Paint::green(&format!("Removing the dependency {dependency_name} from the config file"))
@@ -316,28 +306,19 @@ pub fn delete_config(
     let contents = read_file_to_string(&path);
     let mut doc: DocumentMut = contents.parse::<DocumentMut>().expect("invalid doc");
 
-    if !doc.contains_table("dependencies") {
-        return Err(ConfigError {
-            cause: format!("`[dependencies]` is missing from the config file {:?}", path.as_ref()),
-        });
-    }
-
     let Some(item_removed) = doc["dependencies"].as_table_mut().unwrap().remove(dependency_name)
     else {
-        return Err(ConfigError {
-            cause: format!("The dependency {dependency_name} does not exists in the config file"),
-        });
+        return Err(ConfigError::MissingDependency(dependency_name.to_string()));
     };
 
     let dependency = parse_dependency(dependency_name, &item_removed)?;
 
-    fs::write(path, doc.to_string())
-        .map_err(|e| ConfigError { cause: format!("Couldn't write to the config file: {e:?}") })?;
+    fs::write(path, doc.to_string())?;
 
     Ok(dependency)
 }
 
-pub fn remove_forge_lib() -> Result<(), ConfigError> {
+pub fn remove_forge_lib() -> Result<()> {
     let lib_dir = get_current_working_dir().join("lib/");
     let gitmodules_file = get_current_working_dir().join(".gitmodules");
 
@@ -346,21 +327,16 @@ pub fn remove_forge_lib() -> Result<(), ConfigError> {
     Ok(())
 }
 
-fn parse_dependency(name: impl Into<String>, value: &Item) -> Result<Dependency, ConfigError> {
+fn parse_dependency(name: impl Into<String>, value: &Item) -> Result<Dependency> {
     let name: String = name.into();
     if let Some(version) = value.as_str() {
         if version.is_empty() {
-            return Err(ConfigError {
-                cause: format!("Field `version` for dependency {name} is empty"),
-            });
+            return Err(ConfigError::EmptyVersion(name));
         }
         // this function does not retrieve the url
-        return Ok(Dependency::Http(HttpDependency {
-            name,
-            version: version.to_string(),
-            url: None,
-            checksum: None,
-        }));
+        return Ok(
+            HttpDependency { name, version: version.to_string(), url: None, checksum: None }.into()
+        );
     }
 
     // we should have a table or inline table
@@ -371,7 +347,7 @@ fn parse_dependency(name: impl Into<String>, value: &Item) -> Result<Dependency,
                 // we normalize to inline table
                 Some(table) => &table.clone().into_inline_table(),
                 None => {
-                    return Err(ConfigError { cause: format!("Config for {name} is invalid") });
+                    return Err(ConfigError::InvalidDependency(name));
                 }
             },
         }
@@ -380,14 +356,10 @@ fn parse_dependency(name: impl Into<String>, value: &Item) -> Result<Dependency,
     // version is needed in both cases
     let version = match table.get("version").map(|v| v.as_str()) {
         Some(None) => {
-            return Err(ConfigError {
-                cause: format!("Field `version` for dependency {name} is invalid"),
-            });
+            return Err(ConfigError::InvalidField { field: "version".to_string(), dep: name });
         }
         None => {
-            return Err(ConfigError {
-                cause: format!("Field `version` for dependency {name} is missing"),
-            });
+            return Err(ConfigError::MissingField { field: "version".to_string(), dep: name });
         }
         Some(Some(version)) => version.to_string(),
     };
@@ -395,18 +367,14 @@ fn parse_dependency(name: impl Into<String>, value: &Item) -> Result<Dependency,
     // check if it's a git dependency
     match table.get("git").map(|v| v.as_str()) {
         Some(None) => {
-            return Err(ConfigError {
-                cause: format!("Field `git` for dependency {name} is invalid"),
-            });
+            return Err(ConfigError::InvalidField { field: "git".to_string(), dep: name });
         }
         Some(Some(git)) => {
             // rev field is optional but needs to be a string if present
             let rev = match table.get("rev").map(|v| v.as_str()) {
                 Some(Some(rev)) => Some(rev.to_string()),
                 Some(None) => {
-                    return Err(ConfigError {
-                        cause: format!("Field `rev` for dependency {name} is invalid"),
-                    });
+                    return Err(ConfigError::InvalidField { field: "rev".to_string(), dep: name });
                 }
                 None => None,
             };
@@ -422,10 +390,8 @@ fn parse_dependency(name: impl Into<String>, value: &Item) -> Result<Dependency,
 
     // we should have a HTTP dependency
     match table.get("url").map(|v| v.as_str()) {
-        Some(None) => {
-            Err(ConfigError { cause: format!("Field `url` for dependency {name} is invalid") })
-        }
-        None => Err(ConfigError { cause: format!("Field `url` for dependency {name} is missing") }),
+        Some(None) => Err(ConfigError::InvalidField { field: "url".to_string(), dep: name }),
+        None => Err(ConfigError::MissingField { field: "url".to_string(), dep: name }),
         Some(Some(url)) => Ok(Dependency::Http(HttpDependency {
             name: name.to_string(),
             version,
@@ -435,7 +401,7 @@ fn parse_dependency(name: impl Into<String>, value: &Item) -> Result<Dependency,
     }
 }
 
-fn create_example_config(option: &str) -> Result<PathBuf, ConfigError> {
+fn create_example_config(option: &str) -> Result<PathBuf> {
     let (config_path, contents) = match option.trim() {
         "1" => (
             FOUNDRY_CONFIG_FILE.clone(),
@@ -462,12 +428,11 @@ enabled = true
 "#,
         ),
         _ => {
-            return Err(ConfigError { cause: "Invalid option".to_string() });
+            return Err(ConfigError::InvalidPromptOption);
         }
     };
 
-    fs::write(&config_path, contents)
-        .map_err(|e| ConfigError { cause: format!("Could not create a new config file: {e:?}") })?;
+    fs::write(&config_path, contents)?;
     Ok(config_path)
 }
 
@@ -489,7 +454,7 @@ mod tests {
 
     #[tokio::test] // check dependencies as {version = "1.1.1"}
     #[serial]
-    async fn read_foundry_config_version_v1_ok() -> Result<(), ConfigError> {
+    async fn read_foundry_config_version_v1_ok() -> Result<()> {
         let config_contents = r#"
 # Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
 
@@ -504,12 +469,7 @@ libs = ["dependencies"]
 
         write_to_config(&target_config, config_contents);
 
-        let result = match read_config(Some(target_config.clone())) {
-            Ok(dep) => dep,
-            Err(err) => {
-                return Err(err);
-            }
-        };
+        let result = read_config(Some(target_config.clone()))?;
 
         assert_eq!(
             result[0],
@@ -536,7 +496,7 @@ libs = ["dependencies"]
 
     #[tokio::test] // check dependencies as "1.1.1"
     #[serial]
-    async fn read_foundry_config_version_v2_ok() -> Result<(), ConfigError> {
+    async fn read_foundry_config_version_v2_ok() -> Result<()> {
         let config_contents = r#"
 # Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
 
@@ -551,12 +511,7 @@ libs = ["dependencies"]
 
         write_to_config(&target_config, config_contents);
 
-        let result = match read_config(Some(target_config.clone())) {
-            Ok(dep) => dep,
-            Err(err) => {
-                return Err(err);
-            }
-        };
+        let result = read_config(Some(target_config.clone()))?;
 
         assert_eq!(
             result[0],
@@ -583,7 +538,7 @@ libs = ["dependencies"]
 
     #[tokio::test] // check dependencies as "1.1.1"
     #[serial]
-    async fn read_soldeer_config_version_v1_ok() -> Result<(), ConfigError> {
+    async fn read_soldeer_config_version_v1_ok() -> Result<()> {
         let config_contents = r#"
 [remappings]
 enabled = true
@@ -596,12 +551,7 @@ enabled = true
 
         write_to_config(&target_config, config_contents);
 
-        let result = match read_config(Some(target_config.clone())) {
-            Ok(dep) => dep,
-            Err(err) => {
-                return Err(err);
-            }
-        };
+        let result = read_config(Some(target_config.clone()))?;
 
         assert_eq!(
             result[0],
@@ -628,7 +578,7 @@ enabled = true
 
     #[tokio::test] // check dependencies as "1.1.1"
     #[serial]
-    async fn read_soldeer_config_version_v2_ok() -> Result<(), ConfigError> {
+    async fn read_soldeer_config_version_v2_ok() -> Result<()> {
         let config_contents = r#"
 [remappings]
 enabled = true
@@ -641,12 +591,7 @@ enabled = true
 
         write_to_config(&target_config, config_contents);
 
-        let result = match read_config(Some(target_config.clone())) {
-            Ok(dep) => dep,
-            Err(err) => {
-                return Err(err);
-            }
-        };
+        let result = read_config(Some(target_config.clone()))?;
 
         assert_eq!(
             result[0],
@@ -673,7 +618,7 @@ enabled = true
 
     #[tokio::test]
     #[serial]
-    async fn read_malformed_config_incorrect_version_string_fails() -> Result<(), ConfigError> {
+    async fn read_malformed_config_incorrect_version_string_fails() -> Result<()> {
         let config_contents = r#"
 # Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
 
@@ -687,26 +632,14 @@ libs = ["dependencies"]
 
         write_to_config(&target_config, config_contents);
 
-        match read_config(Some(target_config.clone())) {
-            Ok(_) => {
-                assert_eq!("False state", "");
-            }
-            Err(err) => {
-                assert_eq!(
-                    err,
-                    ConfigError {
-                        cause: format!("Could not read the config file {:?}", target_config),
-                    }
-                )
-            }
-        };
+        assert!(matches!(read_config(Some(target_config.clone())), Err(ConfigError::Parsing(_))));
         let _ = remove_file(target_config);
         Ok(())
     }
 
     #[tokio::test]
     #[serial]
-    async fn read_malformed_config_empty_version_string_fails() -> Result<(), ConfigError> {
+    async fn read_malformed_config_empty_version_string_fails() -> Result<()> {
         let config_contents = r#"
 # Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
 
@@ -720,27 +653,16 @@ libs = ["dependencies"]
 
         write_to_config(&target_config, config_contents);
 
-        match read_config(Some(target_config.clone())) {
-            Ok(_) => {
-                assert_eq!("False state", "");
-            }
-            Err(err) => {
-                assert_eq!(
-                    err,
-                    ConfigError {
-                        cause:
-                            "Field `version` for dependency @gearbox-protocol-periphery-v3 is empty"
-                                .to_string(),
-                    }
-                )
-            }
-        };
+        assert!(matches!(
+            read_config(Some(target_config.clone())),
+            Err(ConfigError::EmptyVersion(_))
+        ));
         let _ = remove_file(target_config);
         Ok(())
     }
 
     #[test]
-    fn define_config_file_choses_foundry() -> Result<(), ConfigError> {
+    fn define_config_file_choses_foundry() -> Result<()> {
         let config_contents = r#"
 # Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
 
@@ -760,7 +682,7 @@ libs = ["dependencies"]
 
     #[tokio::test]
     #[serial]
-    async fn define_config_file_choses_soldeer() -> Result<(), ConfigError> {
+    async fn define_config_file_choses_soldeer() -> Result<()> {
         let config_contents = r#"
 [dependencies]
 "#;
@@ -774,7 +696,7 @@ libs = ["dependencies"]
     }
 
     #[test]
-    fn create_new_file_if_not_defined_foundry() -> Result<(), ConfigError> {
+    fn create_new_file_if_not_defined_foundry() -> Result<()> {
         let content = r#"
 # Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
 
@@ -796,7 +718,7 @@ libs = ["dependencies"]
     }
 
     #[test]
-    fn create_new_file_if_not_defined_soldeer() -> Result<(), ConfigError> {
+    fn create_new_file_if_not_defined_soldeer() -> Result<()> {
         let content = r#"
 [remappings]
 enabled = true
@@ -812,7 +734,7 @@ enabled = true
     }
 
     #[test]
-    fn add_to_config_foundry_no_custom_url_first_dependency() -> Result<(), ConfigError> {
+    fn add_to_config_foundry_no_custom_url_first_dependency() -> Result<()> {
         let mut content = r#"
 # Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
 
@@ -857,7 +779,7 @@ dep1 = "1.0.0"
     }
 
     #[test]
-    fn add_to_config_foundry_with_custom_url_first_dependency() -> Result<(), ConfigError> {
+    fn add_to_config_foundry_with_custom_url_first_dependency() -> Result<()> {
         let mut content = r#"
 # Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
 
@@ -904,7 +826,7 @@ dep1 = { version = "1.0.0", url = "http://custom_url.com/custom.zip" }
     }
 
     #[test]
-    fn add_to_config_foundry_no_custom_url_second_dependency() -> Result<(), ConfigError> {
+    fn add_to_config_foundry_no_custom_url_second_dependency() -> Result<()> {
         let mut content = r#"
 # Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
 
@@ -953,7 +875,7 @@ dep1 = "1.0.0"
     }
 
     #[test]
-    fn add_to_config_foundry_with_custom_url_second_dependency() -> Result<(), ConfigError> {
+    fn add_to_config_foundry_with_custom_url_second_dependency() -> Result<()> {
         let mut content = r#"
 # Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
 
@@ -1002,7 +924,7 @@ dep1 = { version = "1.0.0", url = "http://custom_url.com/custom.zip" }
     }
 
     #[test]
-    fn add_to_config_foundry_update_dependency_version() -> Result<(), ConfigError> {
+    fn add_to_config_foundry_update_dependency_version() -> Result<()> {
         let mut content = r#"
 # Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
 
@@ -1050,7 +972,7 @@ old_dep = { version = "1.0.0", url = "http://custom_url.com/custom.zip" }
     }
 
     #[test]
-    fn add_to_config_foundry_update_dependency_version_no_custom_url() -> Result<(), ConfigError> {
+    fn add_to_config_foundry_update_dependency_version_no_custom_url() -> Result<()> {
         let mut content = r#"
 # Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
 
@@ -1098,7 +1020,7 @@ old_dep = "1.0.0"
     }
 
     #[test]
-    fn add_to_config_foundry_not_altering_the_existing_contents() -> Result<(), ConfigError> {
+    fn add_to_config_foundry_not_altering_the_existing_contents() -> Result<()> {
         let mut content = r#"
 # Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
 
@@ -1149,7 +1071,7 @@ dep1 = "1.0.0"
     }
 
     #[test]
-    fn add_to_config_soldeer_no_custom_url_first_dependency() -> Result<(), ConfigError> {
+    fn add_to_config_soldeer_no_custom_url_first_dependency() -> Result<()> {
         let mut content = r#"
 [remappings]
 enabled = true
@@ -1184,7 +1106,7 @@ dep1 = "1.0.0"
     }
 
     #[test]
-    fn add_to_config_soldeer_with_custom_url_first_dependency() -> Result<(), ConfigError> {
+    fn add_to_config_soldeer_with_custom_url_first_dependency() -> Result<()> {
         let mut content = r#"
 [remappings]
 enabled = true
@@ -1219,7 +1141,7 @@ dep1 = { version = "1.0.0", url = "http://custom_url.com/custom.zip" }
     }
 
     #[test]
-    fn add_to_config_foundry_github_with_commit() -> Result<(), ConfigError> {
+    fn add_to_config_foundry_github_with_commit() -> Result<()> {
         let mut content = r#"
 # Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
 
@@ -1270,8 +1192,7 @@ dep1 = { version = "1.0.0", git = "git@github.com:foundry-rs/forge-std.git", rev
     }
 
     #[test]
-    fn add_to_config_foundry_github_previous_no_commit_then_with_commit() -> Result<(), ConfigError>
-    {
+    fn add_to_config_foundry_github_previous_no_commit_then_with_commit() -> Result<()> {
         let mut content = r#"
 # Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
 
@@ -1325,7 +1246,7 @@ dep1 = { version = "1.0.0", git = "git@github.com:foundry-rs/forge-std.git", rev
     }
 
     #[test]
-    fn add_to_config_foundry_github_previous_commit_then_no_commit() -> Result<(), ConfigError> {
+    fn add_to_config_foundry_github_previous_commit_then_no_commit() -> Result<()> {
         let mut content = r#"
 # Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
 
@@ -1379,7 +1300,7 @@ dep1 = { version = "1.0.0", url = "http://custom_url.com/custom.zip" }
     }
 
     #[test]
-    fn remove_from_the_config_single() -> Result<(), ConfigError> {
+    fn remove_from_the_config_single() -> Result<()> {
         let mut content = r#"
 # Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
 
@@ -1419,7 +1340,7 @@ libs = ["dependencies"]
     }
 
     #[test]
-    fn remove_from_the_config_multiple() -> Result<(), ConfigError> {
+    fn remove_from_the_config_multiple() -> Result<()> {
         let mut content = r#"
 # Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
 
@@ -1463,7 +1384,7 @@ dep2 = { version = "1.0.0", url = "http://custom_url.com/custom.zip" }
     }
 
     #[test]
-    fn remove_config_nonexistent_fails() -> Result<(), ConfigError> {
+    fn remove_config_nonexistent_fails() -> Result<()> {
         let content = r#"
 # Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
 
@@ -1482,19 +1403,10 @@ dep1 = { version = "1.0.0", url = "http://custom_url.com/custom.zip" }
 
         write_to_config(&target_config, content);
 
-        match delete_config("dep2", &target_config) {
-            Ok(_) => {
-                assert_eq!("Invalid State", "");
-            }
-            Err(err) => {
-                assert_eq!(
-                    err,
-                    ConfigError {
-                        cause: "The dependency dep2 does not exists in the config file".to_string()
-                    }
-                )
-            }
-        }
+        assert!(matches!(
+            delete_config("dep2", &target_config),
+            Err(ConfigError::MissingDependency(_))
+        ));
 
         assert_eq!(read_file_to_string(&target_config), content);
 

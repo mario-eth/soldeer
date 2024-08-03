@@ -53,7 +53,12 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
                 match config::remove_forge_lib() {
                     Ok(_) => {}
                     Err(err) => {
-                        return Err(SoldeerError { message: err.cause });
+                        return Err(SoldeerError { message: err.to_string() }); // TODO: derive
+                                                                               // SoldeerError from
+                                                                               // module errors
+                                                                               // automatically,
+                                                                               // will enable use of
+                                                                               // ? operator
                     }
                 }
             }
@@ -192,7 +197,7 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
             let dependency = match delete_config(&uninstall.dependency, &path) {
                 Ok(d) => d,
                 Err(err) => {
-                    return Err(SoldeerError { message: err.cause });
+                    return Err(SoldeerError { message: err.to_string() });
                 }
             };
 
@@ -295,7 +300,7 @@ async fn install_dependency(mut dependency: Dependency) -> Result<(), SoldeerErr
     match add_to_config(&dependency, &config_file) {
         Ok(_) => {}
         Err(err) => {
-            return Err(SoldeerError { message: err.cause });
+            return Err(SoldeerError { message: err.to_string() });
         }
     }
 
@@ -318,7 +323,7 @@ async fn install_dependency(mut dependency: Dependency) -> Result<(), SoldeerErr
     }
 
     // TODO: check the config to know whether we should write remappings
-    remappings().await.map_err(|e| SoldeerError { message: e.cause })?;
+    remappings().await.map_err(|e| SoldeerError { message: e.to_string() })?;
     Ok(())
 }
 
@@ -327,7 +332,7 @@ async fn update() -> Result<(), SoldeerError> {
 
     let mut dependencies: Vec<Dependency> = match read_config(None) {
         Ok(dep) => dep,
-        Err(err) => return Err(SoldeerError { message: err.cause }),
+        Err(err) => return Err(SoldeerError { message: err.to_string() }),
     };
 
     let results = match download_dependencies(&dependencies, true).await {
@@ -387,7 +392,7 @@ async fn update() -> Result<(), SoldeerError> {
     }
 
     // TODO: check the config to know whether we should write remappings
-    remappings().await.map_err(|e| SoldeerError { message: e.cause })?;
+    remappings().await.map_err(|e| SoldeerError { message: e.to_string() })?;
     Ok(())
 }
 

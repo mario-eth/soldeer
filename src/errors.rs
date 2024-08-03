@@ -1,4 +1,6 @@
-use std::fmt;
+use std::{fmt, io};
+
+use thiserror::Error;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct SoldeerError {
@@ -116,15 +118,40 @@ impl LoginError {
         LoginError { cause: cause.to_string() }
     }
 }
-#[derive(Debug, Clone, PartialEq)]
-pub struct ConfigError {
-    pub cause: String,
-}
+#[derive(Error, Debug)]
+pub enum ConfigError {
+    #[error("config file not found")]
+    NotFound,
 
-impl ConfigError {
-    pub fn new(cause: &str) -> ConfigError {
-        ConfigError { cause: cause.to_string() }
-    }
+    #[error("config file is not valid: {0}")]
+    Parsing(#[from] toml_edit::TomlError),
+
+    #[error("config file is missing the `[dependencies]` section")]
+    MissingDependencies,
+
+    #[error("invalid user input: {source}")]
+    PromptError { source: io::Error },
+
+    #[error("invalid prompt option")]
+    InvalidPromptOption,
+
+    #[error("error writing to config file: {0}")]
+    FileWriteError(#[from] io::Error),
+
+    #[error("empty `version` field in {0}")]
+    EmptyVersion(String),
+
+    #[error("missing `{field}` field in {dep}")]
+    MissingField { field: String, dep: String },
+
+    #[error("invalid `{field}` field in {dep}")]
+    InvalidField { field: String, dep: String },
+
+    #[error("dependency {0} is not valid")]
+    InvalidDependency(String),
+
+    #[error("dependency {0} was not found")]
+    MissingDependency(String),
 }
 
 #[derive(Debug, Clone, PartialEq)]

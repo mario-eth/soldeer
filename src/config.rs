@@ -145,7 +145,9 @@ pub async fn read_config(path: Option<PathBuf>) -> Result<Vec<Dependency>, Confi
         None => get_config_path()?,
     };
     let contents = read_file_to_string(&path);
-    let doc: DocumentMut = contents.parse::<DocumentMut>().expect("invalid doc");
+    let doc: DocumentMut = contents
+        .parse::<DocumentMut>()
+        .map_err(|_| ConfigError { cause: format!("Could not read the config file {path:?}") })?;
     if !doc.contains_table("dependencies") {
         return Err(ConfigError {
             cause: format!("`[dependencies]` is missing from the config file {path:?}"),
@@ -172,7 +174,9 @@ pub fn get_config_path() -> Result<PathBuf, ConfigError> {
     };
 
     if let Ok(contents) = fs::read_to_string(&foundry_path) {
-        let doc: DocumentMut = contents.parse::<DocumentMut>().expect("invalid doc");
+        let doc: DocumentMut = contents.parse::<DocumentMut>().map_err(|_| ConfigError {
+            cause: format!("Could not read the config file {foundry_path:?}"),
+        })?;
         if doc.contains_table("dependencies") {
             return Ok(foundry_path);
         }
@@ -211,7 +215,9 @@ pub fn add_to_config(
     );
 
     let contents = read_file_to_string(&config_path);
-    let mut doc: DocumentMut = contents.parse::<DocumentMut>().expect("invalid doc");
+    let mut doc: DocumentMut = contents.parse::<DocumentMut>().map_err(|_| ConfigError {
+        cause: format!("Could not read the config file {:?}", config_path.as_ref()),
+    })?;
 
     // in case we don't have the dependencies section defined in the config file, we add it
     if !doc.contains_table("dependencies") {
@@ -355,9 +361,18 @@ fn parse_dependency_sync(name: impl Into<String>, value: &Item) -> Result<Depend
         }));
     }
 
-    // we should have a table
-    let Some(table) = value.as_table() else {
-        return Err(ConfigError { cause: format!("Config for {name} is invalid") });
+    // we should have a table or inline table
+    let table = {
+        match value.as_inline_table() {
+            Some(table) => table,
+            None => match value.as_table() {
+                // we normalize to inline table
+                Some(table) => &table.clone().into_inline_table(),
+                None => {
+                    return Err(ConfigError { cause: format!("Config for {name} is invalid") });
+                }
+            },
+        }
     };
 
     // version is needed in both cases
@@ -819,7 +834,14 @@ libs = ["dependencies"]
                 assert_eq!("False state", "");
             }
             Err(err) => {
-                assert_eq!(err, ConfigError { cause: "Could not get the url".to_string() })
+                assert_eq!(
+                    err,
+                    ConfigError {
+                        cause:
+                            "Could not retrieve URL for dependency @gearbox-protocol-periphery-v3"
+                                .to_string()
+                    }
+                )
             }
         };
         let _ = remove_file(target_config);
@@ -1345,10 +1367,10 @@ test = "test"
 libs = ["dependencies"]
 gas_reports = ['*']
 
-# we don't have [dependencies] declared
-
 [dependencies]
 dep1 = { version = "1.0.0", git = "git@github.com:foundry-rs/forge-std.git", rev = "07263d193d621c4b2b0ce8b4d54af58f6957d97d" }
+
+# we don't have [dependencies] declared
 "#;
 
         assert_eq!(read_file_to_string(&target_config), content);

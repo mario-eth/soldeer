@@ -36,12 +36,11 @@ impl LockEntry {
     }
 }
 
-pub fn lock_check(dependency: &Dependency, create_lock: bool) -> Result<()> {
+pub fn lock_check(dependency: &Dependency, allow_missing_lockfile: bool) -> Result<()> {
     let lock_entries = match read_lock() {
         Ok(entries) => entries,
         Err(e) => {
-            if create_lock {
-                let _ = write_lock(&[], LockWriteMode::Append);
+            if allow_missing_lockfile {
                 return Ok(());
             }
             return Err(e);
@@ -64,14 +63,14 @@ pub enum LockWriteMode {
     Append,
 }
 
-pub fn write_lock(dependencies: &[Dependency], clean: LockWriteMode) -> Result<()> {
+pub fn write_lock(dependencies: &[Dependency], mode: LockWriteMode) -> Result<()> {
     let lock_file: PathBuf = if cfg!(test) {
         get_current_working_dir().join("test").join("soldeer.lock")
     } else {
         LOCK_FILE.clone()
     };
 
-    if clean == LockWriteMode::Replace && lock_file.exists() {
+    if mode == LockWriteMode::Replace && lock_file.exists() {
         fs::remove_file(&lock_file)?;
     }
 
@@ -95,6 +94,7 @@ pub fn write_lock(dependencies: &[Dependency], clean: LockWriteMode) -> Result<(
         // check for entry already existing
         match entries.iter().position(|e| e.name == entry.name && e.version == entry.version) {
             Some(pos) => {
+                println!("{}", Paint::green(&format!("Updating {dep} in the lock file.")));
                 // replace the entry with the new data
                 entries[pos] = entry;
             }
@@ -170,7 +170,7 @@ fn read_lock() -> Result<Vec<LockEntry>> {
     }
     let contents = read_file_to_string(lock_file);
 
-    // reading the contents into a data structure
+    // parse file contents
     let data: LockType = toml_edit::de::from_str(&contents).unwrap_or_default();
     Ok(data.dependencies)
 }

@@ -45,7 +45,7 @@ pub fn unzip_dependencies(dependencies: &[Dependency]) -> Result<()> {
             Dependency::Http(dep) => Some(dep),
             _ => None,
         })
-        .try_for_each(|d| unzip_dependency(&d.name, &d.version))?;
+        .try_for_each(unzip_dependency)?;
     Ok(())
 }
 
@@ -65,10 +65,10 @@ pub async fn download_dependency(dependency: &Dependency) -> Result<DownloadResu
         Dependency::Http(dep) => {
             let url = match &dep.url {
                 Some(url) => url.clone(),
-                None => get_dependency_url_remote(&dep.name, &dep.version).await?,
+                None => get_dependency_url_remote(dependency).await?,
             };
             download_via_http(&url, dep, &dependency_directory).await?;
-            DownloadResult { hash: sha256_digest(&dep.name, &dep.version), url }
+            DownloadResult { hash: sha256_digest(dep), url }
         }
         Dependency::Git(dep) => {
             let hash = download_via_git(dep, &dependency_directory).await?;
@@ -83,18 +83,15 @@ pub async fn download_dependency(dependency: &Dependency) -> Result<DownloadResu
     Ok(res)
 }
 
-pub fn unzip_dependency(dependency_name: &str, dependency_version: &str) -> Result<()> {
-    let file_name = format!("{}-{}.zip", dependency_name, dependency_version);
-    let target_name = format!("{}-{}/", dependency_name, dependency_version);
+pub fn unzip_dependency(dependency: &HttpDependency) -> Result<()> {
+    let file_name = format!("{}-{}.zip", dependency.name, dependency.version);
+    let target_name = format!("{}-{}/", dependency.name, dependency.version);
     let current_dir = DEPENDENCY_DIR.join(file_name);
     let target = DEPENDENCY_DIR.join(target_name);
     let archive = read_file(current_dir).unwrap();
 
     zip_extract::extract(Cursor::new(archive), &target, true)?;
-    println!(
-        "{}",
-        format!("The dependency {}-{} was unzipped!", dependency_name, dependency_version).green()
-    );
+    println!("{}", format!("The dependency {dependency} was unzipped!").green());
     Ok(())
 }
 
@@ -651,7 +648,7 @@ mod tests {
             checksum: None,
         }));
         download_dependencies(&dependencies, false).await.unwrap();
-        unzip_dependency(dependencies[0].name(), dependencies[0].version()).unwrap();
+        unzip_dependency(dependencies[0].as_http().unwrap()).unwrap();
         healthcheck_dependency(&dependencies[0]).unwrap();
         assert!(DEPENDENCY_DIR
             .join("@openzeppelin-contracts-3.3.0-custom-test")

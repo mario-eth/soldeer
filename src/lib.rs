@@ -180,7 +180,7 @@ async fn install_dependency(mut dependency: Dependency) -> Result<(), SoldeerErr
     write_lock(&[dependency.clone()], LockWriteMode::Append)?;
 
     if let Dependency::Http(dep) = &dependency {
-        if let Err(e) = unzip_dependency(&dep.name, &dep.version) {
+        if let Err(e) = unzip_dependency(dep) {
             cleanup_dependency(&dependency, true)?;
             return Err(SoldeerError::DownloadError { dep: dependency.to_string(), source: e });
         }

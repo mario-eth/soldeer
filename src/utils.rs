@@ -9,6 +9,8 @@ use std::{
 };
 use yansi::Paint as _;
 
+use crate::config::HttpDependency;
+
 static GIT_SSH_REGEX: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"^(?:git@github\.com|git@gitlab)").expect("git ssh regex should compile")
 });
@@ -155,17 +157,17 @@ pub fn get_url_type(dependency_url: &str) -> UrlType {
 }
 
 #[cfg(not(test))]
-pub fn sha256_digest(dependency_name: &str, dependency_version: &str) -> String {
+pub fn sha256_digest(dependency: &HttpDependency) -> String {
     use crate::DEPENDENCY_DIR;
 
     let bytes = std::fs::read(
-        DEPENDENCY_DIR.join(format!("{}-{}.zip", dependency_name, dependency_version)),
+        DEPENDENCY_DIR.join(format!("{}-{}.zip", dependency.name, dependency.version)),
     )
     .unwrap(); // Vec<u8>
     sha256::digest(bytes)
 }
 
 #[cfg(test)]
-pub fn sha256_digest(_dependency_name: &str, _dependency_version: &str) -> String {
+pub fn sha256_digest(_dependency: &HttpDependency) -> String {
     "5019418b1e9128185398870f77a42e51d624c44315bb1572e7545be51d707016".to_string()
 }

@@ -138,6 +138,22 @@ impl Dependency {
             ),
         }
     }
+
+    pub fn as_http(&self) -> Option<&HttpDependency> {
+        if let Self::Http(v) = self {
+            Some(v)
+        } else {
+            None
+        }
+    }
+
+    pub fn as_git(&self) -> Option<&GitDependency> {
+        if let Self::Git(v) = self {
+            Some(v)
+        } else {
+            None
+        }
+    }
 }
 
 impl core::fmt::Display for Dependency {

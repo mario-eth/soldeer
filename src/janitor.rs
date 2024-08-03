@@ -81,7 +81,7 @@ mod tests {
             url: Some("https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@openzeppelin-contracts~2.3.0.zip".to_string()),
             checksum: None}));
         download_dependencies(&dependencies, false).await.unwrap();
-        unzip_dependency(dependencies[0].name(), dependencies[0].version()).unwrap();
+        unzip_dependency(dependencies[0].as_http().unwrap()).unwrap();
         healthcheck_dependency(&dependencies[0]).unwrap();
     }
 
@@ -97,7 +97,7 @@ mod tests {
             url: Some("https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@openzeppelin-contracts~2.3.0.zip".to_string()),
             checksum: None }));
         download_dependencies(&dependencies, false).await.unwrap();
-        unzip_dependency(dependencies[0].name(), dependencies[0].version()).unwrap();
+        unzip_dependency(dependencies[0].as_http().unwrap()).unwrap();
         cleanup_dependency(&dependencies[0], false).unwrap();
     }
 
@@ -133,7 +133,7 @@ mod tests {
             checksum: None }));
 
         download_dependencies(&dependencies, false).await.unwrap();
-        let _ = unzip_dependency(dependencies[0].name(), dependencies[0].version());
+        let _ = unzip_dependency(dependencies[0].as_http().unwrap());
         let result: Result<()> = cleanup_after(&dependencies);
         assert!(result.is_ok());
         clean_dependency_directory();
@@ -152,7 +152,7 @@ mod tests {
             checksum: None}));
 
         download_dependencies(&dependencies, false).await.unwrap();
-        unzip_dependency(dependencies[0].name(), dependencies[0].version()).unwrap();
+        unzip_dependency(dependencies[0].as_http().unwrap()).unwrap();
         dependencies.push(Dependency::Http(HttpDependency {
             name: "@openzeppelin-contracts".to_string(),
             version: "cleanup-after-one-existing-2".to_string(),

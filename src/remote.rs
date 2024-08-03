@@ -8,15 +8,12 @@ use chrono::{DateTime, Utc};
 use reqwest::Client;
 use serde_derive::{Deserialize, Serialize};
 
-pub async fn get_dependency_url_remote(
-    dependency_name: &str,
-    dependency_version: &str,
-) -> Result<String> {
+pub async fn get_dependency_url_remote(dependency: &Dependency) -> Result<String> {
     let url = format!(
         "{}/api/v1/revision-cli?project_name={}&revision={}",
         get_base_url(),
-        dependency_name,
-        dependency_version
+        dependency.name(),
+        dependency.version()
     );
     let req = Client::new().get(url);
 
@@ -26,15 +23,13 @@ pub async fn get_dependency_url_remote(
             let revision = serde_json::from_str::<RevisionResponse>(&response_text);
             if let Ok(revision) = revision {
                 if revision.data.is_empty() {
-                    return Err(DownloadError::URLNotFound(format!(
-                        "{dependency_name}~{dependency_version}"
-                    )));
+                    return Err(DownloadError::URLNotFound(dependency.to_string()));
                 }
                 return Ok(revision.data[0].clone().url);
             }
         }
     }
-    Err(DownloadError::URLNotFound(format!("{dependency_name}~{dependency_version}")))
+    Err(DownloadError::URLNotFound(dependency.to_string()))
 }
 
 //TODO clean this up and do error handling

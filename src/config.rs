@@ -11,7 +11,7 @@ use std::{
     path::{Path, PathBuf},
 };
 use toml_edit::{value, DocumentMut, InlineTable, Item, Table};
-use yansi::Paint;
+use yansi::Paint as _;
 
 pub type Result<T> = std::result::Result<T, ConfigError>;
 
@@ -215,11 +215,12 @@ pub fn get_config_path() -> Result<PathBuf> {
 pub fn add_to_config(dependency: &Dependency, config_path: impl AsRef<Path>) -> Result<()> {
     println!(
         "{}",
-        Paint::green(&format!(
+        format!(
             "Adding dependency {}-{} to the config file",
             dependency.name(),
             dependency.version()
-        ))
+        )
+        .green()
     );
 
     let contents = read_file_to_string(&config_path);
@@ -273,10 +274,8 @@ pub async fn remappings() -> Result<()> {
         if index.is_none() {
             println!(
                 "{}",
-                Paint::green(&format!(
-                    "Added a new dependency to remappings {}",
-                    &dependency_name_formatted
-                ))
+                format!("Added a new dependency to remappings {}", &dependency_name_formatted)
+                    .green()
             );
             new_remappings.push_str(&format!(
                 "\n{}=dependencies/{}-{}",
@@ -300,7 +299,7 @@ pub async fn remappings() -> Result<()> {
 pub fn delete_config(dependency_name: &str, path: impl AsRef<Path>) -> Result<Dependency> {
     println!(
         "{}",
-        Paint::green(&format!("Removing the dependency {dependency_name} from the config file"))
+        format!("Removing the dependency {dependency_name} from the config file").green()
     );
 
     let contents = read_file_to_string(&path);

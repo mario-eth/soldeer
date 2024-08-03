@@ -21,7 +21,7 @@ use remote::get_latest_forge_std_dependency;
 use std::{env, path::PathBuf};
 use utils::{get_dependency_type, DependencyType};
 use versioning::validate_name;
-use yansi::Paint;
+use yansi::Paint as _;
 
 mod auth;
 pub mod commands;
@@ -46,8 +46,8 @@ pub static FOUNDRY_CONFIG_FILE: Lazy<PathBuf> =
 pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
     match command {
         Subcommands::Init(init) => {
-            Paint::green("🦌 Running Soldeer init 🦌\n");
-            Paint::green("Initializes a new Soldeer project in foundry\n");
+            println!("{}", "🦌 Running Soldeer init 🦌".green());
+            println!("{}", "Initializes a new Soldeer project in foundry".green());
 
             if init.clean.is_some() && init.clean.unwrap() {
                 config::remove_forge_lib()?;
@@ -64,7 +64,7 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
                                        // integrity checksum and install those
             };
 
-            Paint::green("🦌 Running Soldeer install 🦌\n");
+            println!("{}", "🦌 Running Soldeer install 🦌".green());
             let (dependency_name, dependency_version) =
                 dependency.split_once('~').expect("dependency string should have name and version");
 
@@ -97,7 +97,7 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
             return update().await;
         }
         Subcommands::Login(_) => {
-            Paint::green("🦌 Running Soldeer login 🦌\n");
+            println!("{}", "🦌 Running Soldeer login 🦌".green());
             login().await?;
         }
         Subcommands::Push(push) => {
@@ -111,24 +111,21 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
                 check_dotfiles_recursive(&path) &&
                 !prompt_user_for_confirmation()
             {
-                Paint::yellow("Push operation aborted by the user.");
+                println!("{}", "Push operation aborted by the user.".yellow());
                 return Ok(());
             }
 
             if dry_run {
                 println!(
                     "{}",
-                    Paint::green("🦌 Running Soldeer push with dry-run, a zip file will be available for inspection 🦌\n")
+                    "🦌 Running Soldeer push with dry-run, a zip file will be available for inspection 🦌".green()
                 );
             } else {
-                Paint::green("🦌 Running Soldeer push 🦌\n");
+                println!("{}", "🦌 Running Soldeer push 🦌".green());
             }
 
             if skip_warnings {
-                println!(
-                    "{}",
-                    Paint::yellow("Warning: Skipping sensitive file checks as requested.")
-                );
+                println!("{}", "Warning: Skipping sensitive file checks as requested.".yellow());
             }
 
             let (dependency_name, dependency_version) = push
@@ -160,7 +157,7 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
 
         Subcommands::VersionDryRun(_) => {
             const VERSION: &str = env!("CARGO_PKG_VERSION");
-            Paint::cyan(&format!("Current Soldeer {}", VERSION));
+            println!("{}", format!("Current Soldeer {}", VERSION).cyan());
         }
     }
     Ok(())
@@ -209,7 +206,7 @@ async fn install_dependency(mut dependency: Dependency) -> Result<(), SoldeerErr
 }
 
 async fn update() -> Result<(), SoldeerError> {
-    Paint::green("🦌 Running Soldeer update 🦌\n");
+    println!("{}", "🦌 Running Soldeer update 🦌".green());
 
     let mut dependencies: Vec<Dependency> = read_config(None)?;
 

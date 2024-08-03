@@ -1,13 +1,13 @@
 use clap::Parser;
 use soldeer::commands::Args;
-use yansi::Paint;
+use yansi::Paint as _;
 
 fn main() {
     let args = Args::parse();
     match soldeer::run(args.command) {
         Ok(_) => {}
         Err(err) => {
-            eprintln!("{}", Paint::red(&err.to_string()))
+            eprintln!("{}", err.to_string().red())
         }
     }
 }

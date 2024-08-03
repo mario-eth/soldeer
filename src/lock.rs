@@ -6,7 +6,7 @@ use crate::{
 };
 use serde_derive::{Deserialize, Serialize};
 use std::{fs, path::PathBuf};
-use yansi::Paint;
+use yansi::Paint as _;
 
 pub type Result<T> = std::result::Result<T, LockError>;
 
@@ -94,17 +94,14 @@ pub fn write_lock(dependencies: &[Dependency], mode: LockWriteMode) -> Result<()
         // check for entry already existing
         match entries.iter().position(|e| e.name == entry.name && e.version == entry.version) {
             Some(pos) => {
-                println!("{}", Paint::green(&format!("Updating {dep} in the lock file.")));
+                println!("{}", format!("Updating {dep} in the lock file.").green());
                 // replace the entry with the new data
                 entries[pos] = entry;
             }
             None => {
                 println!(
                     "{}",
-                    Paint::green(&format!(
-                        "Writing {}~{} to the lock file.",
-                        entry.name, entry.version
-                    ))
+                    format!("Writing {}~{} to the lock file.", entry.name, entry.version).green()
                 );
                 entries.push(entry);
             }

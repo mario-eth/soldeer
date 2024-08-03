@@ -7,7 +7,7 @@ use std::{
     io::{BufRead, BufReader, Read, Write},
     path::{Path, PathBuf},
 };
-use yansi::Paint;
+use yansi::Paint as _;
 
 static GIT_SSH_REGEX: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"^(?:git@github\.com|git@gitlab)").expect("git ssh regex should compile")
@@ -63,9 +63,7 @@ pub fn define_security_file_location() -> String {
         None => {
             println!(
                 "{}",
-                Paint::red(
-                    "HOME(linux) or %UserProfile%(Windows) path variable is not set, we can not determine the user's home directory. Please define this environment variable or define a custom path for the login file using the SOLDEER_LOGIN_FILE environment variable.",
-                    )
+                "HOME(linux) or %UserProfile%(Windows) path variable is not set, we can not determine the user's home directory. Please define this environment variable or define a custom path for the login file using the SOLDEER_LOGIN_FILE environment variable.".red()
             );
         }
     }
@@ -157,14 +155,16 @@ pub fn check_dotfiles_recursive(path: &Path) -> bool {
 
 // Function to prompt the user for confirmation
 pub fn prompt_user_for_confirmation() -> bool {
-    println!("{}", Paint::yellow(
-        "You are about to include some sensitive files in this version. Are you sure you want to continue?"
-    ));
-    println!("{}", Paint::cyan(
-        "If you are not sure what sensitive files, you can run the dry-run command to check what will be pushed."
-    ));
+    println!(
+        "{}",
+        "You are about to include some sensitive files in this version. Are you sure you want to continue?".yellow()
+    );
+    println!(
+        "{}",
+        "If you are not sure what sensitive files, you can run the dry-run command to check what will be pushed.".cyan()
+    );
 
-    print!("{}", Paint::green("Do you want to continue? (y/n): "));
+    print!("{}", "Do you want to continue? (y/n): ".green());
     std::io::stdout().flush().unwrap();
 
     let mut input = String::new();

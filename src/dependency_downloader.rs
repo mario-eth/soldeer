@@ -77,7 +77,7 @@ pub async fn download_dependency(dependency: &Dependency) -> Result<DownloadResu
     };
     println!(
         "{}",
-        &format!("Dependency {}-{} downloaded!", dependency.name(), dependency.version()).green()
+        format!("Dependency {}-{} downloaded!", dependency.name(), dependency.version()).green()
     );
 
     Ok(res)

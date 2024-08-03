@@ -16,7 +16,7 @@ use std::{
     path::{Path, PathBuf},
 };
 use walkdir::WalkDir;
-use yansi::Paint;
+use yansi::Paint as _;
 use yash_fnmatch::{without_escape, Pattern};
 use zip::{write::SimpleFileOptions, CompressionMethod, ZipWriter};
 
@@ -31,7 +31,7 @@ pub async fn push_version(
     let file_name = root_directory_path.file_name().expect("path should have a last component");
     println!(
         "{}",
-        Paint::green(&format!("Pushing a dependency {}-{}:", dependency_name, dependency_version))
+        format!("Pushing a dependency {}-{}:", dependency_name, dependency_version).green()
     );
 
     let files_to_copy: Vec<PathBuf> = filter_files_to_copy(&root_directory_path);
@@ -221,7 +221,7 @@ async fn push_to_repo(
     let response = res.await.unwrap();
     match response.status() {
         StatusCode::OK => {
-            println!("{}", Paint::green("Success!"));
+            println!("{}", "Success!".green());
             Ok(())
         }
         StatusCode::NO_CONTENT => Err(PublishError::ProjectNotFound),

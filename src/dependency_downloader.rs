@@ -180,7 +180,7 @@ async fn download_via_git(
         Some(rev) => {
             let result = git_get_commit
                 .args([
-                    format!("--work-tree={:?}", path),
+                    format!("--work-tree={}", path_str),
                     format!("--git-dir={}", path.join(".git").to_string_lossy()),
                     "checkout".to_string(),
                     rev.to_string(),
@@ -205,7 +205,7 @@ async fn download_via_git(
         None => {
             let result = git_checkout
                 .args([
-                    format!("--work-tree={:?}", path),
+                    format!("--work-tree={}", path_str),
                     format!("--git-dir={}", path.join(".git").to_string_lossy()),
                     "rev-parse".to_string(),
                     "--verify".to_string(),

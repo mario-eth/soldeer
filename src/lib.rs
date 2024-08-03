@@ -167,12 +167,7 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
             match push_version(&dependency_name, &dependency_version, path, dry_run).await {
                 Ok(_) => {}
                 Err(err) => {
-                    return Err(SoldeerError {
-                        message: format!(
-                            "Dependency {}~{} could not be pushed.\nCause: {}",
-                            dependency_name, dependency_version, err.cause
-                        ),
-                    });
+                    return Err(SoldeerError { message: err.to_string() });
                 }
             }
         }

@@ -1,4 +1,7 @@
-use std::{fmt, io, path::PathBuf};
+use std::{
+    fmt, io,
+    path::{PathBuf, StripPrefixError},
+};
 use thiserror::Error;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -12,17 +15,40 @@ impl fmt::Display for SoldeerError {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct PushError {
-    pub name: String,
-    pub version: String,
-    pub cause: String,
-}
+#[derive(Error, Debug)]
+pub enum PublishError {
+    #[error("no files to publish")]
+    NoFiles,
 
-impl PushError {
-    pub fn new(name: &str, version: &str, cause: &str) -> PushError {
-        PushError { name: name.to_string(), version: version.to_string(), cause: cause.to_string() }
-    }
+    #[error("error during zipping: {0}")]
+    ZipError(#[from] zip::result::ZipError),
+
+    #[error("error during IO operation for {path:?}: {source}")]
+    IOError { path: PathBuf, source: io::Error },
+
+    #[error("error while computing the relative path: {0}")]
+    RelativePathError(#[from] StripPrefixError),
+
+    #[error("auth error: {0}")]
+    AuthError(#[from] AuthError),
+
+    #[error("error during publishing: {0}")]
+    DownloadError(#[from] DownloadError),
+
+    #[error("Project not found. Make sure you send the right dependency name. The dependency name is the project name you created on https://soldeer.xyz")]
+    ProjectNotFound,
+
+    #[error("dependency already exists")]
+    AlreadyExists,
+
+    #[error("the package is too big (over 50 MB)")]
+    PayloadTooLarge,
+
+    #[error("http error during publishing: {0}")]
+    HttpError(#[from] reqwest::Error),
+
+    #[error("unknown http error")]
+    UnknownError,
 }
 
 #[derive(Error, Debug)]

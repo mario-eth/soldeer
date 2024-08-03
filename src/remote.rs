@@ -38,7 +38,7 @@ pub async fn get_dependency_url_remote(
 }
 
 //TODO clean this up and do error handling
-pub async fn get_project_id(dependency_name: &String) -> Result<String> {
+pub async fn get_project_id(dependency_name: &str) -> Result<String> {
     let url = format!("{}/api/v1/project?project_name={}", get_base_url(), dependency_name);
     let req = Client::new().get(url);
     let get_project_response = req.send().await;

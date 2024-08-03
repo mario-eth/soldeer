@@ -97,6 +97,9 @@ pub fn get_base_url() -> String {
 
 // Function to check for the presence of sensitive files or directories
 pub fn check_dotfiles(path: impl AsRef<Path>) -> bool {
+    if !path.as_ref().is_dir() {
+        return false;
+    }
     fs::read_dir(path)
         .unwrap()
         .map_while(Result::ok)

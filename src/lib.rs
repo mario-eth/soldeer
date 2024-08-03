@@ -1138,7 +1138,7 @@ libs = ["dependencies"]
         }
 
         let path = env::current_dir().unwrap().join("test").join(target);
-        env::set_var("config_file", path.clone().to_str().unwrap());
+        env::set_var("config_file", path.to_string_lossy().to_string());
         path
     }
 

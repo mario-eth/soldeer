@@ -47,6 +47,7 @@ pub fn unzip_dependencies(dependencies: &[Dependency]) -> Result<(), UnzippingEr
     Ok(())
 }
 
+#[derive(Debug, Clone)]
 pub struct DownloadResult {
     pub hash: String,
     pub url: String,
@@ -422,11 +423,11 @@ mod tests {
     async fn download_dependencies_gitlab_httpurl_one_success() {
         clean_dependency_directory();
         let mut dependencies: Vec<Dependency> = Vec::new();
-        let dependency = Dependency::Http(HttpDependency {
+        let dependency = Dependency::Git(GitDependency {
             name: "@openzeppelin-contracts".to_string(),
             version: "2.3.0".to_string(),
-            url: Some("https://gitlab.com/mario4582928/Mario.git".to_string()),
-            checksum: None,
+            git: "https://gitlab.com/mario4582928/Mario.git".to_string(),
+            rev: None,
         });
         dependencies.push(dependency.clone());
         let results = download_dependencies(&dependencies, false).await.unwrap();

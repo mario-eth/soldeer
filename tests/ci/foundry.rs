@@ -94,14 +94,27 @@ contract TestSoldeer is Test {
         test_project.join("dependencies").join("forge-std-1.8.2"),
     );
 
-    let _ = fs::copy(
-        env::current_dir().unwrap().join("foundry.toml"),
-        test_project.join("foundry.toml"),
-    );
+    let foundry_content = r#"
+    
+# Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
 
-    let _ = fs::copy(
-        env::current_dir().unwrap().join("remappings.txt"),
+[profile.default]
+script = "script"
+solc = "0.8.26"
+src = "src"
+test = "test"
+libs = ["dependencies"]
+
+[dependencies]
+forge-std = "1.8.2"
+
+"#;
+
+    let _ = fs::write(test_project.join("foundry.toml"), foundry_content);
+
+    let _ = fs::write(
         test_project.join("remappings.txt"),
+        "@forge-std-1.8.2=dependencies/forge-std-1.8.2",
     );
 
     let output = Command::new("forge")

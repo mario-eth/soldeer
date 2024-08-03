@@ -41,8 +41,9 @@ pub struct Dependency {
 #[derive(Deserialize, Clone, Debug, PartialEq, Default)]
 pub struct SoldeerConfig {
     pub generate_remappings: bool,
-    pub append_at_in_remappings: bool,
     pub reg_remappings: bool,
+    pub remappings_version: bool,
+    pub remappings_prefix: String,
     pub remappings_type: String,
 }
 
@@ -131,29 +132,33 @@ pub async fn read_config_soldeer(filename: &str) -> Result<SoldeerConfig, Config
     };
 
     let mut gen_remappings = false;
-    if data.soldeer.contains_key("generate-remappings") {
-        gen_remappings = data.soldeer.get("generate-remappings").unwrap().as_bool().unwrap();
+    if let Some(gen_remap) = data.soldeer.get("generate-remappings") {
+        gen_remappings = gen_remap.as_bool().unwrap();
     }
-    let mut append_at_in_remappings = false;
-    if data.soldeer.contains_key("append-at-in-remappings") {
-        append_at_in_remappings =
-            data.soldeer.get("append-at-in-remappings").unwrap().as_bool().unwrap();
+    let mut remappings_prefix = String::new();
+    if let Some(rem_pref) = data.soldeer.get("remapping-prefix") {
+        remappings_prefix = rem_pref.as_str().unwrap().to_string();
     }
     let mut reg_remappings = false;
-    if data.soldeer.contains_key("reg-remappings") {
-        reg_remappings = data.soldeer.get("reg-remappings").unwrap().as_bool().unwrap();
+    if let Some(reg_remap) = data.soldeer.get("reg-remappings") {
+        reg_remappings = reg_remap.as_bool().unwrap();
     }
 
     let mut remappings_type = "txt".to_string();
-    if data.soldeer.contains_key("remappings-type") {
-        remappings_type =
-            data.soldeer.get("remappings-type").unwrap().as_str().unwrap().to_string();
+    if let Some(rem_type) = data.soldeer.get("remappings-type") {
+        remappings_type = rem_type.as_str().unwrap().to_string();
+    }
+
+    let mut remappings_version = false;
+    if let Some(rem_vers) = data.soldeer.get("remappings-version") {
+        remappings_version = rem_vers.as_bool().unwrap();
     }
 
     let config = SoldeerConfig {
         generate_remappings: gen_remappings,
-        append_at_in_remappings,
         reg_remappings,
+        remappings_version,
+        remappings_prefix,
         remappings_type,
     };
     Ok(config)
@@ -253,8 +258,15 @@ pub fn add_to_config(
     Ok(())
 }
 
-pub async fn remappings_txt(config_file: &str) -> Result<(), ConfigError> {
+pub async fn remappings_txt(
+    dependency: &Dependency,
+    config_file: &str,
+    soldeer_config: &SoldeerConfig,
+) -> Result<(), ConfigError> {
     let remappings_path = get_current_working_dir().join("remappings.txt");
+    if soldeer_config.reg_remappings {
+        let _ = remove_file(&remappings_path);
+    }
     if !remappings_path.exists() {
         File::create(remappings_path.clone()).unwrap();
     }
@@ -262,14 +274,6 @@ pub async fn remappings_txt(config_file: &str) -> Result<(), ConfigError> {
 
     let existing_remappings: Vec<String> = contents.split('\n').map(|s| s.to_string()).collect();
     let mut new_remappings: String = String::new();
-
-    let dependencies: Vec<Dependency> = match read_config_deps(config_file).await {
-        Ok(dep) => dep,
-        Err(err) => {
-            return Err(err);
-        }
-    };
-
     let mut existing_remap: Vec<String> = Vec::new();
     existing_remappings.iter().for_each(|remapping| {
         let split: Vec<&str> = remapping.split('=').collect::<Vec<&str>>();
@@ -280,30 +284,42 @@ pub async fn remappings_txt(config_file: &str) -> Result<(), ConfigError> {
         existing_remap.push(String::from(split[0]));
     });
 
-    dependencies.iter().for_each(|dependency| {
-        let mut dependency_name_formatted = format!("{}-{}", &dependency.name, &dependency.version);
-        if !dependency_name_formatted.contains('@') {
-            dependency_name_formatted = format!("@{}", dependency_name_formatted);
-        }
+    if soldeer_config.reg_remappings {
+        let dependencies: Vec<Dependency> = match read_config_deps(config_file).await {
+            Ok(dep) => dep,
+            Err(err) => {
+                return Err(err);
+            }
+        };
+
+        dependencies.iter().for_each(|dependency| {
+            let dependency_name_formatted = format_remap_name(soldeer_config, dependency);
+            let index = existing_remap.iter().position(|r| r == &dependency_name_formatted);
+            if index.is_none() {
+                Paint::green(&format!(
+                    "Added a new dependency to remappings {}-{}",
+                    dependency.name, dependency.version
+                ));
+                new_remappings.push_str(&format!(
+                    "\n{}=dependencies/{}-{}/",
+                    dependency_name_formatted, dependency.name, dependency.version
+                ));
+            }
+        });
+    } else {
+        let dependency_name_formatted = format_remap_name(soldeer_config, dependency);
+
         let index = existing_remap.iter().position(|r| r == &dependency_name_formatted);
         if index.is_none() {
-            println!(
-                "{}",
-                Paint::green(&format!(
-                    "Added a new dependency to remappings {}",
-                    &dependency_name_formatted
-                ))
-            );
+            Paint::green(&format!(
+                "Added a new dependency to remappings {}-{}",
+                dependency.name, dependency.version
+            ));
             new_remappings.push_str(&format!(
-                "\n{}=dependencies/{}-{}",
-                &dependency_name_formatted, &dependency.name, &dependency.version
+                "\n{}=dependencies/{}-{}/",
+                dependency_name_formatted, dependency.name, dependency.version
             ));
         }
-    });
-
-    if new_remappings.is_empty() {
-        remove_empty_lines("remappings.txt");
-        return Ok(());
     }
 
     let mut file: std::fs::File =
@@ -312,7 +328,7 @@ pub async fn remappings_txt(config_file: &str) -> Result<(), ConfigError> {
     match write!(file, "{}", &new_remappings) {
         Ok(_) => {}
         Err(_) => {
-            println!("{}", Paint::yellow(&"Could not write to the remappings file".to_string()));
+            Paint::yellow(&"Could not write to the remappings file".to_string());
         }
     }
     remove_empty_lines("remappings.txt");
@@ -322,7 +338,7 @@ pub async fn remappings_txt(config_file: &str) -> Result<(), ConfigError> {
 pub async fn remappings_foundry(
     dependency: &Dependency,
     config_file: &str,
-    soldeer_config: SoldeerConfig,
+    soldeer_config: &SoldeerConfig,
 ) -> Result<(), ConfigError> {
     let contents = read_file_to_string(config_file);
     let mut doc: DocumentMut = contents.parse::<DocumentMut>().expect("invalid doc");
@@ -359,7 +375,7 @@ pub async fn remappings_foundry(
             profile["remappings"] = Item::Value(Value::Array(Array::new()));
         }
         for dep in &dependencies {
-            match add_dependency_to_remap(profile, dep) {
+            match add_dependency_to_remap(profile, dep, soldeer_config) {
                 Ok(_) => {}
                 Err(err) => {
                     return Err(err);
@@ -377,48 +393,56 @@ pub async fn remappings_foundry(
     Ok(())
 }
 
-fn add_dependency_to_remap(profile: &mut Item, dependency: &Dependency) -> Result<(), ConfigError> {
+fn add_dependency_to_remap(
+    profile: &mut Item,
+    dependency: &Dependency,
+    soldeer_config: &SoldeerConfig,
+) -> Result<(), ConfigError> {
     let profile_table = profile.as_table().unwrap();
-    if profile_table.contains_key("remappings") {
-        let remappings = profile_table.get("remappings").unwrap().as_array().unwrap();
+    if let Some(remappings) = profile_table.get("remappings") {
+        let remappings = remappings.as_array().unwrap();
         let mut found = false;
         for remapping in remappings.iter() {
-            let rem_split: Vec<&str> = remapping.as_str().unwrap().split("=").collect();
-            let to_search = dependency.name.clone();
-            if (!to_search.contains("@") &&
-                rem_split[0] == format!("@{}-{}/", dependency.name, dependency.version)) ||
-                (to_search.contains("@") &&
-                    rem_split[0] == format!("{}-{}/", dependency.name, dependency.version))
-            {
+            let rem_split: &str = match remapping.as_str().unwrap().split_once("=") {
+                Some((first, _)) => first,
+                None => "",
+            };
+            let dep_name = format_remap_name(soldeer_config, dependency);
+            if rem_split == dep_name {
                 found = true;
             }
         }
 
         if !found {
             let mut new_remappings = remappings.clone();
-            if dependency.name.contains("@") {
-                new_remappings.insert(
-                    remappings.len(),
-                    format!(
-                        "{}-{}/=dependencies/{}-{}/",
-                        dependency.name, dependency.version, dependency.name, dependency.version
-                    ),
-                );
-            } else {
-                new_remappings.insert(
-                    remappings.len(),
-                    format!(
-                        "@{}-{}/=dependencies/{}-{}/",
-                        dependency.name, dependency.version, dependency.name, dependency.version
-                    ),
-                );
-            }
+
+            let rem = format!(
+                "{}=dependencies/{}-{}/",
+                format_remap_name(soldeer_config, dependency),
+                dependency.name,
+                dependency.version
+            );
+
+            new_remappings.insert(remappings.len(), rem);
 
             profile.as_table_mut().unwrap()["remappings"] =
                 Item::Value(Value::Array(new_remappings));
         }
     }
     Ok(())
+}
+
+fn format_remap_name(soldeer_config: &SoldeerConfig, dependency: &Dependency) -> String {
+    // default we do not append the version e.g. [prefix]oz/=...
+    let mut name = format!("{}{}/", soldeer_config.remappings_prefix, dependency.name);
+    if soldeer_config.remappings_version {
+        // we append the version in the name e.g. [prefix]oz-1.1/=...
+        name = format!(
+            "{}{}-{}/",
+            soldeer_config.remappings_prefix, dependency.name, dependency.version
+        );
+    }
+    name
 }
 
 pub fn delete_config(
@@ -1669,8 +1693,9 @@ libs = ["dependencies"]
 
 [soldeer]
 generate-remappings = true
-append-at-in-remappings = true
+remapping-prefix = "@"
 reg-remappings = true
+remappings-version = true
 remappings-type = "config"
 "#;
         let target_config = define_config(false);
@@ -1685,9 +1710,10 @@ remappings-type = "config"
             }
         };
         let _ = remove_file(target_config);
-        assert!(sc.append_at_in_remappings);
+        assert!(sc.remappings_prefix == *"@");
         assert!(sc.generate_remappings);
         assert!(sc.reg_remappings);
+        assert!(sc.remappings_version);
         assert!(sc.remappings_type == *"config");
         Ok(())
     }
@@ -1719,7 +1745,7 @@ generate-remappings = true
         };
         let _ = remove_file(target_config);
         assert!(sc.generate_remappings);
-        assert!(!sc.append_at_in_remappings);
+        assert!(sc.remappings_prefix.is_empty());
         Ok(())
     }
 
@@ -1735,7 +1761,7 @@ libs = ["dependencies"]
 "@gearbox-protocol-periphery-v3" = "1.1.1"
 
 [soldeer]
-append-at-in-remappings = true
+remapping-prefix = "@"
 "#;
         let target_config = define_config(false);
 
@@ -1749,7 +1775,7 @@ append-at-in-remappings = true
             }
         };
         let _ = remove_file(target_config);
-        assert!(sc.append_at_in_remappings);
+        assert!(sc.remappings_prefix == *"@");
         assert!(!sc.generate_remappings);
         Ok(())
     }
@@ -1786,6 +1812,37 @@ reg-remappings = true
     }
 
     #[tokio::test]
+    async fn read_soldeer_configs_remappings_version() -> Result<(), ConfigError> {
+        let config_contents = r#"
+# Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
+
+[profile.default]
+libs = ["dependencies"]
+
+[dependencies]
+"@gearbox-protocol-periphery-v3" = "1.1.1"
+
+[soldeer]
+remappings-version = true
+"#;
+        let target_config = define_config(false);
+
+        write_to_config(&target_config, config_contents);
+
+        let sc = match read_config_soldeer(&target_config.to_string_lossy()).await {
+            Ok(sc) => sc,
+            Err(_) => {
+                assert_eq!("False state", "");
+                SoldeerConfig::default()
+            }
+        };
+        let _ = remove_file(target_config);
+        assert!(sc.remappings_version);
+        assert!(!sc.generate_remappings);
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn read_soldeer_configs_remappings_type() -> Result<(), ConfigError> {
         let config_contents = r#"
 # Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
@@ -1813,6 +1870,175 @@ remappings-type = "config"
         let _ = remove_file(target_config);
         assert!(sc.remappings_type == *"config");
         assert!(!sc.generate_remappings);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn generate_remappings_with_prefix_and_version_in_config() -> Result<(), ConfigError> {
+        let mut content = r#"
+[profile.default]
+solc = "0.8.26"
+libs = ["dependencies"]
+
+[dependencies]
+
+[soldeer]
+generate-remappings = true
+remapping-prefix = "@"
+remappings-version = true
+"#;
+
+        let target_config = define_config(true);
+
+        write_to_config(&target_config, content);
+        let dependency = Dependency {
+            name: "dep1".to_string(),
+            version: "1.0.0".to_string(),
+            url: String::new(),
+            hash: String::new(),
+        };
+        let soldeer_config = read_config_soldeer(&target_config.to_string_lossy()).await.unwrap();
+        let _ =
+            remappings_foundry(&dependency, target_config.to_str().unwrap(), &soldeer_config).await;
+
+        content = r#"
+[profile.default]
+solc = "0.8.26"
+libs = ["dependencies"]
+remappings = ["@dep1-1.0.0/=dependencies/dep1-1.0.0/"]
+
+[dependencies]
+
+[soldeer]
+generate-remappings = true
+remapping-prefix = "@"
+remappings-version = true
+"#;
+
+        assert_eq!(read_file_to_string(&target_config), content);
+
+        let _ = remove_file(target_config);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn generate_remappings_no_prefix_and_no_version_in_config() -> Result<(), ConfigError> {
+        let mut content = r#"
+[profile.default]
+solc = "0.8.26"
+libs = ["dependencies"]
+
+[dependencies]
+
+[soldeer]
+generate-remappings = true
+remappings-version = false
+"#;
+
+        let target_config = define_config(true);
+
+        write_to_config(&target_config, content);
+        let dependency = Dependency {
+            name: "dep1".to_string(),
+            version: "1.0.0".to_string(),
+            url: String::new(),
+            hash: String::new(),
+        };
+        let soldeer_config = read_config_soldeer(&target_config.to_string_lossy()).await.unwrap();
+        let _ =
+            remappings_foundry(&dependency, target_config.to_str().unwrap(), &soldeer_config).await;
+
+        content = r#"
+[profile.default]
+solc = "0.8.26"
+libs = ["dependencies"]
+remappings = ["dep1/=dependencies/dep1-1.0.0/"]
+
+[dependencies]
+
+[soldeer]
+generate-remappings = true
+remappings-version = false
+"#;
+
+        assert_eq!(read_file_to_string(&target_config), content);
+
+        let _ = remove_file(target_config);
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn generate_remappings_prefix_and_version_in_txt() -> Result<(), ConfigError> {
+        let mut content = r#"
+[profile.default]
+solc = "0.8.26"
+libs = ["dependencies"]
+
+[dependencies]
+
+[soldeer]
+generate-remappings = true
+remapping-prefix = "@"
+remappings-version = true
+"#;
+
+        let target_config = define_config(true);
+        let txt = get_current_working_dir().join("remappings.txt");
+        let _ = remove_file(&txt);
+
+        write_to_config(&target_config, content);
+        let dependency = Dependency {
+            name: "dep1".to_string(),
+            version: "1.0.0".to_string(),
+            url: String::new(),
+            hash: String::new(),
+        };
+        let soldeer_config = read_config_soldeer(&target_config.to_string_lossy()).await.unwrap();
+        let _ = remappings_txt(&dependency, target_config.to_str().unwrap(), &soldeer_config).await;
+
+        content = "@dep1-1.0.0/=dependencies/dep1-1.0.0/";
+
+        assert_eq!(read_file_to_string(&txt), content);
+
+        let _ = remove_file(target_config);
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn generate_remappings_no_prefix_and_no_version_in_txt() -> Result<(), ConfigError> {
+        let mut content = r#"
+[profile.default]
+solc = "0.8.26"
+libs = ["dependencies"]
+
+[dependencies]
+
+[soldeer]
+generate-remappings = true
+remappings-version = false
+"#;
+
+        let target_config = define_config(true);
+        let txt = get_current_working_dir().join("remappings.txt");
+        let _ = remove_file(&txt);
+
+        write_to_config(&target_config, content);
+        let dependency = Dependency {
+            name: "dep1".to_string(),
+            version: "1.0.0".to_string(),
+            url: String::new(),
+            hash: String::new(),
+        };
+        let soldeer_config = read_config_soldeer(&target_config.to_string_lossy()).await.unwrap();
+        let _ = remappings_txt(&dependency, target_config.to_str().unwrap(), &soldeer_config).await;
+
+        content = "dep1/=dependencies/dep1-1.0.0/";
+
+        assert_eq!(read_file_to_string(&txt), content);
+
+        let _ = remove_file(target_config);
         Ok(())
     }
 

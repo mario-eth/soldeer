@@ -374,14 +374,14 @@ async fn install_dependency(
 
     if soldeer_config.generate_remappings {
         if soldeer_config.remappings_type == "config" {
-            match remappings_foundry(dependency, &config_file, soldeer_config).await {
+            match remappings_foundry(dependency, &config_file, &soldeer_config).await {
                 Ok(_) => {}
                 Err(err) => {
                     return Err(SoldeerError { message: err.cause });
                 }
             }
         } else {
-            match remappings_txt(&config_file).await {
+            match remappings_txt(dependency, &config_file, &soldeer_config).await {
                 Ok(_) => {}
                 Err(err) => {
                     return Err(SoldeerError { message: err.cause });
@@ -477,14 +477,14 @@ async fn update(regenerate_remappings: bool) -> Result<(), SoldeerError> {
 
     if soldeer_config.generate_remappings {
         if soldeer_config.remappings_type == "config" {
-            match remappings_foundry(&Dependency::default(), &config_file, soldeer_config).await {
+            match remappings_foundry(&Dependency::default(), &config_file, &soldeer_config).await {
                 Ok(_) => {}
                 Err(err) => {
                     return Err(SoldeerError { message: err.cause });
                 }
             }
         } else {
-            match remappings_txt(&config_file).await {
+            match remappings_txt(&Dependency::default(), &config_file, &soldeer_config).await {
                 Ok(_) => {}
                 Err(err) => {
                     return Err(SoldeerError { message: err.cause });
@@ -1289,7 +1289,7 @@ solc = "0.8.26"
 src = "src"
 test = "test"
 libs = ["dependencies"]
-remappings = ["@forge-std-1.9.1/=dependencies/@forge-std-1.9.1/"]
+remappings = ["forge-std/=dependencies/forge-std-1.9.1/"]
 
 [dependencies]
 forge-std = "1.9.1"
@@ -1377,7 +1377,7 @@ solc = "0.8.26"
 src = "src"
 test = "test"
 libs = ["dependencies"]
-remappings = ["@forge-std-1.9.1/=dependencies/@forge-std-1.9.1/"]
+remappings = ["forge-std/=dependencies/forge-std-1.9.1/"]
 
 [profile.test]
 script = "script"
@@ -1385,7 +1385,7 @@ solc = "0.8.26"
 src = "src"
 test = "test"
 libs = ["dependencies"]
-remappings = ["@forge-std-1.9.1/=dependencies/@forge-std-1.9.1/"]
+remappings = ["forge-std/=dependencies/forge-std-1.9.1/"]
 
 [profile.prod]
 script = "script"
@@ -1393,7 +1393,7 @@ solc = "0.8.26"
 src = "src"
 test = "test"
 libs = ["dependencies"]
-remappings = ["@forge-std-1.9.1/=dependencies/@forge-std-1.9.1/"]
+remappings = ["forge-std/=dependencies/forge-std-1.9.1/"]
 
 [dependencies]
 forge-std = "1.9.1"
@@ -1412,6 +1412,9 @@ remappings-type = "config"
     fn install_dependency_generate_remappings_in_txt() {
         let _ = remove_dir_all(DEPENDENCY_DIR.clone());
         let _ = remove_file(LOCK_FILE.clone());
+        let remap_txt = get_current_working_dir().join("remappings.txt");
+        let _ = remove_file(&remap_txt);
+
         let test_dir = env::current_dir().unwrap().join("test").join("install_http");
 
         // Create test directory
@@ -1458,8 +1461,8 @@ remappings-type = "txt"
             }
         }
 
-        let expected_contents = "@forge-std-1.9.1=dependencies/forge-std-1.9.1".to_string();
-        let contents = read_file_to_string(get_current_working_dir().join("remappings.txt"));
+        let expected_contents = "forge-std/=dependencies/forge-std-1.9.1/".to_string();
+        let contents = read_file_to_string(remap_txt);
         assert_eq!(contents, expected_contents);
         clean_test_env(&target_config);
     }
@@ -1470,6 +1473,8 @@ remappings-type = "txt"
         let _ = remove_dir_all(DEPENDENCY_DIR.clone());
         let _ = remove_file(LOCK_FILE.clone());
         let test_dir = env::current_dir().unwrap().join("test").join("install_http");
+        let remap_txt = get_current_working_dir().join("remappings.txt");
+        let _ = remove_file(&remap_txt);
 
         // Create test directory
         if !test_dir.exists() {
@@ -1514,8 +1519,8 @@ generate-remappings = true
             }
         }
 
-        let expected_contents = "@forge-std-1.9.1=dependencies/forge-std-1.9.1".to_string();
-        let contents = read_file_to_string(get_current_working_dir().join("remappings.txt"));
+        let expected_contents = "forge-std/=dependencies/forge-std-1.9.1/".to_string();
+        let contents = read_file_to_string(remap_txt);
         assert_eq!(contents, expected_contents);
         clean_test_env(&target_config);
     }
@@ -1526,8 +1531,8 @@ generate-remappings = true
         let _ = remove_dir_all(DEPENDENCY_DIR.clone());
         let _ = remove_file(LOCK_FILE.clone());
         let test_dir = env::current_dir().unwrap().join("test").join("install_http");
-        let remappings_file = get_current_working_dir().join("remappings.txt");
-        let _ = remove_file(&remappings_file);
+        let remap_txt = get_current_working_dir().join("remappings.txt");
+        let _ = remove_file(&remap_txt);
 
         // Create test directory
         if !test_dir.exists() {
@@ -1572,7 +1577,7 @@ generate-remappings = false
             }
         }
 
-        assert!(!remappings_file.exists());
+        assert!(!remap_txt.exists());
         let contents = read_file_to_string(&target_config);
         assert!(!contents.contains("remappings = ["));
         clean_test_env(&target_config);
@@ -1634,7 +1639,7 @@ solc = "0.8.26"
 src = "src"
 test = "test"
 libs = ["dependencies"]
-remappings = ["@forge-std-1.9.1/=dependencies/@forge-std-1.9.1/"]
+remappings = ["forge-std/=dependencies/forge-std-1.9.1/"]
 
 [dependencies]
 forge-std = "1.9.1"

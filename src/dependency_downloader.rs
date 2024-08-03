@@ -1,6 +1,6 @@
 use crate::{
     config::{Dependency, GitDependency, HttpDependency},
-    errors::{DependencyError, DownloadError, UnzippingError},
+    errors::DownloadError,
     remote::get_dependency_url_remote,
     utils::{read_file, sha256_digest},
     DEPENDENCY_DIR,
@@ -13,13 +13,15 @@ use std::{
     process::{Command, Stdio},
     str,
 };
-use tokio::{fs::File, io::AsyncWriteExt};
-use yansi::Paint;
+use tokio::{fs::File, io::AsyncWriteExt as _};
+use yansi::Paint as _;
+
+pub type Result<T> = std::result::Result<T, DownloadError>;
 
 pub async fn download_dependencies(
     dependencies: &[Dependency],
     clean: bool,
-) -> Result<Vec<DownloadResult>, DownloadError> {
+) -> Result<Vec<DownloadResult>> {
     // clean dependencies folder if flag is true
     if clean {
         clean_dependency_directory();
@@ -30,13 +32,13 @@ pub async fn download_dependencies(
     )
     .await
     .into_iter()
-    .collect::<Result<Vec<DownloadResult>, DownloadError>>()?;
+    .collect::<Result<Vec<_>>>()?;
 
     Ok(results)
 }
 
 // un-zip-ing dependencies to dependencies folder
-pub fn unzip_dependencies(dependencies: &[Dependency]) -> Result<(), UnzippingError> {
+pub fn unzip_dependencies(dependencies: &[Dependency]) -> Result<()> {
     dependencies
         .iter()
         .filter_map(|d| match d {
@@ -53,7 +55,7 @@ pub struct DownloadResult {
     pub url: String,
 }
 
-pub async fn download_dependency(dependency: &Dependency) -> Result<DownloadResult, DownloadError> {
+pub async fn download_dependency(dependency: &Dependency) -> Result<DownloadResult> {
     let dependency_directory: PathBuf = DEPENDENCY_DIR.clone();
     if !DEPENDENCY_DIR.is_dir() {
         fs::create_dir(&dependency_directory).unwrap();
@@ -65,63 +67,33 @@ pub async fn download_dependency(dependency: &Dependency) -> Result<DownloadResu
                 Some(url) => url.clone(),
                 None => get_dependency_url_remote(&dep.name, &dep.version).await?,
             };
-            download_via_http(&url, dep, &dependency_directory).await.map_err(|err| {
-                DownloadError {
-                    name: dep.name.to_string(),
-                    version: dep.version.to_string(),
-                    cause: err.cause,
-                }
-            })?;
+            download_via_http(&url, dep, &dependency_directory).await?;
             DownloadResult { hash: sha256_digest(&dep.name, &dep.version), url }
         }
         Dependency::Git(dep) => {
-            let hash = download_via_git(dep, &dependency_directory).await.map_err(|err| {
-                DownloadError {
-                    name: dep.name.to_string(),
-                    version: dep.version.to_string(),
-                    cause: err.cause,
-                }
-            })?;
+            let hash = download_via_git(dep, &dependency_directory).await?;
             DownloadResult { hash, url: dep.git.clone() }
         }
     };
     println!(
         "{}",
-        Paint::green(&format!(
-            "Dependency {}-{} downloaded!",
-            dependency.name(),
-            dependency.version()
-        ))
+        &format!("Dependency {}-{} downloaded!", dependency.name(), dependency.version()).green()
     );
 
     Ok(res)
 }
 
-pub fn unzip_dependency(
-    dependency_name: &str,
-    dependency_version: &str,
-) -> Result<(), UnzippingError> {
+pub fn unzip_dependency(dependency_name: &str, dependency_version: &str) -> Result<()> {
     let file_name = format!("{}-{}.zip", dependency_name, dependency_version);
     let target_name = format!("{}-{}/", dependency_name, dependency_version);
     let current_dir = DEPENDENCY_DIR.join(file_name);
     let target = DEPENDENCY_DIR.join(target_name);
     let archive = read_file(current_dir).unwrap();
 
-    match zip_extract::extract(Cursor::new(archive), &target, true) {
-        Ok(_) => {}
-        Err(_) => {
-            return Err(UnzippingError {
-                name: dependency_name.to_string(),
-                version: dependency_version.to_string(),
-            });
-        }
-    }
+    zip_extract::extract(Cursor::new(archive), &target, true)?;
     println!(
         "{}",
-        Paint::green(&format!(
-            "The dependency {}-{} was unzipped!",
-            dependency_name, dependency_version
-        ))
+        format!("The dependency {}-{} was unzipped!", dependency_name, dependency_version).green()
     );
     Ok(())
 }
@@ -136,7 +108,7 @@ pub fn clean_dependency_directory() {
 async fn download_via_git(
     dependency: &GitDependency,
     dependency_directory: &Path,
-) -> Result<String, DownloadError> {
+) -> Result<String> {
     let target_dir = &format!("{}-{}", dependency.name, dependency.version);
     let path = dependency_directory.join(target_dir);
     let path_str = path.to_string_lossy().to_string();
@@ -158,23 +130,11 @@ async fn download_via_git(
     let status = result.status().unwrap();
     let out = result.output().unwrap();
 
-    let mut err = DownloadError {
-        name: dependency.name.to_string(),
-        version: dependency.version.to_string(),
-        cause: format!(
-            "Dependency {}~{} could not be downloaded via git.\nCause: ",
-            dependency.name.clone(),
-            dependency.version.clone(),
-        ),
-    };
-
     if !status.success() {
         let _ = remove_dir_all(&path);
-        err.cause.push_str(&format!(
-            "Could not clone the repository: {}",
-            str::from_utf8(&out.stderr).unwrap().trim()
+        return Err(DownloadError::GitError(
+            str::from_utf8(&out.stderr).unwrap().trim().to_string(),
         ));
-        return Err(err);
     }
 
     let rev = match dependency.rev.clone() {
@@ -195,11 +155,9 @@ async fn download_via_git(
 
             if !status.success() {
                 let _ = remove_dir_all(&path);
-                err.cause.push_str(&format!(
-                    "Could not checkout the rev: {}",
-                    str::from_utf8(&out.stderr).unwrap().trim()
+                return Err(DownloadError::GitError(
+                    str::from_utf8(&out.stderr).unwrap().trim().to_string(),
                 ));
-                return Err(err);
             }
             rev
         }
@@ -220,30 +178,28 @@ async fn download_via_git(
             let status = result.status().unwrap();
             if !status.success() {
                 let _ = remove_dir_all(&path);
-                err.cause.push_str(&format!(
-                    "Could not get the revision hash: {}",
-                    str::from_utf8(&out.stderr).unwrap().trim()
+                return Err(DownloadError::GitError(
+                    str::from_utf8(&out.stderr).unwrap().trim().to_string(),
                 ));
-                return Err(err);
             }
 
             let hash = str::from_utf8(&out.stdout).unwrap().trim().to_string();
             // check the commit hash
             if !hash.is_empty() && hash.len() != 40 {
                 let _ = remove_dir_all(&path);
-                err.cause.push_str("Could not get the revision hash, invalid hash");
-                return Err(err);
+                return Err(DownloadError::GitError(format!("invalid revision hash: {hash}")));
             }
             hash
         }
     };
     println!(
         "{}",
-        Paint::green(&format!(
+        format!(
             "Successfully downloaded {}~{} the dependency via git",
             dependency.name.clone(),
             dependency.version.clone(),
-        ))
+        )
+        .green()
     );
     Ok(rev)
 }
@@ -252,53 +208,21 @@ async fn download_via_http(
     url: impl IntoUrl,
     dependency: &HttpDependency,
     dependency_directory: &Path,
-) -> Result<(), DownloadError> {
+) -> Result<()> {
     let zip_to_download = &format!("{}-{}.zip", dependency.name, dependency.version);
-    let resp = reqwest::get(url).await.map_err(|e| DownloadError {
-        name: dependency.name.clone(),
-        version: dependency.version.clone(),
-        cause: format!("Error downloading zip file: {e:?}"),
-    })?;
-    let mut resp = resp.error_for_status().map_err(|e| DownloadError {
-        name: dependency.name.clone(),
-        version: dependency.version.clone(),
-        cause: format!(
-            "Dependency {}~{} could not be downloaded via http.\nStatus: {}",
-            dependency.name.clone(),
-            dependency.version.clone(),
-            e.status().unwrap_or_default()
-        ),
-    })?;
+    let resp = reqwest::get(url).await?;
+    let mut resp = resp.error_for_status()?;
 
-    let mut file =
-        File::create(&dependency_directory.join(zip_to_download)).await.map_err(|e| {
-            DownloadError {
-                name: dependency.name.clone(),
-                version: dependency.version.clone(),
-                cause: format!("Unable to create zip file: {e:?}"),
-            }
-        })?;
+    let mut file = File::create(&dependency_directory.join(zip_to_download)).await?;
 
-    while let Some(mut chunk) = resp.chunk().await.map_err(|e| DownloadError {
-        name: dependency.name.clone(),
-        version: dependency.version.clone(),
-        cause: format!("Unable to download chunk of zip file: {e:?}"),
-    })? {
-        file.write_all_buf(&mut chunk).await.map_err(|e| DownloadError {
-            name: dependency.name.clone(),
-            version: dependency.version.clone(),
-            cause: format!("Unable to write to zip file: {e:?}"),
-        })?;
+    while let Some(mut chunk) = resp.chunk().await? {
+        file.write_all_buf(&mut chunk).await?;
     }
     Ok(())
 }
 
-pub fn delete_dependency_files(dependency: &Dependency) -> Result<(), DependencyError> {
-    let _ = remove_dir_all(DEPENDENCY_DIR.join(format!(
-        "{}-{}",
-        dependency.name(),
-        dependency.version()
-    )));
+pub fn delete_dependency_files(dependency: &Dependency) -> Result<()> {
+    remove_dir_all(DEPENDENCY_DIR.join(format!("{}-{}", dependency.name(), dependency.version())))?;
     Ok(())
 }
 
@@ -630,7 +554,7 @@ mod tests {
                 assert_eq!("Invalid state", "");
             }
             Err(err) => {
-                assert_eq!(err.cause, "Dependency @openzeppelin-contracts~2.3.0 could not be downloaded via http.\nStatus: 404 Not Found");
+                assert_eq!(err.to_string(), "error downloading dependency: HTTP status client error (404 Not Found) for url (https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@openzeppelin-contracts~.zip)");
             }
         }
         clean_dependency_directory()
@@ -656,7 +580,7 @@ mod tests {
             Err(err) => {
                 // we assert this as the message contains various absolute paths that can not be
                 // hardcoded here
-                assert!(err.cause.contains("Cloning into"));
+                assert!(err.to_string().contains("Cloning into"));
             }
         }
         clean_dependency_directory()
@@ -709,13 +633,7 @@ mod tests {
                 assert_eq!("Wrong State", "");
             }
             Err(err) => {
-                assert_eq!(
-                    err,
-                    UnzippingError {
-                        name: dependency.name().to_string(),
-                        version: dependency.version().to_string(),
-                    }
-                );
+                assert!(matches!(err, DownloadError::UnzipError(_)));
             }
         }
         clean_dependency_directory();

@@ -59,27 +59,28 @@ impl fmt::Display for LockError {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct DownloadError {
-    pub name: String,
-    pub version: String,
-    pub cause: String,
-}
+#[derive(Error, Debug)]
+pub enum DownloadError {
+    #[error("error downloading dependency: {0}")]
+    HttpError(#[from] reqwest::Error),
 
-impl fmt::Display for DownloadError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "download failed for {}~{}", &self.name, &self.version)
-    }
-}
+    #[error("error extracting dependency: {0}")]
+    UnzipError(#[from] zip_extract::ZipExtractError),
 
-impl DownloadError {
-    pub fn new(name: &str, version: &str, cause: &str) -> DownloadError {
-        DownloadError {
-            name: name.to_string(),
-            version: version.to_string(),
-            cause: cause.to_string(),
-        }
-    }
+    #[error("error during git operation: {0}")]
+    GitError(String),
+
+    #[error("error during IO operation: {0}")]
+    IOError(#[from] io::Error),
+
+    #[error("Project {0} not found, please check the dependency name (project name) or create a new project on https://soldeer.xyz")]
+    ProjectNotFound(String),
+
+    #[error("Could not get the dependency URL for {0}")]
+    URLNotFound(String),
+
+    #[error("Could not get the last forge dependency")]
+    ForgeStdError,
 }
 
 #[derive(Debug, Clone, PartialEq)]

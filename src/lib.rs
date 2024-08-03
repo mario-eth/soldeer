@@ -66,12 +66,7 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
             let dependency: Dependency = match get_latest_forge_std_dependency().await {
                 Ok(dep) => dep,
                 Err(err) => {
-                    return Err(SoldeerError {
-                        message: format!(
-                            "Error downloading a dependency {}~{}",
-                            err.name, err.version
-                        ),
-                    });
+                    return Err(SoldeerError { message: err.to_string() });
                 }
             };
             match install_dependency(dependency).await {
@@ -232,12 +227,7 @@ async fn install_dependency(mut dependency: Dependency) -> Result<(), SoldeerErr
     let result = match download_dependency(&dependency).await {
         Ok(h) => h,
         Err(err) => {
-            return Err(SoldeerError {
-                message: format!(
-                    "Error downloading a dependency {}~{}. Cause: {}",
-                    err.name, err.version, err.cause
-                ),
-            });
+            return Err(SoldeerError { message: err.to_string() });
         }
     };
     match dependency {
@@ -270,12 +260,7 @@ async fn install_dependency(mut dependency: Dependency) -> Result<(), SoldeerErr
                         })
                     }
                 }
-                return Err(SoldeerError {
-                    message: format!(
-                        "Error downloading a dependency {}~{}",
-                        err_unzip.name, err_unzip.version
-                    ),
-                });
+                return Err(SoldeerError { message: err_unzip.to_string() });
             }
         }
     }
@@ -337,14 +322,7 @@ async fn update() -> Result<(), SoldeerError> {
 
     let results = match download_dependencies(&dependencies, true).await {
         Ok(h) => h,
-        Err(err) => {
-            return Err(SoldeerError {
-                message: format!(
-                    "Error downloading a dependency {}~{}. Cause: {}",
-                    err.name, err.version, err.cause
-                ),
-            })
-        }
+        Err(err) => return Err(SoldeerError { message: err.to_string() }),
     };
 
     dependencies.iter_mut().zip(results.into_iter()).for_each(|(dependency, result)| {
@@ -360,9 +338,7 @@ async fn update() -> Result<(), SoldeerError> {
     match unzip_dependencies(&dependencies) {
         Ok(_) => {}
         Err(err) => {
-            return Err(SoldeerError {
-                message: format!("Error unzipping dependency {}~{}", err.name, err.version),
-            });
+            return Err(SoldeerError { message: err.to_string() });
         }
     }
 
@@ -630,7 +606,7 @@ libs = ["dependencies"]
             Err(err) => {
                 clean_test_env(target_config.clone());
                 // can not generalize as diff systems return various dns errors
-                assert!(err.message.contains("Error downloading a dependency will-fail~1"))
+                assert!(err.message.contains("error sending request for url"))
             }
         }
 

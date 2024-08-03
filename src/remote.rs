@@ -1,6 +1,7 @@
 use crate::{
     config::{Dependency, HttpDependency},
-    errors::{DownloadError, ProjectNotFound},
+    dependency_downloader::Result,
+    errors::DownloadError,
     utils::get_base_url,
 };
 use chrono::{DateTime, Utc};
@@ -10,7 +11,7 @@ use serde_derive::{Deserialize, Serialize};
 pub async fn get_dependency_url_remote(
     dependency_name: &str,
     dependency_version: &str,
-) -> Result<String, DownloadError> {
+) -> Result<String> {
     let url = format!(
         "{}/api/v1/revision-cli?project_name={}&revision={}",
         get_base_url(),
@@ -25,24 +26,19 @@ pub async fn get_dependency_url_remote(
             let revision = serde_json::from_str::<RevisionResponse>(&response_text);
             if let Ok(revision) = revision {
                 if revision.data.is_empty() {
-                    return Err(DownloadError {
-                        name: dependency_name.to_string(),
-                        version: dependency_version.to_string(),
-                        cause: "Could not get the dependency URL".to_string(),
-                    });
+                    return Err(DownloadError::URLNotFound(format!(
+                        "{dependency_name}~{dependency_version}"
+                    )));
                 }
                 return Ok(revision.data[0].clone().url);
             }
         }
     }
-    Err(DownloadError {
-        name: dependency_name.to_string(),
-        version: dependency_version.to_string(),
-        cause: "Could not get the dependency URL".to_string(),
-    })
+    Err(DownloadError::URLNotFound(format!("{dependency_name}~{dependency_version}")))
 }
+
 //TODO clean this up and do error handling
-pub async fn get_project_id(dependency_name: &String) -> Result<String, ProjectNotFound> {
+pub async fn get_project_id(dependency_name: &String) -> Result<String> {
     let url = format!("{}/api/v1/project?project_name={}", get_base_url(), dependency_name);
     let req = Client::new().get(url);
     let get_project_response = req.send().await;
@@ -58,19 +54,15 @@ pub async fn get_project_id(dependency_name: &String) -> Result<String, ProjectN
                     }
                 }
                 Err(_) => {
-                    return Err(ProjectNotFound {
-                        name: dependency_name.to_string(),
-                        cause: "Error from the server or check the internet connection."
-                            .to_string(),
-                    });
+                    return Err(DownloadError::ProjectNotFound(dependency_name.to_string()));
                 }
             }
         }
     }
-    Err(ProjectNotFound{name: dependency_name.to_string(), cause:"Project not found, please check the dependency name (project name) or create a new project on https://soldeer.xyz".to_string()})
+    Err(DownloadError::ProjectNotFound(dependency_name.to_string()))
 }
 
-pub async fn get_latest_forge_std_dependency() -> Result<Dependency, DownloadError> {
+pub async fn get_latest_forge_std_dependency() -> Result<Dependency> {
     let dependency_name = "forge-std";
     let url = format!(
         "{}/api/v1/revision?project_name={}&offset=0&limit=1",
@@ -84,11 +76,7 @@ pub async fn get_latest_forge_std_dependency() -> Result<Dependency, DownloadErr
             let revision = serde_json::from_str::<RevisionResponse>(&response_text);
             if let Ok(revision) = revision {
                 if revision.data.is_empty() {
-                    return Err(DownloadError {
-                        name: dependency_name.to_string(),
-                        version: "".to_string(),
-                        cause: "Could not get the last forge dependency".to_string(),
-                    });
+                    return Err(DownloadError::ForgeStdError);
                 }
                 return Ok(Dependency::Http(HttpDependency {
                     name: dependency_name.to_string(),
@@ -99,11 +87,7 @@ pub async fn get_latest_forge_std_dependency() -> Result<Dependency, DownloadErr
             }
         }
     }
-    Err(DownloadError {
-        name: dependency_name.to_string(),
-        version: "".to_string(),
-        cause: "Could not get the last forge dependency".to_string(),
-    })
+    Err(DownloadError::ForgeStdError)
 }
 
 #[allow(non_snake_case)]

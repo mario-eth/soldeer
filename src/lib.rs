@@ -374,7 +374,7 @@ async fn install_dependency(
 
     if soldeer_config.generate_remappings {
         if soldeer_config.remappings_type == "config" {
-            match remappings_foundry(&dependency, &config_file, soldeer_config).await {
+            match remappings_foundry(dependency, &config_file, soldeer_config).await {
                 Ok(_) => {}
                 Err(err) => {
                     return Err(SoldeerError { message: err.cause });
@@ -509,6 +509,7 @@ mod tests {
         io::Write,
         path::{Path, PathBuf},
     };
+    use utils::read_file_to_string;
     use zip::ZipArchive; // 0.8
 
     #[test]
@@ -547,7 +548,7 @@ libs = ["dependencies"]
         match run(command) {
             Ok(_) => {}
             Err(_) => {
-                clean_test_env(target_config.clone());
+                clean_test_env(&target_config);
                 assert_eq!("Invalid State", "")
             }
         }
@@ -557,7 +558,7 @@ libs = ["dependencies"]
         assert!(path_dependency.exists());
         path_dependency = DEPENDENCY_DIR.join("@openzeppelin-contracts-5.0.2");
         assert!(path_dependency.exists());
-        clean_test_env(target_config);
+        clean_test_env(&target_config);
     }
 
     #[test]
@@ -595,7 +596,7 @@ libs = ["dependencies"]
         match run(command) {
             Ok(_) => {}
             Err(_) => {
-                clean_test_env(target_config.clone());
+                clean_test_env(&target_config);
                 assert_eq!("Invalid State", "")
             }
         }
@@ -603,7 +604,7 @@ libs = ["dependencies"]
         let path_dependency = DEPENDENCY_DIR.join("@tt-1.6.1");
 
         assert!(path_dependency.exists());
-        clean_test_env(target_config);
+        clean_test_env(&target_config);
     }
 
     #[test]
@@ -636,7 +637,7 @@ libs = ["dependencies"]
         match run(command) {
             Ok(_) => {}
             Err(_) => {
-                clean_test_env(target_config.clone());
+                clean_test_env(&target_config);
                 assert_eq!("Invalid State", "")
             }
         }
@@ -644,7 +645,7 @@ libs = ["dependencies"]
         let path_dependency = DEPENDENCY_DIR.join("@tt-1.6.1");
 
         assert!(path_dependency.exists());
-        clean_test_env(target_config);
+        clean_test_env(&target_config);
     }
 
     #[test]
@@ -680,7 +681,7 @@ libs = ["dependencies"]
             Ok(_) => {}
             Err(err) => {
                 println!("Err {:?}", err);
-                clean_test_env(target_config.clone());
+                clean_test_env(&target_config);
                 assert_eq!("Invalid State", "")
             }
         }
@@ -698,7 +699,7 @@ libs = ["dependencies"]
         let path_dependency = DEPENDENCY_DIR.join("@dep3-3.3").join("JustATest2.md");
         assert!(path_dependency.exists());
 
-        clean_test_env(target_config);
+        clean_test_env(&target_config);
     }
 
     #[test]
@@ -739,7 +740,7 @@ libs = ["dependencies"]
         match run(command) {
             Ok(_) => {}
             Err(err) => {
-                clean_test_env(target_config.clone());
+                clean_test_env(&target_config);
                 // can not generalize as diff systems return various dns errors
                 assert!(err.message.contains("Error downloading a dependency will-fail~1"))
             }
@@ -750,7 +751,7 @@ libs = ["dependencies"]
         assert!(!path_dependency.exists());
         path_dependency = DEPENDENCY_DIR.join("@openzeppelin-contracts-5.0.2");
         assert!(!path_dependency.exists());
-        clean_test_env(target_config);
+        clean_test_env(&target_config);
     }
 
     #[test]
@@ -778,7 +779,7 @@ libs = ["dependencies"]
         match run(command) {
             Ok(_) => {}
             Err(_) => {
-                clean_test_env(PathBuf::default());
+                clean_test_env(&PathBuf::default());
                 assert_eq!("Invalid State", "")
             }
         }
@@ -816,7 +817,7 @@ libs = ["dependencies"]
         match run(command) {
             Ok(_) => {}
             Err(_) => {
-                clean_test_env(PathBuf::default());
+                clean_test_env(&PathBuf::default());
                 assert_eq!("Invalid State", "")
             }
         }
@@ -858,7 +859,7 @@ libs = ["dependencies"]
                 println!("Push command succeeded as expected");
             }
             Err(e) => {
-                clean_test_env(PathBuf::default());
+                clean_test_env(&PathBuf::default());
 
                 // Check if the error is due to not being logged in
                 if e.message.contains("You are not logged in") {
@@ -926,14 +927,14 @@ libs = ["dependencies"]
             Ok(_) => {}
             Err(err) => {
                 println!("Err {}", err);
-                clean_test_env(target_config.clone());
+                clean_test_env(&target_config);
                 assert_eq!("Invalid State", "")
             }
         }
 
         let path_dependency = DEPENDENCY_DIR.join("forge-std-1.9.1").join("src").join("Test.sol");
         assert!(path_dependency.exists());
-        clean_test_env(target_config);
+        clean_test_env(&target_config);
     }
 
     #[test]
@@ -978,14 +979,14 @@ libs = ["dependencies"]
             Ok(_) => {}
             Err(err) => {
                 println!("Err {}", err);
-                clean_test_env(target_config.clone());
+                clean_test_env(&target_config);
                 assert_eq!("Invalid State", "")
             }
         }
 
         let path_dependency = DEPENDENCY_DIR.join("forge-std-1.9.1").join("src").join("Test.sol");
         assert!(path_dependency.exists());
-        clean_test_env(target_config);
+        clean_test_env(&target_config);
     }
 
     #[test]
@@ -1030,14 +1031,14 @@ libs = ["dependencies"]
             Ok(_) => {}
             Err(err) => {
                 println!("Err {}", err);
-                clean_test_env(target_config.clone());
+                clean_test_env(&target_config);
                 assert_eq!("Invalid State", "")
             }
         }
 
         let path_dependency = DEPENDENCY_DIR.join("forge-std-1.9.1").join("src").join("Test.sol");
         assert!(path_dependency.exists());
-        clean_test_env(target_config);
+        clean_test_env(&target_config);
     }
 
     #[test]
@@ -1082,14 +1083,14 @@ libs = ["dependencies"]
             Ok(_) => {}
             Err(err) => {
                 println!("Err {}", err);
-                clean_test_env(target_config.clone());
+                clean_test_env(&target_config);
                 assert_eq!("Invalid State", "")
             }
         }
 
         let path_dependency = DEPENDENCY_DIR.join("forge-std-1.9.1").join("src").join("Test.sol");
         assert!(path_dependency.exists());
-        clean_test_env(target_config);
+        clean_test_env(&target_config);
     }
 
     #[test]
@@ -1134,7 +1135,7 @@ libs = ["dependencies"]
             Ok(_) => {}
             Err(err) => {
                 println!("Err {}", err);
-                clean_test_env(target_config.clone());
+                clean_test_env(&target_config);
                 assert_eq!("Invalid State", "")
             }
         }
@@ -1144,7 +1145,7 @@ libs = ["dependencies"]
         assert!(!path_dependency.exists()); // this should not exists at that commit
         path_dependency = DEPENDENCY_DIR.join("forge-std-1.9.1").join("src").join("Test.sol");
         assert!(path_dependency.exists()); // this should exists at that commit
-        clean_test_env(target_config);
+        clean_test_env(&target_config);
     }
 
     #[test]
@@ -1165,7 +1166,7 @@ libs = ["dependencies"]
             Ok(_) => {}
             Err(err) => {
                 println!("{:?}", err);
-                clean_test_env(target_config.clone());
+                clean_test_env(&target_config);
                 assert_eq!("Invalid State", "")
             }
         }
@@ -1174,7 +1175,7 @@ libs = ["dependencies"]
         let lock_test = get_current_working_dir().join("test").join("soldeer.lock");
         assert!(path_dependency.exists());
         assert!(lock_test.exists());
-        clean_test_env(target_config);
+        clean_test_env(&target_config);
     }
 
     #[test]
@@ -1214,7 +1215,7 @@ libs = ["dependencies"]
             Ok(_) => {}
             Err(err) => {
                 println!("{:?}", err);
-                clean_test_env(target_config.clone());
+                clean_test_env(&target_config);
                 assert_eq!("Invalid State", "")
             }
         }
@@ -1223,16 +1224,502 @@ libs = ["dependencies"]
         assert!(lock_test.exists());
         assert!(!submodules_path.exists());
         assert!(!lib_path.exists());
-        clean_test_env(target_config);
+        clean_test_env(&target_config);
         let _ = remove_file(submodules_path);
         let _ = remove_dir_all(lib_path);
     }
 
-    fn clean_test_env(target_config: PathBuf) {
+    #[test]
+    #[serial]
+    fn install_dependency_generate_remappings_in_config() {
         let _ = remove_dir_all(DEPENDENCY_DIR.clone());
         let _ = remove_file(LOCK_FILE.clone());
-        if target_config != PathBuf::default() {
-            let _ = remove_file(&target_config);
+        let test_dir = env::current_dir().unwrap().join("test").join("install_http");
+
+        // Create test directory
+        if !test_dir.exists() {
+            std::fs::create_dir(&test_dir).unwrap();
+        }
+
+        let content = r#"
+# Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
+
+[profile.default]
+script = "script"
+solc = "0.8.26"
+src = "src"
+test = "test"
+libs = ["dependencies"]
+
+[dependencies]
+
+[soldeer]
+generate-remappings = true
+remappings-type = "config"
+"#;
+
+        let target_config = define_config(true);
+
+        write_to_config(&target_config, content);
+
+        env::set_var("base_url", "https://api.soldeer.xyz");
+
+        let command = Subcommands::Install(Install {
+            dependency: Some("forge-std~1.9.1".to_string()),
+            remote_url: Option::None,
+            rev: None,
+            reg_remappings: None,
+        });
+
+        match run(command) {
+            Ok(_) => {}
+            Err(err) => {
+                println!("Err {}", err);
+                clean_test_env(&target_config);
+                assert_eq!("Invalid State", "")
+            }
+        }
+
+        let expected_contents = r#"
+# Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
+
+[profile.default]
+script = "script"
+solc = "0.8.26"
+src = "src"
+test = "test"
+libs = ["dependencies"]
+remappings = ["@forge-std-1.9.1/=dependencies/@forge-std-1.9.1/"]
+
+[dependencies]
+forge-std = "1.9.1"
+
+[soldeer]
+generate-remappings = true
+remappings-type = "config"
+"#;
+        let contents = read_file_to_string(&target_config);
+        assert_eq!(contents, expected_contents);
+        clean_test_env(&target_config);
+    }
+
+    #[test]
+    #[serial]
+    fn install_dependency_generate_remappings_in_config_multiple_profiles() {
+        let _ = remove_dir_all(DEPENDENCY_DIR.clone());
+        let _ = remove_file(LOCK_FILE.clone());
+        let test_dir = env::current_dir().unwrap().join("test").join("install_http");
+
+        // Create test directory
+        if !test_dir.exists() {
+            std::fs::create_dir(&test_dir).unwrap();
+        }
+
+        let content = r#"
+# Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
+
+[profile.default]
+script = "script"
+solc = "0.8.26"
+src = "src"
+test = "test"
+libs = ["dependencies"]
+
+[profile.test]
+script = "script"
+solc = "0.8.26"
+src = "src"
+test = "test"
+libs = ["dependencies"]
+
+[profile.prod]
+script = "script"
+solc = "0.8.26"
+src = "src"
+test = "test"
+libs = ["dependencies"]
+
+[dependencies]
+
+[soldeer]
+generate-remappings = true
+remappings-type = "config"
+"#;
+
+        let target_config = define_config(true);
+
+        write_to_config(&target_config, content);
+
+        env::set_var("base_url", "https://api.soldeer.xyz");
+
+        let command = Subcommands::Install(Install {
+            dependency: Some("forge-std~1.9.1".to_string()),
+            remote_url: Option::None,
+            rev: None,
+            reg_remappings: None,
+        });
+
+        match run(command) {
+            Ok(_) => {}
+            Err(err) => {
+                println!("Err {}", err);
+                clean_test_env(&target_config);
+                assert_eq!("Invalid State", "")
+            }
+        }
+
+        let expected_contents = r#"
+# Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
+
+[profile.default]
+script = "script"
+solc = "0.8.26"
+src = "src"
+test = "test"
+libs = ["dependencies"]
+remappings = ["@forge-std-1.9.1/=dependencies/@forge-std-1.9.1/"]
+
+[profile.test]
+script = "script"
+solc = "0.8.26"
+src = "src"
+test = "test"
+libs = ["dependencies"]
+remappings = ["@forge-std-1.9.1/=dependencies/@forge-std-1.9.1/"]
+
+[profile.prod]
+script = "script"
+solc = "0.8.26"
+src = "src"
+test = "test"
+libs = ["dependencies"]
+remappings = ["@forge-std-1.9.1/=dependencies/@forge-std-1.9.1/"]
+
+[dependencies]
+forge-std = "1.9.1"
+
+[soldeer]
+generate-remappings = true
+remappings-type = "config"
+"#;
+        let contents = read_file_to_string(&target_config);
+        assert_eq!(contents, expected_contents);
+        clean_test_env(&target_config);
+    }
+
+    #[test]
+    #[serial]
+    fn install_dependency_generate_remappings_in_txt() {
+        let _ = remove_dir_all(DEPENDENCY_DIR.clone());
+        let _ = remove_file(LOCK_FILE.clone());
+        let test_dir = env::current_dir().unwrap().join("test").join("install_http");
+
+        // Create test directory
+        if !test_dir.exists() {
+            std::fs::create_dir(&test_dir).unwrap();
+        }
+
+        let content = r#"
+# Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
+
+[profile.default]
+script = "script"
+solc = "0.8.26"
+src = "src"
+test = "test"
+libs = ["dependencies"]
+
+[dependencies]
+
+[soldeer]
+generate-remappings = true
+remappings-type = "txt"
+"#;
+
+        let target_config = define_config(true);
+        clean_test_env(&target_config);
+        write_to_config(&target_config, content);
+
+        env::set_var("base_url", "https://api.soldeer.xyz");
+
+        let command = Subcommands::Install(Install {
+            dependency: Some("forge-std~1.9.1".to_string()),
+            remote_url: Option::None,
+            rev: None,
+            reg_remappings: None,
+        });
+
+        match run(command) {
+            Ok(_) => {}
+            Err(err) => {
+                println!("Err {}", err);
+                clean_test_env(&target_config);
+                assert_eq!("Invalid State", "")
+            }
+        }
+
+        let expected_contents = "@forge-std-1.9.1=dependencies/forge-std-1.9.1".to_string();
+        let contents = read_file_to_string(get_current_working_dir().join("remappings.txt"));
+        assert_eq!(contents, expected_contents);
+        clean_test_env(&target_config);
+    }
+
+    #[test]
+    #[serial]
+    fn install_dependency_generate_remappings_in_txt_even_if_the_remap_type_is_not_defined() {
+        let _ = remove_dir_all(DEPENDENCY_DIR.clone());
+        let _ = remove_file(LOCK_FILE.clone());
+        let test_dir = env::current_dir().unwrap().join("test").join("install_http");
+
+        // Create test directory
+        if !test_dir.exists() {
+            std::fs::create_dir(&test_dir).unwrap();
+        }
+
+        let content = r#"
+# Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
+
+[profile.default]
+script = "script"
+solc = "0.8.26"
+src = "src"
+test = "test"
+libs = ["dependencies"]
+
+[dependencies]
+
+[soldeer]
+generate-remappings = true
+"#;
+
+        let target_config = define_config(true);
+        clean_test_env(&target_config);
+        write_to_config(&target_config, content);
+
+        env::set_var("base_url", "https://api.soldeer.xyz");
+
+        let command = Subcommands::Install(Install {
+            dependency: Some("forge-std~1.9.1".to_string()),
+            remote_url: Option::None,
+            rev: None,
+            reg_remappings: None,
+        });
+
+        match run(command) {
+            Ok(_) => {}
+            Err(err) => {
+                println!("Err {}", err);
+                clean_test_env(&target_config);
+                assert_eq!("Invalid State", "")
+            }
+        }
+
+        let expected_contents = "@forge-std-1.9.1=dependencies/forge-std-1.9.1".to_string();
+        let contents = read_file_to_string(get_current_working_dir().join("remappings.txt"));
+        assert_eq!(contents, expected_contents);
+        clean_test_env(&target_config);
+    }
+
+    #[test]
+    #[serial]
+    fn install_dependency_does_not_generate_remappings() {
+        let _ = remove_dir_all(DEPENDENCY_DIR.clone());
+        let _ = remove_file(LOCK_FILE.clone());
+        let test_dir = env::current_dir().unwrap().join("test").join("install_http");
+        let remappings_file = get_current_working_dir().join("remappings.txt");
+        let _ = remove_file(&remappings_file);
+
+        // Create test directory
+        if !test_dir.exists() {
+            std::fs::create_dir(&test_dir).unwrap();
+        }
+
+        let content = r#"
+# Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
+
+[profile.default]
+script = "script"
+solc = "0.8.26"
+src = "src"
+test = "test"
+libs = ["dependencies"]
+
+[dependencies]
+
+[soldeer]
+generate-remappings = false
+"#;
+
+        let target_config = define_config(true);
+        clean_test_env(&target_config);
+        write_to_config(&target_config, content);
+
+        env::set_var("base_url", "https://api.soldeer.xyz");
+
+        let command = Subcommands::Install(Install {
+            dependency: Some("forge-std~1.9.1".to_string()),
+            remote_url: Option::None,
+            rev: None,
+            reg_remappings: None,
+        });
+
+        match run(command) {
+            Ok(_) => {}
+            Err(err) => {
+                println!("Err {}", err);
+                clean_test_env(&target_config);
+                assert_eq!("Invalid State", "")
+            }
+        }
+
+        assert!(!remappings_file.exists());
+        let contents = read_file_to_string(&target_config);
+        assert!(!contents.contains("remappings = ["));
+        clean_test_env(&target_config);
+    }
+
+    #[test]
+    #[serial]
+    fn update_generate_remappings_in_config() {
+        let _ = remove_dir_all(DEPENDENCY_DIR.clone());
+        let _ = remove_file(LOCK_FILE.clone());
+        let test_dir = env::current_dir().unwrap().join("test").join("install_http");
+
+        // Create test directory
+        if !test_dir.exists() {
+            std::fs::create_dir(&test_dir).unwrap();
+        }
+
+        let content = r#"
+# Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
+
+[profile.default]
+script = "script"
+solc = "0.8.26"
+src = "src"
+test = "test"
+libs = ["dependencies"]
+
+[dependencies]
+forge-std = "1.9.1"
+
+[soldeer]
+generate-remappings = true
+remappings-type = "config"
+"#;
+
+        let target_config = define_config(true);
+
+        write_to_config(&target_config, content);
+
+        env::set_var("base_url", "https://api.soldeer.xyz");
+
+        let command = Subcommands::Update(Update { reg_remappings: Some(true) });
+
+        match run(command) {
+            Ok(_) => {}
+            Err(err) => {
+                println!("Err {}", err);
+                clean_test_env(&target_config);
+                assert_eq!("Invalid State", "")
+            }
+        }
+
+        let expected_contents = r#"
+# Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
+
+[profile.default]
+script = "script"
+solc = "0.8.26"
+src = "src"
+test = "test"
+libs = ["dependencies"]
+remappings = ["@forge-std-1.9.1/=dependencies/@forge-std-1.9.1/"]
+
+[dependencies]
+forge-std = "1.9.1"
+
+[soldeer]
+generate-remappings = true
+remappings-type = "config"
+"#;
+        let contents = read_file_to_string(&target_config);
+        assert_eq!(contents, expected_contents);
+        clean_test_env(&target_config);
+    }
+
+    #[test]
+    #[serial]
+    fn update_with_no_dep_does_not_generate_remappings_in_config() {
+        let _ = remove_dir_all(DEPENDENCY_DIR.clone());
+        let _ = remove_file(LOCK_FILE.clone());
+        let test_dir = env::current_dir().unwrap().join("test").join("install_http");
+
+        // Create test directory
+        if !test_dir.exists() {
+            std::fs::create_dir(&test_dir).unwrap();
+        }
+
+        let content = r#"
+# Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
+
+[profile.default]
+script = "script"
+solc = "0.8.26"
+src = "src"
+test = "test"
+libs = ["dependencies"]
+
+[dependencies]
+
+[soldeer]
+generate-remappings = true
+remappings-type = "config"
+"#;
+
+        let target_config = define_config(true);
+
+        write_to_config(&target_config, content);
+
+        env::set_var("base_url", "https://api.soldeer.xyz");
+
+        let command = Subcommands::Update(Update { reg_remappings: Some(true) });
+
+        match run(command) {
+            Ok(_) => {}
+            Err(err) => {
+                println!("Err {}", err);
+                clean_test_env(&target_config);
+                assert_eq!("Invalid State", "")
+            }
+        }
+
+        let expected_contents = r#"
+# Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
+
+[profile.default]
+script = "script"
+solc = "0.8.26"
+src = "src"
+test = "test"
+libs = ["dependencies"]
+
+[dependencies]
+
+[soldeer]
+generate-remappings = true
+remappings-type = "config"
+"#;
+        let contents = read_file_to_string(&target_config);
+        assert_eq!(contents, expected_contents);
+        clean_test_env(&target_config);
+    }
+
+    fn clean_test_env(target_config: &PathBuf) {
+        let _ = remove_dir_all(DEPENDENCY_DIR.clone());
+        let _ = remove_file(LOCK_FILE.clone());
+        if target_config.clone() != PathBuf::default() {
+            let _ = remove_file(target_config);
             let parent = target_config.parent();
             let lock = parent.unwrap().join("soldeer.lock");
             let _ = remove_file(lock);
@@ -1255,7 +1742,7 @@ libs = ["dependencies"]
             rand::thread_rng().sample_iter(&Alphanumeric).take(7).map(char::from).collect();
         let mut target = format!("foundry{}.toml", s);
         if !foundry {
-            target = format!("Soldeer{}.toml", s);
+            target = format!("soldeer{}.toml", s);
         }
 
         let path = env::current_dir().unwrap().join("test").join(target);

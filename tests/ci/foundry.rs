@@ -24,7 +24,7 @@ fn soldeer_install_valid_dependency() {
         dependency: Some("forge-std~1.8.2".to_string()),
         remote_url: None,
         rev: None,
-        reg_remappings: None,
+        reg_remappings: Some(false),
     });
 
     match soldeer::run(command) {
@@ -113,7 +113,7 @@ contract TestSoldeer is Test {
 
     let passed = String::from_utf8(output.stdout).unwrap().contains("[PASS]");
     if !passed {
-        println!("This will fail with: {:?}", String::from_utf8(output.stderr).unwrap());
+        eprintln!("This failed with: {:?}", String::from_utf8(output.stderr).unwrap());
     }
     assert!(passed);
     clean_test_env(&test_project);

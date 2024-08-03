@@ -29,7 +29,7 @@ struct SoldeerFromConfig {
 }
 
 // Dependency object used to store a dependency data
-#[derive(Deserialize, Clone, Debug, PartialEq)]
+#[derive(Deserialize, Clone, Debug, PartialEq, Default)]
 pub struct Dependency {
     pub name: String,
     pub version: String,
@@ -37,19 +37,8 @@ pub struct Dependency {
     pub hash: String,
 }
 
-impl Default for Dependency {
-    fn default() -> Dependency {
-        Dependency {
-            name: String::new(),
-            version: String::new(),
-            url: String::new(),
-            hash: String::new(),
-        }
-    }
-}
-
 // Dependency object used to store a dependency data
-#[derive(Deserialize, Clone, Debug, PartialEq)]
+#[derive(Deserialize, Clone, Debug, PartialEq, Default)]
 pub struct SoldeerConfig {
     pub generate_remappings: bool,
     pub append_at_in_remappings: bool,
@@ -57,19 +46,8 @@ pub struct SoldeerConfig {
     pub remappings_type: String,
 }
 
-impl Default for SoldeerConfig {
-    fn default() -> SoldeerConfig {
-        SoldeerConfig {
-            generate_remappings: false,
-            append_at_in_remappings: false,
-            reg_remappings: false,
-            remappings_type: "txt".to_string(),
-        }
-    }
-}
-
-pub async fn read_config_deps(filename: &String) -> Result<Vec<Dependency>, ConfigError> {
-    let mut filename: String = filename.clone();
+pub async fn read_config_deps(filename: &str) -> Result<Vec<Dependency>, ConfigError> {
+    let mut filename: String = filename.to_owned();
     if filename.is_empty() {
         filename = match define_config_file() {
             Ok(file) => file,
@@ -134,15 +112,15 @@ pub async fn read_config_deps(filename: &String) -> Result<Vec<Dependency>, Conf
     Ok(dependencies)
 }
 
-pub async fn read_config_soldeer(filename: &String) -> Result<SoldeerConfig, ConfigError> {
-    let mut filename: String = filename.clone();
+pub async fn read_config_soldeer(filename: &str) -> Result<SoldeerConfig, ConfigError> {
+    let mut filename: String = filename.to_owned();
     if filename.is_empty() {
         filename = match define_config_file() {
             Ok(file) => file,
             Err(err) => return Err(err),
         }
     }
-    let contents = read_file_to_string(&filename.clone());
+    let contents = read_file_to_string(filename);
 
     // reading the contents into a data structure using toml::from_str
     let data: SoldeerFromConfig = match toml::from_str(&contents) {
@@ -275,7 +253,7 @@ pub fn add_to_config(
     Ok(())
 }
 
-pub async fn remappings_txt(config_file: &String) -> Result<(), ConfigError> {
+pub async fn remappings_txt(config_file: &str) -> Result<(), ConfigError> {
     let remappings_path = get_current_working_dir().join("remappings.txt");
     if !remappings_path.exists() {
         File::create(remappings_path.clone()).unwrap();
@@ -346,19 +324,12 @@ pub async fn remappings_foundry(
     config_file: &str,
     soldeer_config: SoldeerConfig,
 ) -> Result<(), ConfigError> {
-    println!(
-        "{}",
-        Paint::green(&format!(
-            "Adding dependency {}-{} to the remappings",
-            dependency.name, dependency.version
-        ))
-    );
-    let contents = read_file_to_string(&String::from(config_file));
+    let contents = read_file_to_string(config_file);
     let mut doc: DocumentMut = contents.parse::<DocumentMut>().expect("invalid doc");
 
     let mut dependencies: Vec<Dependency> = vec![];
     if soldeer_config.reg_remappings {
-        dependencies = match read_config_deps(&config_file.to_string()).await {
+        dependencies = match read_config_deps(config_file).await {
             Ok(deps) => deps,
             Err(err) => {
                 return Err(err);
@@ -366,12 +337,25 @@ pub async fn remappings_foundry(
         };
     }
 
-    dependencies.push(dependency.clone());
+    if *dependency != Dependency::default() {
+        Paint::green(&format!(
+            "Adding dependency {}-{} to the remappings",
+            dependency.name, dependency.version
+        ));
+        dependencies.push(dependency.clone());
+    } else if !dependencies.is_empty() {
+        Paint::green("Regenerating all the remappings");
+    }
+
+    if dependencies.is_empty() {
+        return Ok(());
+    }
 
     let profiles: &mut EditTable = doc["profile"].as_table_mut().unwrap();
 
     for (_, profile) in profiles.iter_mut() {
-        if soldeer_config.reg_remappings {
+        if soldeer_config.reg_remappings || !profile.as_table().unwrap().contains_key("remappings")
+        {
             profile["remappings"] = Item::Value(Value::Array(Array::new()));
         }
         for dep in &dependencies {
@@ -396,7 +380,7 @@ pub async fn remappings_foundry(
 fn add_dependency_to_remap(profile: &mut Item, dependency: &Dependency) -> Result<(), ConfigError> {
     let profile_table = profile.as_table().unwrap();
     if profile_table.contains_key("remappings") {
-        let remappings = profile_table.get("remappings").clone().unwrap().as_array().unwrap();
+        let remappings = profile_table.get("remappings").unwrap().as_array().unwrap();
         let mut found = false;
         for remapping in remappings.iter() {
             let rem_split: Vec<&str> = remapping.as_str().unwrap().split("=").collect();
@@ -424,7 +408,7 @@ fn add_dependency_to_remap(profile: &mut Item, dependency: &Dependency) -> Resul
                 new_remappings.insert(
                     remappings.len(),
                     format!(
-                        "@{}-{}/=dependencies/@{}-{}/",
+                        "@{}-{}/=dependencies/{}-{}/",
                         dependency.name, dependency.version, dependency.name, dependency.version
                     ),
                 );
@@ -1669,6 +1653,166 @@ dep1 = { version = "1.0.0", url = "http://custom_url.com/custom.zip" }
         assert_eq!(read_file_to_string(&target_config), content);
 
         let _ = remove_file(target_config);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn read_soldeer_configs_all_set() -> Result<(), ConfigError> {
+        let config_contents = r#"
+# Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
+
+[profile.default]
+libs = ["dependencies"]
+
+[dependencies]
+"@gearbox-protocol-periphery-v3" = "1.1.1"
+
+[soldeer]
+generate-remappings = true
+append-at-in-remappings = true
+reg-remappings = true
+remappings-type = "config"
+"#;
+        let target_config = define_config(false);
+
+        write_to_config(&target_config, config_contents);
+
+        let sc = match read_config_soldeer(&target_config.to_string_lossy()).await {
+            Ok(sc) => sc,
+            Err(_) => {
+                assert_eq!("False state", "");
+                SoldeerConfig::default()
+            }
+        };
+        let _ = remove_file(target_config);
+        assert!(sc.append_at_in_remappings);
+        assert!(sc.generate_remappings);
+        assert!(sc.reg_remappings);
+        assert!(sc.remappings_type == *"config");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn read_soldeer_configs_generate_remappings() -> Result<(), ConfigError> {
+        let config_contents = r#"
+# Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
+
+[profile.default]
+libs = ["dependencies"]
+
+[dependencies]
+"@gearbox-protocol-periphery-v3" = "1.1.1"
+
+[soldeer]
+generate-remappings = true
+"#;
+        let target_config = define_config(false);
+
+        write_to_config(&target_config, config_contents);
+
+        let sc = match read_config_soldeer(&target_config.to_string_lossy()).await {
+            Ok(sc) => sc,
+            Err(_) => {
+                assert_eq!("False state", "");
+                SoldeerConfig::default()
+            }
+        };
+        let _ = remove_file(target_config);
+        assert!(sc.generate_remappings);
+        assert!(!sc.append_at_in_remappings);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn read_soldeer_configs_append_at_in_remappings() -> Result<(), ConfigError> {
+        let config_contents = r#"
+# Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
+
+[profile.default]
+libs = ["dependencies"]
+
+[dependencies]
+"@gearbox-protocol-periphery-v3" = "1.1.1"
+
+[soldeer]
+append-at-in-remappings = true
+"#;
+        let target_config = define_config(false);
+
+        write_to_config(&target_config, config_contents);
+
+        let sc = match read_config_soldeer(&target_config.to_string_lossy()).await {
+            Ok(sc) => sc,
+            Err(_) => {
+                assert_eq!("False state", "");
+                SoldeerConfig::default()
+            }
+        };
+        let _ = remove_file(target_config);
+        assert!(sc.append_at_in_remappings);
+        assert!(!sc.generate_remappings);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn read_soldeer_configs_reg_remappings() -> Result<(), ConfigError> {
+        let config_contents = r#"
+# Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
+
+[profile.default]
+libs = ["dependencies"]
+
+[dependencies]
+"@gearbox-protocol-periphery-v3" = "1.1.1"
+
+[soldeer]
+reg-remappings = true
+"#;
+        let target_config = define_config(false);
+
+        write_to_config(&target_config, config_contents);
+
+        let sc = match read_config_soldeer(&target_config.to_string_lossy()).await {
+            Ok(sc) => sc,
+            Err(_) => {
+                assert_eq!("False state", "");
+                SoldeerConfig::default()
+            }
+        };
+        let _ = remove_file(target_config);
+        assert!(sc.reg_remappings);
+        assert!(!sc.generate_remappings);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn read_soldeer_configs_remappings_type() -> Result<(), ConfigError> {
+        let config_contents = r#"
+# Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
+
+[profile.default]
+libs = ["dependencies"]
+
+[dependencies]
+"@gearbox-protocol-periphery-v3" = "1.1.1"
+
+[soldeer]
+remappings-type = "config"
+"#;
+        let target_config = define_config(false);
+
+        write_to_config(&target_config, config_contents);
+
+        let sc = match read_config_soldeer(&target_config.to_string_lossy()).await {
+            Ok(sc) => sc,
+            Err(_) => {
+                assert_eq!("False state", "");
+                SoldeerConfig::default()
+            }
+        };
+        let _ = remove_file(target_config);
+        assert!(sc.remappings_type == *"config");
+        assert!(!sc.generate_remappings);
         Ok(())
     }
 

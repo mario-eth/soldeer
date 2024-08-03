@@ -19,7 +19,7 @@ use lock::LockWriteMode;
 use once_cell::sync::Lazy;
 use remote::get_latest_forge_std_dependency;
 use std::{env, path::PathBuf};
-use utils::{get_dependency_type, DependencyType};
+use utils::{get_url_type, UrlType};
 use versioning::validate_name;
 use yansi::Paint as _;
 
@@ -69,14 +69,14 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
                 dependency.split_once('~').expect("dependency string should have name and version");
 
             let dep = match install.remote_url {
-                Some(url) => match get_dependency_type(&url) {
-                    DependencyType::Git => Dependency::Git(GitDependency {
+                Some(url) => match get_url_type(&url) {
+                    UrlType::Git => Dependency::Git(GitDependency {
                         name: dependency_name.to_string(),
                         version: dependency_version.to_string(),
                         git: url,
                         rev: install.rev,
                     }),
-                    DependencyType::Http => Dependency::Http(HttpDependency {
+                    UrlType::Http => Dependency::Http(HttpDependency {
                         name: dependency_name.to_string(),
                         version: dependency_version.to_string(),
                         url: Some(url),

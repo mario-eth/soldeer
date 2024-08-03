@@ -245,7 +245,7 @@ mod tests {
     use super::*;
     use crate::{
         janitor::healthcheck_dependency,
-        utils::{get_dependency_type, DependencyType},
+        utils::{get_url_type, UrlType},
     };
     use serial_test::serial;
     use std::{fs::metadata, path::Path};
@@ -665,27 +665,19 @@ mod tests {
     #[test]
     fn get_download_tunnel_http() {
         assert_eq!(
-            get_dependency_type(
-                "https://github.com/foundry-rs/forge-std/archive/refs/tags/v1.9.1.zip"
-            ),
-            DependencyType::Http
+            get_url_type("https://github.com/foundry-rs/forge-std/archive/refs/tags/v1.9.1.zip"),
+            UrlType::Http
         );
     }
 
     #[test]
     fn get_download_tunnel_git_giturl() {
-        assert_eq!(
-            get_dependency_type("git@github.com:foundry-rs/forge-std.git"),
-            DependencyType::Git
-        );
+        assert_eq!(get_url_type("git@github.com:foundry-rs/forge-std.git"), UrlType::Git);
     }
 
     #[test]
     fn get_download_tunnel_git_githttp() {
-        assert_eq!(
-            get_dependency_type("https://github.com/foundry-rs/forge-std.git"),
-            DependencyType::Git
-        );
+        assert_eq!(get_url_type("https://github.com/foundry-rs/forge-std.git"), UrlType::Git);
     }
 
     #[test]

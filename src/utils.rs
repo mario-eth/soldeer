@@ -142,16 +142,16 @@ pub fn prompt_user_for_confirmation() -> bool {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum DependencyType {
+pub enum UrlType {
     Git,
     Http,
 }
 
-pub fn get_dependency_type(dependency_url: &str) -> DependencyType {
+pub fn get_url_type(dependency_url: &str) -> UrlType {
     if GIT_SSH_REGEX.is_match(dependency_url) || GIT_HTTPS_REGEX.is_match(dependency_url) {
-        return DependencyType::Git;
+        return UrlType::Git;
     }
-    DependencyType::Http
+    UrlType::Http
 }
 
 #[cfg(not(test))]

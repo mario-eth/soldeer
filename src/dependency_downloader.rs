@@ -253,10 +253,20 @@ async fn download_via_http(
     dependency_directory: &Path,
 ) -> Result<(), DownloadError> {
     let zip_to_download = &format!("{}-{}.zip", dependency.name, dependency.version);
-    let mut resp = reqwest::get(url).await.map_err(|e| DownloadError {
+    let resp = reqwest::get(url).await.map_err(|e| DownloadError {
         name: dependency.name.clone(),
         version: dependency.version.clone(),
         cause: format!("Error downloading zip file: {e:?}"),
+    })?;
+    let mut resp = resp.error_for_status().map_err(|e| DownloadError {
+        name: dependency.name.clone(),
+        version: dependency.version.clone(),
+        cause: format!(
+            "Dependency {}~{} could not be downloaded via http.\nStatus: {}",
+            dependency.name.clone(),
+            dependency.version.clone(),
+            e.status().unwrap_or_default()
+        ),
     })?;
 
     let mut file =

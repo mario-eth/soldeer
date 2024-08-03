@@ -60,6 +60,9 @@ pub enum ConfigError {
     #[error("error writing to config file: {0}")]
     FileWriteError(#[from] io::Error),
 
+    #[error("error writing to remappings file: {0}")]
+    RemappingsError(io::Error),
+
     #[error("empty `version` field in {0}")]
     EmptyVersion(String),
 

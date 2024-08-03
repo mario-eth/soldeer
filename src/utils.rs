@@ -4,7 +4,7 @@ use simple_home_dir::home_dir;
 use std::{
     env,
     fs::{self, File},
-    io::{BufRead, BufReader, Read, Write},
+    io::{self, BufRead, BufReader, Read, Write},
     path::{Path, PathBuf},
 };
 use yansi::Paint as _;
@@ -75,41 +75,16 @@ pub fn define_security_file_location() -> String {
     String::from(security_file.to_str().unwrap())
 }
 
-pub fn remove_empty_lines(filename: &str) {
-    let file: File = File::open(filename).unwrap();
-
-    let reader: BufReader<File> = BufReader::new(file);
-    let mut new_content: String = String::new();
-    let lines: Vec<_> = reader.lines().collect();
-    let total: usize = lines.len();
-    for (index, line) in lines.into_iter().enumerate() {
-        let line: &String = line.as_ref().unwrap();
-        // Making sure the line contains something
-        if line.len() > 2 {
-            if index == total - 1 {
-                new_content.push_str(&line.to_string());
-            } else {
-                new_content.push_str(&format!("{}\n", line));
-            }
-        }
+pub fn remove_empty_lines(path: impl AsRef<Path>) -> Result<(), io::Error> {
+    let file = File::open(path.as_ref())?;
+    let reader = BufReader::new(file);
+    let lines: Vec<_> =
+        reader.lines().map_while(Result::ok).filter(|l| !l.trim().is_empty()).collect();
+    let mut file = File::create(path.as_ref())?;
+    for line in lines {
+        writeln!(file, "{}", line)?;
     }
-
-    // Removing the annoying new lines at the end and beginning of the file
-    new_content = String::from(new_content.trim_end_matches('\n'));
-    new_content = String::from(new_content.trim_start_matches('\n'));
-    let mut file: std::fs::File = fs::OpenOptions::new()
-        .write(true)
-        .truncate(true)
-        .append(false)
-        .open(Path::new(filename))
-        .unwrap();
-
-    match write!(file, "{}", &new_content) {
-        Ok(_) => {}
-        Err(e) => {
-            eprintln!("Couldn't write to file: {}", e);
-        }
-    }
+    Ok(())
 }
 
 pub fn get_base_url() -> String {

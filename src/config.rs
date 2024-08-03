@@ -287,12 +287,12 @@ pub async fn remappings() -> Result<()> {
     });
 
     if new_remappings.is_empty() {
-        remove_empty_lines("remappings.txt");
+        //remove_empty_lines("remappings.txt");
         return Ok(());
     }
 
     fs::write("remappings.txt", new_remappings)?;
-    remove_empty_lines("remappings.txt");
+    remove_empty_lines("remappings.txt").map_err(ConfigError::RemappingsError)?;
     Ok(())
 }
 

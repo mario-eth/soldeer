@@ -7,7 +7,6 @@ use crate::{
 };
 use reqwest::IntoUrl;
 use std::{
-    ffi::{OsStr, OsString},
     fs::{self, remove_dir_all},
     io::Cursor,
     path::{Path, PathBuf},
@@ -139,6 +138,7 @@ async fn download_via_git(
 ) -> Result<String, DownloadError> {
     let target_dir = &format!("{}-{}", dependency.name, dependency.version);
     let path = dependency_directory.join(target_dir);
+    let path_str = path.to_string_lossy().to_string();
     if path.exists() {
         let _ = remove_dir_all(&path);
     }
@@ -149,7 +149,7 @@ async fn download_via_git(
     let mut git_get_commit = Command::new("git");
 
     let result = git_clone
-        .args([OsStr::new("clone"), http_url.as_os_str(), path.as_os_str()])
+        .args(["clone", &http_url, &path_str])
         .env("GIT_TERMINAL_PROMPT", "0")
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
@@ -291,15 +291,15 @@ pub fn delete_dependency_files(dependency: &Dependency) -> Result<(), Dependency
     Ok(())
 }
 
-fn transform_git_to_http(url: &str) -> OsString {
+fn transform_git_to_http(url: &str) -> String {
     if let Some(stripped) = url.strip_prefix("git@github.com:") {
         let repo_path = stripped;
-        format!("https://github.com/{}", repo_path).into()
+        format!("https://github.com/{}", repo_path)
     } else if let Some(stripped) = url.strip_prefix("git@gitlab.com:") {
         let repo_path = stripped;
-        format!("https://gitlab.com/{}", repo_path).into()
+        format!("https://gitlab.com/{}", repo_path)
     } else {
-        url.to_string().into()
+        url.to_string()
     }
 }
 

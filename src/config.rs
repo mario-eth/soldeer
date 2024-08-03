@@ -803,8 +803,9 @@ libs = ["dependencies"]
                 assert_eq!(
                     err,
                     ConfigError {
-                        cause: "Could not get the config correctly from the config file"
-                            .to_string(),
+                        cause:
+                            "Could not retrieve URL for dependency @gearbox-protocol-periphery-v3"
+                                .to_string(),
                     }
                 )
             }

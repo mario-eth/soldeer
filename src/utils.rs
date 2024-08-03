@@ -96,35 +96,25 @@ pub fn get_base_url() -> String {
 }
 
 // Function to check for the presence of sensitive files or directories
-pub fn check_dotfiles(path: &Path) -> bool {
-    if let Ok(entries) = fs::read_dir(path) {
-        for entry in entries.flatten() {
-            let file_name = entry.file_name();
-            let file_name_str = file_name.to_string_lossy();
-            if file_name_str.starts_with('.') {
-                return true;
-            }
-        }
-    }
-    false
+pub fn check_dotfiles(path: impl AsRef<Path>) -> bool {
+    fs::read_dir(path)
+        .unwrap()
+        .map_while(Result::ok)
+        .any(|entry| entry.file_name().to_string_lossy().starts_with('.'))
 }
 
 // Function to recursively check for sensitive files or directories in a given path
-pub fn check_dotfiles_recursive(path: &Path) -> bool {
-    if check_dotfiles(path) {
+pub fn check_dotfiles_recursive(path: impl AsRef<Path>) -> bool {
+    if check_dotfiles(&path) {
         return true;
     }
 
-    if path.is_dir() {
-        for entry in fs::read_dir(path).unwrap() {
-            let entry = entry.unwrap();
-            let entry_path = entry.path();
-            if check_dotfiles_recursive(&entry_path) {
-                return true;
-            }
-        }
+    if path.as_ref().is_dir() {
+        return fs::read_dir(path)
+            .unwrap()
+            .map_while(Result::ok)
+            .any(|entry| check_dotfiles(entry.path()));
     }
-
     false
 }
 

@@ -1,6 +1,5 @@
 use crate::{
     errors::ConfigError,
-    remote::get_dependency_url_remote,
     utils::{get_current_working_dir, read_file_to_string, remove_empty_lines},
     FOUNDRY_CONFIG_FILE, SOLDEER_CONFIG_FILE,
 };
@@ -139,7 +138,7 @@ impl From<GitDependency> for Dependency {
     }
 }
 
-pub async fn read_config(path: Option<PathBuf>) -> Result<Vec<Dependency>, ConfigError> {
+pub fn read_config(path: Option<PathBuf>) -> Result<Vec<Dependency>, ConfigError> {
     let path: PathBuf = match path {
         Some(p) => p,
         None => get_config_path()?,
@@ -161,7 +160,7 @@ pub async fn read_config(path: Option<PathBuf>) -> Result<Vec<Dependency>, Confi
 
     let mut dependencies: Vec<Dependency> = Vec::new();
     for (name, v) in data {
-        dependencies.push(parse_dependency(name, v).await?);
+        dependencies.push(parse_dependency(name, v)?);
     }
     Ok(dependencies)
 }
@@ -246,7 +245,7 @@ pub async fn remappings() -> Result<(), ConfigError> {
     let existing_remappings: Vec<String> = contents.split('\n').map(|s| s.to_string()).collect();
     let mut new_remappings: String = String::new();
 
-    let dependencies: Vec<Dependency> = match read_config(None).await {
+    let dependencies: Vec<Dependency> = match read_config(None) {
         Ok(dep) => dep,
         Err(err) => {
             return Err(err);
@@ -330,7 +329,7 @@ pub fn delete_config(
         });
     };
 
-    let dependency = parse_dependency_sync(dependency_name, &item_removed)?;
+    let dependency = parse_dependency(dependency_name, &item_removed)?;
 
     fs::write(path, doc.to_string())
         .map_err(|e| ConfigError { cause: format!("Couldn't write to the config file: {e:?}") })?;
@@ -347,9 +346,7 @@ pub fn remove_forge_lib() -> Result<(), ConfigError> {
     Ok(())
 }
 
-/// This function parses the TOML config item into a Dependency object but doesn't retrieve the URL
-/// in case of an HTTP dependency with only a version string.
-fn parse_dependency_sync(name: impl Into<String>, value: &Item) -> Result<Dependency, ConfigError> {
+fn parse_dependency(name: impl Into<String>, value: &Item) -> Result<Dependency, ConfigError> {
     let name: String = name.into();
     if let Some(version) = value.as_str() {
         // this function does not retrieve the url
@@ -433,27 +430,6 @@ fn parse_dependency_sync(name: impl Into<String>, value: &Item) -> Result<Depend
     }
 }
 
-async fn parse_dependency(
-    name: impl Into<String>,
-    value: &Item,
-) -> Result<Dependency, ConfigError> {
-    match parse_dependency_sync(name, value)? {
-        Dependency::Http(mut dep) => {
-            if dep.url.is_none() {
-                let url =
-                    get_dependency_url_remote(&dep.name, &dep.version).await.map_err(|_| {
-                        ConfigError {
-                            cause: format!("Could not retrieve URL for dependency {}", dep.name),
-                        }
-                    })?;
-                dep.url = Some(url);
-            }
-            Ok(Dependency::Http(dep))
-        }
-        dep => Ok(dep),
-    }
-}
-
 fn create_example_config(option: &str) -> Result<PathBuf, ConfigError> {
     let (config_path, contents) = match option.trim() {
         "1" => (
@@ -524,22 +500,7 @@ libs = ["dependencies"]
 
         write_to_config(&target_config, config_contents);
 
-        ////////////// MOCK //////////////
-        // Request a new server from the pool, TODO i tried to move this into a fn but the mock is
-        // dropped at the end of the function...
-        let mut server = mockito::Server::new_async().await;
-        env::set_var("base_url", format!("http://{}", server.host_with_port()));
-
-        let _ = server
-            .mock("GET", mockito::Matcher::Regex(r"^/api/v1/revision-cli.*".to_string()))
-            .with_status(201)
-            .with_header("content-type", "application/json")
-            .with_body(get_return_data())
-            .create();
-
-        ////////////// END-MOCK //////////////
-
-        let result = match read_config(Some(target_config.clone())).await {
+        let result = match read_config(Some(target_config.clone())) {
             Ok(dep) => dep,
             Err(err) => {
                 return Err(err);
@@ -551,7 +512,7 @@ libs = ["dependencies"]
             Dependency::Http(HttpDependency {
                 name: "@gearbox-protocol-periphery-v3".to_string(),
                 version: "1.6.1".to_string(),
-                url: Some("https://example_url.com/example_url.zip".to_string()),
+                url: None,
                 checksum: None
             })
         );
@@ -561,7 +522,7 @@ libs = ["dependencies"]
             Dependency::Http(HttpDependency {
                 name: "@openzeppelin-contracts".to_string(),
                 version: "5.0.2".to_string(),
-                url: Some("https://example_url.com/example_url.zip".to_string()),
+                url: None,
                 checksum: None
             })
         );
@@ -586,22 +547,7 @@ libs = ["dependencies"]
 
         write_to_config(&target_config, config_contents);
 
-        ////////////// MOCK //////////////
-        // Request a new server from the pool, TODO i tried to move this into a fn but the mock is
-        // dropped at the end of the function...
-        let mut server = mockito::Server::new_async().await;
-        env::set_var("base_url", format!("http://{}", server.host_with_port()));
-
-        let _ = server
-            .mock("GET", mockito::Matcher::Regex(r"^/api/v1/revision-cli.*".to_string()))
-            .with_status(201)
-            .with_header("content-type", "application/json")
-            .with_body(get_return_data())
-            .create();
-
-        ////////////// END-MOCK //////////////
-
-        let result = match read_config(Some(target_config.clone())).await {
+        let result = match read_config(Some(target_config.clone())) {
             Ok(dep) => dep,
             Err(err) => {
                 return Err(err);
@@ -613,7 +559,7 @@ libs = ["dependencies"]
             Dependency::Http(HttpDependency {
                 name: "@gearbox-protocol-periphery-v3".to_string(),
                 version: "1.6.1".to_string(),
-                url: Some("https://example_url.com/example_url.zip".to_string()),
+                url: None,
                 checksum: None
             })
         );
@@ -623,7 +569,7 @@ libs = ["dependencies"]
             Dependency::Http(HttpDependency {
                 name: "@openzeppelin-contracts".to_string(),
                 version: "5.0.2".to_string(),
-                url: Some("https://example_url.com/example_url.zip".to_string()),
+                url: None,
                 checksum: None
             })
         );
@@ -646,22 +592,7 @@ enabled = true
 
         write_to_config(&target_config, config_contents);
 
-        ////////////// MOCK //////////////
-        // Request a new server from the pool, TODO i tried to move this into a fn but the mock is
-        // dropped at the end of the function...
-        let mut server = mockito::Server::new_async().await;
-        env::set_var("base_url", format!("http://{}", server.host_with_port()));
-
-        let _ = server
-            .mock("GET", mockito::Matcher::Regex(r"^/api/v1/revision-cli.*".to_string()))
-            .with_status(201)
-            .with_header("content-type", "application/json")
-            .with_body(get_return_data())
-            .create();
-
-        ////////////// END-MOCK //////////////
-
-        let result = match read_config(Some(target_config.clone())).await {
+        let result = match read_config(Some(target_config.clone())) {
             Ok(dep) => dep,
             Err(err) => {
                 return Err(err);
@@ -673,7 +604,7 @@ enabled = true
             Dependency::Http(HttpDependency {
                 name: "@gearbox-protocol-periphery-v3".to_string(),
                 version: "1.6.1".to_string(),
-                url: Some("https://example_url.com/example_url.zip".to_string()),
+                url: None,
                 checksum: None
             })
         );
@@ -683,7 +614,7 @@ enabled = true
             Dependency::Http(HttpDependency {
                 name: "@openzeppelin-contracts".to_string(),
                 version: "5.0.2".to_string(),
-                url: Some("https://example_url.com/example_url.zip".to_string()),
+                url: None,
                 checksum: None
             })
         );
@@ -706,22 +637,7 @@ enabled = true
 
         write_to_config(&target_config, config_contents);
 
-        ////////////// MOCK //////////////
-        // Request a new server from the pool, TODO i tried to move this into a fn but the mock is
-        // dropped at the end of the function...
-        let mut server = mockito::Server::new_async().await;
-        env::set_var("base_url", format!("http://{}", server.host_with_port()));
-
-        let _ = server
-            .mock("GET", mockito::Matcher::Regex(r"^/api/v1/revision-cli.*".to_string()))
-            .with_status(201)
-            .with_header("content-type", "application/json")
-            .with_body(get_return_data())
-            .create();
-
-        ////////////// END-MOCK //////////////
-
-        let result = match read_config(Some(target_config.clone())).await {
+        let result = match read_config(Some(target_config.clone())) {
             Ok(dep) => dep,
             Err(err) => {
                 return Err(err);
@@ -733,7 +649,7 @@ enabled = true
             Dependency::Http(HttpDependency {
                 name: "@gearbox-protocol-periphery-v3".to_string(),
                 version: "1.6.1".to_string(),
-                url: Some("https://example_url.com/example_url.zip".to_string()),
+                url: None,
                 checksum: None
             })
         );
@@ -743,7 +659,7 @@ enabled = true
             Dependency::Http(HttpDependency {
                 name: "@openzeppelin-contracts".to_string(),
                 version: "5.0.2".to_string(),
-                url: Some("https://example_url.com/example_url.zip".to_string()),
+                url: None,
                 checksum: None
             })
         );
@@ -767,7 +683,7 @@ libs = ["dependencies"]
 
         write_to_config(&target_config, config_contents);
 
-        match read_config(Some(target_config.clone())).await {
+        match read_config(Some(target_config.clone())) {
             Ok(_) => {
                 assert_eq!("False state", "");
             }
@@ -800,7 +716,7 @@ libs = ["dependencies"]
 
         write_to_config(&target_config, config_contents);
 
-        match read_config(Some(target_config.clone())).await {
+        match read_config(Some(target_config.clone())) {
             Ok(_) => {
                 assert_eq!("False state", "");
             }
@@ -816,42 +732,6 @@ libs = ["dependencies"]
             }
         };
         let _ = remove_file(target_config);
-        Ok(())
-    }
-
-    #[tokio::test]
-    #[serial]
-    async fn read_dependency_url_call_fails() -> Result<(), ConfigError> {
-        let config_contents = r#"
-# Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
-
-[profile.default]
-libs = ["dependencies"]
-
-[dependencies]
-"@gearbox-protocol-periphery-v3" = "1.1.1"
-"#;
-        let target_config = define_config(false);
-
-        write_to_config(&target_config, config_contents);
-
-        match read_config(Some(target_config.clone())).await {
-            Ok(_) => {
-                assert_eq!("False state", "");
-            }
-            Err(err) => {
-                assert_eq!(
-                    err,
-                    ConfigError {
-                        cause:
-                            "Could not retrieve URL for dependency @gearbox-protocol-periphery-v3"
-                                .to_string()
-                    }
-                )
-            }
-        };
-        let _ = remove_file(target_config);
-
         Ok(())
     }
 

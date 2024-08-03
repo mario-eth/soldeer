@@ -325,7 +325,7 @@ async fn install_dependency(mut dependency: Dependency) -> Result<(), SoldeerErr
 async fn update() -> Result<(), SoldeerError> {
     Paint::green("🦌 Running Soldeer update 🦌\n");
 
-    let mut dependencies: Vec<Dependency> = match read_config(None).await {
+    let mut dependencies: Vec<Dependency> = match read_config(None) {
         Ok(dep) => dep,
         Err(err) => return Err(SoldeerError { message: err.cause }),
     };

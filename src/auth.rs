@@ -1,16 +1,18 @@
 use crate::{
-    errors::LoginError,
+    errors::AuthError,
     utils::{define_security_file_location, get_base_url, read_file},
 };
 use email_address_parser::{EmailAddress, ParsingOptions};
-use reqwest::Client;
+use reqwest::{Client, StatusCode};
 use rpassword::read_password;
 use serde_derive::{Deserialize, Serialize};
 use std::{
     fs::OpenOptions,
     io::{self, Write},
 };
-use yansi::Paint;
+use yansi::Paint as _;
+
+pub type Result<T> = std::result::Result<T, AuthError>;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Login {
@@ -24,12 +26,12 @@ pub struct LoginResponse {
     pub token: String,
 }
 
-pub async fn login() -> Result<(), LoginError> {
+pub async fn login() -> Result<()> {
     print!("ℹ️  If you do not have an account, please go to soldeer.xyz to create one.\n📧 Please enter your email: ");
     std::io::stdout().flush().unwrap();
     let mut email = String::new();
     if io::stdin().read_line(&mut email).is_err() {
-        return Err(LoginError { cause: "Invalid email".to_string() });
+        return Err(AuthError::InvalidEmail);
     }
     email = match check_email(email) {
         Ok(e) => e,
@@ -46,40 +48,40 @@ pub async fn login() -> Result<(), LoginError> {
     Ok(())
 }
 
-pub fn get_token() -> Result<String, LoginError> {
+pub fn get_token() -> Result<String> {
     let security_file = define_security_file_location();
     let jwt = read_file(security_file);
     match jwt {
         Ok(token) => Ok(String::from_utf8(token)
             .expect("You are not logged in. Please login using the 'soldeer login' command")),
-        Err(_) => Err(LoginError {
-            cause: "You are not logged in. Please login using the 'login' command".to_string(),
-        }),
+        Err(_) => Err(AuthError::MissingToken),
     }
 }
 
-fn check_email(email_str: String) -> Result<String, LoginError> {
+fn check_email(email_str: String) -> Result<String> {
     let email_str = email_str.trim().to_string().to_ascii_lowercase();
 
     let email: Option<EmailAddress> =
         EmailAddress::parse(&email_str, Some(ParsingOptions::default()));
     if email.is_none() {
-        Err(LoginError { cause: "Invalid email".to_string() })
+        Err(AuthError::InvalidEmail)
     } else {
         Ok(email_str)
     }
 }
 
-async fn execute_login(login: Login) -> Result<(), LoginError> {
+async fn execute_login(login: Login) -> Result<()> {
     let url = format!("{}/api/v1/auth/login", get_base_url());
     let req = Client::new().post(url).json(&login);
 
     let login_response = req.send().await;
 
     let security_file = define_security_file_location();
-    if let Ok(response) = login_response {
-        if response.status().is_success() {
-            println!("{}", Paint::green("Login successful"));
+    let response = login_response?;
+
+    match response.status() {
+        s if s.is_success() => {
+            println!("{}", "Login successful".green());
             let jwt = serde_json::from_str::<LoginResponse>(&response.text().await.unwrap())
                 .unwrap()
                 .token;
@@ -90,32 +92,13 @@ async fn execute_login(login: Login) -> Result<(), LoginError> {
                 .append(false)
                 .open(&security_file)
                 .unwrap();
-            if let Err(err) = write!(file, "{}", &jwt) {
-                return Err(LoginError {
-                    cause: format!(
-                        "Couldn't write to the security file {}: {}",
-                        &security_file, err
-                    ),
-                });
-            }
-            println!("{}", Paint::green(&format!("Login details saved in: {:?}", &security_file)));
-
-            return Ok(());
-        } else if response.status().as_u16() == 401 {
-            return Err(LoginError {
-                cause: "Authentication failed. Invalid email or password".to_string(),
-            });
-        } else {
-            return Err(LoginError {
-                cause: format!(
-                    "Authentication failed. Server response: {}",
-                    response.status().as_u16()
-                ),
-            });
+            write!(file, "{}", &jwt)?;
+            println!("{}", format!("Login details saved in: {:?}", &security_file).green());
+            Ok(())
         }
+        StatusCode::UNAUTHORIZED => Err(AuthError::InvalidCredentials),
+        _ => Err(AuthError::HttpError(response.error_for_status().unwrap_err())),
     }
-
-    Err(LoginError { cause: format!("Authentication failed. Unknown error.{:?}", login_response) })
 }
 
 #[cfg(test)]
@@ -133,8 +116,7 @@ mod tests {
 
         assert_eq!(check_email(valid_email.clone()).unwrap(), valid_email);
 
-        let expected_error = LoginError { cause: "Invalid email".to_string() };
-        assert_eq!(check_email(invalid_email).err().unwrap(), expected_error);
+        assert!(matches!(check_email(invalid_email), Err(AuthError::InvalidEmail)));
     }
 
     #[tokio::test]
@@ -193,20 +175,14 @@ mod tests {
             .with_body(data)
             .create();
 
-        match execute_login(Login {
-            email: "test@test.com".to_string(),
-            password: "1234".to_string(),
-        })
-        .await
-        {
-            Ok(_) => {}
-            Err(err) => {
-                let expected_error = LoginError {
-                    cause: "Authentication failed. Invalid email or password".to_string(),
-                };
-                assert_eq!(err, expected_error);
-            }
-        };
+        assert!(matches!(
+            execute_login(Login {
+                email: "test@test.com".to_string(),
+                password: "1234".to_string(),
+            })
+            .await,
+            Err(AuthError::InvalidCredentials)
+        ));
     }
 
     #[tokio::test]
@@ -227,18 +203,13 @@ mod tests {
             .with_body(data)
             .create();
 
-        match execute_login(Login {
-            email: "test@test.com".to_string(),
-            password: "1234".to_string(),
-        })
-        .await
-        {
-            Ok(_) => {}
-            Err(err) => {
-                let expected_error =
-                    LoginError { cause: "Authentication failed. Server response: 500".to_string() };
-                assert_eq!(err, expected_error);
-            }
-        };
+        assert!(matches!(
+            execute_login(Login {
+                email: "test@test.com".to_string(),
+                password: "1234".to_string(),
+            })
+            .await,
+            Err(AuthError::HttpError(_))
+        ));
     }
 }

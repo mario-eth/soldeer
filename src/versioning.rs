@@ -230,7 +230,7 @@ async fn push_to_repo(
             return Err(PushError {
                 name: (&dependency_name).to_string(),
                 version: (&dependency_version).to_string(),
-                cause: err.cause,
+                cause: err.to_string(),
             });
         }
     };

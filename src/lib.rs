@@ -120,7 +120,7 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
             match login().await {
                 Ok(_) => {}
                 Err(err) => {
-                    return Err(SoldeerError { message: err.cause });
+                    return Err(SoldeerError { message: err.to_string() });
                 }
             }
         }
@@ -713,7 +713,7 @@ libs = ["dependencies"]
                 clean_test_env(PathBuf::default());
 
                 // Check if the error is due to not being logged in
-                if e.message.contains("You are not logged in") {
+                if e.message.contains("you are not connected") {
                     println!(
                         "Test skipped: User not logged in. This test requires a logged-in state."
                     );

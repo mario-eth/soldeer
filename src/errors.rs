@@ -25,15 +25,22 @@ impl PushError {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct LoginError {
-    pub cause: String,
-}
+#[derive(Error, Debug)]
+pub enum AuthError {
+    #[error("login error: invalid email")]
+    InvalidEmail,
 
-impl LoginError {
-    pub fn new(cause: &str) -> LoginError {
-        LoginError { cause: cause.to_string() }
-    }
+    #[error("login error: invalid email or password")]
+    InvalidCredentials,
+
+    #[error("missing token, you are not connected")]
+    MissingToken,
+
+    #[error("error during IO operation for the security file: {0}")]
+    IOError(#[from] io::Error),
+
+    #[error("http error during login: {0}")]
+    HttpError(#[from] reqwest::Error),
 }
 
 #[derive(Error, Debug)]

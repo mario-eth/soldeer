@@ -252,12 +252,7 @@ async fn install_dependency(mut dependency: Dependency) -> Result<(), SoldeerErr
                 match janitor::cleanup_dependency(&dependency, true) {
                     Ok(_) => {}
                     Err(err_cleanup) => {
-                        return Err(SoldeerError {
-                            message: format!(
-                                "Error cleaning up dependency {}~{}",
-                                err_cleanup.name, err_cleanup.version
-                            ),
-                        })
+                        return Err(SoldeerError { message: err_cleanup.to_string() })
                     }
                 }
                 return Err(SoldeerError { message: err_unzip.to_string() });
@@ -292,18 +287,14 @@ async fn install_dependency(mut dependency: Dependency) -> Result<(), SoldeerErr
     match janitor::healthcheck_dependency(&dependency) {
         Ok(_) => {}
         Err(err) => {
-            return Err(SoldeerError {
-                message: format!("Error health-checking dependency {}~{}", err.name, err.version),
-            });
+            return Err(SoldeerError { message: err.to_string() });
         }
     }
 
     match janitor::cleanup_dependency(&dependency, false) {
         Ok(_) => {}
         Err(err) => {
-            return Err(SoldeerError {
-                message: format!("Error cleaning up dependency {}~{}", err.name, err.version),
-            });
+            return Err(SoldeerError { message: err.to_string() });
         }
     }
 
@@ -345,9 +336,7 @@ async fn update() -> Result<(), SoldeerError> {
     match healthcheck_dependencies(&dependencies) {
         Ok(_) => {}
         Err(err) => {
-            return Err(SoldeerError {
-                message: format!("Error health-checking dependencies {}~{}", err.name, err.version),
-            });
+            return Err(SoldeerError { message: err.to_string() });
         }
     }
 
@@ -361,9 +350,7 @@ async fn update() -> Result<(), SoldeerError> {
     match cleanup_after(&dependencies) {
         Ok(_) => {}
         Err(err) => {
-            return Err(SoldeerError {
-                message: format!("Error cleanup dependencies {}~{}", err.name, err.version),
-            });
+            return Err(SoldeerError { message: err.to_string() });
         }
     }
 

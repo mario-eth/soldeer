@@ -1,45 +1,40 @@
-use crate::{config::Dependency, errors::MissingDependencies, lock::remove_lock, DEPENDENCY_DIR};
-use std::fs::{metadata, remove_dir_all, remove_file};
+use crate::{config::Dependency, errors::JanitorError, lock::remove_lock, DEPENDENCY_DIR};
+use std::fs;
+
+pub type Result<T> = std::result::Result<T, JanitorError>;
 
 // Health-check dependencies before we clean them, this one checks if they were unzipped
-pub fn healthcheck_dependencies(dependencies: &[Dependency]) -> Result<(), MissingDependencies> {
+pub fn healthcheck_dependencies(dependencies: &[Dependency]) -> Result<()> {
     dependencies.iter().try_for_each(healthcheck_dependency)?;
     Ok(())
 }
 
 // Cleanup zips after the download
-pub fn cleanup_after(dependencies: &[Dependency]) -> Result<(), MissingDependencies> {
+pub fn cleanup_after(dependencies: &[Dependency]) -> Result<()> {
     dependencies.iter().try_for_each(|d| cleanup_dependency(d, false))?;
     Ok(())
 }
 
-pub fn healthcheck_dependency(dependency: &Dependency) -> Result<(), MissingDependencies> {
+pub fn healthcheck_dependency(dependency: &Dependency) -> Result<()> {
     let file_name: String = format!("{}-{}", dependency.name(), dependency.version());
     let new_path = DEPENDENCY_DIR.join(file_name);
-    match metadata(new_path) {
+    match fs::metadata(new_path) {
         Ok(_) => Ok(()),
-        Err(_) => Err(MissingDependencies::new(dependency.name(), dependency.version())),
+        Err(_) => Err(JanitorError::MissingDependency(dependency.to_string())),
     }
 }
 
-pub fn cleanup_dependency(dependency: &Dependency, full: bool) -> Result<(), MissingDependencies> {
+pub fn cleanup_dependency(dependency: &Dependency, full: bool) -> Result<()> {
     let file_name: String = format!("{}-{}.zip", dependency.name(), dependency.version());
     let new_path: std::path::PathBuf = DEPENDENCY_DIR.clone().join(file_name);
-    if let Dependency::Http(dep) = dependency {
-        match remove_file(new_path) {
-            Ok(_) => {}
-            Err(_) => {
-                return Err(MissingDependencies::new(&dep.name, &dep.version));
-            }
-        };
+    if let Dependency::Http(_) = dependency {
+        fs::remove_file(&new_path)
+            .map_err(|e| JanitorError::IOError { path: new_path, source: e })?;
     }
     if full {
         let dir = DEPENDENCY_DIR.join(dependency.name());
-        remove_dir_all(dir).unwrap();
-        match remove_lock(dependency) {
-            Ok(_) => {}
-            Err(_) => return Err(MissingDependencies::new(dependency.name(), dependency.version())),
-        }
+        fs::remove_dir_all(&dir).map_err(|e| JanitorError::IOError { path: dir, source: e })?;
+        remove_lock(dependency).map_err(JanitorError::LockError)?;
     }
     Ok(())
 }
@@ -139,7 +134,7 @@ mod tests {
 
         download_dependencies(&dependencies, false).await.unwrap();
         let _ = unzip_dependency(dependencies[0].name(), dependencies[0].version());
-        let result: Result<(), MissingDependencies> = cleanup_after(&dependencies);
+        let result: Result<()> = cleanup_after(&dependencies);
         assert!(result.is_ok());
         clean_dependency_directory();
     }
@@ -168,8 +163,8 @@ mod tests {
                 assert_eq!("Invalid State", "");
             }
             Err(error) => {
-                assert!(error.name == "@openzeppelin-contracts");
-                assert!(error.version == "cleanup-after-one-existing-2");
+                println!("{error}");
+                assert!(matches!(error, JanitorError::IOError { path: _, source: _ }));
             }
         }
     }

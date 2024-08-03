@@ -194,12 +194,7 @@ async fn download_via_git(
     };
     println!(
         "{}",
-        format!(
-            "Successfully downloaded {}~{} the dependency via git",
-            dependency.name.clone(),
-            dependency.version.clone(),
-        )
-        .green()
+        format!("Successfully downloaded {} the dependency via git", dependency,).green()
     );
     Ok(rev)
 }
@@ -213,16 +208,22 @@ async fn download_via_http(
     let resp = reqwest::get(url).await?;
     let mut resp = resp.error_for_status()?;
 
-    let mut file = File::create(&dependency_directory.join(zip_to_download)).await?;
+    let file_path = dependency_directory.join(zip_to_download);
+    let mut file = File::create(&file_path)
+        .await
+        .map_err(|e| DownloadError::IOError { path: file_path.clone(), source: e })?;
 
     while let Some(mut chunk) = resp.chunk().await? {
-        file.write_all_buf(&mut chunk).await?;
+        file.write_all_buf(&mut chunk)
+            .await
+            .map_err(|e| DownloadError::IOError { path: file_path.clone(), source: e })?;
     }
     Ok(())
 }
 
 pub fn delete_dependency_files(dependency: &Dependency) -> Result<()> {
-    remove_dir_all(DEPENDENCY_DIR.join(format!("{}-{}", dependency.name(), dependency.version())))?;
+    let path = DEPENDENCY_DIR.join(format!("{}-{}", dependency.name(), dependency.version()));
+    remove_dir_all(&path).map_err(|e| DownloadError::IOError { path, source: e })?;
     Ok(())
 }
 

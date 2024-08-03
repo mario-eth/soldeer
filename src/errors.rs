@@ -13,29 +13,6 @@ impl fmt::Display for SoldeerError {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct MissingDependencies {
-    pub name: String,
-    pub version: String,
-}
-
-impl MissingDependencies {
-    pub fn new(name: &str, version: &str) -> MissingDependencies {
-        MissingDependencies { name: name.to_string(), version: version.to_string() }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct LockError {
-    pub cause: String,
-}
-
-impl fmt::Display for LockError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "lock failed")
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
 pub struct PushError {
     pub name: String,
     pub version: String,
@@ -57,6 +34,21 @@ impl LoginError {
     pub fn new(cause: &str) -> LoginError {
         LoginError { cause: cause.to_string() }
     }
+}
+
+#[derive(Error, Debug)]
+pub enum LockError {
+    #[error("soldeer.lock is missing")]
+    Missing,
+
+    #[error("dependency {0} is already installed")]
+    DependencyInstalled(String),
+
+    #[error("IO error for soldeer.lock: {0}")]
+    IOError(#[from] io::Error),
+
+    #[error("error generating soldeer.lock contents: {0}")]
+    SerializeError(#[from] toml_edit::ser::Error),
 }
 
 #[derive(Error, Debug)]

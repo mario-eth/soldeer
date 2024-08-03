@@ -203,7 +203,7 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
             match remove_lock(&dependency) {
                 Ok(d) => d,
                 Err(err) => {
-                    return Err(SoldeerError { message: err.cause });
+                    return Err(SoldeerError { message: err.to_string() });
                 }
             };
         }
@@ -220,7 +220,7 @@ async fn install_dependency(mut dependency: Dependency) -> Result<(), SoldeerErr
     match lock_check(&dependency, true) {
         Ok(_) => {}
         Err(err) => {
-            return Err(SoldeerError { message: err.cause });
+            return Err(SoldeerError { message: err.to_string() });
         }
     }
 
@@ -241,7 +241,7 @@ async fn install_dependency(mut dependency: Dependency) -> Result<(), SoldeerErr
     match write_lock(&[dependency.clone()], LockWriteMode::Append) {
         Ok(_) => {}
         Err(err) => {
-            return Err(SoldeerError { message: format!("Error writing the lock: {}", err.cause) });
+            return Err(SoldeerError { message: err.to_string() });
         }
     }
 
@@ -343,7 +343,7 @@ async fn update() -> Result<(), SoldeerError> {
     match write_lock(&dependencies, LockWriteMode::Replace) {
         Ok(_) => {}
         Err(err) => {
-            return Err(SoldeerError { message: format!("Error writing the lock: {}", err.cause) });
+            return Err(SoldeerError { message: err.to_string() });
         }
     }
 

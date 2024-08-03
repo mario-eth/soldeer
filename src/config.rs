@@ -439,10 +439,15 @@ async fn parse_dependency(
 ) -> Result<Dependency, ConfigError> {
     match parse_dependency_sync(name, value)? {
         Dependency::Http(mut dep) => {
-            let url = get_dependency_url_remote(&dep.name, &dep.version).await.map_err(|_| {
-                ConfigError { cause: format!("Could not retrieve URL for dependency {}", dep.name) }
-            })?;
-            dep.url = Some(url);
+            if dep.url.is_none() {
+                let url =
+                    get_dependency_url_remote(&dep.name, &dep.version).await.map_err(|_| {
+                        ConfigError {
+                            cause: format!("Could not retrieve URL for dependency {}", dep.name),
+                        }
+                    })?;
+                dep.url = Some(url);
+            }
             Ok(Dependency::Http(dep))
         }
         dep => Ok(dep),

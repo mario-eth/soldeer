@@ -14,7 +14,7 @@ use crate::{
 };
 use config::{
     add_to_config, get_config_path, read_soldeer_config, remappings_foundry, GitDependency,
-    HttpDependency,
+    HttpDependency, RemappingsAction, RemappingsLocation,
 };
 use dependency_downloader::download_dependency;
 use janitor::cleanup_dependency;
@@ -160,6 +160,28 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
 
             // removing the dependency from the lock file
             remove_lock(&dependency)?;
+
+            let config = read_soldeer_config(Some(path.clone()))?;
+
+            if config.remappings_generate {
+                if path.to_string_lossy().contains("foundry.toml") {
+                    match config.remappings_location {
+                        RemappingsLocation::Txt => {
+                            remappings_txt(&RemappingsAction::Remove(dependency), &config).await?
+                        }
+                        RemappingsLocation::Config => {
+                            remappings_foundry(
+                                &RemappingsAction::Remove(dependency),
+                                &path,
+                                &config,
+                            )
+                            .await?
+                        }
+                    }
+                } else {
+                    remappings_txt(&RemappingsAction::Remove(dependency), &config).await?;
+                }
+            }
         }
 
         Subcommands::Version(_) => {
@@ -218,15 +240,16 @@ async fn install_dependency(
     if config.remappings_generate {
         if config_file.to_string_lossy().contains("foundry.toml") {
             match config.remappings_location {
-                config::RemappingsLocation::Txt => {
-                    remappings_txt(Some(&dependency), &config).await?
+                RemappingsLocation::Txt => {
+                    remappings_txt(&RemappingsAction::Add(dependency), &config).await?
                 }
-                config::RemappingsLocation::Config => {
-                    remappings_foundry(Some(&dependency), &config_file, &config).await?
+                RemappingsLocation::Config => {
+                    remappings_foundry(&RemappingsAction::Add(dependency), &config_file, &config)
+                        .await?
                 }
             }
         } else {
-            remappings_txt(Some(&dependency), &config).await?;
+            remappings_txt(&RemappingsAction::Add(dependency), &config).await?;
         }
     }
 
@@ -270,13 +293,13 @@ async fn update(regenerate_remappings: bool) -> Result<(), SoldeerError> {
     if config.remappings_generate {
         if config_file.to_string_lossy().contains("foundry.toml") {
             match config.remappings_location {
-                config::RemappingsLocation::Txt => remappings_txt(None, &config).await?,
-                config::RemappingsLocation::Config => {
-                    remappings_foundry(None, &config_file, &config).await?
+                RemappingsLocation::Txt => remappings_txt(&RemappingsAction::None, &config).await?,
+                RemappingsLocation::Config => {
+                    remappings_foundry(&RemappingsAction::None, &config_file, &config).await?
                 }
             }
         } else {
-            remappings_txt(None, &config).await?;
+            remappings_txt(&RemappingsAction::None, &config).await?;
         }
     }
 

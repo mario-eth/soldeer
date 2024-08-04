@@ -320,8 +320,15 @@ pub fn add_to_config(dependency: &Dependency, config_path: impl AsRef<Path>) -> 
     Ok(())
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum RemappingsAction {
+    Add(Dependency),
+    Remove(Dependency),
+    None,
+}
+
 fn generate_remappings(
-    add_dependency: Option<&Dependency>,
+    dependency: &RemappingsAction,
     soldeer_config: &SoldeerConfig,
     existing_remappings: Vec<(&str, &str)>,
 ) -> Result<Vec<String>> {
@@ -339,34 +346,53 @@ fn generate_remappings(
                 dependency.version()
             ));
         });
-    } else if let Some(add_dep) = add_dependency {
-        // we only add the remapping if it's not already existing, otherwise we keep the old
-        // remapping
-        let new_dep_remapped = format_remap_name(soldeer_config, add_dep);
-        let new_dep_orig = format!("dependencies/{}-{}/", add_dep.name(), add_dep.version());
-        let mut found = false; // whether a remapping existed for that dep already
-        for (remapped, orig) in existing_remappings {
-            new_remappings.push(format!("{}={}", remapped, orig));
-            if orig == new_dep_orig {
-                found = true;
+    } else {
+        match &dependency {
+            RemappingsAction::Remove(remove_dep) => {
+                // only keep items not matching the dependency to remove
+                let remove_dep_orig =
+                    format!("dependencies/{}-{}/", remove_dep.name(), remove_dep.version());
+                for (remapped, orig) in existing_remappings {
+                    if orig != remove_dep_orig {
+                        new_remappings.push(format!("{}={}", remapped, orig));
+                    } else {
+                        println!("{}", format!("Removed {remove_dep} from remappings").green());
+                    }
+                }
+            }
+            RemappingsAction::Add(add_dep) => {
+                // we only add the remapping if it's not already existing, otherwise we keep the old
+                // remapping
+                let new_dep_remapped = format_remap_name(soldeer_config, add_dep);
+                let new_dep_orig =
+                    format!("dependencies/{}-{}/", add_dep.name(), add_dep.version());
+                let mut found = false; // whether a remapping existed for that dep already
+                for (remapped, orig) in existing_remappings {
+                    new_remappings.push(format!("{}={}", remapped, orig));
+                    if orig == new_dep_orig {
+                        found = true;
+                    }
+                }
+                if !found {
+                    new_remappings.push(format!("{}={}", new_dep_remapped, new_dep_orig));
+                    println!("{}", format!("Added {add_dep} to remappings").green());
+                }
+            }
+            RemappingsAction::None => {
+                for (remapped, orig) in existing_remappings {
+                    new_remappings.push(format!("{}={}", remapped, orig));
+                }
             }
         }
-        if !found {
-            new_remappings.push(format!("{}={}", new_dep_remapped, new_dep_orig));
-            println!("{}", format!("Added {add_dep} to remappings").green());
-        }
-    } else {
-        for (remapped, orig) in existing_remappings {
-            new_remappings.push(format!("{}={}", remapped, orig));
-        }
     }
+
     // sort the remappings
     new_remappings.sort_unstable();
     Ok(new_remappings)
 }
 
 pub async fn remappings_txt(
-    add_dependency: Option<&Dependency>,
+    dependency: &RemappingsAction,
     soldeer_config: &SoldeerConfig,
 ) -> Result<()> {
     let remappings_path = get_current_working_dir().join("remappings.txt");
@@ -377,13 +403,13 @@ pub async fn remappings_txt(
         File::create(remappings_path.clone()).unwrap();
     }
 
-    let new_remappings = match add_dependency {
-        Some(_) => {
+    let new_remappings = match dependency {
+        RemappingsAction::None => generate_remappings(dependency, soldeer_config, vec![])?,
+        _ => {
             let contents = read_file_to_string(&remappings_path);
             let existing_remappings = contents.lines().filter_map(|r| r.split_once('=')).collect();
-            generate_remappings(add_dependency, soldeer_config, existing_remappings)?
+            generate_remappings(dependency, soldeer_config, existing_remappings)?
         }
-        None => generate_remappings(add_dependency, soldeer_config, vec![])?,
     };
 
     let mut file = File::create(remappings_path)?;
@@ -394,7 +420,7 @@ pub async fn remappings_txt(
 }
 
 pub async fn remappings_foundry(
-    add_dependency: Option<&Dependency>,
+    dependency: &RemappingsAction,
     config_path: impl AsRef<Path>,
     soldeer_config: &SoldeerConfig,
 ) -> Result<()> {
@@ -411,7 +437,7 @@ pub async fn remappings_foundry(
         let Some(Some(remappings)) = profile.get_mut("remappings").map(|v| v.as_array_mut()) else {
             // except the default profile, where we always add the remappings
             if name == "default" {
-                let new_remappings = generate_remappings(add_dependency, soldeer_config, vec![])?;
+                let new_remappings = generate_remappings(dependency, soldeer_config, vec![])?;
                 let array = Array::from_iter(new_remappings.into_iter());
                 profile["remappings"] = value(array);
             }
@@ -422,8 +448,7 @@ pub async fn remappings_foundry(
             .filter_map(|r| r.as_str())
             .filter_map(|r| r.split_once('='))
             .collect();
-        let new_remappings =
-            generate_remappings(add_dependency, soldeer_config, existing_remappings)?;
+        let new_remappings = generate_remappings(dependency, soldeer_config, existing_remappings)?;
         remappings.clear();
         for remapping in new_remappings {
             remappings.push(remapping);
@@ -1756,7 +1781,9 @@ remappings_location = "config"
             checksum: None,
         });
         let soldeer_config = read_soldeer_config(Some(target_config.clone())).unwrap();
-        let _ = remappings_foundry(Some(&dependency), &target_config, &soldeer_config).await;
+        let _ =
+            remappings_foundry(&RemappingsAction::Add(dependency), &target_config, &soldeer_config)
+                .await;
 
         content = r#"
 [profile.default]
@@ -1798,9 +1825,12 @@ remappings_version = false
             checksum: None,
         });
         let soldeer_config = read_soldeer_config(Some(target_config.clone())).unwrap();
-        let _ =
-            remappings_foundry(Some(&dependency), target_config.to_str().unwrap(), &soldeer_config)
-                .await;
+        let _ = remappings_foundry(
+            &RemappingsAction::Add(dependency),
+            target_config.to_str().unwrap(),
+            &soldeer_config,
+        )
+        .await;
 
         content = r#"
 [profile.default]
@@ -1845,7 +1875,7 @@ remappings_version = true
             checksum: None,
         });
         let soldeer_config = read_soldeer_config(Some(target_config.clone())).unwrap();
-        let _ = remappings_txt(Some(&dependency), &soldeer_config).await;
+        let _ = remappings_txt(&RemappingsAction::Add(dependency), &soldeer_config).await;
 
         content = "@dep1-1.0.0/=dependencies/dep1-1.0.0/\n";
 
@@ -1880,7 +1910,7 @@ remappings_version = false
             checksum: None,
         });
         let soldeer_config = read_soldeer_config(Some(target_config.clone())).unwrap();
-        let _ = remappings_txt(Some(&dependency), &soldeer_config).await;
+        let _ = remappings_txt(&RemappingsAction::Add(dependency), &soldeer_config).await;
 
         content = "dep1/=dependencies/dep1-1.0.0/\n";
 
@@ -1913,9 +1943,12 @@ remappings_generate = true
             checksum: None,
         });
         let soldeer_config = read_soldeer_config(Some(target_config.clone())).unwrap();
-        let _ =
-            remappings_foundry(Some(&dependency), target_config.to_str().unwrap(), &soldeer_config)
-                .await;
+        let _ = remappings_foundry(
+            &RemappingsAction::Add(dependency),
+            target_config.to_str().unwrap(),
+            &soldeer_config,
+        )
+        .await;
 
         content = r#"
 [profile.default]
@@ -1960,9 +1993,12 @@ remappings_generate = true
             checksum: None,
         });
         let soldeer_config = read_soldeer_config(Some(target_config.clone())).unwrap();
-        let _ =
-            remappings_foundry(Some(&dependency), target_config.to_str().unwrap(), &soldeer_config)
-                .await;
+        let _ = remappings_foundry(
+            &RemappingsAction::Add(dependency),
+            target_config.to_str().unwrap(),
+            &soldeer_config,
+        )
+        .await;
 
         content = r#"
 [profile.default]
@@ -2006,9 +2042,12 @@ remappings_generate = true
             checksum: None,
         });
         let soldeer_config = read_soldeer_config(Some(target_config.clone())).unwrap();
-        let _ =
-            remappings_foundry(Some(&dependency), target_config.to_str().unwrap(), &soldeer_config)
-                .await;
+        let _ = remappings_foundry(
+            &RemappingsAction::Add(dependency),
+            target_config.to_str().unwrap(),
+            &soldeer_config,
+        )
+        .await;
 
         content = r#"
 [profile.default]
@@ -2047,7 +2086,12 @@ remappings_regenerate = true
         write_to_config(&target_config, content);
 
         let soldeer_config = read_soldeer_config(Some(target_config.clone())).unwrap();
-        let _ = remappings_foundry(None, target_config.to_str().unwrap(), &soldeer_config).await;
+        let _ = remappings_foundry(
+            &RemappingsAction::None,
+            target_config.to_str().unwrap(),
+            &soldeer_config,
+        )
+        .await;
 
         content = r#"
 [profile.default]
@@ -2085,7 +2129,12 @@ remappings_generate = true
         write_to_config(&target_config, content);
 
         let soldeer_config = read_soldeer_config(Some(target_config.clone())).unwrap();
-        let _ = remappings_foundry(None, target_config.to_str().unwrap(), &soldeer_config).await;
+        let _ = remappings_foundry(
+            &RemappingsAction::None,
+            target_config.to_str().unwrap(),
+            &soldeer_config,
+        )
+        .await;
 
         assert_eq!(read_file_to_string(&target_config), content);
 

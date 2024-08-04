@@ -28,7 +28,7 @@ Use --clean true if you want to delete .gitmodules and lib directory that were c
     override_usage = "soldeer init"
 )]
 pub struct Init {
-    #[arg(long, value_parser = clap::value_parser!(bool))]
+    #[arg(long)]
     pub clean: Option<bool>,
 }
 
@@ -59,26 +59,23 @@ If you want to regenerate the remappings from scratch, use
     override_usage = "soldeer install <DEPENDENCY>~<VERSION> [URL]"
 )]
 pub struct Install {
+    /// Use this as [NAME]~[VERSION]. This should be always used if you want to install a certain
+    /// dependency from: remote/custom url/git
     #[clap(required = false)]
-    #[clap(
-        help = "Use this as [NAME]~[VERSION]. This should be always used if you want to install a certain dependency from: remote/custom url/git"
-    )]
     pub dependency: Option<String>,
+
+    /// Use this if your dependency is stored at a specific link in a zip file, e.g., https://my-domain/dep.zip.
     #[clap(required = false)]
-    #[arg(long, value_parser = clap::value_parser!(String))]
-    #[clap(
-        help = "Use this if your dependency is stored at a specific link in a zip file, e.g., https://my-domain/dep.zip."
-    )]
     pub remote_url: Option<String>,
-    #[arg(long, value_parser = clap::value_parser!(String))]
-    #[clap(
-        help = "Set this to true if you want to specify a certain commit when installing a dependency from a Git repository."
-    )]
+
+    /// Set this to true if you want to specify a certain commit when installing a dependency from
+    /// a Git repository.
+    #[arg(long)]
     pub rev: Option<String>,
-    #[arg(long, value_parser = clap::value_parser!(bool))]
-    #[clap(
-        help = "Use this option set to true if you want to regenerate the remappings from scratch. This will delete the old remappings."
-    )]
+
+    /// Use this option set to true if you want to regenerate the remappings from scratch. This
+    /// will delete the old remappings.
+    #[arg(long)]
     pub reg_remappings: Option<bool>,
 }
 
@@ -89,12 +86,9 @@ pub struct Install {
     override_usage = "soldeer update"
 )]
 pub struct Update {
-    #[arg(long, value_parser = clap::value_parser!(bool))]
-    /// This regenerates the remappings from scratch, will delete old remappings and regenerate
-    /// them
-    #[clap(
-        help = "Use this option set to true if you want to regenerate the remappings from scratch. This will delete the old remappings."
-    )]
+    /// Use this option set to true if you want to regenerate the remappings from scratch. This
+    /// will delete the old remappings.
+    #[arg(long)]
     pub reg_remappings: Option<bool>,
 }
 
@@ -125,25 +119,22 @@ For a dry run, use the `--dry-run` argument set to `true`: `soldeer push ... --d
     override_usage = "soldeer push <DEPENDENCY>~<VERSION> [PATH_TO_DEPENDENCY]"
 )]
 pub struct Push {
+    /// Use this format: `[NAME]~[VERSION]`. This should always be used when you want to push a dependency to the central repository: https://soldeer.xyz.
     #[clap(required = true)]
-    #[clap(
-        help = "Use this format: `[NAME]~[VERSION]`. This should always be used when you want to push a dependency to the central repository: https://soldeer.xyz."
-    )]
     pub dependency: String,
 
-    #[clap(
-        help = "Use this if the dependency you want to push is not in the current directory. For example: `soldeer push /path/to/dep`."
-    )]
+    /// Use this if the dependency you want to push is not in the current directory. For example:
+    /// `soldeer push /path/to/dep`.
     pub path: Option<PathBuf>,
-    #[clap(
-        help = "Use this if you want to run a dry run. This will generate a zip file that you can inspect to see what will be pushed."
-    )]
+
+    /// Use this if you want to run a dry run. This will generate a zip file that you can inspect
+    /// to see what will be pushed.
     #[arg(short, long)]
     pub dry_run: Option<bool>,
-    #[arg(long, value_parser = clap::value_parser!(bool))]
-    #[clap(
-        help = "Use this if you want to skip the warnings that can be triggered when trying to push .dot files like .env."
-    )]
+
+    /// Use this if you want to skip the warnings that can be triggered when trying to push .dot
+    /// files like .env.
+    #[arg(long)]
     pub skip_warnings: Option<bool>,
 }
 
@@ -154,9 +145,8 @@ pub struct Push {
     override_usage = "soldeer uninstall <DEPENDENCY>"
 )]
 pub struct Uninstall {
+    /// Use this command as `soldeer uninstall [NAME]`. Specifying a version is unnecessary because
+    /// there can only be one dependency with a given name
     #[clap(required = true)]
-    #[clap(
-        help = "Use this command as `soldeer uninstall [NAME]`. Specifying a version is unnecessary because there can only be one dependency with a given name"
-    )]
     pub dependency: String,
 }

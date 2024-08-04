@@ -7,13 +7,13 @@ use crate::{
 };
 use reqwest::IntoUrl;
 use std::{
-    fs::{self, remove_dir_all},
+    fs,
     io::Cursor,
     path::{Path, PathBuf},
     process::{Command, Stdio},
     str,
 };
-use tokio::{fs::File, io::AsyncWriteExt as _, task::JoinSet};
+use tokio::{fs as tokio_fs, io::AsyncWriteExt as _, task::JoinSet};
 use yansi::Paint as _;
 
 pub type Result<T> = std::result::Result<T, DownloadError>;
@@ -63,8 +63,12 @@ pub struct DownloadResult {
 
 pub async fn download_dependency(dependency: &Dependency) -> Result<DownloadResult> {
     let dependency_directory: PathBuf = DEPENDENCY_DIR.clone();
-    if !DEPENDENCY_DIR.is_dir() {
-        fs::create_dir(&dependency_directory).unwrap();
+    if tokio_fs::metadata(&dependency_directory).await.is_err() {
+        if let Err(e) = tokio_fs::create_dir(&dependency_directory).await {
+            if tokio_fs::metadata(&dependency_directory).await.is_err() {
+                return Err(DownloadError::IOError { path: dependency_directory, source: e });
+            }
+        }
     }
 
     let res = match dependency {
@@ -117,7 +121,7 @@ async fn download_via_git(
     let path = dependency_directory.join(target_dir);
     let path_str = path.to_string_lossy().to_string();
     if path.exists() {
-        let _ = remove_dir_all(&path);
+        let _ = fs::remove_dir_all(&path);
     }
 
     let http_url = transform_git_to_http(&dependency.git);
@@ -135,7 +139,7 @@ async fn download_via_git(
     let out = result.output().unwrap();
 
     if !status.success() {
-        let _ = remove_dir_all(&path);
+        let _ = fs::remove_dir_all(&path);
         return Err(DownloadError::GitError(
             str::from_utf8(&out.stderr).unwrap().trim().to_string(),
         ));
@@ -158,7 +162,7 @@ async fn download_via_git(
             let status = result.status().unwrap();
 
             if !status.success() {
-                let _ = remove_dir_all(&path);
+                let _ = fs::remove_dir_all(&path);
                 return Err(DownloadError::GitError(
                     str::from_utf8(&out.stderr).unwrap().trim().to_string(),
                 ));
@@ -181,7 +185,7 @@ async fn download_via_git(
             let out = result.output().unwrap();
             let status = result.status().unwrap();
             if !status.success() {
-                let _ = remove_dir_all(&path);
+                let _ = fs::remove_dir_all(&path);
                 return Err(DownloadError::GitError(
                     str::from_utf8(&out.stderr).unwrap().trim().to_string(),
                 ));
@@ -190,7 +194,7 @@ async fn download_via_git(
             let hash = str::from_utf8(&out.stdout).unwrap().trim().to_string();
             // check the commit hash
             if !hash.is_empty() && hash.len() != 40 {
-                let _ = remove_dir_all(&path);
+                let _ = fs::remove_dir_all(&path);
                 return Err(DownloadError::GitError(format!("invalid revision hash: {hash}")));
             }
             hash
@@ -214,7 +218,7 @@ async fn download_via_http(
     let mut resp = resp.error_for_status()?;
 
     let file_path = dependency_directory.join(zip_to_download);
-    let mut file = File::create(&file_path)
+    let mut file = tokio_fs::File::create(&file_path)
         .await
         .map_err(|e| DownloadError::IOError { path: file_path.clone(), source: e })?;
 
@@ -228,7 +232,7 @@ async fn download_via_http(
 
 pub fn delete_dependency_files(dependency: &Dependency) -> Result<()> {
     let path = DEPENDENCY_DIR.join(format!("{}-{}", dependency.name(), dependency.version()));
-    remove_dir_all(&path).map_err(|e| DownloadError::IOError { path, source: e })?;
+    fs::remove_dir_all(&path).map_err(|e| DownloadError::IOError { path, source: e })?;
     Ok(())
 }
 

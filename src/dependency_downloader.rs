@@ -13,7 +13,7 @@ use std::{
     process::{Command, Stdio},
     str,
 };
-use tokio::{fs::File, io::AsyncWriteExt as _};
+use tokio::{fs::File, io::AsyncWriteExt as _, task::JoinSet};
 use yansi::Paint as _;
 
 pub type Result<T> = std::result::Result<T, DownloadError>;
@@ -26,13 +26,19 @@ pub async fn download_dependencies(
     if clean {
         clean_dependency_directory();
     }
-    // downloading dependencies to dependencies folder
-    let results: Vec<DownloadResult> = futures::future::join_all(
-        dependencies.iter().map(|dep| async { download_dependency(dep).await }),
-    )
-    .await
-    .into_iter()
-    .collect::<Result<Vec<_>>>()?;
+
+    let mut set = JoinSet::new();
+    for dep in dependencies {
+        set.spawn({
+            let dep = dep.clone();
+            async move { download_dependency(&dep).await }
+        });
+    }
+
+    let mut results = Vec::<DownloadResult>::new();
+    while let Some(res) = set.join_next().await {
+        results.push(res??);
+    }
 
     Ok(results)
 }
@@ -106,6 +112,7 @@ async fn download_via_git(
     dependency: &GitDependency,
     dependency_directory: &Path,
 ) -> Result<String> {
+    println!("{}", format!("Started git download of {dependency}").green());
     let target_dir = &format!("{}-{}", dependency.name, dependency.version);
     let path = dependency_directory.join(target_dir);
     let path_str = path.to_string_lossy().to_string();
@@ -201,6 +208,7 @@ async fn download_via_http(
     dependency: &HttpDependency,
     dependency_directory: &Path,
 ) -> Result<()> {
+    println!("{}", format!("Started HTTP download of {dependency}").green());
     let zip_to_download = &format!("{}-{}.zip", dependency.name, dependency.version);
     let resp = reqwest::get(url).await?;
     let mut resp = resp.error_for_status()?;

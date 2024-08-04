@@ -101,6 +101,9 @@ pub enum DownloadError {
 
     #[error("Could not get the last forge dependency")]
     ForgeStdError,
+
+    #[error("error during async operation: {0}")]
+    AsyncError(#[from] tokio::task::JoinError),
 }
 
 #[derive(Error, Debug)]

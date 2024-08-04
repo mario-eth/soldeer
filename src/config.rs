@@ -1984,6 +1984,48 @@ remappings_generate = true
         Ok(())
     }
 
+    #[tokio::test]
+    async fn generate_remappings_in_config_existing() -> Result<()> {
+        let mut content = r#"
+[profile.default]
+solc = "0.8.26"
+libs = ["dependencies"]
+remappings = ["dep2/=dependencies/dep2-1.0.0/"]
+[dependencies]
+[soldeer]
+remappings_generate = true
+"#;
+
+        let target_config = define_config(true);
+
+        write_to_config(&target_config, content);
+        let dependency = Dependency::Http(HttpDependency {
+            name: "dep1".to_string(),
+            version: "1.0.0".to_string(),
+            url: None,
+            checksum: None,
+        });
+        let soldeer_config = read_soldeer_config(Some(target_config.clone())).unwrap();
+        let _ =
+            remappings_foundry(Some(&dependency), target_config.to_str().unwrap(), &soldeer_config)
+                .await;
+
+        content = r#"
+[profile.default]
+solc = "0.8.26"
+libs = ["dependencies"]
+remappings = ["dep1/=dependencies/dep1-1.0.0/", "dep2/=dependencies/dep2-1.0.0/"]
+[dependencies]
+[soldeer]
+remappings_generate = true
+"#;
+
+        assert_eq!(read_file_to_string(&target_config), content);
+
+        let _ = remove_file(target_config);
+        Ok(())
+    }
+
     ////////////// UTILS //////////////
 
     fn write_to_config(target_file: &PathBuf, content: &str) {

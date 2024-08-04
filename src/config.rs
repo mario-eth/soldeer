@@ -8,8 +8,7 @@ use serde_derive::Deserialize;
 use std::{
     env,
     fs::{self, remove_dir_all, remove_file, File},
-    io,
-    io::Write,
+    io::{self, Write},
     path::Path,
 };
 use toml::Table;
@@ -38,13 +37,25 @@ pub struct Dependency {
 }
 
 // Dependency object used to store a dependency data
-#[derive(Deserialize, Clone, Debug, PartialEq, Default)]
+#[derive(Deserialize, Clone, Debug, PartialEq)]
 pub struct SoldeerConfig {
     pub generate_remappings: bool,
     pub reg_remappings: bool,
     pub remappings_version: bool,
     pub remappings_prefix: String,
     pub remappings_type: String,
+}
+
+impl Default for SoldeerConfig {
+    fn default() -> Self {
+        SoldeerConfig {
+            generate_remappings: true,
+            reg_remappings: false,
+            remappings_version: false,
+            remappings_prefix: String::new(),
+            remappings_type: "txt".to_string(),
+        }
+    }
 }
 
 pub async fn read_config_deps(filename: &str) -> Result<Vec<Dependency>, ConfigError> {
@@ -131,10 +142,11 @@ pub async fn read_config_soldeer(filename: &str) -> Result<SoldeerConfig, Config
         }
     };
 
-    let mut gen_remappings = false;
+    let mut gen_remappings = true;
     if let Some(gen_remap) = data.soldeer.get("generate-remappings") {
         gen_remappings = gen_remap.as_bool().unwrap();
     }
+    println!("gen rem {:?}", gen_remappings);
     let mut remappings_prefix = String::new();
     if let Some(rem_pref) = data.soldeer.get("remapping-prefix") {
         remappings_prefix = rem_pref.as_str().unwrap().to_string();
@@ -270,19 +282,8 @@ pub async fn remappings_txt(
     if !remappings_path.exists() {
         File::create(remappings_path.clone()).unwrap();
     }
-    let contents = read_file_to_string(&remappings_path);
 
-    let existing_remappings: Vec<String> = contents.split('\n').map(|s| s.to_string()).collect();
     let mut new_remappings: String = String::new();
-    let mut existing_remap: Vec<String> = Vec::new();
-    existing_remappings.iter().for_each(|remapping| {
-        let split: Vec<&str> = remapping.split('=').collect::<Vec<&str>>();
-        if split.len() == 1 {
-            // skip empty lines
-            return;
-        }
-        existing_remap.push(String::from(split[0]));
-    });
 
     if soldeer_config.reg_remappings {
         let dependencies: Vec<Dependency> = match read_config_deps(config_file).await {
@@ -294,27 +295,44 @@ pub async fn remappings_txt(
 
         dependencies.iter().for_each(|dependency| {
             let dependency_name_formatted = format_remap_name(soldeer_config, dependency);
-            let index = existing_remap.iter().position(|r| r == &dependency_name_formatted);
-            if index.is_none() {
+
+            println!(
+                "{}",
                 Paint::green(&format!(
-                    "Added a new dependency to remappings {}-{}",
+                    "Adding a new dependency to remappings {}-{}",
                     dependency.name, dependency.version
-                ));
-                new_remappings.push_str(&format!(
-                    "\n{}=dependencies/{}-{}/",
-                    dependency_name_formatted, dependency.name, dependency.version
-                ));
-            }
+                ))
+            );
+            new_remappings.push_str(&format!(
+                "\n{}=dependencies/{}-{}/",
+                dependency_name_formatted, dependency.name, dependency.version
+            ));
         });
     } else {
+        let contents = read_file_to_string(&remappings_path);
+
+        let existing_remappings: Vec<String> =
+            contents.split('\n').map(|s| s.to_string()).collect();
+        let mut existing_remap: Vec<String> = Vec::new();
+        existing_remappings.iter().for_each(|remapping| {
+            let split: Vec<&str> = remapping.split('=').collect::<Vec<&str>>();
+            if split.len() == 1 {
+                // skip empty lines
+                return;
+            }
+            existing_remap.push(String::from(split[0]));
+        });
         let dependency_name_formatted = format_remap_name(soldeer_config, dependency);
 
         let index = existing_remap.iter().position(|r| r == &dependency_name_formatted);
         if index.is_none() {
-            Paint::green(&format!(
-                "Added a new dependency to remappings {}-{}",
-                dependency.name, dependency.version
-            ));
+            println!(
+                "{}",
+                Paint::green(&format!(
+                    "Added a new dependency to remappings {}-{}",
+                    dependency.name, dependency.version
+                ))
+            );
             new_remappings.push_str(&format!(
                 "\n{}=dependencies/{}-{}/",
                 dependency_name_formatted, dependency.name, dependency.version
@@ -328,7 +346,7 @@ pub async fn remappings_txt(
     match write!(file, "{}", &new_remappings) {
         Ok(_) => {}
         Err(_) => {
-            Paint::yellow(&"Could not write to the remappings file".to_string());
+            println!("{}", Paint::yellow(&"Could not write to the remappings file".to_string()));
         }
     }
     remove_empty_lines("remappings.txt");
@@ -354,13 +372,16 @@ pub async fn remappings_foundry(
     }
 
     if *dependency != Dependency::default() {
-        Paint::green(&format!(
-            "Adding dependency {}-{} to the remappings",
-            dependency.name, dependency.version
-        ));
+        println!(
+            "{}",
+            Paint::green(&format!(
+                "Adding dependency {}-{} to the remappings",
+                dependency.name, dependency.version
+            ))
+        );
         dependencies.push(dependency.clone());
     } else if !dependencies.is_empty() {
-        Paint::green("Regenerating all the remappings");
+        println!("{}", Paint::green("Regenerating all the remappings"));
     }
 
     if dependencies.is_empty() {

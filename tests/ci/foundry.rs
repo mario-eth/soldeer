@@ -24,7 +24,7 @@ fn soldeer_install_valid_dependency() {
         dependency: Some("forge-std~1.8.2".to_string()),
         remote_url: None,
         rev: None,
-        regenerate_remappings: None,
+        regenerate_remappings: Some(false),
     });
 
     match soldeer::run(command) {
@@ -93,15 +93,27 @@ contract TestSoldeer is Test {
         env::current_dir().unwrap().join("dependencies").join("forge-std-1.8.2"),
         test_project.join("dependencies").join("forge-std-1.8.2"),
     );
+    let foundry_content = r#"
 
-    let _ = fs::copy(
-        env::current_dir().unwrap().join("foundry.toml"),
-        test_project.join("foundry.toml"),
-    );
+# Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
 
-    let _ = fs::copy(
-        env::current_dir().unwrap().join("remappings.txt"),
+[profile.default]
+script = "script"
+solc = "0.8.26"
+src = "src"
+test = "test"
+libs = ["dependencies"]
+
+[dependencies]
+forge-std = "1.8.2"
+
+"#;
+
+    let _ = fs::write(test_project.join("foundry.toml"), foundry_content);
+
+    let _ = fs::write(
         test_project.join("remappings.txt"),
+        "@forge-std-1.8.2=dependencies/forge-std-1.8.2",
     );
 
     let output = Command::new("forge")
@@ -113,7 +125,7 @@ contract TestSoldeer is Test {
 
     let passed = String::from_utf8(output.stdout).unwrap().contains("[PASS]");
     if !passed {
-        println!("This will fail with: {:?}", String::from_utf8(output.stderr).unwrap());
+        eprintln!("This failed with: {:?}", String::from_utf8(output.stderr).unwrap());
     }
     assert!(passed);
     clean_test_env(&test_project);

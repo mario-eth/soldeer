@@ -45,16 +45,21 @@ mod tests {
     use super::*;
     use crate::{
         config::HttpDependency,
-        dependency_downloader::{
-            clean_dependency_directory, download_dependencies, unzip_dependency,
-        },
+        dependency_downloader::{download_dependencies, unzip_dependency},
     };
     use serial_test::serial;
+
+    fn clean_dependency_directory_sync() {
+        if DEPENDENCY_DIR.is_dir() {
+            fs::remove_dir_all(DEPENDENCY_DIR.clone()).unwrap();
+            fs::create_dir(DEPENDENCY_DIR.clone()).unwrap();
+        }
+    }
 
     struct CleanupDependency;
     impl Drop for CleanupDependency {
         fn drop(&mut self) {
-            clean_dependency_directory();
+            clean_dependency_directory_sync();
         }
     }
 
@@ -136,7 +141,7 @@ mod tests {
         let _ = unzip_dependency(dependencies[0].as_http().unwrap());
         let result: Result<()> = cleanup_after(&dependencies);
         assert!(result.is_ok());
-        clean_dependency_directory();
+        clean_dependency_directory_sync();
     }
 
     #[tokio::test]

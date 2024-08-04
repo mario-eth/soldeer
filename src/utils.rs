@@ -60,7 +60,7 @@ pub fn define_security_file_location() -> Result<PathBuf, std::io::Error> {
     }
 
     // if home dir cannot be found, use the current working directory
-    let dir = home_dir().unwrap_or_else(|| get_current_working_dir());
+    let dir = home_dir().unwrap_or_else(get_current_working_dir);
     let security_directory = dir.join(".soldeer");
     if !security_directory.exists() {
         fs::create_dir(&security_directory)?;

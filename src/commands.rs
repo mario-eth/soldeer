@@ -59,7 +59,7 @@ If you want to regenerate the remappings from scratch, use
     override_usage = "soldeer install <DEPENDENCY>~<VERSION> [URL]"
 )]
 pub struct Install {
-    /// Use this as [NAME]~[VERSION]. This should be always used if you want to install a certain
+    /// Use this as `[NAME]~[VERSION]`. This should be always used if you want to install a certain
     /// dependency from: remote/custom url/git
     #[clap(required = false)]
     pub dependency: Option<String>,
@@ -119,7 +119,7 @@ For a dry run, use the `--dry-run` argument set to `true`: `soldeer push ... --d
     override_usage = "soldeer push <DEPENDENCY>~<VERSION> [PATH_TO_DEPENDENCY]"
 )]
 pub struct Push {
-    /// Use this format: `[NAME]~[VERSION]`. This should always be used when you want to push a dependency to the central repository: https://soldeer.xyz.
+    /// Use this format: `[NAME]~[VERSION]`. This should always be used when you want to push a dependency to the central repository: `<https://soldeer.xyz>`.
     #[clap(required = true)]
     pub dependency: String,
 

@@ -24,7 +24,7 @@ fn soldeer_install_valid_dependency() {
         dependency: Some("forge-std~1.8.2".to_string()),
         remote_url: None,
         rev: None,
-        regenerate_remappings: Some(false),
+        regenerate_remappings: false,
     });
 
     match soldeer::run(command) {

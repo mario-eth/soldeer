@@ -52,7 +52,7 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
             println!("{}", "🦌 Running Soldeer init 🦌".green());
             println!("{}", "Initializes a new Soldeer project in foundry".green());
 
-            if init.clean.is_some() && init.clean.unwrap() {
+            if init.clean {
                 config::remove_forge_lib()?;
             }
 
@@ -62,7 +62,7 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
             install_dependency(dependency, true).await?;
         }
         Subcommands::Install(install) => {
-            let regenerate_remappings = install.regenerate_remappings.unwrap_or(false);
+            let regenerate_remappings = install.regenerate_remappings;
             let Some(dependency) = install.dependency else {
                 return update(regenerate_remappings).await; // TODO: instead, check which
                                                             // dependencies do
@@ -100,7 +100,7 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
             install_dependency(dep, regenerate_remappings).await?;
         }
         Subcommands::Update(update_args) => {
-            let regenerate_remappings = update_args.regenerate_remappings.unwrap_or(false);
+            let regenerate_remappings = update_args.regenerate_remappings;
             return update(regenerate_remappings).await;
         }
         Subcommands::Login(_) => {
@@ -109,8 +109,8 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
         }
         Subcommands::Push(push) => {
             let path = push.path.unwrap_or(get_current_working_dir());
-            let dry_run = push.dry_run.is_some() && push.dry_run.unwrap();
-            let skip_warnings = push.skip_warnings.unwrap_or(false);
+            let dry_run = push.dry_run;
+            let skip_warnings = push.skip_warnings;
 
             // Check for sensitive files or directories
             if !dry_run &&
@@ -329,7 +329,7 @@ libs = ["dependencies"]
             dependency: None,
             remote_url: None,
             rev: None,
-            regenerate_remappings: None,
+            regenerate_remappings: false,
         });
 
         match run(command) {
@@ -377,7 +377,7 @@ libs = ["dependencies"]
             dependency: None,
             remote_url: None,
             rev: None,
-            regenerate_remappings: None,
+            regenerate_remappings: false,
         });
 
         match run(command) {
@@ -419,7 +419,7 @@ libs = ["dependencies"]
 
         env::set_var("base_url", "https://api.soldeer.xyz");
 
-        let command = Subcommands::Update(Update { regenerate_remappings: None });
+        let command = Subcommands::Update(Update { regenerate_remappings: false });
 
         match run(command) {
             Ok(_) => {}
@@ -462,7 +462,7 @@ libs = ["dependencies"]
 
         env::set_var("base_url", "https://api.soldeer.xyz");
 
-        let command = Subcommands::Update(Update { regenerate_remappings: None });
+        let command = Subcommands::Update(Update { regenerate_remappings: false });
 
         match run(command) {
             Ok(_) => {}
@@ -521,7 +521,7 @@ libs = ["dependencies"]
             dependency: None,
             remote_url: None,
             rev: None,
-            regenerate_remappings: None,
+            regenerate_remappings: false,
         });
 
         match run(command) {
@@ -559,8 +559,8 @@ libs = ["dependencies"]
         let command = Subcommands::Push(Push {
             dependency: "@test~1.1".to_string(),
             path: Some(path_dependency.clone()),
-            dry_run: Some(true),
-            skip_warnings: None,
+            dry_run: true,
+            skip_warnings: false,
         });
 
         match run(command) {
@@ -597,8 +597,8 @@ libs = ["dependencies"]
         let command = Subcommands::Push(Push {
             dependency: "@test~1.1".to_string(),
             path: Some(test_dir.clone()),
-            dry_run: None,
-            skip_warnings: None,
+            dry_run: false,
+            skip_warnings: false,
         });
 
         match run(command) {
@@ -637,8 +637,8 @@ libs = ["dependencies"]
         let command = Subcommands::Push(Push {
             dependency: "@test~1.1".to_string(),
             path: Some(test_dir.clone()),
-            dry_run: None,
-            skip_warnings: Some(true),
+            dry_run: false,
+            skip_warnings: true,
         });
 
         match run(command) {
@@ -707,7 +707,7 @@ libs = ["dependencies"]
             dependency: Some("forge-std~1.9.1".to_string()),
             remote_url: Option::None,
             rev: None,
-            regenerate_remappings: None,
+            regenerate_remappings: false,
         });
 
         match run(command) {
@@ -759,7 +759,7 @@ libs = ["dependencies"]
             dependency: Some("forge-std~1.9.1".to_string()),
             remote_url: Some("https://soldeer-revisions.s3.amazonaws.com/forge-std/v1_9_0_03-07-2024_14:44:57_forge-std-v1.9.0.zip".to_string()),
             rev: None,
-            regenerate_remappings: None
+            regenerate_remappings: false
         });
 
         match run(command) {
@@ -811,7 +811,7 @@ libs = ["dependencies"]
             dependency: Some("forge-std~1.9.1".to_string()),
             remote_url: Some("https://github.com/foundry-rs/forge-std.git".to_string()),
             rev: None,
-            regenerate_remappings: None,
+            regenerate_remappings: false,
         });
 
         match run(command) {
@@ -863,7 +863,7 @@ libs = ["dependencies"]
             dependency: Some("forge-std~1.9.1".to_string()),
             remote_url: Some("git@github.com:foundry-rs/forge-std.git".to_string()),
             rev: None,
-            regenerate_remappings: None,
+            regenerate_remappings: false,
         });
 
         match run(command) {
@@ -915,7 +915,7 @@ libs = ["dependencies"]
             dependency: Some("forge-std~1.9.1".to_string()),
             remote_url: Some("git@github.com:foundry-rs/forge-std.git".to_string()),
             rev: Some("3778c3cb8e4244cb5a1c3ef3ce1c71a3683e324a".to_string()),
-            regenerate_remappings: None,
+            regenerate_remappings: false,
         });
 
         match run(command) {
@@ -947,7 +947,7 @@ libs = ["dependencies"]
 
         env::set_var("base_url", "https://api.soldeer.xyz");
 
-        let command = Subcommands::Init(Init { clean: None });
+        let command = Subcommands::Init(Init { clean: false });
 
         match run(command) {
             Ok(_) => {}
@@ -996,7 +996,7 @@ libs = ["dependencies"]
 
         env::set_var("base_url", "https://api.soldeer.xyz");
 
-        let command = Subcommands::Init(Init { clean: Some(true) });
+        let command = Subcommands::Init(Init { clean: true });
 
         match run(command) {
             Ok(_) => {}

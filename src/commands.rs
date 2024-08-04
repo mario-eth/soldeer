@@ -25,8 +25,8 @@ pub enum Subcommands {
 #[clap(after_help = "For more information, read the README.md")]
 pub struct Init {
     /// Clean the Foundry project by removing .gitmodules and the lib directory
-    #[arg(long)]
-    pub clean: Option<bool>,
+    #[arg(long, default_value_t = false)]
+    pub clean: bool,
 }
 
 fn validate_dependency(dep: &str) -> Result<String, String> {
@@ -70,20 +70,18 @@ pub struct Install {
     #[arg(long)]
     pub rev: Option<String>,
 
-    /// Set to true to regenerate the remappings from scratch. This will delete the existing
-    /// remappings. Defaults to false.
-    #[arg(long)]
-    pub regenerate_remappings: Option<bool>,
+    /// If set, this command will delete the existing remappings and re-create them
+    #[arg(long, default_value_t = false)]
+    pub regenerate_remappings: bool,
 }
 
 /// Update dependencies by reading the config file
 #[derive(Debug, Clone, Parser)]
 #[clap(after_help = "For more information, read the README.md")]
 pub struct Update {
-    /// Set to false to keep existing remappings. If true, this will delete the existing
-    /// remappings. Defaults to false.
-    #[arg(long)]
-    pub regenerate_remappings: Option<bool>,
+    /// If set, this command will delete the existing remappings and re-create them
+    #[arg(long, default_value_t = false)]
+    pub regenerate_remappings: bool,
 }
 
 /// Display the version of Soldeer
@@ -119,15 +117,15 @@ pub struct Push {
     /// Example: `soldeer push /path/to/dep`.
     pub path: Option<PathBuf>,
 
-    /// Use this if you want to run a dry run. If true, this will generate a zip file that you can
+    /// Use this if you want to run a dry run. If set, this will generate a zip file that you can
     /// inspect to see what will be pushed.
-    #[arg(short, long)]
-    pub dry_run: Option<bool>,
+    #[arg(short, long, default_value_t = false)]
+    pub dry_run: bool,
 
     /// Use this if you want to skip the warnings that can be triggered when trying to push
     /// dotfiles like .env.
-    #[arg(long)]
-    pub skip_warnings: Option<bool>,
+    #[arg(long, default_value_t = false)]
+    pub skip_warnings: bool,
 }
 
 /// Uninstall a dependency

@@ -2026,6 +2026,71 @@ remappings_generate = true
         Ok(())
     }
 
+    #[tokio::test]
+    async fn generate_remappings_regenerate() -> Result<()> {
+        let mut content = r#"
+[profile.default]
+solc = "0.8.26"
+libs = ["dependencies"]
+remappings = ["@dep2-custom/=dependencies/dep2-1.0.0/"]
+[dependencies]
+dep2 = "1.0.0"
+[soldeer]
+remappings_generate = true
+remappings_regenerate = true
+"#;
+
+        let target_config = define_config(true);
+
+        write_to_config(&target_config, content);
+
+        let soldeer_config = read_soldeer_config(Some(target_config.clone())).unwrap();
+        let _ = remappings_foundry(None, target_config.to_str().unwrap(), &soldeer_config).await;
+
+        content = r#"
+[profile.default]
+solc = "0.8.26"
+libs = ["dependencies"]
+remappings = ["dep2/=dependencies/dep2-1.0.0/"]
+[dependencies]
+dep2 = "1.0.0"
+[soldeer]
+remappings_generate = true
+remappings_regenerate = true
+"#;
+
+        assert_eq!(read_file_to_string(&target_config), content);
+
+        let _ = remove_file(target_config);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn generate_remappings_keep_custom() -> Result<()> {
+        let content = r#"
+[profile.default]
+solc = "0.8.26"
+libs = ["dependencies"]
+remappings = ["@dep2-custom/=dependencies/dep2-1.0.0/"]
+[dependencies]
+dep2 = "1.0.0"
+[soldeer]
+remappings_generate = true
+"#;
+
+        let target_config = define_config(true);
+
+        write_to_config(&target_config, content);
+
+        let soldeer_config = read_soldeer_config(Some(target_config.clone())).unwrap();
+        let _ = remappings_foundry(None, target_config.to_str().unwrap(), &soldeer_config).await;
+
+        assert_eq!(read_file_to_string(&target_config), content);
+
+        let _ = remove_file(target_config);
+        Ok(())
+    }
+
     ////////////// UTILS //////////////
 
     fn write_to_config(target_file: &PathBuf, content: &str) {
@@ -2046,7 +2111,10 @@ remappings_generate = true
         if !foundry {
             target = format!("soldeer{}.toml", s);
         }
-        get_current_working_dir().join("test").join(target)
+
+        let path = get_current_working_dir().join("test").join(target);
+        env::set_var("config_file", path.to_string_lossy().to_string());
+        path
     }
 
     #[allow(unused)]

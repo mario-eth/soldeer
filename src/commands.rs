@@ -114,7 +114,7 @@ pub struct Push {
 
     /// Use this if the dependency you want to push is not in the current directory.
     ///
-    /// Example: `soldeer push /path/to/dep`.
+    /// Example: `soldeer push mypkg~0.1.0 /path/to/dep`.
     pub path: Option<PathBuf>,
 
     /// Use this if you want to run a dry run. If set, this will generate a zip file that you can

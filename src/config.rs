@@ -2114,8 +2114,7 @@ remappings_generate = true
             target = format!("soldeer{}.toml", s);
         }
 
-        let path = get_current_working_dir().join("test").join(target);
-        path
+        get_current_working_dir().join("test").join(target)
     }
 
     #[allow(unused)]

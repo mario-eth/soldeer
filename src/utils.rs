@@ -46,6 +46,13 @@ pub fn read_file(path: impl AsRef<Path>) -> Result<Vec<u8>, std::io::Error> {
     Ok(buffer)
 }
 
+/// Get the location where the token file is stored or read from
+///
+/// The token file is stored in the home directory of the user in a hidden folder called `.soldeer`,
+/// or in the current working directory if the home directory cannot be found.
+/// For reading (e.g. when pushing to the registry), the path can be overridden by setting the
+/// `SOLDEER_LOGIN_FILE` environment variable.
+/// For login, the custom path will only be used if the file already exists.
 pub fn define_security_file_location() -> Result<PathBuf, std::io::Error> {
     let custom_security_file = if cfg!(test) {
         return Ok(PathBuf::from("./test_save_jwt"));

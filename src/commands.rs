@@ -57,7 +57,7 @@ pub struct Install {
     /// The dependency name and version, separated by a tilde.
     ///
     /// If not present, this command will perform `soldeer update`
-    #[arg(value_parser = validate_dependency, value_name = "DEPENDENCY>~<VERSION")]
+    #[arg(value_parser = validate_dependency, value_name = "DEPENDENCY~VERSION")]
     pub dependency: Option<String>,
 
     /// The URL to the dependency zip file, if not from the Soldeer repository

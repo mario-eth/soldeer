@@ -1,6 +1,6 @@
 use crate::{
     errors::ConfigError,
-    utils::{get_current_working_dir, read_file_to_string, remove_empty_lines},
+    utils::{get_current_working_dir, read_file_to_string},
     FOUNDRY_CONFIG_FILE, SOLDEER_CONFIG_FILE,
 };
 use serde_derive::{Deserialize, Serialize};
@@ -14,6 +14,38 @@ use toml_edit::{value, DocumentMut, InlineTable, Item, Table};
 use yansi::Paint as _;
 
 pub type Result<T> = std::result::Result<T, ConfigError>;
+
+/// Location where to store the remappings, either in `remappings.txt` or the config file
+/// (foundry/soldeer)
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum RemappingsLocation {
+    #[default]
+    Txt,
+    Config,
+}
+
+/// The Soldeer config options
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct SoldeerConfig {
+    pub generate_remappings: bool,
+    pub reg_remappings: bool,
+    pub remappings_version: bool,
+    pub remappings_prefix: String,
+    pub remappings_type: RemappingsLocation,
+}
+
+impl Default for SoldeerConfig {
+    fn default() -> Self {
+        SoldeerConfig {
+            generate_remappings: true,
+            reg_remappings: false,
+            remappings_version: false,
+            remappings_prefix: String::new(),
+            remappings_type: Default::default(),
+        }
+    }
+}
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct GitDependency {
@@ -177,24 +209,6 @@ impl From<GitDependency> for Dependency {
     }
 }
 
-pub fn read_config(path: Option<PathBuf>) -> Result<Vec<Dependency>> {
-    let path: PathBuf = match path {
-        Some(p) => p,
-        None => get_config_path()?,
-    };
-    let contents = read_file_to_string(&path);
-    let doc: DocumentMut = contents.parse::<DocumentMut>()?;
-    let Some(Some(data)) = doc.get("dependencies").map(|v| v.as_table()) else {
-        return Err(ConfigError::MissingDependencies);
-    };
-
-    let mut dependencies: Vec<Dependency> = Vec::new();
-    for (name, v) in data {
-        dependencies.push(parse_dependency(name, v)?);
-    }
-    Ok(dependencies)
-}
-
 pub fn get_config_path() -> Result<PathBuf> {
     let foundry_path: PathBuf = if cfg!(test) {
         env::var("config_file").map(|s| s.into()).unwrap_or(FOUNDRY_CONFIG_FILE.clone())
@@ -228,6 +242,41 @@ pub fn get_config_path() -> Result<PathBuf> {
     }
 }
 
+pub fn read_config_deps(path: Option<PathBuf>) -> Result<Vec<Dependency>> {
+    let path: PathBuf = match path {
+        Some(p) => p,
+        None => get_config_path()?,
+    };
+    let contents = read_file_to_string(&path);
+    let doc: DocumentMut = contents.parse::<DocumentMut>()?;
+    let Some(Some(data)) = doc.get("dependencies").map(|v| v.as_table()) else {
+        return Err(ConfigError::MissingDependencies);
+    };
+
+    let mut dependencies: Vec<Dependency> = Vec::new();
+    for (name, v) in data {
+        dependencies.push(parse_dependency(name, v)?);
+    }
+    Ok(dependencies)
+}
+
+pub fn read_soldeer_config(path: Option<PathBuf>) -> Result<SoldeerConfig> {
+    let path: PathBuf = match path {
+        Some(p) => p,
+        None => get_config_path()?,
+    };
+    let contents = read_file_to_string(&path);
+
+    #[derive(Deserialize)]
+    struct SoldeerConfigParsed {
+        #[serde(default)]
+        soldeer: SoldeerConfig,
+    }
+    let config: SoldeerConfigParsed = toml_edit::de::from_str(&contents)?;
+
+    Ok(config.soldeer)
+}
+
 pub fn add_to_config(dependency: &Dependency, config_path: impl AsRef<Path>) -> Result<()> {
     println!(
         "{}",
@@ -258,57 +307,62 @@ pub fn add_to_config(dependency: &Dependency, config_path: impl AsRef<Path>) -> 
     Ok(())
 }
 
-pub async fn remappings() -> Result<()> {
+pub async fn remappings_txt(
+    add_dependency: Option<&Dependency>,
+    soldeer_config: &SoldeerConfig,
+) -> Result<()> {
     let remappings_path = get_current_working_dir().join("remappings.txt");
+    if soldeer_config.reg_remappings {
+        remove_file(&remappings_path).map_err(ConfigError::RemappingsError)?;
+    }
     if !remappings_path.exists() {
         File::create(remappings_path.clone()).unwrap();
     }
-    let contents = read_file_to_string(&remappings_path);
 
-    let existing_remappings: Vec<String> = contents.split('\n').map(|s| s.to_string()).collect();
-    let mut new_remappings: String = String::new();
+    let mut new_remappings = Vec::new();
+    if soldeer_config.reg_remappings {
+        let dependencies = read_config_deps(None)?;
 
-    let dependencies: Vec<Dependency> = read_config(None)?;
+        dependencies.iter().for_each(|dependency| {
+            let dependency_name_formatted = format_remap_name(soldeer_config, dependency);
 
-    let mut existing_remap: Vec<String> = Vec::new();
-    existing_remappings.iter().for_each(|remapping| {
-        let split: Vec<&str> = remapping.split('=').collect::<Vec<&str>>();
-        if split.len() == 1 {
-            // skip empty lines
-            return;
-        }
-        existing_remap.push(String::from(split[0]));
-    });
-
-    dependencies.iter().for_each(|dependency| {
-        let mut dependency_name_formatted =
-            format!("{}-{}", &dependency.name(), &dependency.version());
-        if !dependency_name_formatted.contains('@') {
-            dependency_name_formatted = format!("@{}", dependency_name_formatted);
-        }
-        let index = existing_remap.iter().position(|r| r == &dependency_name_formatted);
-        if index.is_none() {
-            println!(
-                "{}",
-                format!("Added a new dependency to remappings {}", &dependency_name_formatted)
-                    .green()
-            );
-            new_remappings.push_str(&format!(
-                "\n{}=dependencies/{}-{}",
-                &dependency_name_formatted,
-                &dependency.name(),
-                &dependency.version()
+            println!("{}", format!("Adding {dependency} to remappings").green());
+            new_remappings.push(format!(
+                "{dependency_name_formatted}=dependencies/{}-{}/",
+                dependency.name(),
+                dependency.version()
             ));
+        });
+    } else {
+        let contents = read_file_to_string(&remappings_path);
+        let existing_remappings: Vec<_> =
+            contents.lines().filter_map(|r| r.split_once('=')).collect();
+        if let Some(add_dep) = add_dependency {
+            // we only add the remapping if it's not already existing, otherwise we keep the old
+            // remapping
+            let new_dep_remapped = format_remap_name(soldeer_config, add_dep);
+            let new_dep_orig = format!("dependencies/{}-{}/", add_dep.name(), add_dep.version());
+            for (remapped, orig) in existing_remappings {
+                if orig == new_dep_orig {
+                    new_remappings.push(format!("{}={}", remapped, orig));
+                } else {
+                    new_remappings.push(format!("{}={}", new_dep_remapped, new_dep_orig));
+                    println!("{}", format!("Added {add_dep} to remappings").green());
+                }
+            }
+        } else {
+            for (remapped, orig) in existing_remappings {
+                new_remappings.push(format!("{}={}", remapped, orig));
+            }
         }
-    });
-
-    if new_remappings.is_empty() {
-        //remove_empty_lines("remappings.txt");
-        return Ok(());
     }
+    // sort the remappings
+    new_remappings.sort_unstable();
 
-    fs::write("remappings.txt", new_remappings)?;
-    remove_empty_lines("remappings.txt").map_err(ConfigError::RemappingsError)?;
+    let mut file = File::create(remappings_path)?;
+    for remapping in new_remappings {
+        writeln!(file, "{}", remapping)?;
+    }
     Ok(())
 }
 
@@ -416,6 +470,12 @@ fn parse_dependency(name: impl Into<String>, value: &Item) -> Result<Dependency>
     }
 }
 
+fn format_remap_name(soldeer_config: &SoldeerConfig, dependency: &Dependency) -> String {
+    let version_suffix =
+        if soldeer_config.remappings_version { &format!("-{}", dependency.version()) } else { "" };
+    format!("{}{}{}/", soldeer_config.remappings_prefix, dependency.name(), version_suffix)
+}
+
 fn create_example_config(option: &str) -> Result<PathBuf> {
     let (config_path, contents) = match option.trim() {
         "1" => (
@@ -484,7 +544,7 @@ libs = ["dependencies"]
 
         write_to_config(&target_config, config_contents);
 
-        let result = read_config(Some(target_config.clone()))?;
+        let result = read_config_deps(Some(target_config.clone()))?;
 
         assert_eq!(
             result[0],
@@ -526,7 +586,7 @@ libs = ["dependencies"]
 
         write_to_config(&target_config, config_contents);
 
-        let result = read_config(Some(target_config.clone()))?;
+        let result = read_config_deps(Some(target_config.clone()))?;
 
         assert_eq!(
             result[0],
@@ -566,7 +626,7 @@ enabled = true
 
         write_to_config(&target_config, config_contents);
 
-        let result = read_config(Some(target_config.clone()))?;
+        let result = read_config_deps(Some(target_config.clone()))?;
 
         assert_eq!(
             result[0],
@@ -606,7 +666,7 @@ enabled = true
 
         write_to_config(&target_config, config_contents);
 
-        let result = read_config(Some(target_config.clone()))?;
+        let result = read_config_deps(Some(target_config.clone()))?;
 
         assert_eq!(
             result[0],
@@ -647,7 +707,10 @@ libs = ["dependencies"]
 
         write_to_config(&target_config, config_contents);
 
-        assert!(matches!(read_config(Some(target_config.clone())), Err(ConfigError::Parsing(_))));
+        assert!(matches!(
+            read_config_deps(Some(target_config.clone())),
+            Err(ConfigError::Parsing(_))
+        ));
         let _ = remove_file(target_config);
         Ok(())
     }
@@ -669,7 +732,7 @@ libs = ["dependencies"]
         write_to_config(&target_config, config_contents);
 
         assert!(matches!(
-            read_config(Some(target_config.clone())),
+            read_config_deps(Some(target_config.clone())),
             Err(ConfigError::EmptyVersion(_))
         ));
         let _ = remove_file(target_config);

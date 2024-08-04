@@ -77,18 +77,6 @@ pub fn define_security_file_location() -> String {
     String::from(security_file.to_str().unwrap())
 }
 
-pub fn remove_empty_lines(path: impl AsRef<Path>) -> Result<(), io::Error> {
-    let file = File::open(path.as_ref())?;
-    let reader = BufReader::new(file);
-    let lines: Vec<_> =
-        reader.lines().map_while(Result::ok).filter(|l| !l.trim().is_empty()).collect();
-    let mut file = File::create(path.as_ref())?;
-    for line in lines {
-        writeln!(file, "{}", line)?;
-    }
-    Ok(())
-}
-
 pub fn get_base_url() -> String {
     if cfg!(test) {
         env::var("base_url").unwrap_or("http://0.0.0.0".to_string())

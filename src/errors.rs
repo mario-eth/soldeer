@@ -77,6 +77,9 @@ pub enum ConfigError {
 
     #[error("dependency {0} was not found")]
     MissingDependency(String),
+
+    #[error("error parsing config file: {0}")]
+    DeserializeError(#[from] toml_edit::de::Error),
 }
 
 #[derive(Error, Debug)]

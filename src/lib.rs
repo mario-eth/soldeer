@@ -2,7 +2,7 @@
 use crate::{
     auth::login,
     commands::Subcommands,
-    config::{delete_config, read_config, remappings, Dependency},
+    config::{delete_config, read_config_deps, remappings_txt, Dependency},
     dependency_downloader::{
         delete_dependency_files, download_dependencies, unzip_dependencies, unzip_dependency,
     },
@@ -201,14 +201,14 @@ async fn install_dependency(mut dependency: Dependency) -> Result<(), SoldeerErr
     janitor::cleanup_dependency(&dependency, false)?;
 
     // TODO: check the config to know whether we should write remappings
-    remappings().await?;
+    //remappings_txt().await?;
     Ok(())
 }
 
 async fn update() -> Result<(), SoldeerError> {
     println!("{}", "🦌 Running Soldeer update 🦌".green());
 
-    let mut dependencies: Vec<Dependency> = read_config(None)?;
+    let mut dependencies: Vec<Dependency> = read_config_deps(None)?;
 
     let results = download_dependencies(&dependencies, true)
         .await
@@ -234,7 +234,7 @@ async fn update() -> Result<(), SoldeerError> {
     cleanup_after(&dependencies)?;
 
     // TODO: check the config to know whether we should write remappings
-    remappings().await?;
+    //remappings_txt().await?;
     Ok(())
 }
 

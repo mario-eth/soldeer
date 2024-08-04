@@ -25,7 +25,7 @@ pub async fn download_dependencies(
     // clean dependencies folder if flag is true
     if clean {
         // creates the directory
-        clean_dependency_directory().await;
+        clean_dependency_directory();
     }
 
     // create the dependency directory if it doesn't exist
@@ -120,10 +120,10 @@ pub fn unzip_dependency(dependency: &HttpDependency) -> Result<()> {
     Ok(())
 }
 
-pub async fn clean_dependency_directory() {
-    if tokio_fs::metadata(DEPENDENCY_DIR.clone()).await.is_ok() {
-        tokio_fs::remove_dir_all(DEPENDENCY_DIR.clone()).await.unwrap();
-        tokio_fs::create_dir(DEPENDENCY_DIR.clone()).await.unwrap();
+pub fn clean_dependency_directory() {
+    if fs::metadata(DEPENDENCY_DIR.clone()).is_ok() {
+        fs::remove_dir_all(DEPENDENCY_DIR.clone()).unwrap();
+        fs::create_dir(DEPENDENCY_DIR.clone()).unwrap();
     }
 }
 
@@ -293,13 +293,13 @@ mod tests {
         assert!(path_zip.exists());
         assert!(results.len() == 1);
         assert!(!results[0].hash.is_empty());
-        clean_dependency_directory().await;
+        clean_dependency_directory();
     }
 
     #[tokio::test]
     #[serial]
     async fn download_dependencies_git_one_success() {
-        clean_dependency_directory().await;
+        clean_dependency_directory();
         let mut dependencies: Vec<Dependency> = Vec::new();
         let dependency = Dependency::Git(GitDependency {
             name: "@openzeppelin-contracts".to_string(),
@@ -315,13 +315,13 @@ mod tests {
         assert!(path_dir.join("src").join("auth").join("Owned.sol").exists());
         assert!(results.len() == 1);
         assert!(!results[0].hash.is_empty());
-        clean_dependency_directory().await;
+        clean_dependency_directory();
     }
 
     #[tokio::test]
     #[serial]
     async fn download_dependencies_gitlab_giturl_one_success() {
-        clean_dependency_directory().await;
+        clean_dependency_directory();
         let mut dependencies: Vec<Dependency> = Vec::new();
         let dependency = Dependency::Git(GitDependency {
             name: "@openzeppelin-contracts".to_string(),
@@ -337,13 +337,13 @@ mod tests {
         assert!(path_dir.join("JustATest3.md").exists());
         assert!(results.len() == 1);
         assert_eq!(results[0].hash, "22868f426bd4dd0e682b5ec5f9bd55507664240c"); // this is the last commit, hash == commit
-        clean_dependency_directory().await;
+        clean_dependency_directory();
     }
 
     #[tokio::test]
     #[serial]
     async fn download_dependency_gitlab_giturl_with_a_specific_revision() {
-        clean_dependency_directory().await;
+        clean_dependency_directory();
         let mut dependencies: Vec<Dependency> = Vec::new();
         let dependency = Dependency::Git(GitDependency {
             name: "@openzeppelin-contracts".to_string(),
@@ -366,13 +366,13 @@ mod tests {
             .join("JustATest2.md");
         assert!(test_right_revision.exists());
 
-        clean_dependency_directory().await;
+        clean_dependency_directory();
     }
 
     #[tokio::test]
     #[serial]
     async fn download_dependencies_gitlab_httpurl_one_success() {
-        clean_dependency_directory().await;
+        clean_dependency_directory();
         let mut dependencies: Vec<Dependency> = Vec::new();
         let dependency = Dependency::Git(GitDependency {
             name: "@openzeppelin-contracts".to_string(),
@@ -388,7 +388,7 @@ mod tests {
         assert!(path_dir.join("README.md").exists());
         assert!(results.len() == 1);
         assert_eq!(results[0].hash, "22868f426bd4dd0e682b5ec5f9bd55507664240c"); // this is the last commit, hash == commit
-        clean_dependency_directory().await;
+        clean_dependency_directory();
     }
 
     #[tokio::test]
@@ -428,7 +428,7 @@ mod tests {
         assert!(results.len() == 2);
         assert!(!results[0].hash.is_empty());
         assert!(!results[1].hash.is_empty());
-        clean_dependency_directory().await;
+        clean_dependency_directory();
     }
 
     #[tokio::test]
@@ -480,7 +480,7 @@ mod tests {
         assert!(results.len() == 2);
         assert!(!results[0].hash.is_empty());
         assert!(!results[1].hash.is_empty());
-        clean_dependency_directory().await;
+        clean_dependency_directory();
     }
 
     #[tokio::test]
@@ -519,7 +519,7 @@ mod tests {
         assert!(size_of_two > size_of_one);
         assert!(results.len() == 1);
         assert!(!results[0].hash.is_empty());
-        clean_dependency_directory().await;
+        clean_dependency_directory();
     }
 
     #[tokio::test]
@@ -560,7 +560,7 @@ mod tests {
         assert!(path_zip.exists());
         assert!(results.len() == 1);
         assert!(!results[0].hash.is_empty());
-        clean_dependency_directory().await;
+        clean_dependency_directory();
     }
 
     #[tokio::test]
@@ -584,7 +584,7 @@ mod tests {
                 assert_eq!(err.to_string(), "error downloading dependency: HTTP status client error (404 Not Found) for url (https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@openzeppelin-contracts~.zip)");
             }
         }
-        clean_dependency_directory().await;
+        clean_dependency_directory();
     }
 
     #[tokio::test]
@@ -610,7 +610,7 @@ mod tests {
                 assert!(err.to_string().contains("Cloning into"));
             }
         }
-        clean_dependency_directory().await;
+        clean_dependency_directory();
     }
 
     #[tokio::test]
@@ -632,11 +632,11 @@ mod tests {
                 assert!(metadata(&path).unwrap().len() > 0);
             }
             Err(_) => {
-                clean_dependency_directory().await;
+                clean_dependency_directory();
                 assert_eq!("Error", "");
             }
         }
-        clean_dependency_directory().await;
+        clean_dependency_directory();
     }
 
     #[tokio::test]
@@ -656,14 +656,14 @@ mod tests {
         download_dependencies(&dependencies, false).await.unwrap();
         match unzip_dependencies(&dependencies) {
             Ok(_) => {
-                clean_dependency_directory().await;
+                clean_dependency_directory();
                 assert_eq!("Wrong State", "");
             }
             Err(err) => {
                 assert!(matches!(err, DownloadError::UnzipError(_)));
             }
         }
-        clean_dependency_directory().await;
+        clean_dependency_directory();
     }
 
     #[tokio::test]
@@ -685,7 +685,7 @@ mod tests {
             .join("ERC20")
             .join("ERC20.sol")
             .exists());
-        clean_dependency_directory().await;
+        clean_dependency_directory();
     }
 
     #[test]

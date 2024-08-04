@@ -50,9 +50,7 @@ You can install a dependency from the Soldeer repository, a custom URL pointing 
 - **Example from Git:**
   soldeer install @openzeppelin-contracts~2.3.0 git@github.com:OpenZeppelin/openzeppelin-contracts.git
 - **Example from Git with a specified commit:**
-  soldeer install @openzeppelin-contracts~2.3.0 git@github.com:OpenZeppelin/openzeppelin-contracts.git --rev 05f218fb6617932e56bf5388c3b389c3028a7b73
-If you want to regenerate the remappings from scratch, use
-  --reg-remappings true",
+  soldeer install @openzeppelin-contracts~2.3.0 git@github.com:OpenZeppelin/openzeppelin-contracts.git --rev 05f218fb6617932e56bf5388c3b389c3028a7b73",
     after_help = "For more information, read the README.md"
 )]
 pub struct Install {

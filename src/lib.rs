@@ -162,7 +162,7 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
             remove_lock(&dependency)?;
         }
 
-        Subcommands::VersionDryRun(_) => {
+        Subcommands::Version(_) => {
             const VERSION: &str = env!("CARGO_PKG_VERSION");
             println!("{}", format!("Current Soldeer {}", VERSION).cyan());
         }

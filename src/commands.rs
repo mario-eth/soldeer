@@ -17,7 +17,7 @@ pub enum Subcommands {
     Login(Login),
     Push(Push),
     Uninstall(Uninstall),
-    VersionDryRun(VersionDryRun),
+    Version(Version),
 }
 
 /// Initialize a new Soldeer project for use with Foundry
@@ -90,7 +90,7 @@ pub struct Update {
 
 /// Display the version of Soldeer
 #[derive(Debug, Clone, Parser)]
-pub struct VersionDryRun {}
+pub struct Version {}
 
 /// Log into the central repository to push the dependencies
 #[derive(Debug, Clone, Parser)]

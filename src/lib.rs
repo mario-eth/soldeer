@@ -166,7 +166,7 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
 async fn install_dependency(mut dependency: Dependency) -> Result<(), SoldeerError> {
     lock_check(&dependency, true)?;
 
-    let result = download_dependency(&dependency)
+    let result = download_dependency(&dependency, false)
         .await
         .map_err(|e| SoldeerError::DownloadError { dep: dependency.to_string(), source: e })?;
     match dependency {

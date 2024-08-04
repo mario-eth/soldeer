@@ -24,14 +24,23 @@ pub async fn download_dependencies(
 ) -> Result<Vec<DownloadResult>> {
     // clean dependencies folder if flag is true
     if clean {
+        // creates the directory
         clean_dependency_directory();
+    } else {
+        // create the dependency directory if it doesn't exist
+        let dir = DEPENDENCY_DIR.clone();
+        if tokio_fs::metadata(&dir).await.is_err() {
+            tokio_fs::create_dir(&dir)
+                .await
+                .map_err(|e| DownloadError::IOError { path: dir, source: e })?;
+        }
     }
 
     let mut set = JoinSet::new();
     for dep in dependencies {
         set.spawn({
             let dep = dep.clone();
-            async move { download_dependency(&dep).await }
+            async move { download_dependency(&dep, true).await }
         });
     }
 
@@ -61,10 +70,16 @@ pub struct DownloadResult {
     pub url: String,
 }
 
-pub async fn download_dependency(dependency: &Dependency) -> Result<DownloadResult> {
+pub async fn download_dependency(
+    dependency: &Dependency,
+    skip_folder_check: bool,
+) -> Result<DownloadResult> {
     let dependency_directory: PathBuf = DEPENDENCY_DIR.clone();
-    if tokio_fs::metadata(&dependency_directory).await.is_err() {
+    // if we called this method from `download_dependencies` we don't need to check if the folder
+    // exists, as it was created by the caller
+    if !skip_folder_check && tokio_fs::metadata(&dependency_directory).await.is_err() {
         if let Err(e) = tokio_fs::create_dir(&dependency_directory).await {
+            // temp fix for race condition until we use tokio fs everywhere
             if tokio_fs::metadata(&dependency_directory).await.is_err() {
                 return Err(DownloadError::IOError { path: dependency_directory, source: e });
             }

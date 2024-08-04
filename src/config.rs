@@ -10,7 +10,7 @@ use std::{
     io::{self, Write},
     path::{Path, PathBuf},
 };
-use toml_edit::{value, DocumentMut, InlineTable, Item, Table};
+use toml_edit::{value, Array, DocumentMut, InlineTable, Item, Table};
 use yansi::Paint as _;
 
 pub type Result<T> = std::result::Result<T, ConfigError>;
@@ -25,13 +25,26 @@ pub enum RemappingsLocation {
     Config,
 }
 
+fn default_true() -> bool {
+    true
+}
+
 /// The Soldeer config options
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct SoldeerConfig {
+    #[serde(default = "default_true")]
     pub remappings_generate: bool,
+
+    #[serde(default)]
     pub remappings_regenerate: bool,
+
+    #[serde(default)]
     pub remappings_version: bool,
+
+    #[serde(default)]
     pub remappings_prefix: String,
+
+    #[serde(default)]
     pub remappings_location: RemappingsLocation,
 }
 
@@ -331,13 +344,16 @@ fn generate_remappings(
         // remapping
         let new_dep_remapped = format_remap_name(soldeer_config, add_dep);
         let new_dep_orig = format!("dependencies/{}-{}/", add_dep.name(), add_dep.version());
+        let mut found = false; // whether a remapping existed for that dep already
         for (remapped, orig) in existing_remappings {
+            new_remappings.push(format!("{}={}", remapped, orig));
             if orig == new_dep_orig {
-                new_remappings.push(format!("{}={}", remapped, orig));
-            } else {
-                new_remappings.push(format!("{}={}", new_dep_remapped, new_dep_orig));
-                println!("{}", format!("Added {add_dep} to remappings").green());
+                found = true;
             }
+        }
+        if !found {
+            new_remappings.push(format!("{}={}", new_dep_remapped, new_dep_orig));
+            println!("{}", format!("Added {add_dep} to remappings").green());
         }
     } else {
         for (remapped, orig) in existing_remappings {
@@ -390,8 +406,15 @@ pub async fn remappings_foundry(
         return Ok(());
     };
 
-    for (_, profile) in profiles.iter_mut() {
+    for (name, profile) in profiles.iter_mut() {
+        // we normally only edit remappings of profiles which already have a remappings key
         let Some(Some(remappings)) = profile.get_mut("remappings").map(|v| v.as_array_mut()) else {
+            // except the default profile, where we always add the remappings
+            if name == "default" {
+                let new_remappings = generate_remappings(add_dependency, soldeer_config, vec![])?;
+                let array = Array::from_iter(new_remappings.into_iter());
+                profile["remappings"] = value(array);
+            }
             continue;
         };
         let existing_remappings: Vec<_> = remappings
@@ -565,9 +588,7 @@ mod tests {
     use rand::{distributions::Alphanumeric, Rng};
     use serial_test::serial;
     use std::{
-        fs::{
-            remove_file, {self},
-        },
+        fs::{self, remove_file},
         io::Write,
         path::PathBuf,
     };
@@ -1532,6 +1553,338 @@ dep1 = { version = "1.0.0", url = "http://custom_url.com/custom.zip" }
         ));
 
         assert_eq!(read_file_to_string(&target_config), content);
+
+        let _ = remove_file(target_config);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn read_soldeer_configs_all_set() -> Result<()> {
+        let config_contents = r#"
+# Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
+[profile.default]
+libs = ["dependencies"]
+[dependencies]
+"@gearbox-protocol-periphery-v3" = "1.1.1"
+[soldeer]
+remappings_generate = true
+remappings_prefix = "@"
+remappings_regenerate = true
+remappings_version = true
+remappings_location = "config"
+"#;
+        let target_config = define_config(false);
+
+        write_to_config(&target_config, config_contents);
+
+        let sc = match read_soldeer_config(Some(target_config.clone())) {
+            Ok(sc) => sc,
+            Err(_) => {
+                assert_eq!("False state", "");
+                SoldeerConfig::default()
+            }
+        };
+        let _ = remove_file(target_config);
+        assert!(sc.remappings_prefix == *"@");
+        assert!(sc.remappings_generate);
+        assert!(sc.remappings_regenerate);
+        assert!(sc.remappings_version);
+        assert_eq!(sc.remappings_location, RemappingsLocation::Config);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn read_soldeer_configs_generate_remappings() -> Result<()> {
+        let config_contents = r#"
+# Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
+[profile.default]
+libs = ["dependencies"]
+[dependencies]
+"@gearbox-protocol-periphery-v3" = "1.1.1"
+[soldeer]
+remappings_generate = true
+"#;
+        let target_config = define_config(false);
+
+        write_to_config(&target_config, config_contents);
+
+        let sc = match read_soldeer_config(Some(target_config.clone())) {
+            Ok(sc) => sc,
+            Err(_) => {
+                assert_eq!("False state", "");
+                SoldeerConfig::default()
+            }
+        };
+        let _ = remove_file(target_config);
+        assert!(sc.remappings_generate);
+        assert!(sc.remappings_prefix.is_empty());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn read_soldeer_configs_append_at_in_remappings() -> Result<()> {
+        let config_contents = r#"
+# Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
+[profile.default]
+libs = ["dependencies"]
+[dependencies]
+"@gearbox-protocol-periphery-v3" = "1.1.1"
+[soldeer]
+remappings_prefix = "@"
+"#;
+        let target_config = define_config(false);
+
+        write_to_config(&target_config, config_contents);
+
+        let sc = match read_soldeer_config(Some(target_config.clone())) {
+            Ok(sc) => sc,
+            Err(_) => {
+                assert_eq!("False state", "");
+                SoldeerConfig::default()
+            }
+        };
+        let _ = remove_file(target_config);
+        assert!(sc.remappings_prefix == *"@");
+        assert!(sc.remappings_generate);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn read_soldeer_configs_reg_remappings() -> Result<()> {
+        let config_contents = r#"
+# Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
+[profile.default]
+libs = ["dependencies"]
+[dependencies]
+"@gearbox-protocol-periphery-v3" = "1.1.1"
+[soldeer]
+remappings_regenerate = true
+"#;
+        let target_config = define_config(false);
+
+        write_to_config(&target_config, config_contents);
+
+        let sc = match read_soldeer_config(Some(target_config.clone())) {
+            Ok(sc) => sc,
+            Err(_) => {
+                assert_eq!("False state", "");
+                SoldeerConfig::default()
+            }
+        };
+        let _ = remove_file(target_config);
+        assert!(sc.remappings_regenerate);
+        assert!(sc.remappings_generate);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn read_soldeer_configs_remappings_version() -> Result<()> {
+        let config_contents = r#"
+# Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
+[profile.default]
+libs = ["dependencies"]
+[dependencies]
+"@gearbox-protocol-periphery-v3" = "1.1.1"
+[soldeer]
+remappings_version = true
+"#;
+        let target_config = define_config(false);
+
+        write_to_config(&target_config, config_contents);
+
+        let sc = match read_soldeer_config(Some(target_config.clone())) {
+            Ok(sc) => sc,
+            Err(_) => {
+                assert_eq!("False state", "");
+                SoldeerConfig::default()
+            }
+        };
+        let _ = remove_file(target_config);
+        assert!(sc.remappings_version);
+        assert!(sc.remappings_generate);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn read_soldeer_configs_remappings_location() -> Result<()> {
+        let config_contents = r#"
+# Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
+[profile.default]
+libs = ["dependencies"]
+[dependencies]
+"@gearbox-protocol-periphery-v3" = "1.1.1"
+[soldeer]
+remappings_location = "config"
+"#;
+        let target_config = define_config(false);
+
+        write_to_config(&target_config, config_contents);
+
+        let sc = match read_soldeer_config(Some(target_config.clone())) {
+            Ok(sc) => sc,
+            Err(_) => {
+                assert_eq!("False state", "");
+                SoldeerConfig::default()
+            }
+        };
+        let _ = remove_file(target_config);
+        assert_eq!(sc.remappings_location, RemappingsLocation::Config);
+        assert!(sc.remappings_generate);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn generate_remappings_with_prefix_and_version_in_config() -> Result<()> {
+        let mut content = r#"
+[profile.default]
+solc = "0.8.26"
+libs = ["dependencies"]
+[dependencies]
+[soldeer]
+remappings_prefix = "@"
+remappings_version = true
+remappings_location = "config"
+"#;
+
+        let target_config = define_config(true);
+
+        write_to_config(&target_config, content);
+        let dependency = Dependency::Http(HttpDependency {
+            name: "dep1".to_string(),
+            version: "1.0.0".to_string(),
+            url: None,
+            checksum: None,
+        });
+        let soldeer_config = read_soldeer_config(Some(target_config.clone())).unwrap();
+        let _ = remappings_foundry(Some(&dependency), &target_config, &soldeer_config).await;
+
+        content = r#"
+[profile.default]
+solc = "0.8.26"
+libs = ["dependencies"]
+remappings = ["@dep1-1.0.0/=dependencies/dep1-1.0.0/"]
+[dependencies]
+[soldeer]
+remappings_prefix = "@"
+remappings_version = true
+remappings_location = "config"
+"#;
+
+        assert_eq!(read_file_to_string(&target_config), content);
+
+        let _ = remove_file(target_config);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn generate_remappings_no_prefix_and_no_version_in_config() -> Result<()> {
+        let mut content = r#"
+[profile.default]
+solc = "0.8.26"
+libs = ["dependencies"]
+[dependencies]
+[soldeer]
+remappings_generate = true
+remappings_version = false
+"#;
+
+        let target_config = define_config(true);
+
+        write_to_config(&target_config, content);
+        let dependency = Dependency::Http(HttpDependency {
+            name: "dep1".to_string(),
+            version: "1.0.0".to_string(),
+            url: None,
+            checksum: None,
+        });
+        let soldeer_config = read_soldeer_config(Some(target_config.clone())).unwrap();
+        let _ =
+            remappings_foundry(Some(&dependency), target_config.to_str().unwrap(), &soldeer_config)
+                .await;
+
+        content = r#"
+[profile.default]
+solc = "0.8.26"
+libs = ["dependencies"]
+remappings = ["dep1/=dependencies/dep1-1.0.0/"]
+[dependencies]
+[soldeer]
+remappings_generate = true
+remappings_version = false
+"#;
+
+        assert_eq!(read_file_to_string(&target_config), content);
+
+        let _ = remove_file(target_config);
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn generate_remappings_prefix_and_version_in_txt() -> Result<()> {
+        let mut content = r#"
+[profile.default]
+solc = "0.8.26"
+libs = ["dependencies"]
+[dependencies]
+[soldeer]
+remappings_generate = true
+remappings_prefix = "@"
+remappings_version = true
+"#;
+
+        let target_config = define_config(true);
+        let txt = get_current_working_dir().join("remappings.txt");
+        let _ = remove_file(&txt);
+
+        write_to_config(&target_config, content);
+        let dependency = Dependency::Http(HttpDependency {
+            name: "dep1".to_string(),
+            version: "1.0.0".to_string(),
+            url: None,
+            checksum: None,
+        });
+        let soldeer_config = read_soldeer_config(Some(target_config.clone())).unwrap();
+        let _ = remappings_txt(Some(&dependency), &soldeer_config).await;
+
+        content = "@dep1-1.0.0/=dependencies/dep1-1.0.0/\n";
+
+        assert_eq!(read_file_to_string(&txt), content);
+
+        let _ = remove_file(target_config);
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn generate_remappings_no_prefix_and_no_version_in_txt() -> Result<()> {
+        let mut content = r#"
+[profile.default]
+solc = "0.8.26"
+libs = ["dependencies"]
+[dependencies]
+[soldeer]
+remappings_generate = true
+remappings_version = false
+"#;
+
+        let target_config = define_config(true);
+        let txt = get_current_working_dir().join("remappings.txt");
+        let _ = remove_file(&txt);
+
+        write_to_config(&target_config, content);
+        let dependency = Dependency::Http(HttpDependency {
+            name: "dep1".to_string(),
+            version: "1.0.0".to_string(),
+            url: None,
+            checksum: None,
+        });
+        let soldeer_config = read_soldeer_config(Some(target_config.clone())).unwrap();
+        let _ = remappings_txt(Some(&dependency), &soldeer_config).await;
+
+        content = "dep1/=dependencies/dep1-1.0.0/\n";
+
+        assert_eq!(read_file_to_string(&txt), content);
 
         let _ = remove_file(target_config);
         Ok(())

@@ -198,6 +198,15 @@ async fn install_dependency(
 ) -> Result<(), SoldeerError> {
     lock_check(&dependency, true)?;
 
+    let config_file = match get_config_path() {
+        Ok(file) => file,
+        Err(e) => {
+            cleanup_dependency(&dependency, true)?;
+            return Err(e.into());
+        }
+    };
+    add_to_config(&dependency, &config_file)?;
+
     let result = download_dependency(&dependency, false)
         .await
         .map_err(|e| SoldeerError::DownloadError { dep: dependency.to_string(), source: e })?;
@@ -218,20 +227,10 @@ async fn install_dependency(
         }
     }
 
-    let config_file = match get_config_path() {
-        Ok(file) => file,
-        Err(e) => {
-            cleanup_dependency(&dependency, true)?;
-            return Err(e.into());
-        }
-    };
-
     let mut config = read_soldeer_config(Some(config_file.clone()))?;
     if regenerate_remappings {
         config.remappings_regenerate = regenerate_remappings;
     }
-
-    add_to_config(&dependency, &config_file)?;
 
     janitor::healthcheck_dependency(&dependency)?;
 

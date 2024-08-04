@@ -46,35 +46,27 @@ pub fn read_file(path: impl AsRef<Path>) -> Result<Vec<u8>, std::io::Error> {
     Ok(buffer)
 }
 
-pub fn define_security_file_location() -> String {
+pub fn define_security_file_location() -> Result<PathBuf, std::io::Error> {
     let custom_security_file = if cfg!(test) {
-        return "./test_save_jwt".to_string();
+        return Ok(PathBuf::from("./test_save_jwt"));
     } else {
-        option_env!("SOLDEER_LOGIN_FILE")
+        env::var("SOLDEER_LOGIN_FILE").ok()
     };
 
     if let Some(file) = custom_security_file {
-        if !file.is_empty() && Path::new(file).exists() {
-            return file.to_string();
+        if !file.is_empty() && Path::new(&file).exists() {
+            return Ok(file.into());
         }
     }
 
-    let home = home_dir();
-    match home {
-        Some(_) => {}
-        None => {
-            println!(
-                "{}",
-                "HOME(linux) or %UserProfile%(Windows) path variable is not set, we can not determine the user's home directory. Please define this environment variable or define a custom path for the login file using the SOLDEER_LOGIN_FILE environment variable.".red()
-            );
-        }
-    }
-    let security_directory = home.unwrap().join(".soldeer");
+    // if home dir cannot be found, use the current working directory
+    let dir = home_dir().unwrap_or_else(|| get_current_working_dir());
+    let security_directory = dir.join(".soldeer");
     if !security_directory.exists() {
-        fs::create_dir(&security_directory).unwrap();
+        fs::create_dir(&security_directory)?;
     }
-    let security_file = &security_directory.join(".soldeer_login");
-    String::from(security_file.to_str().unwrap())
+    let security_file = security_directory.join(".soldeer_login");
+    Ok(security_file)
 }
 
 pub fn get_base_url() -> String {

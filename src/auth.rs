@@ -49,7 +49,7 @@ pub async fn login() -> Result<()> {
 }
 
 pub fn get_token() -> Result<String> {
-    let security_file = define_security_file_location();
+    let security_file = define_security_file_location()?;
     let jwt = read_file(security_file);
     match jwt {
         Ok(token) => Ok(String::from_utf8(token)
@@ -76,7 +76,7 @@ async fn execute_login(login: Login) -> Result<()> {
 
     let login_response = req.send().await;
 
-    let security_file = define_security_file_location();
+    let security_file = define_security_file_location()?;
     let response = login_response?;
 
     match response.status() {

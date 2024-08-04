@@ -17,3 +17,4 @@ test/*
 !emptyfile2
 test_push_sensitive
 test_push_skip_sensitive
+.soldeer/

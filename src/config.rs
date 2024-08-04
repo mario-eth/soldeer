@@ -10,7 +10,7 @@ use std::{
     io::{self, Write},
     path::{Path, PathBuf},
 };
-use toml_edit::{value, DocumentMut, InlineTable, Item, Table};
+use toml_edit::{value, Array, DocumentMut, InlineTable, Item, Table};
 use yansi::Paint as _;
 
 pub type Result<T> = std::result::Result<T, ConfigError>;
@@ -307,18 +307,11 @@ pub fn add_to_config(dependency: &Dependency, config_path: impl AsRef<Path>) -> 
     Ok(())
 }
 
-pub async fn remappings_txt(
+fn generate_remappings(
     add_dependency: Option<&Dependency>,
     soldeer_config: &SoldeerConfig,
-) -> Result<()> {
-    let remappings_path = get_current_working_dir().join("remappings.txt");
-    if soldeer_config.reg_remappings {
-        remove_file(&remappings_path).map_err(ConfigError::RemappingsError)?;
-    }
-    if !remappings_path.exists() {
-        File::create(remappings_path.clone()).unwrap();
-    }
-
+    existing_remappings: Vec<(&str, &str)>,
+) -> Result<Vec<String>> {
     let mut new_remappings = Vec::new();
     if soldeer_config.reg_remappings {
         let dependencies = read_config_deps(None)?;
@@ -333,36 +326,88 @@ pub async fn remappings_txt(
                 dependency.version()
             ));
         });
-    } else {
-        let contents = read_file_to_string(&remappings_path);
-        let existing_remappings: Vec<_> =
-            contents.lines().filter_map(|r| r.split_once('=')).collect();
-        if let Some(add_dep) = add_dependency {
-            // we only add the remapping if it's not already existing, otherwise we keep the old
-            // remapping
-            let new_dep_remapped = format_remap_name(soldeer_config, add_dep);
-            let new_dep_orig = format!("dependencies/{}-{}/", add_dep.name(), add_dep.version());
-            for (remapped, orig) in existing_remappings {
-                if orig == new_dep_orig {
-                    new_remappings.push(format!("{}={}", remapped, orig));
-                } else {
-                    new_remappings.push(format!("{}={}", new_dep_remapped, new_dep_orig));
-                    println!("{}", format!("Added {add_dep} to remappings").green());
-                }
-            }
-        } else {
-            for (remapped, orig) in existing_remappings {
+    } else if let Some(add_dep) = add_dependency {
+        // we only add the remapping if it's not already existing, otherwise we keep the old
+        // remapping
+        let new_dep_remapped = format_remap_name(soldeer_config, add_dep);
+        let new_dep_orig = format!("dependencies/{}-{}/", add_dep.name(), add_dep.version());
+        for (remapped, orig) in existing_remappings {
+            if orig == new_dep_orig {
                 new_remappings.push(format!("{}={}", remapped, orig));
+            } else {
+                new_remappings.push(format!("{}={}", new_dep_remapped, new_dep_orig));
+                println!("{}", format!("Added {add_dep} to remappings").green());
             }
+        }
+    } else {
+        for (remapped, orig) in existing_remappings {
+            new_remappings.push(format!("{}={}", remapped, orig));
         }
     }
     // sort the remappings
     new_remappings.sort_unstable();
+    Ok(new_remappings)
+}
+
+pub async fn remappings_txt(
+    add_dependency: Option<&Dependency>,
+    soldeer_config: &SoldeerConfig,
+) -> Result<()> {
+    let remappings_path = get_current_working_dir().join("remappings.txt");
+    if soldeer_config.reg_remappings {
+        remove_file(&remappings_path).map_err(ConfigError::RemappingsError)?;
+    }
+    if !remappings_path.exists() {
+        File::create(remappings_path.clone()).unwrap();
+    }
+
+    let new_remappings = match add_dependency {
+        Some(_) => {
+            let contents = read_file_to_string(&remappings_path);
+            let existing_remappings = contents.lines().filter_map(|r| r.split_once('=')).collect();
+            generate_remappings(add_dependency, soldeer_config, existing_remappings)?
+        }
+        None => generate_remappings(add_dependency, soldeer_config, vec![])?,
+    };
 
     let mut file = File::create(remappings_path)?;
     for remapping in new_remappings {
         writeln!(file, "{}", remapping)?;
     }
+    Ok(())
+}
+
+pub async fn remappings_foundry(
+    add_dependency: Option<&Dependency>,
+    config_path: impl AsRef<Path>,
+    soldeer_config: &SoldeerConfig,
+) -> Result<()> {
+    let contents = read_file_to_string(&config_path);
+    let mut doc: DocumentMut = contents.parse::<DocumentMut>().expect("invalid doc");
+
+    let Some(profiles) = doc["profile"].as_table_mut() else {
+        // we don't add remappings if there are no profiles
+        return Ok(());
+    };
+
+    for (_, profile) in profiles.iter_mut() {
+        let Some(Some(remappings)) = profile.get_mut("remappings").map(|v| v.as_array_mut()) else {
+            continue;
+        };
+        let existing_remappings: Vec<_> = remappings
+            .iter()
+            .filter_map(|r| r.as_str())
+            .filter_map(|r| r.split_once('='))
+            .collect();
+        let new_remappings =
+            generate_remappings(add_dependency, soldeer_config, existing_remappings)?;
+        remappings.clear();
+        for remapping in new_remappings {
+            remappings.push(remapping);
+        }
+    }
+
+    fs::write(config_path, doc.to_string())?;
     Ok(())
 }
 

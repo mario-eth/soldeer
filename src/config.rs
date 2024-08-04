@@ -10,7 +10,7 @@ use std::{
     io::{self, Write},
     path::{Path, PathBuf},
 };
-use toml_edit::{value, Array, DocumentMut, InlineTable, Item, Table};
+use toml_edit::{value, DocumentMut, InlineTable, Item, Table};
 use yansi::Paint as _;
 
 pub type Result<T> = std::result::Result<T, ConfigError>;
@@ -32,7 +32,7 @@ pub struct SoldeerConfig {
     pub reg_remappings: bool,
     pub remappings_version: bool,
     pub remappings_prefix: String,
-    pub remappings_type: RemappingsLocation,
+    pub remappings_loc: RemappingsLocation,
 }
 
 impl Default for SoldeerConfig {
@@ -42,7 +42,7 @@ impl Default for SoldeerConfig {
             reg_remappings: false,
             remappings_version: false,
             remappings_prefix: String::new(),
-            remappings_type: Default::default(),
+            remappings_loc: Default::default(),
         }
     }
 }

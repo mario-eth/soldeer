@@ -12,7 +12,10 @@ use crate::{
     utils::{check_dotfiles_recursive, get_current_working_dir, prompt_user_for_confirmation},
     versioning::push_version,
 };
-use config::{add_to_config, get_config_path, GitDependency, HttpDependency};
+use config::{
+    add_to_config, get_config_path, read_soldeer_config, remappings_foundry, GitDependency,
+    HttpDependency,
+};
 use dependency_downloader::download_dependency;
 use janitor::cleanup_dependency;
 use lock::LockWriteMode;
@@ -56,12 +59,14 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
             let dependency: Dependency = get_latest_forge_std_dependency().await.map_err(|e| {
                 SoldeerError::DownloadError { dep: "forge-std".to_string(), source: e }
             })?;
-            install_dependency(dependency).await?;
+            install_dependency(dependency, true).await?;
         }
         Subcommands::Install(install) => {
+            let reg_remappings = install.reg_remappings.unwrap_or(false);
             let Some(dependency) = install.dependency else {
-                return update().await; // TODO: instead, check which dependencies do not match the
-                                       // integrity checksum and install those
+                return update(reg_remappings).await; // TODO: instead, check which dependencies do
+                                                     // not match the
+                                                     // integrity checksum and install those
             };
 
             println!("{}", "🦌 Running Soldeer install 🦌".green());
@@ -91,10 +96,11 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
                 }),
             };
 
-            install_dependency(dep).await?;
+            install_dependency(dep, reg_remappings).await?;
         }
-        Subcommands::Update(_) => {
-            return update().await;
+        Subcommands::Update(update_args) => {
+            let reg_remappings = update_args.reg_remappings.unwrap_or(false);
+            return update(reg_remappings).await;
         }
         Subcommands::Login(_) => {
             println!("{}", "🦌 Running Soldeer login 🦌".green());
@@ -163,7 +169,10 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
     Ok(())
 }
 
-async fn install_dependency(mut dependency: Dependency) -> Result<(), SoldeerError> {
+async fn install_dependency(
+    mut dependency: Dependency,
+    reg_remappings: bool,
+) -> Result<(), SoldeerError> {
     lock_check(&dependency, true)?;
 
     let result = download_dependency(&dependency, false)
@@ -194,19 +203,43 @@ async fn install_dependency(mut dependency: Dependency) -> Result<(), SoldeerErr
         }
     };
 
+    let mut config = read_soldeer_config(Some(config_file.clone()))?;
+    if reg_remappings {
+        config.reg_remappings = reg_remappings;
+    }
+
     add_to_config(&dependency, &config_file)?;
 
     janitor::healthcheck_dependency(&dependency)?;
 
     janitor::cleanup_dependency(&dependency, false)?;
 
-    // TODO: check the config to know whether we should write remappings
-    //remappings_txt().await?;
+    if config.generate_remappings {
+        if config_file.to_string_lossy().contains("foundry.toml") {
+            match config.remappings_loc {
+                config::RemappingsLocation::Txt => {
+                    remappings_txt(Some(&dependency), &config).await?
+                }
+                config::RemappingsLocation::Config => {
+                    remappings_foundry(Some(&dependency), &config_file, &config).await?
+                }
+            }
+        } else {
+            remappings_txt(Some(&dependency), &config).await?;
+        }
+    }
+
     Ok(())
 }
 
-async fn update() -> Result<(), SoldeerError> {
+async fn update(reg_remappings: bool) -> Result<(), SoldeerError> {
     println!("{}", "🦌 Running Soldeer update 🦌".green());
+
+    let config_file = get_config_path()?;
+    let mut config = read_soldeer_config(Some(config_file.clone()))?;
+    if reg_remappings {
+        config.reg_remappings = reg_remappings;
+    }
 
     let mut dependencies: Vec<Dependency> = read_config_deps(None)?;
 
@@ -233,8 +266,19 @@ async fn update() -> Result<(), SoldeerError> {
 
     cleanup_after(&dependencies)?;
 
-    // TODO: check the config to know whether we should write remappings
-    //remappings_txt().await?;
+    if config.generate_remappings {
+        if config_file.to_string_lossy().contains("foundry.toml") {
+            match config.remappings_loc {
+                config::RemappingsLocation::Txt => remappings_txt(None, &config).await?,
+                config::RemappingsLocation::Config => {
+                    remappings_foundry(None, &config_file, &config).await?
+                }
+            }
+        } else {
+            remappings_txt(None, &config).await?;
+        }
+    }
+
     Ok(())
 }
 

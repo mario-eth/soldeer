@@ -4,7 +4,7 @@ use simple_home_dir::home_dir;
 use std::{
     env,
     fs::{self, File},
-    io::{self, BufRead, BufReader, Read, Write},
+    io::{BufReader, Read, Write},
     path::{Path, PathBuf},
 };
 use yansi::Paint as _;

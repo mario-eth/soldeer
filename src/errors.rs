@@ -12,7 +12,7 @@ pub enum SoldeerError {
     #[error("error during config operation: {0}")]
     ConfigError(#[from] ConfigError),
 
-    #[error("error during downloading of {dep}: {source}")]
+    #[error("error during downloading ({dep}): {source}")]
     DownloadError { dep: String, source: DownloadError },
 
     #[error("error during janitor operation: {0}")]

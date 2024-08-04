@@ -88,6 +88,7 @@ pub struct Update {
     pub regenerate_remappings: Option<bool>,
 }
 
+/// Display the version of Soldeer
 #[derive(Debug, Clone, Parser)]
 pub struct VersionDryRun {}
 

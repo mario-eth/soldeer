@@ -1,17 +1,16 @@
 #![cfg_attr(docsrs, feature(doc_cfg, doc_auto_cfg))]
 use crate::{
     auth::login,
-    commands::Subcommands,
     config::{delete_config, read_config_deps, remappings_txt, Dependency},
     dependency_downloader::{
         delete_dependency_files, download_dependencies, unzip_dependencies, unzip_dependency,
     },
-    errors::SoldeerError,
     janitor::{cleanup_after, healthcheck_dependencies},
     lock::{lock_check, remove_lock, write_lock},
     utils::{check_dotfiles_recursive, get_current_working_dir, prompt_user_for_confirmation},
     versioning::push_version,
 };
+pub use crate::{commands::Subcommands, errors::SoldeerError};
 use config::{
     add_to_config, get_config_path, read_soldeer_config, remappings_foundry, GitDependency,
     HttpDependency, RemappingsAction, RemappingsLocation,

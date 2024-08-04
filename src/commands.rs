@@ -20,15 +20,12 @@ pub enum Subcommands {
     VersionDryRun(VersionDryRun),
 }
 
+/// Initialize a new Soldeer project for use with Foundry
 #[derive(Debug, Clone, Parser)]
-#[clap(
-    about = "Initialize a new Soldeer project for use with Foundry.
-Use --clean true if you want to delete .gitmodules and lib directory that were created in Foundry.",
-    after_help = "For more information, read the README.md",
-    override_usage = "soldeer init"
-)]
+#[clap(after_help = "For more information, read the README.md")]
 pub struct Init {
-    #[arg(long, value_parser = clap::value_parser!(bool))]
+    /// Clean the Foundry project by removing .gitmodules and the lib directory
+    #[arg(long)]
     pub clean: Option<bool>,
 }
 
@@ -39,67 +36,105 @@ fn validate_dependency(dep: &str) -> Result<String, String> {
     Ok(dep.to_string())
 }
 
+/// Install a dependency
 #[derive(Debug, Clone, Parser)]
 #[clap(
-    about = "Install a dependency from Soldeer repository or from a custom url that points to a zip file or from git using a git link.
-    IMPORTANT!! The `~` when specifying the dependency is very important to differentiate between the name and the version that needs to be installed.
-    Example from remote repository: soldeer install @openzeppelin-contracts~2.3.0
-    Example custom url: soldeer install @openzeppelin-contracts~2.3.0 https://github.com/OpenZeppelin/openzeppelin-contracts/archive/refs/tags/v5.0.2.zip
-    Example git: soldeer install @openzeppelin-contracts~2.3.0 git@github.com:OpenZeppelin/openzeppelin-contracts.git
-    Example git with specified commit: soldeer install @openzeppelin-contracts~2.3.0 git@github.com:OpenZeppelin/openzeppelin-contracts.git --rev 05f218fb6617932e56bf5388c3b389c3028a7b73\n",
+    long_about = "Install a dependency
+
+You can install a dependency from the Soldeer repository, a custom URL pointing to a zip file, or from Git using a Git link.
+**Important:** The `~` symbol when specifying the dependency is crucial to differentiate between the name and the version that needs to be installed.
+- **Example from Soldeer repository:**
+  soldeer install @openzeppelin-contracts~2.3.0
+- **Example from a custom URL:**
+  soldeer install @openzeppelin-contracts~2.3.0 https://github.com/OpenZeppelin/openzeppelin-contracts/archive/refs/tags/v5.0.2.zip
+- **Example from Git:**
+  soldeer install @openzeppelin-contracts~2.3.0 git@github.com:OpenZeppelin/openzeppelin-contracts.git
+- **Example from Git with a specified commit:**
+  soldeer install @openzeppelin-contracts~2.3.0 git@github.com:OpenZeppelin/openzeppelin-contracts.git --rev 05f218fb6617932e56bf5388c3b389c3028a7b73
+If you want to regenerate the remappings from scratch, use
+  --reg-remappings true",
     after_help = "For more information, read the README.md"
 )]
 pub struct Install {
-    #[arg(value_parser = validate_dependency, value_name = "<DEPENDENCY>~<VERSION>")]
+    /// The dependency name and version, separated by a tilde.
+    ///
+    /// If not present, this command will perform `soldeer update`
+    #[arg(value_parser = validate_dependency, value_name = "DEPENDENCY>~<VERSION")]
     pub dependency: Option<String>,
+
+    /// The URL to the dependency zip file, if not from the Soldeer repository
+    ///
+    /// Example: https://my-domain/dep.zip
     #[arg(value_name = "URL")]
     pub remote_url: Option<String>,
+
+    /// The revision of the dependency, if from Git
     #[arg(long)]
     pub rev: Option<String>,
+
+    /// Set to true to regenerate the remappings from scratch. This will delete the existing
+    /// remappings. Defaults to false.
+    #[arg(long)]
+    pub reg_remappings: Option<bool>,
 }
 
+/// Update dependencies by reading the config file
 #[derive(Debug, Clone, Parser)]
-#[clap(
-    about = "Update dependencies by reading the config file.",
-    after_help = "For more information, read the README.md",
-    override_usage = "soldeer update"
-)]
-pub struct Update {}
+#[clap(after_help = "For more information, read the README.md")]
+pub struct Update {
+    /// Set to false to keep existing remappings. If true, this will delete the existing
+    /// remappings. Defaults to false.
+    #[arg(long)]
+    pub reg_remappings: Option<bool>,
+}
 
 #[derive(Debug, Clone, Parser)]
 pub struct VersionDryRun {}
 
+/// Log into the central repository to push the dependencies
 #[derive(Debug, Clone, Parser)]
-#[clap(
-    about = "Login into the central repository to push the dependencies.",
-    after_help = "For more information, read the README.md",
-    override_usage = "soldeer login"
-)]
+#[clap(after_help = "For more information, read the README.md")]
 pub struct Login {}
 
+/// Push a dependency to the repository
 #[derive(Debug, Clone, Parser)]
 #[clap(
-    about = "Push a dependency to the repository. The PATH_TO_DEPENDENCY is optional and if not provided, the current directory will be used.\nExample: If the directory is /home/soldeer/my_project and you do not specify the PATH_TO_DEPENDENCY,\nthe files inside the /home/soldeer/my_project will be pushed to the repository.\nIf you specify the PATH_TO_DEPENDENCY, the files inside the specified directory will be pushed to the repository.\nIf you want to ignore certain files, you can create a .soldeerignore file in the root of the project and add the files you want to ignore.\nThe .soldeerignore works like .gitignore.\nFor dry-run please use the --dry-run argument set to true, `soldeer push ... --dry-run true`. This will create a zip file that you can inspect and see what it will be pushed to the central repository.",
-    after_help = "For more information, read the README.md",
-    override_usage = "soldeer push <DEPENDENCY>~<VERSION> [PATH_TO_DEPENDENCY]"
+    long_about = "Push a Dependency to the Repository
+The `PATH_TO_DEPENDENCY` is optional. If not provided, the current directory will be used.
+**Example:**
+- If the current directory is `/home/soldeer/my_project` and you do not specify the `PATH_TO_DEPENDENCY`, the files inside `/home/soldeer/my_project` will be pushed to the repository.
+- If you specify the `PATH_TO_DEPENDENCY`, the files inside the specified directory will be pushed to the repository.
+To ignore certain files, create a `.soldeerignore` file in the root of the project and add the files you want to ignore. The `.soldeerignore` works like a `.gitignore`.
+For a dry run, use the `--dry-run` argument set to `true`: `soldeer push ... --dry-run true`. This will create a zip file that you can inspect to see what will be pushed to the central repository.",
+    after_help = "For more information, read the README.md"
 )]
 pub struct Push {
-    #[clap(required = true)]
+    /// The dependency name and version, separated by a tilde.
+    ///
+    /// This should always be used when you want to push a dependency to the central repository: `<https://soldeer.xyz>`.
+    #[arg(value_parser = validate_dependency, value_name = "DEPENDENCY>~<VERSION")]
     pub dependency: String,
+
+    /// Use this if the dependency you want to push is not in the current directory.
+    ///
+    /// Example: `soldeer push /path/to/dep`.
     pub path: Option<PathBuf>,
+
+    /// Use this if you want to run a dry run. If true, this will generate a zip file that you can
+    /// inspect to see what will be pushed.
     #[arg(short, long)]
     pub dry_run: Option<bool>,
-    #[arg(long, value_parser = clap::value_parser!(bool))]
+
+    /// Use this if you want to skip the warnings that can be triggered when trying to push
+    /// dotfiles like .env.
+    #[arg(long)]
     pub skip_warnings: Option<bool>,
 }
 
+/// Uninstall a dependency
 #[derive(Debug, Clone, Parser)]
-#[clap(
-    about = "Uninstall a dependency. soldeer uninstall <DEPENDENCY>",
-    after_help = "For more information, read the README.md",
-    override_usage = "soldeer uninstall <DEPENDENCY>"
-)]
+#[clap(after_help = "For more information, read the README.md")]
 pub struct Uninstall {
-    #[clap(required = true)]
+    /// The dependency name. Specifying a version is not necessary.
     pub dependency: String,
 }

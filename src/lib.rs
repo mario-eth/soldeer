@@ -280,8 +280,12 @@ libs = ["dependencies"]
 
         env::set_var("base_url", "https://api.soldeer.xyz");
 
-        let command =
-            Subcommands::Install(Install { dependency: None, remote_url: None, rev: None });
+        let command = Subcommands::Install(Install {
+            dependency: None,
+            remote_url: None,
+            rev: None,
+            reg_remappings: None,
+        });
 
         match run(command) {
             Ok(_) => {}
@@ -324,8 +328,12 @@ libs = ["dependencies"]
 
         env::set_var("base_url", "https://api.soldeer.xyz");
 
-        let command =
-            Subcommands::Install(Install { dependency: None, remote_url: None, rev: None });
+        let command = Subcommands::Install(Install {
+            dependency: None,
+            remote_url: None,
+            rev: None,
+            reg_remappings: None,
+        });
 
         match run(command) {
             Ok(_) => {}
@@ -366,7 +374,7 @@ libs = ["dependencies"]
 
         env::set_var("base_url", "https://api.soldeer.xyz");
 
-        let command = Subcommands::Update(Update {});
+        let command = Subcommands::Update(Update { reg_remappings: None });
 
         match run(command) {
             Ok(_) => {}
@@ -409,7 +417,7 @@ libs = ["dependencies"]
 
         env::set_var("base_url", "https://api.soldeer.xyz");
 
-        let command = Subcommands::Update(Update {});
+        let command = Subcommands::Update(Update { reg_remappings: None });
 
         match run(command) {
             Ok(_) => {}
@@ -464,8 +472,12 @@ libs = ["dependencies"]
 
         env::set_var("base_url", "https://api.soldeer.xyz");
 
-        let command =
-            Subcommands::Install(Install { dependency: None, remote_url: None, rev: None });
+        let command = Subcommands::Install(Install {
+            dependency: None,
+            remote_url: None,
+            rev: None,
+            reg_remappings: None,
+        });
 
         match run(command) {
             Ok(_) => {}
@@ -650,6 +662,7 @@ libs = ["dependencies"]
             dependency: Some("forge-std~1.9.1".to_string()),
             remote_url: Option::None,
             rev: None,
+            reg_remappings: None,
         });
 
         match run(command) {
@@ -701,6 +714,7 @@ libs = ["dependencies"]
             dependency: Some("forge-std~1.9.1".to_string()),
             remote_url: Some("https://soldeer-revisions.s3.amazonaws.com/forge-std/v1_9_0_03-07-2024_14:44:57_forge-std-v1.9.0.zip".to_string()),
             rev: None,
+            reg_remappings: None
         });
 
         match run(command) {
@@ -752,6 +766,7 @@ libs = ["dependencies"]
             dependency: Some("forge-std~1.9.1".to_string()),
             remote_url: Some("https://github.com/foundry-rs/forge-std.git".to_string()),
             rev: None,
+            reg_remappings: None,
         });
 
         match run(command) {
@@ -803,6 +818,7 @@ libs = ["dependencies"]
             dependency: Some("forge-std~1.9.1".to_string()),
             remote_url: Some("git@github.com:foundry-rs/forge-std.git".to_string()),
             rev: None,
+            reg_remappings: None,
         });
 
         match run(command) {
@@ -854,6 +870,7 @@ libs = ["dependencies"]
             dependency: Some("forge-std~1.9.1".to_string()),
             remote_url: Some("git@github.com:foundry-rs/forge-std.git".to_string()),
             rev: Some("3778c3cb8e4244cb5a1c3ef3ce1c71a3683e324a".to_string()),
+            reg_remappings: None,
         });
 
         match run(command) {

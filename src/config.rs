@@ -28,21 +28,21 @@ pub enum RemappingsLocation {
 /// The Soldeer config options
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct SoldeerConfig {
-    pub generate_remappings: bool,
-    pub reg_remappings: bool,
+    pub remappings_generate: bool,
+    pub remappings_regenerate: bool,
     pub remappings_version: bool,
     pub remappings_prefix: String,
-    pub remappings_loc: RemappingsLocation,
+    pub remappings_location: RemappingsLocation,
 }
 
 impl Default for SoldeerConfig {
     fn default() -> Self {
         SoldeerConfig {
-            generate_remappings: true,
-            reg_remappings: false,
+            remappings_generate: true,
+            remappings_regenerate: false,
             remappings_version: false,
             remappings_prefix: String::new(),
-            remappings_loc: Default::default(),
+            remappings_location: Default::default(),
         }
     }
 }
@@ -313,7 +313,7 @@ fn generate_remappings(
     existing_remappings: Vec<(&str, &str)>,
 ) -> Result<Vec<String>> {
     let mut new_remappings = Vec::new();
-    if soldeer_config.reg_remappings {
+    if soldeer_config.remappings_regenerate {
         let dependencies = read_config_deps(None)?;
 
         dependencies.iter().for_each(|dependency| {
@@ -354,7 +354,7 @@ pub async fn remappings_txt(
     soldeer_config: &SoldeerConfig,
 ) -> Result<()> {
     let remappings_path = get_current_working_dir().join("remappings.txt");
-    if soldeer_config.reg_remappings {
+    if soldeer_config.remappings_regenerate {
         remove_file(&remappings_path).map_err(ConfigError::RemappingsError)?;
     }
     if !remappings_path.exists() {

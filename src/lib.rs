@@ -62,11 +62,12 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
             install_dependency(dependency, true).await?;
         }
         Subcommands::Install(install) => {
-            let reg_remappings = install.reg_remappings.unwrap_or(false);
+            let regenerate_remappings = install.regenerate_remappings.unwrap_or(false);
             let Some(dependency) = install.dependency else {
-                return update(reg_remappings).await; // TODO: instead, check which dependencies do
-                                                     // not match the
-                                                     // integrity checksum and install those
+                return update(regenerate_remappings).await; // TODO: instead, check which
+                                                            // dependencies do
+                                                            // not match the
+                                                            // integrity checksum and install those
             };
 
             println!("{}", "🦌 Running Soldeer install 🦌".green());
@@ -96,11 +97,11 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
                 }),
             };
 
-            install_dependency(dep, reg_remappings).await?;
+            install_dependency(dep, regenerate_remappings).await?;
         }
         Subcommands::Update(update_args) => {
-            let reg_remappings = update_args.reg_remappings.unwrap_or(false);
-            return update(reg_remappings).await;
+            let regenerate_remappings = update_args.regenerate_remappings.unwrap_or(false);
+            return update(regenerate_remappings).await;
         }
         Subcommands::Login(_) => {
             println!("{}", "🦌 Running Soldeer login 🦌".green());
@@ -171,7 +172,7 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
 
 async fn install_dependency(
     mut dependency: Dependency,
-    reg_remappings: bool,
+    regenerate_remappings: bool,
 ) -> Result<(), SoldeerError> {
     lock_check(&dependency, true)?;
 
@@ -204,8 +205,8 @@ async fn install_dependency(
     };
 
     let mut config = read_soldeer_config(Some(config_file.clone()))?;
-    if reg_remappings {
-        config.reg_remappings = reg_remappings;
+    if regenerate_remappings {
+        config.remappings_regenerate = regenerate_remappings;
     }
 
     add_to_config(&dependency, &config_file)?;
@@ -214,9 +215,9 @@ async fn install_dependency(
 
     janitor::cleanup_dependency(&dependency, false)?;
 
-    if config.generate_remappings {
+    if config.remappings_generate {
         if config_file.to_string_lossy().contains("foundry.toml") {
-            match config.remappings_loc {
+            match config.remappings_location {
                 config::RemappingsLocation::Txt => {
                     remappings_txt(Some(&dependency), &config).await?
                 }
@@ -232,13 +233,13 @@ async fn install_dependency(
     Ok(())
 }
 
-async fn update(reg_remappings: bool) -> Result<(), SoldeerError> {
+async fn update(regenerate_remappings: bool) -> Result<(), SoldeerError> {
     println!("{}", "🦌 Running Soldeer update 🦌".green());
 
     let config_file = get_config_path()?;
     let mut config = read_soldeer_config(Some(config_file.clone()))?;
-    if reg_remappings {
-        config.reg_remappings = reg_remappings;
+    if regenerate_remappings {
+        config.remappings_regenerate = regenerate_remappings;
     }
 
     let mut dependencies: Vec<Dependency> = read_config_deps(None)?;
@@ -266,9 +267,9 @@ async fn update(reg_remappings: bool) -> Result<(), SoldeerError> {
 
     cleanup_after(&dependencies)?;
 
-    if config.generate_remappings {
+    if config.remappings_generate {
         if config_file.to_string_lossy().contains("foundry.toml") {
-            match config.remappings_loc {
+            match config.remappings_location {
                 config::RemappingsLocation::Txt => remappings_txt(None, &config).await?,
                 config::RemappingsLocation::Config => {
                     remappings_foundry(None, &config_file, &config).await?
@@ -328,7 +329,7 @@ libs = ["dependencies"]
             dependency: None,
             remote_url: None,
             rev: None,
-            reg_remappings: None,
+            regenerate_remappings: None,
         });
 
         match run(command) {
@@ -376,7 +377,7 @@ libs = ["dependencies"]
             dependency: None,
             remote_url: None,
             rev: None,
-            reg_remappings: None,
+            regenerate_remappings: None,
         });
 
         match run(command) {
@@ -418,7 +419,7 @@ libs = ["dependencies"]
 
         env::set_var("base_url", "https://api.soldeer.xyz");
 
-        let command = Subcommands::Update(Update { reg_remappings: None });
+        let command = Subcommands::Update(Update { regenerate_remappings: None });
 
         match run(command) {
             Ok(_) => {}
@@ -461,7 +462,7 @@ libs = ["dependencies"]
 
         env::set_var("base_url", "https://api.soldeer.xyz");
 
-        let command = Subcommands::Update(Update { reg_remappings: None });
+        let command = Subcommands::Update(Update { regenerate_remappings: None });
 
         match run(command) {
             Ok(_) => {}
@@ -520,7 +521,7 @@ libs = ["dependencies"]
             dependency: None,
             remote_url: None,
             rev: None,
-            reg_remappings: None,
+            regenerate_remappings: None,
         });
 
         match run(command) {
@@ -706,7 +707,7 @@ libs = ["dependencies"]
             dependency: Some("forge-std~1.9.1".to_string()),
             remote_url: Option::None,
             rev: None,
-            reg_remappings: None,
+            regenerate_remappings: None,
         });
 
         match run(command) {
@@ -758,7 +759,7 @@ libs = ["dependencies"]
             dependency: Some("forge-std~1.9.1".to_string()),
             remote_url: Some("https://soldeer-revisions.s3.amazonaws.com/forge-std/v1_9_0_03-07-2024_14:44:57_forge-std-v1.9.0.zip".to_string()),
             rev: None,
-            reg_remappings: None
+            regenerate_remappings: None
         });
 
         match run(command) {
@@ -810,7 +811,7 @@ libs = ["dependencies"]
             dependency: Some("forge-std~1.9.1".to_string()),
             remote_url: Some("https://github.com/foundry-rs/forge-std.git".to_string()),
             rev: None,
-            reg_remappings: None,
+            regenerate_remappings: None,
         });
 
         match run(command) {
@@ -862,7 +863,7 @@ libs = ["dependencies"]
             dependency: Some("forge-std~1.9.1".to_string()),
             remote_url: Some("git@github.com:foundry-rs/forge-std.git".to_string()),
             rev: None,
-            reg_remappings: None,
+            regenerate_remappings: None,
         });
 
         match run(command) {
@@ -914,7 +915,7 @@ libs = ["dependencies"]
             dependency: Some("forge-std~1.9.1".to_string()),
             remote_url: Some("git@github.com:foundry-rs/forge-std.git".to_string()),
             rev: Some("3778c3cb8e4244cb5a1c3ef3ce1c71a3683e324a".to_string()),
-            reg_remappings: None,
+            regenerate_remappings: None,
         });
 
         match run(command) {

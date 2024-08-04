@@ -75,7 +75,7 @@ pub struct Install {
     /// Set to true to regenerate the remappings from scratch. This will delete the existing
     /// remappings. Defaults to false.
     #[arg(long)]
-    pub reg_remappings: Option<bool>,
+    pub regenerate_remappings: Option<bool>,
 }
 
 /// Update dependencies by reading the config file
@@ -85,7 +85,7 @@ pub struct Update {
     /// Set to false to keep existing remappings. If true, this will delete the existing
     /// remappings. Defaults to false.
     #[arg(long)]
-    pub reg_remappings: Option<bool>,
+    pub regenerate_remappings: Option<bool>,
 }
 
 #[derive(Debug, Clone, Parser)]

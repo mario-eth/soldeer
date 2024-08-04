@@ -327,70 +327,6 @@ pub enum RemappingsAction {
     None,
 }
 
-fn generate_remappings(
-    dependency: &RemappingsAction,
-    soldeer_config: &SoldeerConfig,
-    existing_remappings: Vec<(&str, &str)>,
-) -> Result<Vec<String>> {
-    let mut new_remappings = Vec::new();
-    if soldeer_config.remappings_regenerate {
-        let dependencies = read_config_deps(None)?;
-
-        dependencies.iter().for_each(|dependency| {
-            let dependency_name_formatted = format_remap_name(soldeer_config, dependency);
-
-            println!("{}", format!("Adding {dependency} to remappings").green());
-            new_remappings.push(format!(
-                "{dependency_name_formatted}=dependencies/{}-{}/",
-                dependency.name(),
-                dependency.version()
-            ));
-        });
-    } else {
-        match &dependency {
-            RemappingsAction::Remove(remove_dep) => {
-                // only keep items not matching the dependency to remove
-                let remove_dep_orig =
-                    format!("dependencies/{}-{}/", remove_dep.name(), remove_dep.version());
-                for (remapped, orig) in existing_remappings {
-                    if orig != remove_dep_orig {
-                        new_remappings.push(format!("{}={}", remapped, orig));
-                    } else {
-                        println!("{}", format!("Removed {remove_dep} from remappings").green());
-                    }
-                }
-            }
-            RemappingsAction::Add(add_dep) => {
-                // we only add the remapping if it's not already existing, otherwise we keep the old
-                // remapping
-                let new_dep_remapped = format_remap_name(soldeer_config, add_dep);
-                let new_dep_orig =
-                    format!("dependencies/{}-{}/", add_dep.name(), add_dep.version());
-                let mut found = false; // whether a remapping existed for that dep already
-                for (remapped, orig) in existing_remappings {
-                    new_remappings.push(format!("{}={}", remapped, orig));
-                    if orig == new_dep_orig {
-                        found = true;
-                    }
-                }
-                if !found {
-                    new_remappings.push(format!("{}={}", new_dep_remapped, new_dep_orig));
-                    println!("{}", format!("Added {add_dep} to remappings").green());
-                }
-            }
-            RemappingsAction::None => {
-                for (remapped, orig) in existing_remappings {
-                    new_remappings.push(format!("{}={}", remapped, orig));
-                }
-            }
-        }
-    }
-
-    // sort the remappings
-    new_remappings.sort_unstable();
-    Ok(new_remappings)
-}
-
 pub async fn remappings_txt(
     dependency: &RemappingsAction,
     soldeer_config: &SoldeerConfig,
@@ -561,6 +497,70 @@ fn parse_dependency(name: impl Into<String>, value: &Item) -> Result<Dependency>
             checksum: None,
         })),
     }
+}
+
+fn generate_remappings(
+    dependency: &RemappingsAction,
+    soldeer_config: &SoldeerConfig,
+    existing_remappings: Vec<(&str, &str)>,
+) -> Result<Vec<String>> {
+    let mut new_remappings = Vec::new();
+    if soldeer_config.remappings_regenerate {
+        let dependencies = read_config_deps(None)?;
+
+        dependencies.iter().for_each(|dependency| {
+            let dependency_name_formatted = format_remap_name(soldeer_config, dependency);
+
+            println!("{}", format!("Adding {dependency} to remappings").green());
+            new_remappings.push(format!(
+                "{dependency_name_formatted}=dependencies/{}-{}/",
+                dependency.name(),
+                dependency.version()
+            ));
+        });
+    } else {
+        match &dependency {
+            RemappingsAction::Remove(remove_dep) => {
+                // only keep items not matching the dependency to remove
+                let remove_dep_orig =
+                    format!("dependencies/{}-{}/", remove_dep.name(), remove_dep.version());
+                for (remapped, orig) in existing_remappings {
+                    if orig != remove_dep_orig {
+                        new_remappings.push(format!("{}={}", remapped, orig));
+                    } else {
+                        println!("{}", format!("Removed {remove_dep} from remappings").green());
+                    }
+                }
+            }
+            RemappingsAction::Add(add_dep) => {
+                // we only add the remapping if it's not already existing, otherwise we keep the old
+                // remapping
+                let new_dep_remapped = format_remap_name(soldeer_config, add_dep);
+                let new_dep_orig =
+                    format!("dependencies/{}-{}/", add_dep.name(), add_dep.version());
+                let mut found = false; // whether a remapping existed for that dep already
+                for (remapped, orig) in existing_remappings {
+                    new_remappings.push(format!("{}={}", remapped, orig));
+                    if orig == new_dep_orig {
+                        found = true;
+                    }
+                }
+                if !found {
+                    new_remappings.push(format!("{}={}", new_dep_remapped, new_dep_orig));
+                    println!("{}", format!("Added {add_dep} to remappings").green());
+                }
+            }
+            RemappingsAction::None => {
+                for (remapped, orig) in existing_remappings {
+                    new_remappings.push(format!("{}={}", remapped, orig));
+                }
+            }
+        }
+    }
+
+    // sort the remappings
+    new_remappings.sort_unstable();
+    Ok(new_remappings)
 }
 
 fn format_remap_name(soldeer_config: &SoldeerConfig, dependency: &Dependency) -> String {

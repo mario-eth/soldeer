@@ -13,7 +13,7 @@ use std::{
     process::{Command, Stdio},
     str,
 };
-use tokio::{fs as tokio_fs, io::AsyncWriteExt as _, task::JoinSet};
+use tokio::{fs as tokio_fs, io::AsyncWriteExt, task::JoinSet};
 use yansi::Paint as _;
 
 pub type Result<T> = std::result::Result<T, DownloadError>;
@@ -242,6 +242,8 @@ async fn download_via_http(
             .await
             .map_err(|e| DownloadError::IOError { path: file_path.clone(), source: e })?;
     }
+    // make sure we finished writing the file
+    file.flush().await.map_err(|e| DownloadError::IOError { path: file_path, source: e })?;
     Ok(())
 }
 

@@ -2027,6 +2027,7 @@ remappings_generate = true
     }
 
     #[tokio::test]
+    #[serial]
     async fn generate_remappings_regenerate() -> Result<()> {
         let mut content = r#"
 [profile.default]
@@ -2041,6 +2042,7 @@ remappings_regenerate = true
 "#;
 
         let target_config = define_config(true);
+        env::set_var("config_file", target_config.to_string_lossy().to_string());
 
         write_to_config(&target_config, content);
 
@@ -2113,7 +2115,6 @@ remappings_generate = true
         }
 
         let path = get_current_working_dir().join("test").join(target);
-        env::set_var("config_file", path.to_string_lossy().to_string());
         path
     }
 

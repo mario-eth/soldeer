@@ -335,18 +335,17 @@ pub async fn remappings_txt(
     if soldeer_config.remappings_regenerate {
         remove_file(&remappings_path).map_err(ConfigError::RemappingsError)?;
     }
+    let contents = match remappings_path.exists() {
+        true => read_file_to_string(&remappings_path),
+        false => "".to_string(),
+    };
+    let existing_remappings = contents.lines().filter_map(|r| r.split_once('=')).collect();
+
     if !remappings_path.exists() {
         File::create(remappings_path.clone()).unwrap();
     }
 
-    let new_remappings = match dependency {
-        RemappingsAction::None => generate_remappings(dependency, soldeer_config, vec![])?,
-        _ => {
-            let contents = read_file_to_string(&remappings_path);
-            let existing_remappings = contents.lines().filter_map(|r| r.split_once('=')).collect();
-            generate_remappings(dependency, soldeer_config, existing_remappings)?
-        }
-    };
+    let new_remappings = generate_remappings(dependency, soldeer_config, existing_remappings)?;
 
     let mut file = File::create(remappings_path)?;
     for remapping in new_remappings {
@@ -499,6 +498,21 @@ fn parse_dependency(name: impl Into<String>, value: &Item) -> Result<Dependency>
     }
 }
 
+fn remappings_from_deps(soldeer_config: &SoldeerConfig) -> Result<Vec<String>> {
+    let dependencies = read_config_deps(None)?;
+    Ok(dependencies
+        .iter()
+        .map(|dependency| {
+            let dependency_name_formatted = format_remap_name(soldeer_config, dependency);
+            format!(
+                "{dependency_name_formatted}=dependencies/{}-{}/",
+                dependency.name(),
+                dependency.version()
+            )
+        })
+        .collect())
+}
+
 fn generate_remappings(
     dependency: &RemappingsAction,
     soldeer_config: &SoldeerConfig,
@@ -506,18 +520,8 @@ fn generate_remappings(
 ) -> Result<Vec<String>> {
     let mut new_remappings = Vec::new();
     if soldeer_config.remappings_regenerate {
-        let dependencies = read_config_deps(None)?;
-
-        dependencies.iter().for_each(|dependency| {
-            let dependency_name_formatted = format_remap_name(soldeer_config, dependency);
-
-            println!("{}", format!("Adding {dependency} to remappings").green());
-            new_remappings.push(format!(
-                "{dependency_name_formatted}=dependencies/{}-{}/",
-                dependency.name(),
-                dependency.version()
-            ));
-        });
+        new_remappings = remappings_from_deps(soldeer_config)?;
+        println!("{}", format!("Added all dependencies to remapppings").green());
     } else {
         match &dependency {
             RemappingsAction::Remove(remove_dep) => {
@@ -551,8 +555,27 @@ fn generate_remappings(
                 }
             }
             RemappingsAction::None => {
-                for (remapped, orig) in existing_remappings {
-                    new_remappings.push(format!("{}={}", remapped, orig));
+                // This is where we end up in the `update` command if we don't want to re-generate
+                // all remappings. We need to merge existing remappings with the full list of deps.
+                // We generate all remappings from the dependencies, then replace existing items.
+                new_remappings = remappings_from_deps(soldeer_config)?;
+                if !existing_remappings.is_empty() {
+                    for item in new_remappings.iter_mut() {
+                        let (item_remap, item_orig) =
+                            item.split_once('=').expect("remappings should have two parts");
+                        // try to find an existing item with the same path
+                        if let Some((remapped, orig)) =
+                            existing_remappings.iter().find(|(_, o)| item_orig == *o)
+                        {
+                            *item = format!("{}={}", remapped, orig);
+                        } else {
+                            println!(
+                                "{}",
+                                format!("Added {} to remappings", item_remap.trim_end_matches('/'))
+                                    .green()
+                            );
+                        }
+                    }
                 }
             }
         }

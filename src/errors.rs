@@ -1,151 +1,176 @@
-use std::fmt;
+use std::{
+    io,
+    path::{PathBuf, StripPrefixError},
+};
+use thiserror::Error;
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct SoldeerError {
-    pub message: String,
+#[derive(Error, Debug)]
+pub enum SoldeerError {
+    #[error("error during login: {0}")]
+    AuthError(#[from] AuthError),
+
+    #[error("error during config operation: {0}")]
+    ConfigError(#[from] ConfigError),
+
+    #[error("error during downloading ({dep}): {source}")]
+    DownloadError { dep: String, source: DownloadError },
+
+    #[error("error during janitor operation: {0}")]
+    JanitorError(#[from] JanitorError),
+
+    #[error("error during lockfile operation: {0}")]
+    LockError(#[from] LockError),
+
+    #[error("error during publishing: {0}")]
+    PublishError(#[from] PublishError),
 }
 
-impl fmt::Display for SoldeerError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.message)
-    }
+#[derive(Error, Debug)]
+pub enum AuthError {
+    #[error("login error: invalid email")]
+    InvalidEmail,
+
+    #[error("login error: invalid email or password")]
+    InvalidCredentials,
+
+    #[error("missing token, you are not connected")]
+    MissingToken,
+
+    #[error("error during IO operation for the security file: {0}")]
+    IOError(#[from] io::Error),
+
+    #[error("http error during login: {0}")]
+    HttpError(#[from] reqwest::Error),
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct MissingDependencies {
-    pub name: String,
-    pub version: String,
+#[derive(Error, Debug)]
+pub enum ConfigError {
+    #[error("config file is not valid: {0}")]
+    Parsing(#[from] toml_edit::TomlError),
+
+    #[error("config file is missing the `[dependencies]` section")]
+    MissingDependencies,
+
+    #[error("invalid user input: {source}")]
+    PromptError { source: io::Error },
+
+    #[error("invalid prompt option")]
+    InvalidPromptOption,
+
+    #[error("error writing to config file: {0}")]
+    FileWriteError(#[from] io::Error),
+
+    #[error("error writing to remappings file: {0}")]
+    RemappingsError(io::Error),
+
+    #[error("empty `version` field in {0}")]
+    EmptyVersion(String),
+
+    #[error("missing `{field}` field in {dep}")]
+    MissingField { field: String, dep: String },
+
+    #[error("invalid `{field}` field in {dep}")]
+    InvalidField { field: String, dep: String },
+
+    #[error("dependency {0} is not valid")]
+    InvalidDependency(String),
+
+    #[error("dependency {0} was not found")]
+    MissingDependency(String),
+
+    #[error("error parsing config file: {0}")]
+    DeserializeError(#[from] toml_edit::de::Error),
 }
 
-impl MissingDependencies {
-    pub fn new(name: &str, version: &str) -> MissingDependencies {
-        MissingDependencies { name: name.to_string(), version: version.to_string() }
-    }
+#[derive(Error, Debug)]
+pub enum DownloadError {
+    #[error("error downloading dependency: {0}")]
+    HttpError(#[from] reqwest::Error),
+
+    #[error("error extracting dependency: {0}")]
+    UnzipError(#[from] zip_extract::ZipExtractError),
+
+    #[error("error during git operation: {0}")]
+    GitError(String),
+
+    #[error("error during IO operation for {path:?}: {source}")]
+    IOError { path: PathBuf, source: io::Error },
+
+    #[error("Project {0} not found, please check the dependency name (project name) or create a new project on https://soldeer.xyz")]
+    ProjectNotFound(String),
+
+    #[error("Could not get the dependency URL for {0}")]
+    URLNotFound(String),
+
+    #[error("Could not get the last forge dependency")]
+    ForgeStdError,
+
+    #[error("error during async operation: {0}")]
+    AsyncError(#[from] tokio::task::JoinError),
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct UnzippingError {
-    pub name: String,
-    pub version: String,
+#[derive(Error, Debug)]
+pub enum JanitorError {
+    #[error("missing dependency {0}")]
+    MissingDependency(String),
+
+    #[error("error during IO operation for {path:?}: {source}")]
+    IOError { path: PathBuf, source: io::Error },
+
+    #[error("error during lockfile operation: {0}")]
+    LockError(LockError), // TODO: derive from LockError
 }
 
-impl UnzippingError {
-    pub fn new(name: &str, version: &str) -> UnzippingError {
-        UnzippingError { name: name.to_string(), version: version.to_string() }
-    }
+#[derive(Error, Debug)]
+pub enum LockError {
+    #[error("soldeer.lock is missing")]
+    Missing,
+
+    #[error("dependency {0} is already installed")]
+    DependencyInstalled(String),
+
+    #[error("IO error for soldeer.lock: {0}")]
+    IOError(#[from] io::Error),
+
+    #[error("error generating soldeer.lock contents: {0}")]
+    SerializeError(#[from] toml_edit::ser::Error),
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct IncorrectDependency {
-    pub name: String,
-    pub version: String,
-}
+#[derive(Error, Debug)]
+pub enum PublishError {
+    #[error("no files to publish")]
+    NoFiles,
 
-impl IncorrectDependency {
-    pub fn new(name: &str, version: &str) -> IncorrectDependency {
-        IncorrectDependency { name: name.to_string(), version: version.to_string() }
-    }
-}
+    #[error("error during zipping: {0}")]
+    ZipError(#[from] zip::result::ZipError),
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct LockError {
-    pub cause: String,
-}
+    #[error("error during IO operation for {path:?}: {source}")]
+    IOError { path: PathBuf, source: io::Error },
 
-impl fmt::Display for LockError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "lock failed")
-    }
-}
+    #[error("error while computing the relative path: {0}")]
+    RelativePathError(#[from] StripPrefixError),
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct DownloadError {
-    pub name: String,
-    pub version: String,
-    pub cause: String,
-}
+    #[error("auth error: {0}")]
+    AuthError(#[from] AuthError),
 
-impl fmt::Display for DownloadError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "download failed for {}~{}", &self.name, &self.version)
-    }
-}
+    #[error("error during publishing: {0}")]
+    DownloadError(#[from] DownloadError),
 
-impl DownloadError {
-    pub fn new(name: &str, version: &str, cause: &str) -> DownloadError {
-        DownloadError {
-            name: name.to_string(),
-            version: version.to_string(),
-            cause: cause.to_string(),
-        }
-    }
-}
+    #[error("Project not found. Make sure you send the right dependency name. The dependency name is the project name you created on https://soldeer.xyz")]
+    ProjectNotFound,
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct ProjectNotFound {
-    pub name: String,
-    pub cause: String,
-}
+    #[error("dependency already exists")]
+    AlreadyExists,
 
-impl ProjectNotFound {
-    pub fn new(name: &str, cause: &str) -> ProjectNotFound {
-        ProjectNotFound { name: name.to_string(), cause: cause.to_string() }
-    }
-}
+    #[error("the package is too big (over 50 MB)")]
+    PayloadTooLarge,
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct PushError {
-    pub name: String,
-    pub version: String,
-    pub cause: String,
-}
+    #[error("http error during publishing: {0}")]
+    HttpError(#[from] reqwest::Error),
 
-impl PushError {
-    pub fn new(name: &str, version: &str, cause: &str) -> PushError {
-        PushError { name: name.to_string(), version: version.to_string(), cause: cause.to_string() }
-    }
-}
+    #[error("invalid package name, only alphanumeric characters, `-` and `@` are allowed")]
+    InvalidName,
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct LoginError {
-    pub cause: String,
-}
-
-impl LoginError {
-    pub fn new(cause: &str) -> LoginError {
-        LoginError { cause: cause.to_string() }
-    }
-}
-#[derive(Debug, Clone, PartialEq)]
-pub struct ConfigError {
-    pub cause: String,
-}
-
-impl ConfigError {
-    pub fn new(cause: &str) -> ConfigError {
-        ConfigError { cause: cause.to_string() }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct DependencyError {
-    pub name: String,
-    pub version: String,
-    pub cause: String,
-}
-
-impl fmt::Display for DependencyError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "dependency operation failed for {}~{}", &self.name, &self.version)
-    }
-}
-
-impl DependencyError {
-    pub fn new(name: &str, version: &str, cause: &str) -> DependencyError {
-        DependencyError {
-            name: name.to_string(),
-            version: version.to_string(),
-            cause: cause.to_string(),
-        }
-    }
+    #[error("unknown http error")]
+    UnknownError,
 }

@@ -1,12 +1,23 @@
+use once_cell::sync::Lazy;
 use regex::Regex;
 use simple_home_dir::home_dir;
 use std::{
     env,
     fs::{self, File},
-    io::{BufRead, BufReader, Read, Write},
+    io::{BufReader, Read, Write},
     path::{Path, PathBuf},
 };
-use yansi::Paint;
+use yansi::Paint as _;
+
+use crate::config::HttpDependency;
+
+static GIT_SSH_REGEX: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"^(?:git@github\.com|git@gitlab)").expect("git ssh regex should compile")
+});
+static GIT_HTTPS_REGEX: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"^(?:https://github\.com|https://gitlab\.com).*\.git$")
+        .expect("git https regex should compile")
+});
 
 // get the current working directory
 pub fn get_current_working_dir() -> PathBuf {
@@ -35,74 +46,36 @@ pub fn read_file(path: impl AsRef<Path>) -> Result<Vec<u8>, std::io::Error> {
     Ok(buffer)
 }
 
-pub fn define_security_file_location() -> String {
+/// Get the location where the token file is stored or read from
+///
+/// The token file is stored in the home directory of the user, or in the current working directory
+/// if the home cannot be found, in a hidden folder called `.soldeer`. The token file is called
+/// `.soldeer_login`.
+///
+/// For reading (e.g. when pushing to the registry), the path can be overridden by
+/// setting the `SOLDEER_LOGIN_FILE` environment variable.
+/// For login, the custom path will only be used if the file already exists.
+pub fn define_security_file_location() -> Result<PathBuf, std::io::Error> {
     let custom_security_file = if cfg!(test) {
-        return "./test_save_jwt".to_string();
+        return Ok(PathBuf::from("./test_save_jwt"));
     } else {
-        option_env!("SOLDEER_LOGIN_FILE")
+        env::var("SOLDEER_LOGIN_FILE").ok()
     };
 
     if let Some(file) = custom_security_file {
-        if !file.is_empty() && Path::new(file).exists() {
-            return file.to_string();
+        if !file.is_empty() && Path::new(&file).exists() {
+            return Ok(file.into());
         }
     }
 
-    let home = home_dir();
-    match home {
-        Some(_) => {}
-        None => {
-            println!(
-                "{}",
-                Paint::red(
-                    "HOME(linux) or %UserProfile%(Windows) path variable is not set, we can not determine the user's home directory. Please define this environment variable or define a custom path for the login file using the SOLDEER_LOGIN_FILE environment variable.",
-                    )
-            );
-        }
-    }
-    let security_directory = home.unwrap().join(".soldeer");
+    // if home dir cannot be found, use the current working directory
+    let dir = home_dir().unwrap_or_else(get_current_working_dir);
+    let security_directory = dir.join(".soldeer");
     if !security_directory.exists() {
-        fs::create_dir(&security_directory).unwrap();
+        fs::create_dir(&security_directory)?;
     }
-    let security_file = &security_directory.join(".soldeer_login");
-    String::from(security_file.to_str().unwrap())
-}
-
-pub fn remove_empty_lines(filename: &str) {
-    let file: File = File::open(filename).unwrap();
-
-    let reader: BufReader<File> = BufReader::new(file);
-    let mut new_content: String = String::new();
-    let lines: Vec<_> = reader.lines().collect();
-    let total: usize = lines.len();
-    for (index, line) in lines.into_iter().enumerate() {
-        let line: &String = line.as_ref().unwrap();
-        // Making sure the line contains something
-        if line.len() > 2 {
-            if index == total - 1 {
-                new_content.push_str(&line.to_string());
-            } else {
-                new_content.push_str(&format!("{}\n", line));
-            }
-        }
-    }
-
-    // Removing the annoying new lines at the end and beginning of the file
-    new_content = String::from(new_content.trim_end_matches('\n'));
-    new_content = String::from(new_content.trim_start_matches('\n'));
-    let mut file: std::fs::File = fs::OpenOptions::new()
-        .write(true)
-        .truncate(true)
-        .append(false)
-        .open(Path::new(filename))
-        .unwrap();
-
-    match write!(file, "{}", &new_content) {
-        Ok(_) => {}
-        Err(e) => {
-            eprintln!("Couldn't write to file: {}", e);
-        }
-    }
+    let security_file = security_directory.join(".soldeer_login");
+    Ok(security_file)
 }
 
 pub fn get_base_url() -> String {
@@ -114,48 +87,43 @@ pub fn get_base_url() -> String {
 }
 
 // Function to check for the presence of sensitive files or directories
-pub fn check_dotfiles(path: &Path) -> bool {
-    if let Ok(entries) = fs::read_dir(path) {
-        for entry in entries.flatten() {
-            let file_name = entry.file_name();
-            let file_name_str = file_name.to_string_lossy();
-            if file_name_str.starts_with('.') {
-                return true;
-            }
-        }
+pub fn check_dotfiles(path: impl AsRef<Path>) -> bool {
+    if !path.as_ref().is_dir() {
+        return false;
     }
-    false
+    fs::read_dir(path)
+        .unwrap()
+        .map_while(Result::ok)
+        .any(|entry| entry.file_name().to_string_lossy().starts_with('.'))
 }
 
 // Function to recursively check for sensitive files or directories in a given path
-pub fn check_dotfiles_recursive(path: &Path) -> bool {
-    if check_dotfiles(path) {
+pub fn check_dotfiles_recursive(path: impl AsRef<Path>) -> bool {
+    if check_dotfiles(&path) {
         return true;
     }
 
-    if path.is_dir() {
-        for entry in fs::read_dir(path).unwrap() {
-            let entry = entry.unwrap();
-            let entry_path = entry.path();
-            if check_dotfiles_recursive(&entry_path) {
-                return true;
-            }
-        }
+    if path.as_ref().is_dir() {
+        return fs::read_dir(path)
+            .unwrap()
+            .map_while(Result::ok)
+            .any(|entry| check_dotfiles(entry.path()));
     }
-
     false
 }
 
 // Function to prompt the user for confirmation
 pub fn prompt_user_for_confirmation() -> bool {
-    println!("{}", Paint::yellow(
-        "You are about to include some sensitive files in this version. Are you sure you want to continue?"
-    ));
-    println!("{}", Paint::cyan(
-        "If you are not sure what sensitive files, you can run the dry-run command to check what will be pushed."
-    ));
+    println!(
+        "{}",
+        "You are about to include some sensitive files in this version. Are you sure you want to continue?".yellow()
+    );
+    println!(
+        "{}",
+        "If you are not sure what sensitive files, you can run the dry-run command to check what will be pushed.".cyan()
+    );
 
-    print!("{}", Paint::green("Do you want to continue? (y/n): "));
+    print!("{}", "Do you want to continue? (y/n): ".green());
     std::io::stdout().flush().unwrap();
 
     let mut input = String::new();
@@ -164,31 +132,31 @@ pub fn prompt_user_for_confirmation() -> bool {
     input == "y" || input == "yes"
 }
 
-pub fn get_download_tunnel(dependency_url: &str) -> String {
-    let pattern1 = r"^(git@github\.com|git@gitlab)";
-    let pattern2 = r"^(https://github\.com|https://gitlab\.com)";
-    let re1 = Regex::new(pattern1).unwrap();
-    let re2 = Regex::new(pattern2).unwrap();
-    if re1.is_match(dependency_url) ||
-        (re2.is_match(dependency_url) && dependency_url.ends_with(".git"))
-    {
-        return "git".to_string();
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum UrlType {
+    Git,
+    Http,
+}
+
+pub fn get_url_type(dependency_url: &str) -> UrlType {
+    if GIT_SSH_REGEX.is_match(dependency_url) || GIT_HTTPS_REGEX.is_match(dependency_url) {
+        return UrlType::Git;
     }
-    "http".to_string()
+    UrlType::Http
 }
 
 #[cfg(not(test))]
-pub fn sha256_digest(dependency_name: &str, dependency_version: &str) -> String {
+pub fn sha256_digest(dependency: &HttpDependency) -> String {
     use crate::DEPENDENCY_DIR;
 
     let bytes = std::fs::read(
-        DEPENDENCY_DIR.join(format!("{}-{}.zip", dependency_name, dependency_version)),
+        DEPENDENCY_DIR.join(format!("{}-{}.zip", dependency.name, dependency.version)),
     )
     .unwrap(); // Vec<u8>
     sha256::digest(bytes)
 }
 
 #[cfg(test)]
-pub fn sha256_digest(_dependency_name: &str, _dependency_version: &str) -> String {
+pub fn sha256_digest(_dependency: &HttpDependency) -> String {
     "5019418b1e9128185398870f77a42e51d624c44315bb1572e7545be51d707016".to_string()
 }

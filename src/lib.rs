@@ -1,27 +1,29 @@
 #![cfg_attr(docsrs, feature(doc_cfg, doc_auto_cfg))]
 use crate::{
     auth::login,
-    commands::Subcommands,
-    config::{delete_config, get_foundry_setup, read_config, remappings, Dependency},
+    config::{delete_config, read_config_deps, remappings_txt, Dependency},
     dependency_downloader::{
         delete_dependency_files, download_dependencies, unzip_dependencies, unzip_dependency,
     },
-    errors::SoldeerError,
     janitor::{cleanup_after, healthcheck_dependencies},
     lock::{lock_check, remove_lock, write_lock},
     utils::{check_dotfiles_recursive, get_current_working_dir, prompt_user_for_confirmation},
     versioning::push_version,
 };
-use config::{add_to_config, define_config_file};
+pub use crate::{commands::Subcommands, errors::SoldeerError};
+use config::{
+    add_to_config, get_config_path, read_soldeer_config, remappings_foundry, GitDependency,
+    HttpDependency, RemappingsAction, RemappingsLocation,
+};
 use dependency_downloader::download_dependency;
-use janitor::{cleanup_dependency, CleanupParams};
+use janitor::cleanup_dependency;
 use lock::LockWriteMode;
 use once_cell::sync::Lazy;
-use regex::Regex;
-use remote::{get_dependency_url_remote, get_latest_forge_std_dependency};
+use remote::get_latest_forge_std_dependency;
 use std::{env, path::PathBuf};
-use utils::get_download_tunnel;
-use yansi::Paint;
+use utils::{get_url_type, UrlType};
+use versioning::validate_name;
+use yansi::Paint as _;
 
 mod auth;
 pub mod commands;
@@ -42,125 +44,72 @@ pub static SOLDEER_CONFIG_FILE: Lazy<PathBuf> =
 pub static FOUNDRY_CONFIG_FILE: Lazy<PathBuf> =
     Lazy::new(|| get_current_working_dir().join("foundry.toml"));
 
-#[derive(Debug)]
-pub struct FOUNDRY {
-    remappings: bool,
-}
-
 #[tokio::main]
 pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
     match command {
         Subcommands::Init(init) => {
-            Paint::green("🦌 Running Soldeer init 🦌\n");
-            Paint::green("Initializes a new Soldeer project in foundry\n");
+            println!("{}", "🦌 Running Soldeer init 🦌".green());
+            println!("{}", "Initializes a new Soldeer project in foundry".green());
 
-            if init.clean.is_some() && init.clean.unwrap() {
-                match config::remove_forge_lib() {
-                    Ok(_) => {}
-                    Err(err) => {
-                        return Err(SoldeerError { message: err.cause });
-                    }
-                }
+            if init.clean {
+                config::remove_forge_lib()?;
             }
 
-            let mut dependency: Dependency = match get_latest_forge_std_dependency().await {
-                Ok(dep) => dep,
-                Err(err) => {
-                    return Err(SoldeerError {
-                        message: format!(
-                            "Error downloading a dependency {}~{}",
-                            err.name, err.version
-                        ),
-                    });
-                }
-            };
-            match install_dependency(&mut dependency, false, false).await {
-                Ok(_) => {}
-                Err(err) => return Err(err),
-            }
+            let dependency: Dependency = get_latest_forge_std_dependency().await.map_err(|e| {
+                SoldeerError::DownloadError { dep: "forge-std".to_string(), source: e }
+            })?;
+            install_dependency(dependency, true).await?;
         }
         Subcommands::Install(install) => {
-            if install.dependency.is_none() {
-                return update().await;
-            }
-            Paint::green("🦌 Running Soldeer install 🦌\n");
-            let dependency = install.dependency.unwrap();
-            if !dependency.contains('~') {
-                return Err(SoldeerError {
-                    message: format!(
-                        "Dependency {} does not specify a version.\nThe format should be [DEPENDENCY]~[VERSION]",
-                        dependency
-                    ),
-                });
-            }
-            let dependency_name: String =
-                dependency.split('~').collect::<Vec<&str>>()[0].to_string();
-            let dependency_version: String =
-                dependency.split('~').collect::<Vec<&str>>()[1].to_string();
-            let dependency_url: String;
-
-            let mut custom_url = false;
-            let mut via_git = false;
-
-            if install.remote_url.is_some() {
-                custom_url = true;
-
-                let remote_url = install.remote_url.unwrap();
-                via_git = get_download_tunnel(&remote_url) == "git";
-                dependency_url = remote_url.clone();
-            } else {
-                dependency_url =
-                    match get_dependency_url_remote(&dependency_name, &dependency_version).await {
-                        Ok(url) => url,
-                        Err(err) => {
-                            return Err(SoldeerError {
-                                message: format!(
-                                    "Error downloading a dependency {}~{}. Cause {}",
-                                    err.name, err.version, err.cause
-                                ),
-                            });
-                        }
-                    };
-            }
-
-            // retrieve the commit in case it's sent when using git
-            let mut hash = String::new();
-            if via_git && install.rev.is_some() {
-                hash = install.rev.unwrap();
-            } else if !via_git && install.rev.is_some() {
-                return Err(SoldeerError {
-                    message: format!("Error unknown param {}", install.rev.unwrap()),
-                });
-            }
-
-            let mut dependency = Dependency {
-                name: dependency_name.clone(),
-                version: dependency_version.clone(),
-                url: dependency_url.clone(),
-                hash,
+            let regenerate_remappings = install.regenerate_remappings;
+            let Some(dependency) = install.dependency else {
+                return update(regenerate_remappings).await; // TODO: instead, check which
+                                                            // dependencies do
+                                                            // not match the
+                                                            // integrity checksum and install those
             };
 
-            match install_dependency(&mut dependency, via_git, custom_url).await {
-                Ok(_) => {}
-                Err(err) => return Err(err),
-            }
+            println!("{}", "🦌 Running Soldeer install 🦌".green());
+            let (dependency_name, dependency_version) =
+                dependency.split_once('~').expect("dependency string should have name and version");
+
+            let dep = match install.remote_url {
+                Some(url) => match get_url_type(&url) {
+                    UrlType::Git => Dependency::Git(GitDependency {
+                        name: dependency_name.to_string(),
+                        version: dependency_version.to_string(),
+                        git: url,
+                        rev: install.rev,
+                    }),
+                    UrlType::Http => Dependency::Http(HttpDependency {
+                        name: dependency_name.to_string(),
+                        version: dependency_version.to_string(),
+                        url: Some(url),
+                        checksum: None,
+                    }),
+                },
+                None => Dependency::Http(HttpDependency {
+                    name: dependency_name.to_string(),
+                    version: dependency_version.to_string(),
+                    url: None,
+                    checksum: None,
+                }),
+            };
+
+            install_dependency(dep, regenerate_remappings).await?;
         }
-        Subcommands::Update(_) => {
-            return update().await;
+        Subcommands::Update(update_args) => {
+            let regenerate_remappings = update_args.regenerate_remappings;
+            return update(regenerate_remappings).await;
         }
         Subcommands::Login(_) => {
-            Paint::green("🦌 Running Soldeer login 🦌\n");
-            match login().await {
-                Ok(_) => {}
-                Err(err) => {
-                    return Err(SoldeerError { message: err.cause });
-                }
-            }
+            println!("{}", "🦌 Running Soldeer login 🦌".green());
+            login().await?;
         }
         Subcommands::Push(push) => {
             let path = push.path.unwrap_or(get_current_working_dir());
-            let dry_run = push.dry_run.is_some() && push.dry_run.unwrap();
-            let skip_warnings = push.skip_warnings.unwrap_or(false);
+            let dry_run = push.dry_run;
+            let skip_warnings = push.skip_warnings;
 
             // Check for sensitive files or directories
             if !dry_run &&
@@ -168,282 +117,190 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
                 check_dotfiles_recursive(&path) &&
                 !prompt_user_for_confirmation()
             {
-                Paint::yellow("Push operation aborted by the user.");
+                println!("{}", "Push operation aborted by the user.".yellow());
                 return Ok(());
             }
 
             if dry_run {
                 println!(
-            "{}",
-            Paint::green("🦌 Running Soldeer push with dry-run, a zip file will be available for inspection 🦌\n")
-        );
+                    "{}",
+                    "🦌 Running Soldeer push with dry-run, a zip file will be available for inspection 🦌".green()
+                );
             } else {
-                Paint::green("🦌 Running Soldeer push 🦌\n");
+                println!("{}", "🦌 Running Soldeer push 🦌".green());
             }
 
             if skip_warnings {
-                println!(
-                    "{}",
-                    Paint::yellow("Warning: Skipping sensitive file checks as requested.")
-                );
+                println!("{}", "Warning: Skipping sensitive file checks as requested.".yellow());
             }
 
-            let dependency_name: String =
-                push.dependency.split('~').collect::<Vec<&str>>()[0].to_string();
-            let dependency_version: String =
-                push.dependency.split('~').collect::<Vec<&str>>()[1].to_string();
-            let regex = Regex::new(r"^[@|a-z0-9][a-z0-9-]*[a-z0-9]$").unwrap();
+            let (dependency_name, dependency_version) = push
+                .dependency
+                .split_once('~')
+                .expect("dependency string should have name and version");
 
-            if !regex.is_match(&dependency_name) {
-                return Err(SoldeerError{message:format!("Dependency name {} is not valid, you can use only alphanumeric characters `-` and `@`", &dependency_name)});
-            }
-            match push_version(&dependency_name, &dependency_version, path, dry_run).await {
-                Ok(_) => {}
-                Err(err) => {
-                    return Err(SoldeerError {
-                        message: format!(
-                            "Dependency {}~{} could not be pushed.\nCause: {}",
-                            dependency_name, dependency_version, err.cause
-                        ),
-                    });
-                }
-            }
+            validate_name(dependency_name)?;
+
+            push_version(dependency_name, dependency_version, path, dry_run).await?;
         }
 
         Subcommands::Uninstall(uninstall) => {
             // define the config file
-            let config_file: String = match define_config_file() {
-                Ok(file) => file,
-                Err(_) => {
-                    return Err(SoldeerError {
-                        message: "Could not remove the dependency from the config file".to_string(),
-                    });
-                }
-            };
+            let path = get_config_path()?;
 
             // delete from the config file and return the dependency
-            let dependency = match delete_config(&uninstall.dependency, &config_file) {
-                Ok(d) => d,
-                Err(err) => {
-                    return Err(SoldeerError { message: err.cause });
-                }
-            };
+            let dependency = delete_config(&uninstall.dependency, &path)?;
 
             // deleting the files
-            let _ = delete_dependency_files(&dependency).is_ok();
+            delete_dependency_files(&dependency).map_err(|e| SoldeerError::DownloadError {
+                dep: dependency.to_string(),
+                source: e,
+            })?;
 
             // removing the dependency from the lock file
-            match remove_lock(&dependency) {
-                Ok(d) => d,
-                Err(err) => {
-                    return Err(SoldeerError { message: err.cause });
+            remove_lock(&dependency)?;
+
+            let config = read_soldeer_config(Some(path.clone()))?;
+
+            if config.remappings_generate {
+                if path.to_string_lossy().contains("foundry.toml") {
+                    match config.remappings_location {
+                        RemappingsLocation::Txt => {
+                            remappings_txt(&RemappingsAction::Remove(dependency), &config).await?
+                        }
+                        RemappingsLocation::Config => {
+                            remappings_foundry(
+                                &RemappingsAction::Remove(dependency),
+                                &path,
+                                &config,
+                            )
+                            .await?
+                        }
+                    }
+                } else {
+                    remappings_txt(&RemappingsAction::Remove(dependency), &config).await?;
                 }
-            };
+            }
         }
 
-        Subcommands::VersionDryRun(_) => {
+        Subcommands::Version(_) => {
             const VERSION: &str = env!("CARGO_PKG_VERSION");
-            Paint::cyan(&format!("Current Soldeer {}", VERSION));
+            println!("{}", format!("Current Soldeer {}", VERSION).cyan());
         }
     }
     Ok(())
 }
 
 async fn install_dependency(
-    dependency: &mut Dependency,
-    via_git: bool,
-    custom_url: bool,
+    mut dependency: Dependency,
+    regenerate_remappings: bool,
 ) -> Result<(), SoldeerError> {
-    match lock_check(dependency, true) {
-        Ok(_) => {}
-        Err(err) => {
-            return Err(SoldeerError { message: err.cause });
-        }
-    }
+    lock_check(&dependency, true)?;
 
-    dependency.hash = match download_dependency(dependency).await {
-        Ok(h) => h,
-        Err(err) => {
-            return Err(SoldeerError {
-                message: format!(
-                    "Error downloading a dependency {}~{}. Cause: {}",
-                    err.name, err.version, err.cause
-                ),
-            });
-        }
-    };
-
-    match write_lock(&[dependency.clone()], LockWriteMode::Append) {
-        Ok(_) => {}
-        Err(err) => {
-            return Err(SoldeerError { message: format!("Error writing the lock: {}", err.cause) });
-        }
-    }
-
-    if !via_git {
-        match unzip_dependency(&dependency.name, &dependency.version) {
-            Ok(_) => {}
-            Err(err_unzip) => {
-                match janitor::cleanup_dependency(
-                    dependency,
-                    CleanupParams { full: true, via_git: false },
-                ) {
-                    Ok(_) => {}
-                    Err(err_cleanup) => {
-                        return Err(SoldeerError {
-                            message: format!(
-                                "Error cleaning up dependency {}~{}",
-                                err_cleanup.name, err_cleanup.version
-                            ),
-                        })
-                    }
-                }
-                return Err(SoldeerError {
-                    message: format!(
-                        "Error downloading a dependency {}~{}",
-                        err_unzip.name, err_unzip.version
-                    ),
-                });
-            }
-        }
-    }
-
-    let config_file: String = match define_config_file() {
+    let config_file = match get_config_path() {
         Ok(file) => file,
-
-        Err(_) => match cleanup_dependency(dependency, CleanupParams { full: true, via_git }) {
-            Ok(_) => {
-                return Err(SoldeerError {
-                    message: "Could not define the config file".to_string(),
-                });
-            }
-            Err(_) => {
-                return Err(SoldeerError {
-                    message: "Could not delete dependency artifacts".to_string(),
-                });
-            }
-        },
+        Err(e) => {
+            cleanup_dependency(&dependency, true)?;
+            return Err(e.into());
+        }
     };
+    add_to_config(&dependency, &config_file)?;
 
-    match add_to_config(dependency, custom_url, &config_file, via_git) {
-        Ok(_) => {}
-        Err(err) => {
-            return Err(SoldeerError { message: err.cause });
+    let result = download_dependency(&dependency, false)
+        .await
+        .map_err(|e| SoldeerError::DownloadError { dep: dependency.to_string(), source: e })?;
+    match dependency {
+        Dependency::Http(ref mut dep) => {
+            dep.checksum = Some(result.hash);
+            dep.url = Some(result.url);
+        }
+        Dependency::Git(ref mut dep) => dep.rev = Some(result.hash),
+    }
+
+    write_lock(&[dependency.clone()], LockWriteMode::Append)?;
+
+    if let Dependency::Http(dep) = &dependency {
+        if let Err(e) = unzip_dependency(dep) {
+            cleanup_dependency(&dependency, true)?;
+            return Err(SoldeerError::DownloadError { dep: dependency.to_string(), source: e });
         }
     }
 
-    match janitor::healthcheck_dependency(dependency) {
-        Ok(_) => {}
-        Err(err) => {
-            return Err(SoldeerError {
-                message: format!("Error health-checking dependency {}~{}", err.name, err.version),
-            });
-        }
+    let mut config = read_soldeer_config(Some(config_file.clone()))?;
+    if regenerate_remappings {
+        config.remappings_regenerate = regenerate_remappings;
     }
 
-    match janitor::cleanup_dependency(dependency, CleanupParams { full: false, via_git }) {
-        Ok(_) => {}
-        Err(err) => {
-            return Err(SoldeerError {
-                message: format!("Error cleaning up dependency {}~{}", err.name, err.version),
-            });
-        }
-    }
-    // check the foundry setup, in case we have a foundry.toml, then the foundry.toml will be used
-    // for `dependencies`
-    let f_setup_vec: Vec<bool> = match get_foundry_setup() {
-        Ok(setup) => setup,
-        Err(err) => return Err(SoldeerError { message: err.cause }),
-    };
-    let foundry_setup: FOUNDRY = FOUNDRY { remappings: f_setup_vec[0] };
+    janitor::healthcheck_dependency(&dependency)?;
 
-    if foundry_setup.remappings {
-        match remappings().await {
-            Ok(_) => {}
-            Err(err) => {
-                return Err(SoldeerError { message: err.cause });
+    janitor::cleanup_dependency(&dependency, false)?;
+
+    if config.remappings_generate {
+        if config_file.to_string_lossy().contains("foundry.toml") {
+            match config.remappings_location {
+                RemappingsLocation::Txt => {
+                    remappings_txt(&RemappingsAction::Add(dependency), &config).await?
+                }
+                RemappingsLocation::Config => {
+                    remappings_foundry(&RemappingsAction::Add(dependency), &config_file, &config)
+                        .await?
+                }
             }
+        } else {
+            remappings_txt(&RemappingsAction::Add(dependency), &config).await?;
         }
     }
+
     Ok(())
 }
 
-async fn update() -> Result<(), SoldeerError> {
-    Paint::green("🦌 Running Soldeer update 🦌\n");
+async fn update(regenerate_remappings: bool) -> Result<(), SoldeerError> {
+    println!("{}", "🦌 Running Soldeer update 🦌".green());
 
-    let mut dependencies: Vec<Dependency> = match read_config(String::new()).await {
-        Ok(dep) => dep,
-        Err(err) => return Err(SoldeerError { message: err.cause }),
-    };
-
-    let hashes = match download_dependencies(&dependencies, true).await {
-        Ok(h) => h,
-        Err(err) => {
-            return Err(SoldeerError {
-                message: format!(
-                    "Error downloading a dependency {}~{}. Cause: {}",
-                    err.name, err.version, err.cause
-                ),
-            })
-        }
-    };
-
-    for (index, dependency) in dependencies.iter_mut().enumerate() {
-        dependency.hash.clone_from(&hashes[index]);
+    let config_file = get_config_path()?;
+    let mut config = read_soldeer_config(Some(config_file.clone()))?;
+    if regenerate_remappings {
+        config.remappings_regenerate = regenerate_remappings;
     }
 
-    match unzip_dependencies(&dependencies) {
-        Ok(_) => {}
-        Err(err) => {
-            return Err(SoldeerError {
-                message: format!("Error unzipping dependency {}~{}", err.name, err.version),
-            });
-        }
-    }
+    let mut dependencies: Vec<Dependency> = read_config_deps(None)?;
 
-    match healthcheck_dependencies(&dependencies) {
-        Ok(_) => {}
-        Err(err) => {
-            return Err(SoldeerError {
-                message: format!("Error health-checking dependencies {}~{}", err.name, err.version),
-            });
-        }
-    }
+    let results = download_dependencies(&dependencies, true)
+        .await
+        .map_err(|e| SoldeerError::DownloadError { dep: String::new(), source: e })?;
 
-    match write_lock(&dependencies, LockWriteMode::Replace) {
-        Ok(_) => {}
-        Err(err) => {
-            return Err(SoldeerError { message: format!("Error writing the lock: {}", err.cause) });
-        }
-    }
-
-    match cleanup_after(&dependencies) {
-        Ok(_) => {}
-        Err(err) => {
-            return Err(SoldeerError {
-                message: format!("Error cleanup dependencies {}~{}", err.name, err.version),
-            });
-        }
-    }
-
-    // check the foundry setup, in case we have a foundry.toml, then the foundry.toml will be used
-    // for `dependencies`
-    let f_setup_vec: Vec<bool> = match get_foundry_setup() {
-        Ok(f_setup) => f_setup,
-        Err(err) => {
-            return Err(SoldeerError { message: err.cause });
-        }
-    };
-    let foundry_setup: FOUNDRY = FOUNDRY { remappings: f_setup_vec[0] };
-
-    if foundry_setup.remappings {
-        match remappings().await {
-            Ok(_) => {}
-            Err(err) => {
-                return Err(SoldeerError { message: err.cause });
+    dependencies.iter_mut().zip(results.into_iter()).for_each(|(dependency, result)| {
+        match dependency {
+            Dependency::Http(ref mut dep) => {
+                dep.checksum = Some(result.hash);
+                dep.url = Some(result.url);
             }
+            Dependency::Git(ref mut dep) => dep.rev = Some(result.hash),
+        }
+    });
+
+    unzip_dependencies(&dependencies)
+        .map_err(|e| SoldeerError::DownloadError { dep: String::new(), source: e })?;
+
+    healthcheck_dependencies(&dependencies)?;
+
+    write_lock(&dependencies, LockWriteMode::Replace)?;
+
+    cleanup_after(&dependencies)?;
+
+    if config.remappings_generate {
+        if config_file.to_string_lossy().contains("foundry.toml") {
+            match config.remappings_location {
+                RemappingsLocation::Txt => remappings_txt(&RemappingsAction::None, &config).await?,
+                RemappingsLocation::Config => {
+                    remappings_foundry(&RemappingsAction::None, &config_file, &config).await?
+                }
+            }
+        } else {
+            remappings_txt(&RemappingsAction::None, &config).await?;
         }
     }
+
     Ok(())
 }
 
@@ -487,10 +344,17 @@ libs = ["dependencies"]
 
         write_to_config(&target_config, content);
 
-        env::set_var("base_url", "https://api.soldeer.xyz");
+        unsafe {
+            // became unsafe in Rust 1.80
+            env::set_var("base_url", "https://api.soldeer.xyz");
+        }
 
-        let command =
-            Subcommands::Install(Install { dependency: None, remote_url: None, rev: None });
+        let command = Subcommands::Install(Install {
+            dependency: None,
+            remote_url: None,
+            rev: None,
+            regenerate_remappings: false,
+        });
 
         match run(command) {
             Ok(_) => {}
@@ -531,10 +395,17 @@ libs = ["dependencies"]
 
         write_to_config(&target_config, content);
 
-        env::set_var("base_url", "https://api.soldeer.xyz");
+        unsafe {
+            // became unsafe in Rust 1.80
+            env::set_var("base_url", "https://api.soldeer.xyz");
+        }
 
-        let command =
-            Subcommands::Install(Install { dependency: None, remote_url: None, rev: None });
+        let command = Subcommands::Install(Install {
+            dependency: None,
+            remote_url: None,
+            rev: None,
+            regenerate_remappings: false,
+        });
 
         match run(command) {
             Ok(_) => {}
@@ -573,9 +444,12 @@ libs = ["dependencies"]
 
         write_to_config(&target_config, content);
 
-        env::set_var("base_url", "https://api.soldeer.xyz");
+        unsafe {
+            // became unsafe in Rust 1.80
+            env::set_var("base_url", "https://api.soldeer.xyz");
+        }
 
-        let command = Subcommands::Update(Update {});
+        let command = Subcommands::Update(Update { regenerate_remappings: false });
 
         match run(command) {
             Ok(_) => {}
@@ -616,9 +490,12 @@ libs = ["dependencies"]
 
         write_to_config(&target_config, content);
 
-        env::set_var("base_url", "https://api.soldeer.xyz");
+        unsafe {
+            // became unsafe in Rust 1.80
+            env::set_var("base_url", "https://api.soldeer.xyz");
+        }
 
-        let command = Subcommands::Update(Update {});
+        let command = Subcommands::Update(Update { regenerate_remappings: false });
 
         match run(command) {
             Ok(_) => {}
@@ -671,17 +548,24 @@ libs = ["dependencies"]
 
         write_to_config(&target_config, content);
 
-        env::set_var("base_url", "https://api.soldeer.xyz");
+        unsafe {
+            // became unsafe in Rust 1.80
+            env::set_var("base_url", "https://api.soldeer.xyz");
+        }
 
-        let command =
-            Subcommands::Install(Install { dependency: None, remote_url: None, rev: None });
+        let command = Subcommands::Install(Install {
+            dependency: None,
+            remote_url: None,
+            rev: None,
+            regenerate_remappings: false,
+        });
 
         match run(command) {
             Ok(_) => {}
             Err(err) => {
                 clean_test_env(target_config.clone());
                 // can not generalize as diff systems return various dns errors
-                assert!(err.message.contains("Error downloading a dependency will-fail~1"))
+                assert!(err.to_string().contains("error sending request for url"))
             }
         }
 
@@ -711,8 +595,8 @@ libs = ["dependencies"]
         let command = Subcommands::Push(Push {
             dependency: "@test~1.1".to_string(),
             path: Some(path_dependency.clone()),
-            dry_run: Some(true),
-            skip_warnings: None,
+            dry_run: true,
+            skip_warnings: false,
         });
 
         match run(command) {
@@ -749,8 +633,8 @@ libs = ["dependencies"]
         let command = Subcommands::Push(Push {
             dependency: "@test~1.1".to_string(),
             path: Some(test_dir.clone()),
-            dry_run: None,
-            skip_warnings: None,
+            dry_run: false,
+            skip_warnings: false,
         });
 
         match run(command) {
@@ -789,8 +673,8 @@ libs = ["dependencies"]
         let command = Subcommands::Push(Push {
             dependency: "@test~1.1".to_string(),
             path: Some(test_dir.clone()),
-            dry_run: None,
-            skip_warnings: Some(true),
+            dry_run: false,
+            skip_warnings: true,
         });
 
         match run(command) {
@@ -801,7 +685,7 @@ libs = ["dependencies"]
                 clean_test_env(PathBuf::default());
 
                 // Check if the error is due to not being logged in
-                if e.message.contains("You are not logged in") {
+                if e.to_string().contains("you are not connected") {
                     println!(
                         "Test skipped: User not logged in. This test requires a logged-in state."
                     );
@@ -853,12 +737,16 @@ libs = ["dependencies"]
 
         write_to_config(&target_config, content);
 
-        env::set_var("base_url", "https://api.soldeer.xyz");
+        unsafe {
+            // became unsafe in Rust 1.80
+            env::set_var("base_url", "https://api.soldeer.xyz");
+        }
 
         let command = Subcommands::Install(Install {
             dependency: Some("forge-std~1.9.1".to_string()),
             remote_url: Option::None,
             rev: None,
+            regenerate_remappings: false,
         });
 
         match run(command) {
@@ -904,12 +792,16 @@ libs = ["dependencies"]
 
         write_to_config(&target_config, content);
 
-        env::set_var("base_url", "https://api.soldeer.xyz");
+        unsafe {
+            // became unsafe in Rust 1.80
+            env::set_var("base_url", "https://api.soldeer.xyz");
+        }
 
         let command = Subcommands::Install(Install {
             dependency: Some("forge-std~1.9.1".to_string()),
             remote_url: Some("https://soldeer-revisions.s3.amazonaws.com/forge-std/v1_9_0_03-07-2024_14:44:57_forge-std-v1.9.0.zip".to_string()),
             rev: None,
+            regenerate_remappings: false
         });
 
         match run(command) {
@@ -955,12 +847,16 @@ libs = ["dependencies"]
 
         write_to_config(&target_config, content);
 
-        env::set_var("base_url", "https://api.soldeer.xyz");
+        unsafe {
+            // became unsafe in Rust 1.80
+            env::set_var("base_url", "https://api.soldeer.xyz");
+        }
 
         let command = Subcommands::Install(Install {
             dependency: Some("forge-std~1.9.1".to_string()),
             remote_url: Some("https://github.com/foundry-rs/forge-std.git".to_string()),
             rev: None,
+            regenerate_remappings: false,
         });
 
         match run(command) {
@@ -1006,12 +902,16 @@ libs = ["dependencies"]
 
         write_to_config(&target_config, content);
 
-        env::set_var("base_url", "https://api.soldeer.xyz");
+        unsafe {
+            // became unsafe in Rust 1.80
+            env::set_var("base_url", "https://api.soldeer.xyz");
+        }
 
         let command = Subcommands::Install(Install {
             dependency: Some("forge-std~1.9.1".to_string()),
             remote_url: Some("git@github.com:foundry-rs/forge-std.git".to_string()),
             rev: None,
+            regenerate_remappings: false,
         });
 
         match run(command) {
@@ -1057,12 +957,16 @@ libs = ["dependencies"]
 
         write_to_config(&target_config, content);
 
-        env::set_var("base_url", "https://api.soldeer.xyz");
+        unsafe {
+            // became unsafe in Rust 1.80
+            env::set_var("base_url", "https://api.soldeer.xyz");
+        }
 
         let command = Subcommands::Install(Install {
             dependency: Some("forge-std~1.9.1".to_string()),
             remote_url: Some("git@github.com:foundry-rs/forge-std.git".to_string()),
             rev: Some("3778c3cb8e4244cb5a1c3ef3ce1c71a3683e324a".to_string()),
+            regenerate_remappings: false,
         });
 
         match run(command) {
@@ -1092,9 +996,12 @@ libs = ["dependencies"]
         let content = String::new();
         write_to_config(&target_config, &content);
 
-        env::set_var("base_url", "https://api.soldeer.xyz");
+        unsafe {
+            // became unsafe in Rust 1.80
+            env::set_var("base_url", "https://api.soldeer.xyz");
+        }
 
-        let command = Subcommands::Init(Init { clean: None });
+        let command = Subcommands::Init(Init { clean: false });
 
         match run(command) {
             Ok(_) => {}
@@ -1141,9 +1048,12 @@ libs = ["dependencies"]
         let content = String::new();
         write_to_config(&target_config, &content);
 
-        env::set_var("base_url", "https://api.soldeer.xyz");
+        unsafe {
+            // became unsafe in Rust 1.80
+            env::set_var("base_url", "https://api.soldeer.xyz");
+        }
 
-        let command = Subcommands::Init(Init { clean: Some(true) });
+        let command = Subcommands::Init(Init { clean: true });
 
         match run(command) {
             Ok(_) => {}
@@ -1194,7 +1104,10 @@ libs = ["dependencies"]
         }
 
         let path = env::current_dir().unwrap().join("test").join(target);
-        env::set_var("config_file", path.clone().to_str().unwrap());
+        unsafe {
+            // became unsafe in Rust 1.80
+            env::set_var("config_file", path.to_string_lossy().to_string());
+        }
         path
     }
 

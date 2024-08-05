@@ -146,7 +146,8 @@ pub fn get_url_type(dependency_url: &str) -> UrlType {
 }
 
 pub fn sanitize_dependency_name(dependency_name: &str) -> String {
-    let options = sanitize_filename::Options { truncate: true, windows: true, replacement: "-" };
+    let options =
+        sanitize_filename::Options { truncate: true, windows: cfg!(windows), replacement: "-" };
 
     sanitize_filename::sanitize_with_options(dependency_name, options)
 }

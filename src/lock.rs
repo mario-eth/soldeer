@@ -4,7 +4,7 @@ use crate::{
     utils::{get_current_working_dir, read_file_to_string},
     LOCK_FILE,
 };
-use serde_derive::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 use std::{fs, path::PathBuf};
 use yansi::Paint as _;
 

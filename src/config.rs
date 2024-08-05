@@ -540,7 +540,7 @@ fn generate_remappings(
                     remove_dep.name(),
                     remove_dep.version()
                 ));
-                let remove_dep_orig = format!("dependencies/{}/", sanitized_name);
+                let remove_dep_orig = format!("dependencies/{sanitized_name}/");
                 for (remapped, orig) in existing_remappings {
                     if orig != remove_dep_orig {
                         new_remappings.push(format!("{}={}", remapped, orig));

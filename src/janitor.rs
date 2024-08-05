@@ -19,12 +19,10 @@ pub fn cleanup_after(dependencies: &[Dependency]) -> Result<()> {
 }
 
 pub fn healthcheck_dependency(dependency: &Dependency) -> Result<()> {
-    let file_name: String = format!("{}-{}.zip", dependency.name(), dependency.version());
-    let sanitized_name = sanitize_dependency_name(&file_name);
-    if sanitized_name.is_empty() {
-        return Err(JanitorError::FileNameError);
-    }
-    let new_path = DEPENDENCY_DIR.join(sanitized_name);
+    let file_name =
+        sanitize_dependency_name(&format!("{}-{}", dependency.name(), dependency.version()));
+    println!("fil {}", file_name);
+    let new_path = DEPENDENCY_DIR.join(file_name);
     match fs::metadata(new_path) {
         Ok(_) => Ok(()),
         Err(_) => Err(JanitorError::MissingDependency(dependency.to_string())),
@@ -32,11 +30,9 @@ pub fn healthcheck_dependency(dependency: &Dependency) -> Result<()> {
 }
 
 pub fn cleanup_dependency(dependency: &Dependency, full: bool) -> Result<()> {
-    let file_name: String = format!("{}-{}.zip", dependency.name(), dependency.version());
-    let sanitized_name = sanitize_dependency_name(&file_name);
-    if sanitized_name.is_empty() {
-        return Err(JanitorError::FileNameError);
-    }
+    let sanitized_name =
+        sanitize_dependency_name(&format!("{}-{}.zip", dependency.name(), dependency.version()));
+
     let new_path: std::path::PathBuf = DEPENDENCY_DIR.clone().join(sanitized_name);
     if let Dependency::Http(_) = dependency {
         fs::remove_file(&new_path)

@@ -109,14 +109,11 @@ pub async fn download_dependency(
 }
 
 pub fn unzip_dependency(dependency: &HttpDependency) -> Result<()> {
-    let file_name = format!("{}-{}", dependency.name, dependency.version);
-    let sanitized_name = sanitize_dependency_name(&file_name);
-    if sanitized_name.is_empty() {
-        return Err(DownloadError::FileNameError);
-    }
-
-    let target_name = format!("{}/", sanitized_name);
-    let current_dir = DEPENDENCY_DIR.join(format!("{sanitized_name}.zip"));
+    let file_name =
+        sanitize_dependency_name(&format!("{}-{}", dependency.name, dependency.version));
+    println!("file name in unzip {}", file_name);
+    let target_name = format!("{}/", file_name);
+    let current_dir = DEPENDENCY_DIR.join(format!("{file_name}.zip"));
     let target = DEPENDENCY_DIR.join(target_name);
     let archive = read_file(current_dir).unwrap();
 
@@ -137,7 +134,8 @@ async fn download_via_git(
     dependency_directory: &Path,
 ) -> Result<String> {
     println!("{}", format!("Started git download of {dependency}").green());
-    let target_dir = &format!("{}-{}", dependency.name, dependency.version);
+    let target_dir =
+        sanitize_dependency_name(&format!("{}-{}", dependency.name, dependency.version));
     let path = dependency_directory.join(target_dir);
     let path_str = path.to_string_lossy().to_string();
     if path.exists() {
@@ -233,15 +231,13 @@ async fn download_via_http(
     dependency_directory: &Path,
 ) -> Result<()> {
     println!("{}", format!("Started HTTP download of {dependency}").green());
-    let zip_to_download = &format!("{}-{}.zip", dependency.name, dependency.version);
-    let sanitized_name = sanitize_dependency_name(zip_to_download);
-    if sanitized_name.is_empty() {
-        return Err(DownloadError::FileNameError);
-    }
+    let zip_to_download =
+        sanitize_dependency_name(&format!("{}-{}.zip", dependency.name, dependency.version));
+
     let resp = reqwest::get(url).await?;
     let mut resp = resp.error_for_status()?;
 
-    let file_path = dependency_directory.join(sanitized_name);
+    let file_path = dependency_directory.join(zip_to_download);
     let mut file = tokio_fs::File::create(&file_path)
         .await
         .map_err(|e| DownloadError::IOError { path: file_path.clone(), source: e })?;

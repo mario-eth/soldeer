@@ -29,6 +29,7 @@ reqwest = { version = "0.12.5", features = [
   "stream",
 ], default-features = false }
 rpassword = "7.3.1"
+sanitize-filename = "=0.5.0"
 serde = "1.0.204"
 serde_derive = "1.0.204"
 serde_json = "1.0.120"

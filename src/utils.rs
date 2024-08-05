@@ -160,7 +160,7 @@ pub fn sha256_digest(dependency: &HttpDependency) -> String {
     use crate::DEPENDENCY_DIR;
 
     let file_name = &format!("{}-{}.zip", dependency.name, dependency.version);
-    let sanitized_name = sanitize_dependency_name(&file_name);
+    let sanitized_name = sanitize_dependency_name(file_name);
     if sanitized_name.is_empty() {
         return sanitized_name;
     }

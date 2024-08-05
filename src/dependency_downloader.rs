@@ -234,7 +234,7 @@ async fn download_via_http(
 ) -> Result<()> {
     println!("{}", format!("Started HTTP download of {dependency}").green());
     let zip_to_download = &format!("{}-{}.zip", dependency.name, dependency.version);
-    let sanitized_name = sanitize_dependency_name(&zip_to_download);
+    let sanitized_name = sanitize_dependency_name(zip_to_download);
     if sanitized_name.is_empty() {
         return Err(DownloadError::FileNameError);
     }

@@ -532,7 +532,7 @@ fn generate_remappings(
     let mut new_remappings = Vec::new();
     if soldeer_config.remappings_regenerate {
         new_remappings = remappings_from_deps(config_path, soldeer_config)?;
-        println!("{}", format!("Added all dependencies to remapppings").green());
+        println!("{}", "Added all dependencies to remapppings".green());
     } else {
         match &dependency {
             RemappingsAction::Remove(remove_dep) => {

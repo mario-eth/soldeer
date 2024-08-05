@@ -3,7 +3,7 @@ use crate::{
     utils::{get_current_working_dir, read_file_to_string},
     FOUNDRY_CONFIG_FILE, SOLDEER_CONFIG_FILE,
 };
-use serde_derive::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 use std::{
     env,
     fs::{self, remove_dir_all, remove_file, File},

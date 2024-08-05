@@ -112,10 +112,10 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
             let skip_warnings = push.skip_warnings;
 
             // Check for sensitive files or directories
-            if !dry_run
-                && !skip_warnings
-                && check_dotfiles_recursive(&path)
-                && !prompt_user_for_confirmation()
+            if !dry_run &&
+                !skip_warnings &&
+                check_dotfiles_recursive(&path) &&
+                !prompt_user_for_confirmation()
             {
                 println!("{}", "Push operation aborted by the user.".yellow());
                 return Ok(());

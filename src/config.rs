@@ -432,13 +432,9 @@ fn parse_dependency(name: impl Into<String>, value: &Item) -> Result<Dependency>
             return Err(ConfigError::EmptyVersion(name));
         }
         // this function does not retrieve the url
-        return Ok(HttpDependency {
-            name,
-            version: version.to_string(),
-            url: None,
-            checksum: None,
-        }
-        .into());
+        return Ok(
+            HttpDependency { name, version: version.to_string(), url: None, checksum: None }.into()
+        );
     }
 
     // we should have a table or inline table

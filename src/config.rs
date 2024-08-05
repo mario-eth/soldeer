@@ -1,6 +1,6 @@
 use crate::{
     errors::ConfigError,
-    utils::{get_current_working_dir, read_file_to_string},
+    utils::{get_current_working_dir, read_file_to_string, sanitize_dependency_name},
     FOUNDRY_CONFIG_FILE, SOLDEER_CONFIG_FILE,
 };
 use serde::{Deserialize, Serialize};
@@ -535,8 +535,12 @@ fn generate_remappings(
         match &dependency {
             RemappingsAction::Remove(remove_dep) => {
                 // only keep items not matching the dependency to remove
-                let remove_dep_orig =
-                    format!("dependencies/{}-{}/", remove_dep.name(), remove_dep.version());
+                let sanitized_name = sanitize_dependency_name(&format!(
+                    "{}-{}",
+                    remove_dep.name(),
+                    remove_dep.version()
+                ));
+                let remove_dep_orig = format!("dependencies/{}/", sanitized_name);
                 for (remapped, orig) in existing_remappings {
                     if orig != remove_dep_orig {
                         new_remappings.push(format!("{}={}", remapped, orig));
@@ -548,9 +552,10 @@ fn generate_remappings(
             RemappingsAction::Add(add_dep) => {
                 // we only add the remapping if it's not already existing, otherwise we keep the old
                 // remapping
-                let new_dep_remapped = format_remap_name(soldeer_config, add_dep);
-                let new_dep_orig =
-                    format!("dependencies/{}-{}/", add_dep.name(), add_dep.version());
+                let new_dep_remapped: String = format_remap_name(soldeer_config, add_dep);
+                let sanitized_name =
+                    sanitize_dependency_name(&format!("{}-{}", add_dep.name(), add_dep.version()));
+                let new_dep_orig = format!("dependencies/{}/", sanitized_name);
                 let mut found = false; // whether a remapping existed for that dep already
                 for (remapped, orig) in existing_remappings {
                     new_remappings.push(format!("{}={}", remapped, orig));

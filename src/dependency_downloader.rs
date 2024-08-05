@@ -252,7 +252,11 @@ async fn download_via_http(
 }
 
 pub fn delete_dependency_files(dependency: &Dependency) -> Result<()> {
-    let path = DEPENDENCY_DIR.join(format!("{}-{}", dependency.name(), dependency.version()));
+    let path = DEPENDENCY_DIR.join(sanitize_dependency_name(&format!(
+        "{}-{}",
+        dependency.name(),
+        dependency.version()
+    )));
     fs::remove_dir_all(&path).map_err(|e| DownloadError::IOError { path, source: e })?;
     Ok(())
 }

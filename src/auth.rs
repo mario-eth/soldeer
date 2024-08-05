@@ -130,7 +130,10 @@ mod tests {
 
         // Request a new server from the pool
         let mut server = mockito::Server::new_async().await;
-        env::set_var("base_url", format!("http://{}", server.host_with_port()));
+        unsafe {
+            // became unsafe in Rust 1.80
+            env::set_var("base_url", format!("http://{}", server.host_with_port()));
+        }
 
         // Create a mock
         let _ = server
@@ -161,7 +164,10 @@ mod tests {
     #[serial]
     async fn login_401() {
         let mut server = mockito::Server::new_async().await;
-        env::set_var("base_url", format!("http://{}", server.host_with_port()));
+        unsafe {
+            // became unsafe in Rust 1.80
+            env::set_var("base_url", format!("http://{}", server.host_with_port()));
+        }
 
         let data = r#"
         {
@@ -189,7 +195,11 @@ mod tests {
     #[serial]
     async fn login_500() {
         let mut server = mockito::Server::new_async().await;
-        env::set_var("base_url", format!("http://{}", server.host_with_port()));
+
+        unsafe {
+            // became unsafe in Rust 1.80
+            env::set_var("base_url", format!("http://{}", server.host_with_port()));
+        }
 
         let data = r#"
         {

@@ -112,10 +112,10 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
             let skip_warnings = push.skip_warnings;
 
             // Check for sensitive files or directories
-            if !dry_run &&
-                !skip_warnings &&
-                check_dotfiles_recursive(&path) &&
-                !prompt_user_for_confirmation()
+            if !dry_run
+                && !skip_warnings
+                && check_dotfiles_recursive(&path)
+                && !prompt_user_for_confirmation()
             {
                 println!("{}", "Push operation aborted by the user.".yellow());
                 return Ok(());
@@ -344,7 +344,10 @@ libs = ["dependencies"]
 
         write_to_config(&target_config, content);
 
-        env::set_var("base_url", "https://api.soldeer.xyz");
+        unsafe {
+            // became unsafe in Rust 1.80
+            env::set_var("base_url", "https://api.soldeer.xyz");
+        }
 
         let command = Subcommands::Install(Install {
             dependency: None,
@@ -392,7 +395,10 @@ libs = ["dependencies"]
 
         write_to_config(&target_config, content);
 
-        env::set_var("base_url", "https://api.soldeer.xyz");
+        unsafe {
+            // became unsafe in Rust 1.80
+            env::set_var("base_url", "https://api.soldeer.xyz");
+        }
 
         let command = Subcommands::Install(Install {
             dependency: None,
@@ -438,7 +444,10 @@ libs = ["dependencies"]
 
         write_to_config(&target_config, content);
 
-        env::set_var("base_url", "https://api.soldeer.xyz");
+        unsafe {
+            // became unsafe in Rust 1.80
+            env::set_var("base_url", "https://api.soldeer.xyz");
+        }
 
         let command = Subcommands::Update(Update { regenerate_remappings: false });
 
@@ -481,7 +490,10 @@ libs = ["dependencies"]
 
         write_to_config(&target_config, content);
 
-        env::set_var("base_url", "https://api.soldeer.xyz");
+        unsafe {
+            // became unsafe in Rust 1.80
+            env::set_var("base_url", "https://api.soldeer.xyz");
+        }
 
         let command = Subcommands::Update(Update { regenerate_remappings: false });
 
@@ -536,7 +548,10 @@ libs = ["dependencies"]
 
         write_to_config(&target_config, content);
 
-        env::set_var("base_url", "https://api.soldeer.xyz");
+        unsafe {
+            // became unsafe in Rust 1.80
+            env::set_var("base_url", "https://api.soldeer.xyz");
+        }
 
         let command = Subcommands::Install(Install {
             dependency: None,
@@ -722,7 +737,10 @@ libs = ["dependencies"]
 
         write_to_config(&target_config, content);
 
-        env::set_var("base_url", "https://api.soldeer.xyz");
+        unsafe {
+            // became unsafe in Rust 1.80
+            env::set_var("base_url", "https://api.soldeer.xyz");
+        }
 
         let command = Subcommands::Install(Install {
             dependency: Some("forge-std~1.9.1".to_string()),
@@ -774,7 +792,10 @@ libs = ["dependencies"]
 
         write_to_config(&target_config, content);
 
-        env::set_var("base_url", "https://api.soldeer.xyz");
+        unsafe {
+            // became unsafe in Rust 1.80
+            env::set_var("base_url", "https://api.soldeer.xyz");
+        }
 
         let command = Subcommands::Install(Install {
             dependency: Some("forge-std~1.9.1".to_string()),
@@ -826,7 +847,10 @@ libs = ["dependencies"]
 
         write_to_config(&target_config, content);
 
-        env::set_var("base_url", "https://api.soldeer.xyz");
+        unsafe {
+            // became unsafe in Rust 1.80
+            env::set_var("base_url", "https://api.soldeer.xyz");
+        }
 
         let command = Subcommands::Install(Install {
             dependency: Some("forge-std~1.9.1".to_string()),
@@ -878,7 +902,10 @@ libs = ["dependencies"]
 
         write_to_config(&target_config, content);
 
-        env::set_var("base_url", "https://api.soldeer.xyz");
+        unsafe {
+            // became unsafe in Rust 1.80
+            env::set_var("base_url", "https://api.soldeer.xyz");
+        }
 
         let command = Subcommands::Install(Install {
             dependency: Some("forge-std~1.9.1".to_string()),
@@ -930,7 +957,10 @@ libs = ["dependencies"]
 
         write_to_config(&target_config, content);
 
-        env::set_var("base_url", "https://api.soldeer.xyz");
+        unsafe {
+            // became unsafe in Rust 1.80
+            env::set_var("base_url", "https://api.soldeer.xyz");
+        }
 
         let command = Subcommands::Install(Install {
             dependency: Some("forge-std~1.9.1".to_string()),
@@ -966,7 +996,10 @@ libs = ["dependencies"]
         let content = String::new();
         write_to_config(&target_config, &content);
 
-        env::set_var("base_url", "https://api.soldeer.xyz");
+        unsafe {
+            // became unsafe in Rust 1.80
+            env::set_var("base_url", "https://api.soldeer.xyz");
+        }
 
         let command = Subcommands::Init(Init { clean: false });
 
@@ -1015,7 +1048,10 @@ libs = ["dependencies"]
         let content = String::new();
         write_to_config(&target_config, &content);
 
-        env::set_var("base_url", "https://api.soldeer.xyz");
+        unsafe {
+            // became unsafe in Rust 1.80
+            env::set_var("base_url", "https://api.soldeer.xyz");
+        }
 
         let command = Subcommands::Init(Init { clean: true });
 
@@ -1068,7 +1104,10 @@ libs = ["dependencies"]
         }
 
         let path = env::current_dir().unwrap().join("test").join(target);
-        env::set_var("config_file", path.to_string_lossy().to_string());
+        unsafe {
+            // became unsafe in Rust 1.80
+            env::set_var("config_file", path.to_string_lossy().to_string());
+        }
         path
     }
 

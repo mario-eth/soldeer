@@ -2085,7 +2085,10 @@ remappings_regenerate = true
 "#;
 
         let target_config = define_config(true);
-        env::set_var("config_file", target_config.to_string_lossy().to_string());
+        unsafe {
+            // became unsafe in Rust 1.80
+            env::set_var("config_file", target_config.to_string_lossy().to_string());
+        }
 
         write_to_config(&target_config, content);
 

@@ -18,6 +18,9 @@ static GIT_HTTPS_REGEX: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"^(?:https://github\.com|https://gitlab\.com).*\.git$")
         .expect("git https regex should compile")
 });
+static FILE_NAME_REGEX: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r#"[<>:\"\\|?*\x00-\x1F]"#).expect("should not contain illegal file name characters")
+});
 
 // get the current working directory
 pub fn get_current_working_dir() -> PathBuf {
@@ -145,18 +148,60 @@ pub fn get_url_type(dependency_url: &str) -> UrlType {
     UrlType::Http
 }
 
+pub fn sanitize_dependency_name(dependency_name: &str) -> String {
+    if FILE_NAME_REGEX.is_match(dependency_name) {
+        return String::new();
+    }
+    dependency_name.replace("/", "-")
+}
+
 #[cfg(not(test))]
 pub fn sha256_digest(dependency: &HttpDependency) -> String {
     use crate::DEPENDENCY_DIR;
-
-    let bytes = std::fs::read(
-        DEPENDENCY_DIR.join(format!("{}-{}.zip", dependency.name, dependency.version)),
-    )
-    .unwrap(); // Vec<u8>
+    let dep_name = sanitize_dependency_name(&dependency.name);
+    if dep_name.is_empty() {
+        return dep_name;
+    }
+    let bytes =
+        std::fs::read(DEPENDENCY_DIR.join(format!("{}-{}.zip", dep_name, dependency.version)))
+            .unwrap(); // Vec<u8>
     sha256::digest(bytes)
 }
 
 #[cfg(test)]
 pub fn sha256_digest(_dependency: &HttpDependency) -> String {
     "5019418b1e9128185398870f77a42e51d624c44315bb1572e7545be51d707016".to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn filename_sanitization() {
+        let filenames = vec![
+            "invalid|filename.txt",
+            "invalid:filename.txt",
+            "invalid\"filename.txt",
+            "invalid\\filename.txt",
+            "invalid<filename.txt",
+            "invalid>filename.txt",
+            "invalid*filename.txt",
+            "invalid?filename.txt",
+            "valid/filename.txt", //valid
+            "valid_filename.txt", //valid
+        ];
+        let valid1: &str = filenames[filenames.len() - 2];
+        let valid2: &str = filenames[filenames.len() - 1];
+
+        for filename in filenames {
+            if filename != valid1 && filename != valid2 {
+                assert!(sanitize_dependency_name(filename).is_empty());
+            } else if filename == valid1 {
+                assert_eq!(sanitize_dependency_name(filename), "valid-filename.txt");
+            } else if filename == valid2 {
+                assert_eq!(sanitize_dependency_name(filename), "valid_filename.txt");
+            }
+        }
+    }
 }

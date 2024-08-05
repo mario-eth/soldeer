@@ -1,4 +1,7 @@
-use crate::{config::Dependency, errors::JanitorError, lock::remove_lock, DEPENDENCY_DIR};
+use crate::{
+    config::Dependency, errors::JanitorError, lock::remove_lock, utils::sanitize_dependency_name,
+    DEPENDENCY_DIR,
+};
 use std::fs;
 
 pub type Result<T> = std::result::Result<T, JanitorError>;
@@ -16,7 +19,11 @@ pub fn cleanup_after(dependencies: &[Dependency]) -> Result<()> {
 }
 
 pub fn healthcheck_dependency(dependency: &Dependency) -> Result<()> {
-    let file_name: String = format!("{}-{}", dependency.name(), dependency.version());
+    let sanitized_name = sanitize_dependency_name(dependency.name());
+    if sanitized_name.is_empty() {
+        return Err(JanitorError::FileNameError());
+    }
+    let file_name: String = format!("{}-{}", sanitized_name, dependency.version());
     let new_path = DEPENDENCY_DIR.join(file_name);
     match fs::metadata(new_path) {
         Ok(_) => Ok(()),
@@ -25,7 +32,11 @@ pub fn healthcheck_dependency(dependency: &Dependency) -> Result<()> {
 }
 
 pub fn cleanup_dependency(dependency: &Dependency, full: bool) -> Result<()> {
-    let file_name: String = format!("{}-{}.zip", dependency.name(), dependency.version());
+    let sanitized_name = sanitize_dependency_name(dependency.name());
+    if sanitized_name.is_empty() {
+        return Err(JanitorError::FileNameError());
+    }
+    let file_name: String = format!("{}-{}.zip", sanitized_name, dependency.version());
     let new_path: std::path::PathBuf = DEPENDENCY_DIR.clone().join(file_name);
     if let Dependency::Http(_) = dependency {
         fs::remove_file(&new_path)

@@ -2,7 +2,7 @@ use crate::{
     config::{Dependency, GitDependency, HttpDependency},
     errors::DownloadError,
     remote::get_dependency_url_remote,
-    utils::{read_file, sha256_digest},
+    utils::{read_file, sanitize_dependency_name, sha256_digest},
     DEPENDENCY_DIR,
 };
 use reqwest::IntoUrl;
@@ -109,8 +109,12 @@ pub async fn download_dependency(
 }
 
 pub fn unzip_dependency(dependency: &HttpDependency) -> Result<()> {
-    let file_name = format!("{}-{}.zip", dependency.name, dependency.version);
-    let target_name = format!("{}-{}/", dependency.name, dependency.version);
+    let sanitized_name = sanitize_dependency_name(&dependency.name);
+    if sanitized_name.is_empty() {
+        return Err(DownloadError::FileNameError());
+    }
+    let file_name = format!("{}-{}.zip", sanitized_name, dependency.version);
+    let target_name = format!("{}-{}/", sanitized_name, dependency.version);
     let current_dir = DEPENDENCY_DIR.join(file_name);
     let target = DEPENDENCY_DIR.join(target_name);
     let archive = read_file(current_dir).unwrap();
@@ -228,7 +232,11 @@ async fn download_via_http(
     dependency_directory: &Path,
 ) -> Result<()> {
     println!("{}", format!("Started HTTP download of {dependency}").green());
-    let zip_to_download = &format!("{}-{}.zip", dependency.name, dependency.version);
+    let sanitized_name = sanitize_dependency_name(&dependency.name);
+    if sanitized_name.is_empty() {
+        return Err(DownloadError::FileNameError());
+    }
+    let zip_to_download = &format!("{}-{}.zip", sanitized_name, dependency.version);
     let resp = reqwest::get(url).await?;
     let mut resp = resp.error_for_status()?;
 

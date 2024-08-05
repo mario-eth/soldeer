@@ -1,5 +1,6 @@
 use once_cell::sync::Lazy;
 use regex::Regex;
+use sha2::{Digest, Sha256};
 use simple_home_dir::home_dir;
 use std::{
     env,
@@ -159,4 +160,13 @@ pub fn sha256_digest(dependency: &HttpDependency) -> String {
 #[cfg(test)]
 pub fn sha256_digest(_dependency: &HttpDependency) -> String {
     "5019418b1e9128185398870f77a42e51d624c44315bb1572e7545be51d707016".to_string()
+}
+
+pub fn hash_content<R: Read>(content: &mut R) -> [u8; 32] {
+    let mut hasher = <Sha256 as Digest>::new();
+    let mut buf = [0; 1024];
+    while let Ok(size) = content.read(&mut buf) {
+        hasher.update(&buf[0..size]);
+    }
+    hasher.finalize().into()
 }

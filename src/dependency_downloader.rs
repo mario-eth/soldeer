@@ -18,6 +18,9 @@ use yansi::Paint as _;
 
 pub type Result<T> = std::result::Result<T, DownloadError>;
 
+#[derive(Debug, Clone, Default)]
+pub struct IntegrityChecksum(String);
+
 pub async fn download_dependencies(
     dependencies: &[Dependency],
     clean: bool,
@@ -53,15 +56,15 @@ pub async fn download_dependencies(
 }
 
 // un-zip-ing dependencies to dependencies folder
-pub fn unzip_dependencies(dependencies: &[Dependency]) -> Result<()> {
-    dependencies
+pub fn unzip_dependencies(dependencies: &[Dependency]) -> Result<Vec<IntegrityChecksum>> {
+    let res: Vec<_> = dependencies
         .iter()
         .filter_map(|d| match d {
-            Dependency::Http(dep) => Some(dep),
+            Dependency::Http(dep) => Some(unzip_dependency(dep)),
             _ => None,
         })
-        .try_for_each(unzip_dependency)?;
-    Ok(())
+        .collect::<Result<Vec<_>>>()?;
+    Ok(res)
 }
 
 #[derive(Debug, Clone)]
@@ -108,7 +111,7 @@ pub async fn download_dependency(
     Ok(res)
 }
 
-pub fn unzip_dependency(dependency: &HttpDependency) -> Result<()> {
+pub fn unzip_dependency(dependency: &HttpDependency) -> Result<IntegrityChecksum> {
     let file_name = format!("{}-{}.zip", dependency.name, dependency.version);
     let target_name = format!("{}-{}/", dependency.name, dependency.version);
     let current_dir = DEPENDENCY_DIR.join(file_name);
@@ -117,7 +120,8 @@ pub fn unzip_dependency(dependency: &HttpDependency) -> Result<()> {
 
     zip_extract::extract(Cursor::new(archive), &target, true)?;
     println!("{}", format!("The dependency {dependency} was unzipped!").green());
-    Ok(())
+
+    Ok(IntegrityChecksum::default())
 }
 
 pub fn clean_dependency_directory() {

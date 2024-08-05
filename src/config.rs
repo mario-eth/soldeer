@@ -261,7 +261,6 @@ pub fn read_config_deps(path: Option<PathBuf>) -> Result<Vec<Dependency>> {
         None => get_config_path()?,
     };
     let contents = read_file_to_string(&path);
-    println!("{contents}");
     let doc: DocumentMut = contents.parse::<DocumentMut>()?;
     let Some(Some(data)) = doc.get("dependencies").map(|v| v.as_table()) else {
         return Err(ConfigError::MissingDependencies);
@@ -387,7 +386,6 @@ pub async fn remappings_foundry(
             .filter_map(|r| r.as_str())
             .filter_map(|r| r.split_once('='))
             .collect();
-        println!("{existing_remappings:?}");
         let new_remappings =
             generate_remappings(dependency, &config_path, soldeer_config, existing_remappings)?;
         remappings.clear();
@@ -570,11 +568,8 @@ fn generate_remappings(
                 // all remappings. We need to merge existing remappings with the full list of deps.
                 // We generate all remappings from the dependencies, then replace existing items.
                 new_remappings = remappings_from_deps(config_path, soldeer_config)?;
-                println!("{new_remappings:?}");
                 if !existing_remappings.is_empty() {
-                    println!("got here");
                     for item in new_remappings.iter_mut() {
-                        println!("{item:?}");
                         let (item_remap, item_orig) =
                             item.split_once('=').expect("remappings should have two parts");
                         // try to find an existing item with the same path

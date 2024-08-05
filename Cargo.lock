@@ -1601,7 +1601,6 @@ dependencies = [
  "rpassword",
  "sanitize-filename",
  "serde",
- "serde_derive",
  "serde_json",
  "serial_test",
  "sha256",

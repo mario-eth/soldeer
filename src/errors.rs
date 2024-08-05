@@ -109,7 +109,7 @@ pub enum DownloadError {
     AsyncError(#[from] tokio::task::JoinError),
 
     #[error("error during dependency sanitization operation: The dependency name contains illegal characters")]
-    FileNameError(),
+    FileNameError,
 }
 
 #[derive(Error, Debug)]
@@ -124,7 +124,7 @@ pub enum JanitorError {
     LockError(LockError), // TODO: derive from LockError
 
     #[error("error during dependency sanitization operation: The dependency name contains illegal characters")]
-    FileNameError(),
+    FileNameError,
 }
 
 #[derive(Error, Debug)]
@@ -179,10 +179,4 @@ pub enum PublishError {
 
     #[error("unknown http error")]
     UnknownError,
-}
-
-#[derive(Error, Debug)]
-pub enum FileError {
-    #[error("error during dependency sanitization operation: The dependency name contains illegal characters")]
-    FileNameError(),
 }

@@ -158,13 +158,14 @@ pub fn sanitize_dependency_name(dependency_name: &str) -> String {
 #[cfg(not(test))]
 pub fn sha256_digest(dependency: &HttpDependency) -> String {
     use crate::DEPENDENCY_DIR;
-    let dep_name = sanitize_dependency_name(&dependency.name);
-    if dep_name.is_empty() {
-        return dep_name;
+
+    let file_name = &format!("{}-{}.zip", dependency.name, dependency.version);
+    let sanitized_name = sanitize_dependency_name(&file_name);
+    if sanitized_name.is_empty() {
+        return sanitized_name;
     }
-    let bytes =
-        std::fs::read(DEPENDENCY_DIR.join(format!("{}-{}.zip", dep_name, dependency.version)))
-            .unwrap(); // Vec<u8>
+
+    let bytes = std::fs::read(DEPENDENCY_DIR.join(sanitized_name)).unwrap(); // Vec<u8>
     sha256::digest(bytes)
 }
 

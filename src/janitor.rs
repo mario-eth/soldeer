@@ -21,7 +21,6 @@ pub fn cleanup_after(dependencies: &[Dependency]) -> Result<()> {
 pub fn healthcheck_dependency(dependency: &Dependency) -> Result<()> {
     let file_name =
         sanitize_dependency_name(&format!("{}-{}", dependency.name(), dependency.version()));
-    println!("fil {}", file_name);
     let new_path = DEPENDENCY_DIR.join(file_name);
     match fs::metadata(new_path) {
         Ok(_) => Ok(()),

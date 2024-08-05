@@ -111,7 +111,6 @@ pub async fn download_dependency(
 pub fn unzip_dependency(dependency: &HttpDependency) -> Result<()> {
     let file_name =
         sanitize_dependency_name(&format!("{}-{}", dependency.name, dependency.version));
-    println!("file name in unzip {}", file_name);
     let target_name = format!("{}/", file_name);
     let current_dir = DEPENDENCY_DIR.join(format!("{file_name}.zip"));
     let target = DEPENDENCY_DIR.join(target_name);

@@ -38,7 +38,7 @@ pub struct SoldeerConfig {
     #[serde(default)]
     pub remappings_regenerate: bool,
 
-    #[serde(default)]
+    #[serde(default = "default_true")]
     pub remappings_version: bool,
 
     #[serde(default)]
@@ -53,7 +53,7 @@ impl Default for SoldeerConfig {
         SoldeerConfig {
             remappings_generate: true,
             remappings_regenerate: false,
-            remappings_version: false,
+            remappings_version: true,
             remappings_prefix: String::new(),
             remappings_location: Default::default(),
         }
@@ -432,9 +432,13 @@ fn parse_dependency(name: impl Into<String>, value: &Item) -> Result<Dependency>
             return Err(ConfigError::EmptyVersion(name));
         }
         // this function does not retrieve the url
-        return Ok(
-            HttpDependency { name, version: version.to_string(), url: None, checksum: None }.into()
-        );
+        return Ok(HttpDependency {
+            name,
+            version: version.to_string(),
+            url: None,
+            checksum: None,
+        }
+        .into());
     }
 
     // we should have a table or inline table
@@ -1954,7 +1958,7 @@ remappings_generate = true
 [profile.default]
 solc = "0.8.26"
 libs = ["dependencies"]
-remappings = ["dep1/=dependencies/dep1-1.0.0/"]
+remappings = ["dep1-1.0.0/=dependencies/dep1-1.0.0/"]
 [profile.local.testing]
 ffi = true
 [dependencies]
@@ -2004,9 +2008,9 @@ remappings_generate = true
 [profile.default]
 solc = "0.8.26"
 libs = ["dependencies"]
-remappings = ["dep1/=dependencies/dep1-1.0.0/"]
+remappings = ["dep1-1.0.0/=dependencies/dep1-1.0.0/"]
 [profile.local]
-remappings = ["dep1/=dependencies/dep1-1.0.0/"]
+remappings = ["dep1-1.0.0/=dependencies/dep1-1.0.0/"]
 [profile.local.testing]
 ffi = true
 [dependencies]
@@ -2026,7 +2030,7 @@ remappings_generate = true
 [profile.default]
 solc = "0.8.26"
 libs = ["dependencies"]
-remappings = ["dep2/=dependencies/dep2-1.0.0/"]
+remappings = ["dep2-1.0.0/=dependencies/dep2-1.0.0/"]
 [dependencies]
 [soldeer]
 remappings_generate = true
@@ -2053,7 +2057,7 @@ remappings_generate = true
 [profile.default]
 solc = "0.8.26"
 libs = ["dependencies"]
-remappings = ["dep1/=dependencies/dep1-1.0.0/", "dep2/=dependencies/dep2-1.0.0/"]
+remappings = ["dep1-1.0.0/=dependencies/dep1-1.0.0/", "dep2-1.0.0/=dependencies/dep2-1.0.0/"]
 [dependencies]
 [soldeer]
 remappings_generate = true
@@ -2097,7 +2101,7 @@ remappings_regenerate = true
 [profile.default]
 solc = "0.8.26"
 libs = ["dependencies"]
-remappings = ["dep2/=dependencies/dep2-1.0.0/"]
+remappings = ["dep2-1.0.0/=dependencies/dep2-1.0.0/"]
 [dependencies]
 dep2 = "1.0.0"
 [soldeer]

@@ -255,6 +255,10 @@ pub fn get_config_path() -> Result<PathBuf> {
     }
 }
 
+/// Read the list of dependencies from the config file
+///
+/// If no config file path is provided, then the path is inferred automatically
+/// The returned list is sorted by name and version
 pub fn read_config_deps(path: Option<PathBuf>) -> Result<Vec<Dependency>> {
     let path: PathBuf = match path {
         Some(p) => p,
@@ -270,6 +274,9 @@ pub fn read_config_deps(path: Option<PathBuf>) -> Result<Vec<Dependency>> {
     for (name, v) in data {
         dependencies.push(parse_dependency(name, v)?);
     }
+    dependencies
+        .sort_unstable_by(|a, b| a.name().cmp(b.name()).then_with(|| a.version().cmp(b.version())));
+
     Ok(dependencies)
 }
 

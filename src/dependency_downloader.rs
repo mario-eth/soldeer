@@ -2,7 +2,7 @@ use crate::{
     config::{Dependency, GitDependency, HttpDependency},
     errors::DownloadError,
     remote::get_dependency_url_remote,
-    utils::{read_file, sha256_digest},
+    utils::{read_file, sanitize_dependency_name, sha256_digest},
     DEPENDENCY_DIR,
 };
 use reqwest::IntoUrl;
@@ -112,9 +112,10 @@ pub async fn download_dependency(
 }
 
 pub fn unzip_dependency(dependency: &HttpDependency) -> Result<IntegrityChecksum> {
-    let file_name = format!("{}-{}.zip", dependency.name, dependency.version);
-    let target_name = format!("{}-{}/", dependency.name, dependency.version);
-    let current_dir = DEPENDENCY_DIR.join(file_name);
+    let file_name =
+        sanitize_dependency_name(&format!("{}-{}", dependency.name, dependency.version));
+    let target_name = format!("{}/", file_name);
+    let current_dir = DEPENDENCY_DIR.join(format!("{file_name}.zip"));
     let target = DEPENDENCY_DIR.join(target_name);
     let archive = read_file(current_dir).unwrap();
 
@@ -136,7 +137,8 @@ async fn download_via_git(
     dependency_directory: &Path,
 ) -> Result<String> {
     println!("{}", format!("Started git download of {dependency}").green());
-    let target_dir = &format!("{}-{}", dependency.name, dependency.version);
+    let target_dir =
+        sanitize_dependency_name(&format!("{}-{}", dependency.name, dependency.version));
     let path = dependency_directory.join(target_dir);
     let path_str = path.to_string_lossy().to_string();
     if path.exists() {
@@ -232,7 +234,9 @@ async fn download_via_http(
     dependency_directory: &Path,
 ) -> Result<()> {
     println!("{}", format!("Started HTTP download of {dependency}").green());
-    let zip_to_download = &format!("{}-{}.zip", dependency.name, dependency.version);
+    let zip_to_download =
+        sanitize_dependency_name(&format!("{}-{}.zip", dependency.name, dependency.version));
+
     let resp = reqwest::get(url).await?;
     let mut resp = resp.error_for_status()?;
 
@@ -252,7 +256,11 @@ async fn download_via_http(
 }
 
 pub fn delete_dependency_files(dependency: &Dependency) -> Result<()> {
-    let path = DEPENDENCY_DIR.join(format!("{}-{}", dependency.name(), dependency.version()));
+    let path = DEPENDENCY_DIR.join(sanitize_dependency_name(&format!(
+        "{}-{}",
+        dependency.name(),
+        dependency.version()
+    )));
     fs::remove_dir_all(&path).map_err(|e| DownloadError::IOError { path, source: e })?;
     Ok(())
 }

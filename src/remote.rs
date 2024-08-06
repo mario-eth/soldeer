@@ -6,7 +6,7 @@ use crate::{
 };
 use chrono::{DateTime, Utc};
 use reqwest::Client;
-use serde_derive::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 
 pub async fn get_dependency_url_remote(dependency: &Dependency) -> Result<String> {
     let url = format!(

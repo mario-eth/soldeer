@@ -5,7 +5,7 @@ use crate::{
 use email_address_parser::{EmailAddress, ParsingOptions};
 use reqwest::{Client, StatusCode};
 use rpassword::read_password;
-use serde_derive::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 use std::{
     fs::OpenOptions,
     io::{self, Write},

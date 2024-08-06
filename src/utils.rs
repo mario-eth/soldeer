@@ -145,18 +145,51 @@ pub fn get_url_type(dependency_url: &str) -> UrlType {
     UrlType::Http
 }
 
+pub fn sanitize_dependency_name(dependency_name: &str) -> String {
+    let options =
+        sanitize_filename::Options { truncate: true, windows: cfg!(windows), replacement: "-" };
+
+    sanitize_filename::sanitize_with_options(dependency_name, options)
+}
+
 #[cfg(not(test))]
 pub fn sha256_digest(dependency: &HttpDependency) -> String {
     use crate::DEPENDENCY_DIR;
 
-    let bytes = std::fs::read(
-        DEPENDENCY_DIR.join(format!("{}-{}.zip", dependency.name, dependency.version)),
-    )
-    .unwrap(); // Vec<u8>
+    let file_name =
+        sanitize_dependency_name(&format!("{}-{}.zip", dependency.name, dependency.version));
+
+    let bytes = std::fs::read(DEPENDENCY_DIR.join(file_name)).unwrap(); // Vec<u8>
     sha256::digest(bytes)
 }
 
 #[cfg(test)]
 pub fn sha256_digest(_dependency: &HttpDependency) -> String {
     "5019418b1e9128185398870f77a42e51d624c44315bb1572e7545be51d707016".to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn filename_sanitization() {
+        let filenames = vec![
+            "valid|filename.txt",
+            "valid:filename.txt",
+            "valid\"filename.txt",
+            "valid\\filename.txt",
+            "valid<filename.txt",
+            "valid>filename.txt",
+            "valid*filename.txt",
+            "valid?filename.txt",
+            "valid/filename.txt",
+        ];
+
+        for filename in filenames {
+            assert_eq!(sanitize_dependency_name(filename), "valid-filename.txt");
+        }
+        assert_eq!(sanitize_dependency_name("valid~1.0.0"), "valid~1.0.0");
+        assert_eq!(sanitize_dependency_name("valid~1*0.0"), "valid~1-0.0");
+    }
 }

@@ -552,7 +552,7 @@ fn generate_remappings(
             RemappingsAction::Add(add_dep) => {
                 // we only add the remapping if it's not already existing, otherwise we keep the old
                 // remapping
-                let new_dep_remapped: String = format_remap_name(soldeer_config, add_dep);
+                let new_dep_remapped = format_remap_name(soldeer_config, add_dep);
                 let sanitized_name =
                     sanitize_dependency_name(&format!("{}-{}", add_dep.name(), add_dep.version()));
                 let new_dep_orig = format!("dependencies/{}/", sanitized_name);

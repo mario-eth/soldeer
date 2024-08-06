@@ -32,7 +32,7 @@ pub fn cleanup_dependency(dependency: &Dependency, full: bool) -> Result<()> {
     let sanitized_name =
         sanitize_dependency_name(&format!("{}-{}", dependency.name(), dependency.version()));
 
-    let new_path: std::path::PathBuf = DEPENDENCY_DIR.clone().join(format!("{sanitized_name}.zip"));
+    let new_path = DEPENDENCY_DIR.clone().join(format!("{sanitized_name}.zip"));
     if let Dependency::Http(_) = dependency {
         fs::remove_file(&new_path)
             .map_err(|e| JanitorError::IOError { path: new_path, source: e })?;

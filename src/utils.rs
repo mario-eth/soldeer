@@ -177,7 +177,7 @@ pub fn sha256_digest(_dependency: &HttpDependency) -> String {
 /// Hash the contents of a Reader with SHA256
 pub fn hash_content<R: Read>(content: &mut R) -> [u8; 32] {
     let mut hasher = <Sha256 as Digest>::new();
-    let mut buf = [0; 8192];
+    let mut buf = [0; 1024];
     while let Ok(size) = content.read(&mut buf) {
         if size == 0 {
             break;

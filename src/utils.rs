@@ -196,11 +196,11 @@ pub fn hash_content<R: Read>(content: &mut R) -> [u8; 32] {
 /// file right after unzipping so this is not necessary?
 pub fn hash_folder(
     folder_path: impl AsRef<Path>,
-    ignore_path: PathBuf,
+    ignore_path: Option<PathBuf>,
 ) -> Result<IntegrityChecksum, std::io::Error> {
     // perf: it's easier to check a boolean than to compare paths, so when we find the zip we skip
     // the check afterwards
-    let seen_ignore_path = Arc::new(AtomicBool::new(false));
+    let seen_ignore_path = Arc::new(AtomicBool::new(ignore_path.is_none()));
     // a list of hashes, one for each DirEntry
     let hashes = Arc::new(Mutex::new(Vec::with_capacity(100)));
     // we use a parallel walker to speed things up
@@ -216,10 +216,13 @@ pub fn hash_folder(
             };
             let path = entry.path();
             // check if that file is `ignore_path`, unless we've seen it already
-            if !seen_ignore_path.load(Ordering::SeqCst) && path == ignore_path {
-                // record that we've seen the zip file
-                seen_ignore_path.swap(true, Ordering::SeqCst);
-                return WalkState::Continue;
+            if !seen_ignore_path.load(Ordering::SeqCst) {
+                let ignore_path = ignore_path.as_ref().unwrap();
+                if path == ignore_path {
+                    // record that we've seen the zip file
+                    seen_ignore_path.swap(true, Ordering::SeqCst);
+                    return WalkState::Continue;
+                }
             }
             // first hash the filename/dirname to make sure it can't be renamed or removed
             let mut hasher = <Sha256 as Digest>::new();

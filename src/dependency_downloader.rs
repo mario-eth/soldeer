@@ -128,7 +128,7 @@ pub fn unzip_dependency(dependency: &HttpDependency) -> Result<IntegrityChecksum
     zip_extract::extract(Cursor::new(zip_contents), &target_dir, true)?;
     println!("{}", format!("The dependency {dependency} was unzipped!").green());
 
-    hash_folder(&target_dir, zip_path)
+    hash_folder(&target_dir, Some(zip_path))
         .map_err(|e| DownloadError::IOError { path: target_dir, source: e })
 }
 

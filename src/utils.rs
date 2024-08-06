@@ -1,3 +1,5 @@
+use crate::{config::HttpDependency, dependency_downloader::IntegrityChecksum};
+use ignore::{WalkBuilder, WalkState};
 use once_cell::sync::Lazy;
 use regex::Regex;
 use sha2::{Digest, Sha256};
@@ -6,11 +8,14 @@ use std::{
     env,
     fs::{self, File},
     io::{BufReader, Read, Write},
+    os::unix::ffi::OsStrExt as _,
     path::{Path, PathBuf},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, Mutex,
+    },
 };
 use yansi::Paint as _;
-
-use crate::config::HttpDependency;
 
 static GIT_SSH_REGEX: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"^(?:git@github\.com|git@gitlab)").expect("git ssh regex should compile")
@@ -169,13 +174,82 @@ pub fn sha256_digest(_dependency: &HttpDependency) -> String {
     "5019418b1e9128185398870f77a42e51d624c44315bb1572e7545be51d707016".to_string()
 }
 
+/// Hash the contents of a Reader with SHA256
 pub fn hash_content<R: Read>(content: &mut R) -> [u8; 32] {
     let mut hasher = <Sha256 as Digest>::new();
-    let mut buf = [0; 1024];
+    let mut buf = [0; 8192];
     while let Ok(size) = content.read(&mut buf) {
+        if size == 0 {
+            break;
+        }
         hasher.update(&buf[0..size]);
     }
     hasher.finalize().into()
+}
+
+/// Walk a folder and compute the SHA256 hash of all non-hidden and non-gitignored files inside the
+/// dir, combining them into a single hash.
+///
+/// We hash the name of the folders and files too, so we can check the integrity of their names.
+///
+/// Since the folder contains the zip file still, we need to skip it. TODO: can we remove the zip
+/// file right after unzipping so this is not necessary?
+pub fn hash_folder(
+    folder_path: impl AsRef<Path>,
+    ignore_path: PathBuf,
+) -> Result<IntegrityChecksum, std::io::Error> {
+    // perf: it's easier to check a boolean than to compare paths, so when we find the zip we skip
+    // the check afterwards
+    let seen_ignore_path = Arc::new(AtomicBool::new(false));
+    // a list of hashes, one for each DirEntry
+    let hashes = Arc::new(Mutex::new(Vec::with_capacity(100)));
+    // we use a parallel walker to speed things up
+    let walker = WalkBuilder::new(folder_path).build_parallel();
+    walker.run(|| {
+        let ignore_path = ignore_path.clone();
+        let seen_ignore_path = Arc::clone(&seen_ignore_path);
+        let hashes = Arc::clone(&hashes);
+        // function executed for each DirEntry
+        Box::new(move |result| {
+            let Ok(entry) = result else {
+                return WalkState::Continue;
+            };
+            let path = entry.path();
+            // check if that file is `ignore_path`, unless we've seen it already
+            if !seen_ignore_path.load(Ordering::SeqCst) && path == ignore_path {
+                // record that we've seen the zip file
+                seen_ignore_path.swap(true, Ordering::SeqCst);
+                return WalkState::Continue;
+            }
+            // first hash the filename/dirname to make sure it can't be renamed or removed
+            let mut hasher = <Sha256 as Digest>::new();
+            hasher.update(path.as_os_str().as_bytes());
+            // for files, also hash the contents
+            if let Some(true) = entry.file_type().map(|t| t.is_file()) {
+                if let Ok(file) = File::open(path) {
+                    let mut reader = BufReader::new(file);
+                    let hash = hash_content(&mut reader);
+                    hasher.update(hash);
+                }
+            }
+            // record the hash for that file/folder in the list
+            let hash: [u8; 32] = hasher.finalize().into();
+            let mut hashes_lock = hashes.lock().unwrap();
+            hashes_lock.push(hash);
+            WalkState::Continue
+        })
+    });
+
+    // sort hashes
+    let mut hasher = <Sha256 as Digest>::new();
+    let mut hashes = hashes.lock().unwrap();
+    hashes.sort_unstable();
+    // hash the hashes (yo dawg...)
+    for hash in hashes.iter() {
+        hasher.update(hash);
+    }
+    let hash: [u8; 32] = hasher.finalize().into();
+    Ok(IntegrityChecksum(const_hex::encode(hash)))
 }
 
 #[cfg(test)]

@@ -2,7 +2,7 @@ use crate::{
     config::{Dependency, GitDependency, HttpDependency},
     errors::DownloadError,
     remote::get_dependency_url_remote,
-    utils::{read_file, sanitize_dependency_name, sha256_digest},
+    utils::{hash_folder, read_file, sanitize_dependency_name, sha256_digest},
     DEPENDENCY_DIR,
 };
 use reqwest::IntoUrl;
@@ -19,7 +19,13 @@ use yansi::Paint as _;
 pub type Result<T> = std::result::Result<T, DownloadError>;
 
 #[derive(Debug, Clone, Default)]
-pub struct IntegrityChecksum(String);
+pub struct IntegrityChecksum(pub String);
+
+impl From<IntegrityChecksum> for String {
+    fn from(value: IntegrityChecksum) -> Self {
+        value.0
+    }
+}
 
 pub async fn download_dependencies(
     dependencies: &[Dependency],
@@ -56,12 +62,12 @@ pub async fn download_dependencies(
 }
 
 // un-zip-ing dependencies to dependencies folder
-pub fn unzip_dependencies(dependencies: &[Dependency]) -> Result<Vec<IntegrityChecksum>> {
+pub fn unzip_dependencies(dependencies: &[Dependency]) -> Result<Vec<Option<IntegrityChecksum>>> {
     let res: Vec<_> = dependencies
         .iter()
-        .filter_map(|d| match d {
-            Dependency::Http(dep) => Some(unzip_dependency(dep)),
-            _ => None,
+        .map(|d| match d {
+            Dependency::Http(dep) => unzip_dependency(dep).map(Some),
+            _ => Ok(None),
         })
         .collect::<Result<Vec<_>>>()?;
     Ok(res)
@@ -115,14 +121,15 @@ pub fn unzip_dependency(dependency: &HttpDependency) -> Result<IntegrityChecksum
     let file_name =
         sanitize_dependency_name(&format!("{}-{}", dependency.name, dependency.version));
     let target_name = format!("{}/", file_name);
-    let current_dir = DEPENDENCY_DIR.join(format!("{file_name}.zip"));
-    let target = DEPENDENCY_DIR.join(target_name);
-    let archive = read_file(current_dir).unwrap();
+    let zip_path = DEPENDENCY_DIR.join(format!("{file_name}.zip"));
+    let target_dir = DEPENDENCY_DIR.join(target_name);
+    let zip_contents = read_file(&zip_path).unwrap();
 
-    zip_extract::extract(Cursor::new(archive), &target, true)?;
+    zip_extract::extract(Cursor::new(zip_contents), &target_dir, true)?;
     println!("{}", format!("The dependency {dependency} was unzipped!").green());
 
-    Ok(IntegrityChecksum::default())
+    hash_folder(&target_dir, zip_path)
+        .map_err(|e| DownloadError::IOError { path: target_dir, source: e })
 }
 
 pub fn clean_dependency_directory() {

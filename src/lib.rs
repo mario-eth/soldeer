@@ -1021,9 +1021,8 @@ libs = ["dependencies"]
             }
         }
 
-        let path_dependency = DEPENDENCY_DIR.join("forge-std-1.9.1");
         let lock_test = get_current_working_dir().join("test").join("soldeer.lock");
-        assert!(path_dependency.exists());
+        assert!(find_forge_std_path().exists());
         assert!(lock_test.exists());
         clean_test_env(target_config);
     }
@@ -1037,14 +1036,12 @@ libs = ["dependencies"]
         let submodules_path = get_current_working_dir().join(".gitmodules");
         let lib_path = get_current_working_dir().join("lib");
 
-        let path_dependency = DEPENDENCY_DIR.join("forge-std-1.9.1");
         let lock_test = get_current_working_dir().join("test").join("soldeer.lock");
 
         //remove it just in case
         let _ = remove_file(&submodules_path);
         let _ = remove_dir_all(&lib_path);
         let _ = remove_file(&lock_test);
-        let _ = remove_dir_all(&path_dependency);
 
         let mut file: std::fs::File =
             fs::OpenOptions::new().create_new(true).write(true).open(&submodules_path).unwrap();
@@ -1073,7 +1070,7 @@ libs = ["dependencies"]
             }
         }
 
-        assert!(path_dependency.exists());
+        assert!(find_forge_std_path().exists());
         assert!(lock_test.exists());
         assert!(!submodules_path.exists());
         assert!(!lib_path.exists());
@@ -1130,5 +1127,17 @@ libs = ["dependencies"]
             eprintln!("Couldn't write to the config file: {}", e);
         }
         String::from(target.to_str().unwrap())
+    }
+
+    fn find_forge_std_path() -> PathBuf {
+        for entry in fs::read_dir(DEPENDENCY_DIR.clone()).unwrap().filter_map(Result::ok) {
+            let path = entry.path();
+            if path.is_dir() &&
+                path.file_name().unwrap().to_string_lossy().starts_with("forge-std-")
+            {
+                return path;
+            }
+        }
+        panic!("could not find forge-std folder in dependency dir");
     }
 }

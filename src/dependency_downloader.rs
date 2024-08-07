@@ -18,6 +18,9 @@ use yansi::Paint as _;
 
 pub type Result<T> = std::result::Result<T, DownloadError>;
 
+/// Download the dependencies from the list in parallel
+///
+/// Note: the dependencies list should be sorted by name and version
 pub async fn download_dependencies(
     dependencies: &[Dependency],
     clean: bool,
@@ -39,15 +42,17 @@ pub async fn download_dependencies(
     let mut set = JoinSet::new();
     for dep in dependencies {
         set.spawn({
-            let dep = dep.clone();
-            async move { download_dependency(&dep, true).await }
+            let d = dep.clone();
+            async move { download_dependency(&d, true).await }
         });
     }
 
-    let mut results = Vec::<DownloadResult>::new();
+    let mut results = Vec::new();
     while let Some(res) = set.join_next().await {
         results.push(res??);
     }
+    // sort to make the order consistent with the input dependencies list (which should be sorted)
+    results.sort_unstable_by(|a, b| a.name.cmp(&b.name).then_with(|| a.version.cmp(&b.version)));
 
     Ok(results)
 }
@@ -66,6 +71,8 @@ pub fn unzip_dependencies(dependencies: &[Dependency]) -> Result<()> {
 
 #[derive(Debug, Clone)]
 pub struct DownloadResult {
+    pub name: String,
+    pub version: String,
     pub hash: String,
     pub url: String,
 }
@@ -93,17 +100,24 @@ pub async fn download_dependency(
                 None => get_dependency_url_remote(dependency).await?,
             };
             download_via_http(&url, dep, &dependency_directory).await?;
-            DownloadResult { hash: sha256_digest(dep), url }
+            DownloadResult {
+                name: dep.name.clone(),
+                version: dep.version.clone(),
+                hash: sha256_digest(dep),
+                url,
+            }
         }
         Dependency::Git(dep) => {
             let hash = download_via_git(dep, &dependency_directory).await?;
-            DownloadResult { hash, url: dep.git.clone() }
+            DownloadResult {
+                name: dep.name.clone(),
+                version: dep.version.clone(),
+                hash,
+                url: dep.git.clone(),
+            }
         }
     };
-    println!(
-        "{}",
-        format!("Dependency {}-{} downloaded!", dependency.name(), dependency.version()).green()
-    );
+    println!("{}", format!("Dependency {dependency} downloaded!").green());
 
     Ok(res)
 }

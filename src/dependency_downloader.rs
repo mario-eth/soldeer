@@ -121,7 +121,7 @@ pub async fn download_dependency(
     };
 
     if recursive_deps {
-        check_recursiveness(dependency).unwrap();
+        install_subdependencies(dependency)?;
     }
     println!("{}", format!("Dependency {dependency} downloaded!").green());
 
@@ -285,7 +285,7 @@ fn transform_git_to_http(url: &str) -> String {
     }
 }
 
-fn check_recursiveness(dependency: &Dependency) -> Result<()> {
+fn install_subdependencies(dependency: &Dependency) -> Result<()> {
     let dep_name =
         sanitize_dependency_name(&format!("{}-{}", dependency.name(), dependency.version()));
 
@@ -305,7 +305,7 @@ fn check_recursiveness(dependency: &Dependency) -> Result<()> {
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
 
-    let status = result.status().unwrap();
+    let status = result.status().expect("subdependency via GIT failed");
 
     if !status.success() {
         println!("{}", "Dependency has no submodule dependency.".yellow());
@@ -319,7 +319,7 @@ fn check_recursiveness(dependency: &Dependency) -> Result<()> {
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
 
-    let status = result.status().unwrap();
+    let status = result.status().expect("subdependency via Soldeer failed");
 
     if !status.success() {
         println!("{}", "Dependency has no Soldeer dependency.".yellow());
@@ -828,7 +828,7 @@ mod tests {
 
     #[tokio::test]
     #[serial]
-    async fn download_dependency_with_recursiveness_on_soldeer_success() {
+    async fn download_dependency_with_subdependencies_on_soldeer_success() {
         clean_dependency_directory();
         let mut dependencies: Vec<Dependency> = Vec::new();
         let dependency = Dependency::Git(GitDependency {
@@ -854,7 +854,7 @@ mod tests {
 
     #[tokio::test]
     #[serial]
-    async fn download_dependency_with_recursiveness_on_git_success() {
+    async fn download_dependency_with_subdependencies_on_git_success() {
         clean_dependency_directory();
         let mut dependencies: Vec<Dependency> = Vec::new();
         let dependency = Dependency::Git(GitDependency {

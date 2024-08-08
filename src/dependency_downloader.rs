@@ -170,8 +170,8 @@ async fn download_via_git(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
 
-    let status = result.status().unwrap();
-    let out = result.output().unwrap();
+    let status = result.status().expect("Getting clone status failed");
+    let out = result.output().expect("Getting clone output failed");
 
     if !status.success() {
         let _ = fs::remove_dir_all(&path);
@@ -190,8 +190,8 @@ async fn download_via_git(
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped());
 
-            let out = result.output().unwrap();
-            let status = result.status().unwrap();
+            let out = result.output().expect("Checkout to revision status failed");
+            let status = result.status().expect("Checkout to revision getting output failed");
 
             if !status.success() {
                 let _ = fs::remove_dir_all(&path);
@@ -211,8 +211,8 @@ async fn download_via_git(
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped());
 
-            let out = result.output().unwrap();
-            let status = result.status().unwrap();
+            let out = result.output().expect("Getting revision status failed");
+            let status = result.status().expect("Getting revision output failed");
             if !status.success() {
                 let _ = fs::remove_dir_all(&path);
                 return Err(DownloadError::GitError(
@@ -305,7 +305,7 @@ fn install_subdependencies(dependency: &Dependency) -> Result<()> {
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
 
-    let status = result.status().expect("subdependency via GIT failed");
+    let status = result.status().expect("Subdependency via GIT failed");
 
     if !status.success() {
         println!("{}", "Dependency has no submodule dependency.".yellow());
@@ -319,7 +319,7 @@ fn install_subdependencies(dependency: &Dependency) -> Result<()> {
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
 
-    let status = result.status().expect("subdependency via Soldeer failed");
+    let status = result.status().expect("Subdependency via Soldeer failed");
 
     if !status.success() {
         println!("{}", "Dependency has no Soldeer dependency.".yellow());

@@ -161,11 +161,10 @@ async fn download_via_git(
         let _ = fs::remove_dir_all(&path);
     }
 
-    let http_url = transform_git_to_http(&dependency.git);
     let mut git_clone = Command::new("git");
 
     let result = git_clone
-        .args(["clone", &http_url, &path_str])
+        .args(["clone", &dependency.git, &path_str])
         .env("GIT_TERMINAL_PROMPT", "0")
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
@@ -273,18 +272,6 @@ pub fn delete_dependency_files(dependency: &Dependency) -> Result<()> {
     Ok(())
 }
 
-fn transform_git_to_http(url: &str) -> String {
-    if let Some(stripped) = url.strip_prefix("git@github.com:") {
-        let repo_path = stripped;
-        format!("https://github.com/{}", repo_path)
-    } else if let Some(stripped) = url.strip_prefix("git@gitlab.com:") {
-        let repo_path = stripped;
-        format!("https://gitlab.com/{}", repo_path)
-    } else {
-        url.to_string()
-    }
-}
-
 fn install_subdependencies(dependency: &Dependency) -> Result<()> {
     let dep_name =
         sanitize_dependency_name(&format!("{}-{}", dependency.name(), dependency.version()));
@@ -361,57 +348,13 @@ mod tests {
 
     #[tokio::test]
     #[serial]
-    async fn download_dependencies_git_one_success() {
+    async fn download_dependency_gitlab_httpurl_with_a_specific_revision() {
         clean_dependency_directory();
         let mut dependencies: Vec<Dependency> = Vec::new();
         let dependency = Dependency::Git(GitDependency {
             name: "@openzeppelin-contracts".to_string(),
             version: "2.3.0".to_string(),
-            git: "git@github.com:transmissions11/solmate.git".to_string(),
-            rev: None,
-        });
-        dependencies.push(dependency.clone());
-        let results = download_dependencies(&dependencies, false, false).await.unwrap();
-        let path_dir =
-            DEPENDENCY_DIR.join(format!("{}-{}", &dependency.name(), &dependency.version()));
-        assert!(path_dir.exists());
-        assert!(path_dir.join("src").join("auth").join("Owned.sol").exists());
-        assert!(results.len() == 1);
-        assert!(!results[0].hash.is_empty());
-        clean_dependency_directory();
-    }
-
-    #[tokio::test]
-    #[serial]
-    async fn download_dependencies_gitlab_giturl_one_success() {
-        clean_dependency_directory();
-        let mut dependencies: Vec<Dependency> = Vec::new();
-        let dependency = Dependency::Git(GitDependency {
-            name: "@openzeppelin-contracts".to_string(),
-            version: "2.3.0".to_string(),
-            git: "git@gitlab.com:mario4582928/Mario.git".to_string(),
-            rev: None,
-        });
-        dependencies.push(dependency.clone());
-        let results = download_dependencies(&dependencies, false, false).await.unwrap();
-        let path_dir =
-            DEPENDENCY_DIR.join(format!("{}-{}", &dependency.name(), &dependency.version()));
-        assert!(path_dir.exists());
-        assert!(path_dir.join("JustATest3.md").exists());
-        assert!(results.len() == 1);
-        assert_eq!(results[0].hash, "22868f426bd4dd0e682b5ec5f9bd55507664240c"); // this is the last commit, hash == commit
-        clean_dependency_directory();
-    }
-
-    #[tokio::test]
-    #[serial]
-    async fn download_dependency_gitlab_giturl_with_a_specific_revision() {
-        clean_dependency_directory();
-        let mut dependencies: Vec<Dependency> = Vec::new();
-        let dependency = Dependency::Git(GitDependency {
-            name: "@openzeppelin-contracts".to_string(),
-            version: "2.3.0".to_string(),
-            git: "git@gitlab.com:mario4582928/Mario.git".to_string(),
+            git: "https://gitlab.com/mario4582928/Mario.git".to_string(),
             rev: Some("7a0663eaf7488732f39550be655bad6694974cb3".to_string()),
         });
         dependencies.push(dependency.clone());
@@ -496,12 +439,12 @@ mod tests {
 
     #[tokio::test]
     #[serial]
-    async fn download_dependencies_git_two_success() {
+    async fn download_dependencies_git_http_two_success() {
         let mut dependencies: Vec<Dependency> = Vec::new();
         let dependency_one = Dependency::Git(GitDependency {
             name: "@openzeppelin-contracts".to_string(),
             version: "2.3.0".to_string(),
-            git: "git@github.com:transmissions11/solmate.git".to_string(),
+            git: "https://github.com/transmissions11/solmate.git".to_string(),
             rev: None,
         });
         dependencies.push(dependency_one.clone());
@@ -769,38 +712,6 @@ mod tests {
         assert_eq!(get_url_type("https://github.com/foundry-rs/forge-std.git"), UrlType::Git);
     }
 
-    #[test]
-    fn transform_git_giturl_to_http_success() {
-        assert_eq!(
-            transform_git_to_http("git@github.com:foundry-rs/forge-std.git"),
-            "https://github.com/foundry-rs/forge-std.git"
-        );
-    }
-
-    #[test]
-    fn transform_git_httpurl_to_http_success() {
-        assert_eq!(
-            transform_git_to_http("https://github.com/foundry-rs/forge-std.git"),
-            "https://github.com/foundry-rs/forge-std.git"
-        );
-    }
-
-    #[test]
-    fn transform_gitlab_giturl_to_http_success() {
-        assert_eq!(
-            transform_git_to_http("git@gitlab.com:mario4582928/Mario.git"),
-            "https://gitlab.com/mario4582928/Mario.git"
-        );
-    }
-
-    #[test]
-    fn transform_gitlab_httpurl_to_http_success() {
-        assert_eq!(
-            transform_git_to_http("https://gitlab.com/mario4582928/Mario.git"),
-            "https://gitlab.com/mario4582928/Mario.git"
-        );
-    }
-
     #[tokio::test]
     #[serial]
     async fn remove_one_dependency() {
@@ -834,7 +745,7 @@ mod tests {
         let dependency = Dependency::Git(GitDependency {
             name: "dep1".to_string(),
             version: "1.0".to_string(),
-            git: "git@gitlab.com:mario4582928/mario-soldeer-dependency.git".to_string(),
+            git: "https://gitlab.com/mario4582928/mario-soldeer-dependency.git".to_string(),
             rev: None,
         });
         dependencies.push(dependency.clone());
@@ -860,7 +771,7 @@ mod tests {
         let dependency = Dependency::Git(GitDependency {
             name: "dep1".to_string(),
             version: "1.0".to_string(),
-            git: "git@gitlab.com:mario4582928/mario-git-submodule.git".to_string(),
+            git: "https://gitlab.com/mario4582928/mario-git-submodule.git".to_string(),
             rev: None,
         });
         dependencies.push(dependency.clone());

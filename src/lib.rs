@@ -503,8 +503,8 @@ libs = ["dependencies"]
 
 [dependencies]
 "@dep1" = {version = "1", url = "https://soldeer-revisions.s3.amazonaws.com/@openzeppelin-contracts/3_3_0-rc_2_22-01-2024_13:12:57_contracts.zip"}
-"@dep2" = {version = "2", git = "git@gitlab.com:mario4582928/Mario.git", rev="22868f426bd4dd0e682b5ec5f9bd55507664240c" }
-"@dep3" = {version = "3.3", git = "git@gitlab.com:mario4582928/Mario.git", rev="7a0663eaf7488732f39550be655bad6694974cb3" }
+"@dep2" = {version = "2", git = "https://gitlab.com/mario4582928/Mario.git", rev="22868f426bd4dd0e682b5ec5f9bd55507664240c" }
+"@dep3" = {version = "3.3", git = "https://gitlab.com/mario4582928/Mario.git", rev="7a0663eaf7488732f39550be655bad6694974cb3" }
 "#;
 
         let target_config = define_config(true);

@@ -503,8 +503,8 @@ libs = ["dependencies"]
 
 [dependencies]
 "@dep1" = {version = "1", url = "https://soldeer-revisions.s3.amazonaws.com/@openzeppelin-contracts/3_3_0-rc_2_22-01-2024_13:12:57_contracts.zip"}
-"@dep2" = {version = "2", git = "git@gitlab.com:mario4582928/Mario.git", rev="22868f426bd4dd0e682b5ec5f9bd55507664240c" }
-"@dep3" = {version = "3.3", git = "git@gitlab.com:mario4582928/Mario.git", rev="7a0663eaf7488732f39550be655bad6694974cb3" }
+"@dep2" = {version = "2", git = "https://gitlab.com/mario4582928/Mario.git", rev="22868f426bd4dd0e682b5ec5f9bd55507664240c" }
+"@dep3" = {version = "3.3", git = "https://gitlab.com/mario4582928/Mario.git", rev="7a0663eaf7488732f39550be655bad6694974cb3" }
 "#;
 
         let target_config = define_config(true);
@@ -935,7 +935,7 @@ libs = ["dependencies"]
 
         let command = Subcommands::Install(Install {
             dependency: Some("forge-std~1.9.1".to_string()),
-            remote_url: Some("git@github.com:foundry-rs/forge-std.git".to_string()),
+            remote_url: Some("https://github.com/foundry-rs/forge-std.git".to_string()),
             rev: None,
             regenerate_remappings: false,
             recursive_deps: false,
@@ -991,7 +991,7 @@ libs = ["dependencies"]
 
         let command = Subcommands::Install(Install {
             dependency: Some("forge-std~1.9.1".to_string()),
-            remote_url: Some("git@github.com:foundry-rs/forge-std.git".to_string()),
+            remote_url: Some("https://github.com/foundry-rs/forge-std.git".to_string()),
             rev: Some("3778c3cb8e4244cb5a1c3ef3ce1c71a3683e324a".to_string()),
             regenerate_remappings: false,
             recursive_deps: false,

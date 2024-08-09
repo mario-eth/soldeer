@@ -107,6 +107,9 @@ pub enum DownloadError {
 
     #[error("error during async operation: {0}")]
     AsyncError(#[from] tokio::task::JoinError),
+
+    #[error("Could download the dependencies of this dependency {0}")]
+    RecursivenessError(String),
 }
 
 #[derive(Error, Debug)]

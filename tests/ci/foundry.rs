@@ -25,6 +25,7 @@ fn soldeer_install_valid_dependency() {
         remote_url: None,
         rev: None,
         regenerate_remappings: false,
+        recursive_deps: false,
     });
 
     match soldeer::run(command) {

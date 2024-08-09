@@ -46,6 +46,9 @@ pub struct SoldeerConfig {
 
     #[serde(default)]
     pub remappings_location: RemappingsLocation,
+
+    #[serde(default)]
+    pub recursive_deps: bool,
 }
 
 impl Default for SoldeerConfig {
@@ -56,6 +59,7 @@ impl Default for SoldeerConfig {
             remappings_version: true,
             remappings_prefix: String::new(),
             remappings_location: Default::default(),
+            recursive_deps: false,
         }
     }
 }

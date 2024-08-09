@@ -720,7 +720,7 @@ mod tests {
         let dependency = Dependency::Git(GitDependency {
             name: "@openzeppelin-contracts".to_string(),
             version: "2.3.0".to_string(),
-            git: "git@github.com:transmissions11/solmate.git".to_string(),
+            git: "https://github.com/transmissions11/solmate.git".to_string(),
             rev: None,
         });
         dependencies.push(dependency.clone());

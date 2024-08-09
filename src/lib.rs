@@ -935,7 +935,7 @@ libs = ["dependencies"]
 
         let command = Subcommands::Install(Install {
             dependency: Some("forge-std~1.9.1".to_string()),
-            remote_url: Some("git@github.com:foundry-rs/forge-std.git".to_string()),
+            remote_url: Some("https://github.com/foundry-rs/forge-std.git".to_string()),
             rev: None,
             regenerate_remappings: false,
             recursive_deps: false,
@@ -991,7 +991,7 @@ libs = ["dependencies"]
 
         let command = Subcommands::Install(Install {
             dependency: Some("forge-std~1.9.1".to_string()),
-            remote_url: Some("git@github.com:foundry-rs/forge-std.git".to_string()),
+            remote_url: Some("https://github.com/foundry-rs/forge-std.git".to_string()),
             rev: Some("3778c3cb8e4244cb5a1c3ef3ce1c71a3683e324a".to_string()),
             regenerate_remappings: false,
             recursive_deps: false,

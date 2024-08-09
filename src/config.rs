@@ -114,6 +114,7 @@ impl Dependency {
         }
     }
 
+    #[allow(dead_code)]
     pub fn url(&self) -> Option<&String> {
         match self {
             Dependency::Http(dep) => dep.url.as_ref(),
@@ -188,6 +189,7 @@ impl Dependency {
         }
     }
 
+    #[allow(dead_code)]
     pub fn as_http(&self) -> Option<&HttpDependency> {
         if let Self::Http(v) = self {
             Some(v)
@@ -196,6 +198,7 @@ impl Dependency {
         }
     }
 
+    #[allow(dead_code)]
     pub fn as_git(&self) -> Option<&GitDependency> {
         if let Self::Git(v) = self {
             Some(v)

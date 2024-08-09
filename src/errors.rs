@@ -109,7 +109,7 @@ pub enum DownloadError {
     AsyncError(#[from] tokio::task::JoinError),
 
     #[error("Could download the dependencies of this dependency {0}")]
-    RecursivenessError(String),
+    SubdependencyError(String),
 }
 
 #[derive(Error, Debug)]

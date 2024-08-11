@@ -254,7 +254,7 @@ async fn install_dependency(
     }
 
     if !custom_url {
-        let new_dep = match get_url_type(&dependency.url().unwrap()) {
+        let new_dep = match get_url_type(dependency.url().unwrap()) {
             UrlType::Git => Dependency::Git(GitDependency {
                 name: dependency.name().to_string(),
                 version: dependency.version().to_string(),

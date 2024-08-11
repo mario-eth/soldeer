@@ -1393,6 +1393,7 @@ libs = ["dependencies"]
             .join("@openzeppelin-contracts-5.0.2")
             .join("token");
         assert!(path_dir.exists());
+        clean_test_env(target_config);
     }
 
     #[test]
@@ -1452,6 +1453,7 @@ recursive_deps = true
             .join("@openzeppelin-contracts-5.0.2")
             .join("token");
         assert!(path_dir.exists());
+        clean_test_env(target_config);
     }
 
     #[test]
@@ -1503,6 +1505,7 @@ libs = ["dependencies"]
         let path_dir =
             DEPENDENCY_DIR.join("dep1-1.0").join("lib").join("mario").join("foundry.toml");
         assert!(path_dir.exists());
+        clean_test_env(target_config);
     }
 
     #[test]
@@ -1557,6 +1560,7 @@ recursive_deps = true
         let path_dir =
             DEPENDENCY_DIR.join("dep1-1.0").join("lib").join("mario").join("foundry.toml");
         assert!(path_dir.exists());
+        clean_test_env(target_config);
     }
 
     fn clean_test_env(target_config: PathBuf) {

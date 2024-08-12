@@ -258,7 +258,7 @@ pub fn hash_file(path: impl AsRef<Path>) -> Result<IntegrityChecksum, std::io::E
     let file = File::open(path)?;
     let mut reader = BufReader::new(file);
     let bytes = hash_content(&mut reader);
-    Ok(const_hex::encode(&bytes).into())
+    Ok(const_hex::encode(bytes).into())
 }
 
 #[cfg(test)]

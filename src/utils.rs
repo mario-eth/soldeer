@@ -212,7 +212,9 @@ pub fn hash_folder(
             let path = entry.path();
             // check if that file is `ignore_path`, unless we've seen it already
             if !seen_ignore_path.load(Ordering::SeqCst) {
-                let ignore_path = ignore_path.as_ref().unwrap();
+                let ignore_path = ignore_path
+                    .as_ref()
+                    .expect("ignore_path should always be Some when seen_ignore_path is false");
                 if path == ignore_path {
                     // record that we've seen the zip file
                     seen_ignore_path.swap(true, Ordering::SeqCst);
@@ -232,7 +234,7 @@ pub fn hash_folder(
             }
             // record the hash for that file/folder in the list
             let hash: [u8; 32] = hasher.finalize().into();
-            let mut hashes_lock = hashes.lock().unwrap();
+            let mut hashes_lock = hashes.lock().expect("mutex should not be poisoned");
             hashes_lock.push(hash);
             WalkState::Continue
         })
@@ -240,7 +242,7 @@ pub fn hash_folder(
 
     // sort hashes
     let mut hasher = <Sha256 as Digest>::new();
-    let mut hashes = hashes.lock().unwrap();
+    let mut hashes = hashes.lock().expect("mutex should not be poisoned");
     hashes.sort_unstable();
     // hash the hashes (yo dawg...)
     for hash in hashes.iter() {

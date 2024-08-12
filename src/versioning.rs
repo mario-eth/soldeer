@@ -234,8 +234,9 @@ mod tests {
 
         let result = filter_files_to_copy(&target_dir);
         assert_eq!(filtered_files.len(), result.len());
-        let file = Path::new(&filtered_files[1]);
-        assert_eq!(file, result[1]);
+        for res in result {
+            assert!(filtered_files.contains(&res), "File {:?} not found in filtered files", res);
+        }
 
         let _ = remove_file(gitignore);
         let _ = remove_dir_all(target_dir);

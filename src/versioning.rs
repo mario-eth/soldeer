@@ -254,7 +254,7 @@ mod tests {
 
         // divide ignored vs filtered files to check them later
         let mut ignored_files = vec![];
-        let mut filtered_files = vec![];
+        let mut filtered_files = vec![gitignore.clone()];
 
         // initial dir to test the ignore
         let target_dir = get_current_working_dir().join("test").join("test_push");

@@ -18,7 +18,7 @@ use yansi::Paint as _;
 
 pub type Result<T> = std::result::Result<T, DownloadError>;
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct IntegrityChecksum(pub String);
 
 impl<T> From<T> for IntegrityChecksum

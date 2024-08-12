@@ -260,7 +260,10 @@ pub fn hash_file(path: impl AsRef<Path>) -> Result<IntegrityChecksum, std::io::E
 
 #[cfg(test)]
 mod tests {
+    use rand::{distributions::Alphanumeric, Rng as _};
+
     use super::*;
+    use std::fs;
 
     #[test]
     fn filename_sanitization() {
@@ -281,5 +284,49 @@ mod tests {
         }
         assert_eq!(sanitize_dependency_name("valid~1.0.0"), "valid~1.0.0");
         assert_eq!(sanitize_dependency_name("valid~1*0.0"), "valid~1-0.0");
+    }
+
+    #[test]
+    fn test_hash_content() {
+        let mut content = "this is a test file".as_bytes();
+        let hash = hash_content(&mut content);
+        assert_eq!(
+            const_hex::encode(hash),
+            "5881707e54b0112f901bc83a1ffbacac8fab74ea46a6f706a3efc5f7d4c1c625".to_string()
+        );
+    }
+
+    #[test]
+    fn test_hash_file() {
+        let file = create_random_file("test", "txt");
+        let hash = hash_file(&file).unwrap();
+        fs::remove_file(&file).unwrap();
+        assert_eq!(hash, "5881707e54b0112f901bc83a1ffbacac8fab74ea46a6f706a3efc5f7d4c1c625".into());
+    }
+
+    #[test]
+    fn test_hash_folder() {
+        let folder = create_test_folder("test", "test_hash_folder");
+        let hash = hash_folder(&folder, None).unwrap();
+        fs::remove_dir_all(&folder).unwrap();
+        assert_eq!(hash, "b0bbe5dbf490a7120cce269564ed7a1f1f016ff50ccbb38eb288849f0ce7ab49".into());
+    }
+
+    fn create_random_file(target_dir: impl AsRef<Path>, extension: &str) -> PathBuf {
+        let s: String =
+            rand::thread_rng().sample_iter(&Alphanumeric).take(7).map(char::from).collect();
+        let random_file = target_dir.as_ref().join(format!("random{}.{}", s, extension));
+        fs::write(&random_file, "this is a test file").expect("could not write to test file");
+        random_file
+    }
+
+    fn create_test_folder(target_dir: impl AsRef<Path>, dirname: &str) -> PathBuf {
+        let test_folder = target_dir.as_ref().join(dirname);
+        fs::create_dir(&test_folder).expect("could not create test folder");
+        fs::write(test_folder.join("a.txt"), "this is a test file")
+            .expect("could not write to test file a");
+        fs::write(test_folder.join("b.txt"), "this is a second test file")
+            .expect("could not write to test file b");
+        test_folder
     }
 }

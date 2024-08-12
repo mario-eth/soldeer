@@ -58,15 +58,16 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
             let dependency: Dependency = get_latest_forge_std_dependency().await.map_err(|e| {
                 SoldeerError::DownloadError { dep: "forge-std".to_string(), source: e }
             })?;
-            install_dependency(dependency, true).await?;
+            install_dependency(dependency, true, false).await?;
         }
         Subcommands::Install(install) => {
             let regenerate_remappings = install.regenerate_remappings;
             let Some(dependency) = install.dependency else {
-                return update(regenerate_remappings).await; // TODO: instead, check which
-                                                            // dependencies do
-                                                            // not match the
-                                                            // integrity checksum and install those
+                return update(regenerate_remappings, install.recursive_deps).await; // TODO: instead, check which
+                                                                                    // dependencies
+                                                                                    // do
+                                                                                    // not match the
+                                                                                    // integrity checksum and install those
             };
 
             println!("{}", "🦌 Running Soldeer install 🦌".green());
@@ -96,11 +97,10 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
                 }),
             };
 
-            install_dependency(dep, regenerate_remappings).await?;
+            install_dependency(dep, regenerate_remappings, install.recursive_deps).await?;
         }
         Subcommands::Update(update_args) => {
-            let regenerate_remappings = update_args.regenerate_remappings;
-            return update(regenerate_remappings).await;
+            return update(update_args.regenerate_remappings, update_args.recursive_deps).await;
         }
         Subcommands::Login(_) => {
             println!("{}", "🦌 Running Soldeer login 🦌".green());
@@ -200,6 +200,7 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
 async fn install_dependency(
     mut dependency: Dependency,
     regenerate_remappings: bool,
+    recursive_deps: bool,
 ) -> Result<(), SoldeerError> {
     lock_check(&dependency, true)?;
 
@@ -212,7 +213,16 @@ async fn install_dependency(
     };
     add_to_config(&dependency, &config_path)?;
 
-    let result = download_dependency(&dependency, false)
+    let mut config = read_soldeer_config(Some(config_path.clone()))?;
+    if regenerate_remappings {
+        config.remappings_regenerate = regenerate_remappings;
+    }
+
+    if recursive_deps {
+        config.recursive_deps = recursive_deps;
+    }
+
+    let result = download_dependency(&dependency, false, config.recursive_deps)
         .await
         .map_err(|e| SoldeerError::DownloadError { dep: dependency.to_string(), source: e })?;
     match dependency {
@@ -235,11 +245,6 @@ async fn install_dependency(
     };
 
     write_lock(&[dependency.clone()], &[integrity], LockWriteMode::Append)?;
-
-    let mut config = read_soldeer_config(Some(config_path.clone()))?;
-    if regenerate_remappings {
-        config.remappings_regenerate = regenerate_remappings;
-    }
 
     janitor::healthcheck_dependency(&dependency)?;
 
@@ -265,7 +270,7 @@ async fn install_dependency(
     Ok(())
 }
 
-async fn update(regenerate_remappings: bool) -> Result<(), SoldeerError> {
+async fn update(regenerate_remappings: bool, recursive_deps: bool) -> Result<(), SoldeerError> {
     println!("{}", "🦌 Running Soldeer update 🦌".green());
 
     let config_path = get_config_path()?;
@@ -274,9 +279,13 @@ async fn update(regenerate_remappings: bool) -> Result<(), SoldeerError> {
         config.remappings_regenerate = regenerate_remappings;
     }
 
+    if recursive_deps {
+        config.recursive_deps = recursive_deps;
+    }
+
     let mut dependencies: Vec<Dependency> = read_config_deps(None)?;
 
-    let results = download_dependencies(&dependencies, true)
+    let results = download_dependencies(&dependencies, true, config.recursive_deps)
         .await
         .map_err(|e| SoldeerError::DownloadError { dep: String::new(), source: e })?;
 
@@ -365,6 +374,7 @@ libs = ["dependencies"]
             remote_url: None,
             rev: None,
             regenerate_remappings: false,
+            recursive_deps: false,
         });
 
         match run(command) {
@@ -416,6 +426,7 @@ libs = ["dependencies"]
             remote_url: None,
             rev: None,
             regenerate_remappings: false,
+            recursive_deps: false,
         });
 
         match run(command) {
@@ -460,7 +471,8 @@ libs = ["dependencies"]
             env::set_var("base_url", "https://api.soldeer.xyz");
         }
 
-        let command = Subcommands::Update(Update { regenerate_remappings: false });
+        let command =
+            Subcommands::Update(Update { regenerate_remappings: false, recursive_deps: false });
 
         match run(command) {
             Ok(_) => {}
@@ -493,8 +505,8 @@ libs = ["dependencies"]
 
 [dependencies]
 "@dep1" = {version = "1", url = "https://soldeer-revisions.s3.amazonaws.com/@openzeppelin-contracts/3_3_0-rc_2_22-01-2024_13:12:57_contracts.zip"}
-"@dep2" = {version = "2", git = "git@gitlab.com:mario4582928/Mario.git", rev="22868f426bd4dd0e682b5ec5f9bd55507664240c" }
-"@dep3" = {version = "3.3", git = "git@gitlab.com:mario4582928/Mario.git", rev="7a0663eaf7488732f39550be655bad6694974cb3" }
+"@dep2" = {version = "2", git = "https://gitlab.com/mario4582928/Mario.git", rev="22868f426bd4dd0e682b5ec5f9bd55507664240c" }
+"@dep3" = {version = "3.3", git = "https://gitlab.com/mario4582928/Mario.git", rev="7a0663eaf7488732f39550be655bad6694974cb3" }
 "#;
 
         let target_config = define_config(true);
@@ -506,7 +518,8 @@ libs = ["dependencies"]
             env::set_var("base_url", "https://api.soldeer.xyz");
         }
 
-        let command = Subcommands::Update(Update { regenerate_remappings: false });
+        let command =
+            Subcommands::Update(Update { regenerate_remappings: false, recursive_deps: false });
 
         match run(command) {
             Ok(_) => {}
@@ -569,6 +582,7 @@ libs = ["dependencies"]
             remote_url: None,
             rev: None,
             regenerate_remappings: false,
+            recursive_deps: false,
         });
 
         match run(command) {
@@ -758,6 +772,7 @@ libs = ["dependencies"]
             remote_url: Option::None,
             rev: None,
             regenerate_remappings: false,
+            recursive_deps: false,
         });
 
         match run(command) {
@@ -812,7 +827,8 @@ libs = ["dependencies"]
             dependency: Some("forge-std~1.9.1".to_string()),
             remote_url: Some("https://soldeer-revisions.s3.amazonaws.com/forge-std/v1_9_0_03-07-2024_14:44:57_forge-std-v1.9.0.zip".to_string()),
             rev: None,
-            regenerate_remappings: false
+            regenerate_remappings: false,
+            recursive_deps: false
         });
 
         match run(command) {
@@ -868,6 +884,7 @@ libs = ["dependencies"]
             remote_url: Some("https://github.com/foundry-rs/forge-std.git".to_string()),
             rev: None,
             regenerate_remappings: false,
+            recursive_deps: false,
         });
 
         match run(command) {
@@ -920,9 +937,10 @@ libs = ["dependencies"]
 
         let command = Subcommands::Install(Install {
             dependency: Some("forge-std~1.9.1".to_string()),
-            remote_url: Some("git@github.com:foundry-rs/forge-std.git".to_string()),
+            remote_url: Some("https://github.com/foundry-rs/forge-std.git".to_string()),
             rev: None,
             regenerate_remappings: false,
+            recursive_deps: false,
         });
 
         match run(command) {
@@ -975,9 +993,10 @@ libs = ["dependencies"]
 
         let command = Subcommands::Install(Install {
             dependency: Some("forge-std~1.9.1".to_string()),
-            remote_url: Some("git@github.com:foundry-rs/forge-std.git".to_string()),
+            remote_url: Some("https://github.com/foundry-rs/forge-std.git".to_string()),
             rev: Some("3778c3cb8e4244cb5a1c3ef3ce1c71a3683e324a".to_string()),
             regenerate_remappings: false,
+            recursive_deps: false,
         });
 
         match run(command) {

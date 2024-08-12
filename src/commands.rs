@@ -71,8 +71,13 @@ pub struct Install {
     pub rev: Option<String>,
 
     /// If set, this command will delete the existing remappings and re-create them
-    #[arg(long, default_value_t = false)]
+    #[arg(short = 'g', long, default_value_t = false)]
     pub regenerate_remappings: bool,
+
+    /// If set, this command will install the recursive dependencies (via submodules or via
+    /// soldeer)
+    #[arg(short = 'd', long, default_value_t = false)]
+    pub recursive_deps: bool,
 }
 
 /// Update dependencies by reading the config file
@@ -80,8 +85,13 @@ pub struct Install {
 #[clap(after_help = "For more information, read the README.md")]
 pub struct Update {
     /// If set, this command will delete the existing remappings and re-create them
-    #[arg(long, default_value_t = false)]
+    #[arg(short = 'g', long, default_value_t = false)]
     pub regenerate_remappings: bool,
+
+    /// If set, this command will install the recursive dependencies (via submodules or via
+    /// soldeer)
+    #[arg(short = 'd', long, default_value_t = false)]
+    pub recursive_deps: bool,
 }
 
 /// Display the version of Soldeer

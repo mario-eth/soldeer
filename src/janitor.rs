@@ -86,7 +86,7 @@ mod tests {
             version: "2.3.0".to_string(),
             url: Some("https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@openzeppelin-contracts~2.3.0.zip".to_string()),
             checksum: None}));
-        download_dependencies(&dependencies, false).await.unwrap();
+        download_dependencies(&dependencies, false, false).await.unwrap();
         unzip_dependency(dependencies[0].as_http().unwrap()).unwrap();
         healthcheck_dependency(&dependencies[0]).unwrap();
     }
@@ -102,7 +102,7 @@ mod tests {
             version: "2.3.0".to_string(),
             url: Some("https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@openzeppelin-contracts~2.3.0.zip".to_string()),
             checksum: None }));
-        download_dependencies(&dependencies, false).await.unwrap();
+        download_dependencies(&dependencies, false, false).await.unwrap();
         unzip_dependency(dependencies[0].as_http().unwrap()).unwrap();
         cleanup_dependency(&dependencies[0], false).unwrap();
     }
@@ -138,7 +138,7 @@ mod tests {
             url:Some("https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@openzeppelin-contracts~2.4.0.zip".to_string()),
             checksum: None }));
 
-        download_dependencies(&dependencies, false).await.unwrap();
+        download_dependencies(&dependencies, false, false).await.unwrap();
         let _ = unzip_dependency(dependencies[0].as_http().unwrap());
         let result: Result<()> = cleanup_after(&dependencies);
         assert!(result.is_ok());
@@ -157,7 +157,7 @@ mod tests {
             url: Some("https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@openzeppelin-contracts~2.3.0.zip".to_string()),
             checksum: None}));
 
-        download_dependencies(&dependencies, false).await.unwrap();
+        download_dependencies(&dependencies, false, false).await.unwrap();
         unzip_dependency(dependencies[0].as_http().unwrap()).unwrap();
         dependencies.push(Dependency::Http(HttpDependency {
             name: "@openzeppelin-contracts".to_string(),

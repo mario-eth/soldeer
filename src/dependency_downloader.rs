@@ -37,9 +37,13 @@ impl core::fmt::Display for IntegrityChecksum {
     }
 }
 
+/// Download the dependencies from the list in parallel
+///
+/// Note: the dependencies list should be sorted by name and version
 pub async fn download_dependencies(
     dependencies: &[Dependency],
     clean: bool,
+    recursive_deps: bool,
 ) -> Result<Vec<DownloadResult>> {
     // clean dependencies folder if flag is true
     if clean {
@@ -58,15 +62,17 @@ pub async fn download_dependencies(
     let mut set = JoinSet::new();
     for dep in dependencies {
         set.spawn({
-            let dep = dep.clone();
-            async move { download_dependency(&dep, true).await }
+            let d = dep.clone();
+            async move { download_dependency(&d, true, recursive_deps).await }
         });
     }
 
-    let mut results = Vec::<DownloadResult>::new();
+    let mut results = Vec::new();
     while let Some(res) = set.join_next().await {
         results.push(res??);
     }
+    // sort to make the order consistent with the input dependencies list (which should be sorted)
+    results.sort_unstable_by(|a, b| a.name.cmp(&b.name).then_with(|| a.version.cmp(&b.version)));
 
     Ok(results)
 }
@@ -85,6 +91,8 @@ pub fn unzip_dependencies(dependencies: &[Dependency]) -> Result<Vec<Option<Inte
 
 #[derive(Debug, Clone)]
 pub struct DownloadResult {
+    pub name: String,
+    pub version: String,
     pub hash: String,
     pub url: String,
 }
@@ -92,6 +100,7 @@ pub struct DownloadResult {
 pub async fn download_dependency(
     dependency: &Dependency,
     skip_folder_check: bool,
+    recursive_deps: bool,
 ) -> Result<DownloadResult> {
     let dependency_directory: PathBuf = DEPENDENCY_DIR.clone();
     // if we called this method from `download_dependencies` we don't need to check if the folder
@@ -112,17 +121,28 @@ pub async fn download_dependency(
                 None => get_dependency_url_remote(dependency).await?,
             };
             download_via_http(&url, dep, &dependency_directory).await?;
-            DownloadResult { hash: zipfile_hash(dep)?.to_string(), url }
+            DownloadResult {
+                name: dep.name.clone(),
+                version: dep.version.clone(),
+                hash: zipfile_hash(dep)?.to_string(),
+                url,
+            }
         }
         Dependency::Git(dep) => {
             let hash = download_via_git(dep, &dependency_directory).await?;
-            DownloadResult { hash, url: dep.git.clone() }
+            DownloadResult {
+                name: dep.name.clone(),
+                version: dep.version.clone(),
+                hash,
+                url: dep.git.clone(),
+            }
         }
     };
-    println!(
-        "{}",
-        format!("Dependency {}-{} downloaded!", dependency.name(), dependency.version()).green()
-    );
+
+    if recursive_deps {
+        install_subdependencies(dependency)?;
+    }
+    println!("{}", format!("Dependency {dependency} downloaded!").green());
 
     Ok(res)
 }
@@ -153,7 +173,7 @@ async fn download_via_git(
     dependency: &GitDependency,
     dependency_directory: &Path,
 ) -> Result<String> {
-    println!("{}", format!("Started git download of {dependency}").green());
+    println!("{}", format!("Started GIT download of {dependency}").green());
     let target_dir =
         sanitize_dependency_name(&format!("{}-{}", dependency.name, dependency.version));
     let path = dependency_directory.join(target_dir);
@@ -162,19 +182,16 @@ async fn download_via_git(
         let _ = fs::remove_dir_all(&path);
     }
 
-    let http_url = transform_git_to_http(&dependency.git);
     let mut git_clone = Command::new("git");
-    let mut git_checkout = Command::new("git");
-    let mut git_get_commit = Command::new("git");
 
     let result = git_clone
-        .args(["clone", &http_url, &path_str])
+        .args(["clone", &dependency.git, &path_str])
         .env("GIT_TERMINAL_PROMPT", "0")
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
 
-    let status = result.status().unwrap();
-    let out = result.output().unwrap();
+    let status = result.status().expect("Getting clone status failed");
+    let out = result.output().expect("Getting clone output failed");
 
     if !status.success() {
         let _ = fs::remove_dir_all(&path);
@@ -185,19 +202,16 @@ async fn download_via_git(
 
     let rev = match dependency.rev.clone() {
         Some(rev) => {
+            let mut git_get_commit = Command::new("git");
             let result = git_get_commit
-                .args([
-                    format!("--work-tree={}", path_str),
-                    format!("--git-dir={}", path.join(".git").to_string_lossy()),
-                    "checkout".to_string(),
-                    rev.to_string(),
-                ])
+                .args(["checkout".to_string(), rev.to_string()])
                 .env("GIT_TERMINAL_PROMPT", "0")
+                .current_dir(&path)
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped());
 
-            let out = result.output().unwrap();
-            let status = result.status().unwrap();
+            let out = result.output().expect("Checkout to revision status failed");
+            let status = result.status().expect("Checkout to revision getting output failed");
 
             if !status.success() {
                 let _ = fs::remove_dir_all(&path);
@@ -208,20 +222,17 @@ async fn download_via_git(
             rev
         }
         None => {
+            let mut git_checkout = Command::new("git");
+
             let result = git_checkout
-                .args([
-                    format!("--work-tree={}", path_str),
-                    format!("--git-dir={}", path.join(".git").to_string_lossy()),
-                    "rev-parse".to_string(),
-                    "--verify".to_string(),
-                    "HEAD".to_string(),
-                ])
+                .args(["rev-parse".to_string(), "--verify".to_string(), "HEAD".to_string()])
                 .env("GIT_TERMINAL_PROMPT", "0")
+                .current_dir(&path)
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped());
 
-            let out = result.output().unwrap();
-            let status = result.status().unwrap();
+            let out = result.output().expect("Getting revision status failed");
+            let status = result.status().expect("Getting revision output failed");
             if !status.success() {
                 let _ = fs::remove_dir_all(&path);
                 return Err(DownloadError::GitError(
@@ -282,16 +293,47 @@ pub fn delete_dependency_files(dependency: &Dependency) -> Result<()> {
     Ok(())
 }
 
-fn transform_git_to_http(url: &str) -> String {
-    if let Some(stripped) = url.strip_prefix("git@github.com:") {
-        let repo_path = stripped;
-        format!("https://github.com/{}", repo_path)
-    } else if let Some(stripped) = url.strip_prefix("git@gitlab.com:") {
-        let repo_path = stripped;
-        format!("https://gitlab.com/{}", repo_path)
-    } else {
-        url.to_string()
+fn install_subdependencies(dependency: &Dependency) -> Result<()> {
+    let dep_name =
+        sanitize_dependency_name(&format!("{}-{}", dependency.name(), dependency.version()));
+
+    let dep_dir = DEPENDENCY_DIR.join(dep_name);
+    if !dep_dir.exists() {
+        return Err(DownloadError::SubdependencyError(
+            "Dependency directory does not exists".to_string(),
+        ));
     }
+
+    let mut git = Command::new("git");
+
+    let result = git
+        .args(["submodule", "update", "--init", "--recursive"])
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .current_dir(&dep_dir)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+
+    let status = result.status().expect("Subdependency via GIT failed");
+
+    if !status.success() {
+        println!("{}", "Dependency has no submodule dependency.".yellow());
+    }
+
+    let mut soldeer = Command::new("forge");
+
+    let result = soldeer
+        .args(["soldeer", "install"])
+        .current_dir(&dep_dir)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+
+    let status = result.status().expect("Subdependency via Soldeer failed");
+
+    if !status.success() {
+        println!("{}", "Dependency has no Soldeer dependency.".yellow());
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]
@@ -316,7 +358,7 @@ mod tests {
             checksum: None
         });
         dependencies.push(dependency.clone());
-        let results = download_dependencies(&dependencies, false).await.unwrap();
+        let results = download_dependencies(&dependencies, false, false).await.unwrap();
         let path_zip =
             DEPENDENCY_DIR.join(format!("{}-{}.zip", &dependency.name(), &dependency.version()));
         assert!(path_zip.exists());
@@ -327,61 +369,17 @@ mod tests {
 
     #[tokio::test]
     #[serial]
-    async fn download_dependencies_git_one_success() {
+    async fn download_dependency_gitlab_httpurl_with_a_specific_revision() {
         clean_dependency_directory();
         let mut dependencies: Vec<Dependency> = Vec::new();
         let dependency = Dependency::Git(GitDependency {
             name: "@openzeppelin-contracts".to_string(),
             version: "2.3.0".to_string(),
-            git: "git@github.com:transmissions11/solmate.git".to_string(),
-            rev: None,
-        });
-        dependencies.push(dependency.clone());
-        let results = download_dependencies(&dependencies, false).await.unwrap();
-        let path_dir =
-            DEPENDENCY_DIR.join(format!("{}-{}", &dependency.name(), &dependency.version()));
-        assert!(path_dir.exists());
-        assert!(path_dir.join("src").join("auth").join("Owned.sol").exists());
-        assert!(results.len() == 1);
-        assert!(!results[0].hash.is_empty());
-        clean_dependency_directory();
-    }
-
-    #[tokio::test]
-    #[serial]
-    async fn download_dependencies_gitlab_giturl_one_success() {
-        clean_dependency_directory();
-        let mut dependencies: Vec<Dependency> = Vec::new();
-        let dependency = Dependency::Git(GitDependency {
-            name: "@openzeppelin-contracts".to_string(),
-            version: "2.3.0".to_string(),
-            git: "git@gitlab.com:mario4582928/Mario.git".to_string(),
-            rev: None,
-        });
-        dependencies.push(dependency.clone());
-        let results = download_dependencies(&dependencies, false).await.unwrap();
-        let path_dir =
-            DEPENDENCY_DIR.join(format!("{}-{}", &dependency.name(), &dependency.version()));
-        assert!(path_dir.exists());
-        assert!(path_dir.join("JustATest3.md").exists());
-        assert!(results.len() == 1);
-        assert_eq!(results[0].hash, "22868f426bd4dd0e682b5ec5f9bd55507664240c"); // this is the last commit, hash == commit
-        clean_dependency_directory();
-    }
-
-    #[tokio::test]
-    #[serial]
-    async fn download_dependency_gitlab_giturl_with_a_specific_revision() {
-        clean_dependency_directory();
-        let mut dependencies: Vec<Dependency> = Vec::new();
-        let dependency = Dependency::Git(GitDependency {
-            name: "@openzeppelin-contracts".to_string(),
-            version: "2.3.0".to_string(),
-            git: "git@gitlab.com:mario4582928/Mario.git".to_string(),
+            git: "https://gitlab.com/mario4582928/Mario.git".to_string(),
             rev: Some("7a0663eaf7488732f39550be655bad6694974cb3".to_string()),
         });
         dependencies.push(dependency.clone());
-        let results = download_dependencies(&dependencies, false).await.unwrap();
+        let results = download_dependencies(&dependencies, false, false).await.unwrap();
         let path_dir =
             DEPENDENCY_DIR.join(format!("{}-{}", &dependency.name(), &dependency.version()));
         assert!(path_dir.exists());
@@ -410,7 +408,7 @@ mod tests {
             rev: None,
         });
         dependencies.push(dependency.clone());
-        let results = download_dependencies(&dependencies, false).await.unwrap();
+        let results = download_dependencies(&dependencies, false, false).await.unwrap();
         let path_dir =
             DEPENDENCY_DIR.join(format!("{}-{}", &dependency.name(), &dependency.version()));
         assert!(path_dir.exists());
@@ -440,7 +438,7 @@ mod tests {
         });
 
         dependencies.push(dependency_two.clone());
-        let results = download_dependencies(&dependencies, false).await.unwrap();
+        let results = download_dependencies(&dependencies, false, false).await.unwrap();
         let mut path_zip = DEPENDENCY_DIR.join(format!(
             "{}-{}.zip",
             &dependency_one.name(),
@@ -462,12 +460,12 @@ mod tests {
 
     #[tokio::test]
     #[serial]
-    async fn download_dependencies_git_two_success() {
+    async fn download_dependencies_git_http_two_success() {
         let mut dependencies: Vec<Dependency> = Vec::new();
         let dependency_one = Dependency::Git(GitDependency {
             name: "@openzeppelin-contracts".to_string(),
             version: "2.3.0".to_string(),
-            git: "git@github.com:transmissions11/solmate.git".to_string(),
+            git: "https://github.com/transmissions11/solmate.git".to_string(),
             rev: None,
         });
         dependencies.push(dependency_one.clone());
@@ -480,7 +478,7 @@ mod tests {
         });
 
         dependencies.push(dependency_two.clone());
-        let results = download_dependencies(&dependencies, false).await.unwrap();
+        let results = download_dependencies(&dependencies, false, false).await.unwrap();
         let mut path_dir = DEPENDENCY_DIR.join(format!(
             "{}-{}",
             &dependency_one.name(),
@@ -524,7 +522,7 @@ mod tests {
         });
         dependencies.push(dependency_one.clone());
 
-        download_dependencies(&dependencies, false).await.unwrap();
+        download_dependencies(&dependencies, false, false).await.unwrap();
         let path_zip = DEPENDENCY_DIR.join(format!(
             "{}-{}.zip",
             &dependency_one.name(),
@@ -542,7 +540,7 @@ mod tests {
         dependencies = Vec::new();
         dependencies.push(dependency_two.clone());
 
-        let results = download_dependencies(&dependencies, false).await.unwrap();
+        let results = download_dependencies(&dependencies, false, false).await.unwrap();
         let size_of_two = fs::metadata(Path::new(&path_zip)).unwrap().len();
 
         assert!(size_of_two > size_of_one);
@@ -563,7 +561,7 @@ mod tests {
         });
 
         dependencies.push(dependency_old.clone());
-        download_dependencies(&dependencies, false).await.unwrap();
+        download_dependencies(&dependencies, false, false).await.unwrap();
 
         // making sure the dependency exists so we can check the deletion
         let path_zip_old = DEPENDENCY_DIR.join(format!(
@@ -582,7 +580,7 @@ mod tests {
         dependencies = Vec::new();
         dependencies.push(dependency.clone());
 
-        let results = download_dependencies(&dependencies, true).await.unwrap();
+        let results = download_dependencies(&dependencies, true, false).await.unwrap();
         let path_zip =
             DEPENDENCY_DIR.join(format!("{}-{}.zip", &dependency.name(), &dependency.version()));
         assert!(!path_zip_old.exists());
@@ -605,7 +603,7 @@ mod tests {
         });
         dependencies.push(dependency.clone());
 
-        match download_dependencies(&dependencies, false).await {
+        match download_dependencies(&dependencies, false, false).await {
             Ok(_) => {
                 assert_eq!("Invalid state", "");
             }
@@ -629,7 +627,7 @@ mod tests {
         });
         dependencies.push(dependency.clone());
 
-        match download_dependencies(&dependencies, false).await {
+        match download_dependencies(&dependencies, false, false).await {
             Ok(_) => {
                 assert_eq!("Invalid state", "");
             }
@@ -653,7 +651,7 @@ mod tests {
             checksum: None
         });
         dependencies.push(dependency.clone());
-        download_dependencies(&dependencies, false).await.unwrap();
+        download_dependencies(&dependencies, false, false).await.unwrap();
         let path = DEPENDENCY_DIR.join(format!("{}-{}", &dependency.name(), &dependency.version()));
         match unzip_dependencies(&dependencies) {
             Ok(_) => {
@@ -682,7 +680,7 @@ mod tests {
             checksum: None,
         });
         dependencies.push(dependency.clone());
-        download_dependencies(&dependencies, false).await.unwrap();
+        download_dependencies(&dependencies, false, false).await.unwrap();
         match unzip_dependencies(&dependencies) {
             Ok(_) => {
                 clean_dependency_directory();
@@ -705,7 +703,7 @@ mod tests {
             url: Some("https://soldeer-revisions.s3.amazonaws.com/@openzeppelin-contracts/3_3_0-rc_2_22-01-2024_13:12:57_contracts.zip".to_string()),
             checksum: None,
         }));
-        download_dependencies(&dependencies, false).await.unwrap();
+        download_dependencies(&dependencies, false, false).await.unwrap();
         unzip_dependency(dependencies[0].as_http().unwrap()).unwrap();
         healthcheck_dependency(&dependencies[0]).unwrap();
         assert!(DEPENDENCY_DIR
@@ -735,38 +733,6 @@ mod tests {
         assert_eq!(get_url_type("https://github.com/foundry-rs/forge-std.git"), UrlType::Git);
     }
 
-    #[test]
-    fn transform_git_giturl_to_http_success() {
-        assert_eq!(
-            transform_git_to_http("git@github.com:foundry-rs/forge-std.git"),
-            "https://github.com/foundry-rs/forge-std.git"
-        );
-    }
-
-    #[test]
-    fn transform_git_httpurl_to_http_success() {
-        assert_eq!(
-            transform_git_to_http("https://github.com/foundry-rs/forge-std.git"),
-            "https://github.com/foundry-rs/forge-std.git"
-        );
-    }
-
-    #[test]
-    fn transform_gitlab_giturl_to_http_success() {
-        assert_eq!(
-            transform_git_to_http("git@gitlab.com:mario4582928/Mario.git"),
-            "https://gitlab.com/mario4582928/Mario.git"
-        );
-    }
-
-    #[test]
-    fn transform_gitlab_httpurl_to_http_success() {
-        assert_eq!(
-            transform_git_to_http("https://gitlab.com/mario4582928/Mario.git"),
-            "https://gitlab.com/mario4582928/Mario.git"
-        );
-    }
-
     #[tokio::test]
     #[serial]
     async fn remove_one_dependency() {
@@ -775,12 +741,12 @@ mod tests {
         let dependency = Dependency::Git(GitDependency {
             name: "@openzeppelin-contracts".to_string(),
             version: "2.3.0".to_string(),
-            git: "git@github.com:transmissions11/solmate.git".to_string(),
+            git: "https://github.com/transmissions11/solmate.git".to_string(),
             rev: None,
         });
         dependencies.push(dependency.clone());
 
-        match download_dependencies(&dependencies, false).await {
+        match download_dependencies(&dependencies, false, false).await {
             Ok(_) => {}
             Err(_) => {
                 assert_eq!("Invalid state", "");
@@ -790,5 +756,53 @@ mod tests {
         assert!(!DEPENDENCY_DIR
             .join(format!("{}~{}", dependency.name(), dependency.version()))
             .exists());
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn download_dependency_with_subdependencies_on_soldeer_success() {
+        clean_dependency_directory();
+        let mut dependencies: Vec<Dependency> = Vec::new();
+        let dependency = Dependency::Git(GitDependency {
+            name: "dep1".to_string(),
+            version: "1.0".to_string(),
+            git: "https://gitlab.com/mario4582928/mario-soldeer-dependency.git".to_string(),
+            rev: None,
+        });
+        dependencies.push(dependency.clone());
+        let results = download_dependencies(&dependencies, false, true).await.unwrap();
+        let path_dir =
+            DEPENDENCY_DIR.join(format!("{}-{}", &dependency.name(), &dependency.version()));
+        assert!(path_dir.exists());
+        assert!(path_dir
+            .join("dependencies")
+            .join("@openzeppelin-contracts-5.0.2")
+            .join("README.md")
+            .exists());
+        assert!(results.len() == 1);
+        assert!(!results[0].hash.is_empty());
+        clean_dependency_directory();
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn download_dependency_with_subdependencies_on_git_success() {
+        clean_dependency_directory();
+        let mut dependencies: Vec<Dependency> = Vec::new();
+        let dependency = Dependency::Git(GitDependency {
+            name: "dep1".to_string(),
+            version: "1.0".to_string(),
+            git: "https://gitlab.com/mario4582928/mario-git-submodule.git".to_string(),
+            rev: None,
+        });
+        dependencies.push(dependency.clone());
+        let results = download_dependencies(&dependencies, false, true).await.unwrap();
+        let path_dir =
+            DEPENDENCY_DIR.join(format!("{}-{}", &dependency.name(), &dependency.version()));
+        assert!(path_dir.exists());
+        assert!(path_dir.join("lib").join("mario").join("README.md").exists());
+        assert!(results.len() == 1);
+        assert!(!results[0].hash.is_empty());
+        clean_dependency_directory();
     }
 }

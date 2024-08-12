@@ -46,6 +46,9 @@ pub struct SoldeerConfig {
 
     #[serde(default)]
     pub remappings_location: RemappingsLocation,
+
+    #[serde(default)]
+    pub recursive_deps: bool,
 }
 
 impl Default for SoldeerConfig {
@@ -56,6 +59,7 @@ impl Default for SoldeerConfig {
             remappings_version: true,
             remappings_prefix: String::new(),
             remappings_location: Default::default(),
+            recursive_deps: false,
         }
     }
 }
@@ -110,6 +114,7 @@ impl Dependency {
         }
     }
 
+    #[allow(dead_code)]
     pub fn url(&self) -> Option<&String> {
         match self {
             Dependency::Http(dep) => dep.url.as_ref(),
@@ -184,6 +189,7 @@ impl Dependency {
         }
     }
 
+    #[allow(dead_code)]
     pub fn as_http(&self) -> Option<&HttpDependency> {
         if let Self::Http(v) = self {
             Some(v)
@@ -192,6 +198,7 @@ impl Dependency {
         }
     }
 
+    #[allow(dead_code)]
     pub fn as_git(&self) -> Option<&GitDependency> {
         if let Self::Git(v) = self {
             Some(v)
@@ -255,6 +262,10 @@ pub fn get_config_path() -> Result<PathBuf> {
     }
 }
 
+/// Read the list of dependencies from the config file
+///
+/// If no config file path is provided, then the path is inferred automatically
+/// The returned list is sorted by name and version
 pub fn read_config_deps(path: Option<PathBuf>) -> Result<Vec<Dependency>> {
     let path: PathBuf = match path {
         Some(p) => p,
@@ -270,6 +281,9 @@ pub fn read_config_deps(path: Option<PathBuf>) -> Result<Vec<Dependency>> {
     for (name, v) in data {
         dependencies.push(parse_dependency(name, v)?);
     }
+    dependencies
+        .sort_unstable_by(|a, b| a.name().cmp(b.name()).then_with(|| a.version().cmp(b.version())));
+
     Ok(dependencies)
 }
 

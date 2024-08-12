@@ -114,6 +114,7 @@ fn filter_files_to_copy(root_directory_path: impl AsRef<Path>) -> Vec<PathBuf> {
     let files_to_copy = Arc::new(Mutex::new(Vec::with_capacity(100)));
     let walker = WalkBuilder::new(root_directory_path)
         .add_custom_ignore_filename(".soldeerignore")
+        .hidden(false)
         .build_parallel();
     walker.run(|| {
         let files_to_copy = Arc::clone(&files_to_copy);

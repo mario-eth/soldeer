@@ -220,7 +220,7 @@ mod tests {
         let _ = remove_file(soldeerignore);
 
         let mut ignored_files = vec![];
-        let mut filtered_files = vec![];
+        let mut filtered_files = vec![gitignore.clone()];
         ignored_files.push(create_random_file(&target_dir, "toml"));
         ignored_files.push(create_random_file(&target_dir, "zip"));
         ignored_files.push(create_random_file(&target_dir, "toml"));
@@ -234,8 +234,8 @@ mod tests {
 
         let result = filter_files_to_copy(&target_dir);
         assert_eq!(filtered_files.len(), result.len());
-        let file = Path::new(&filtered_files[0]);
-        assert_eq!(file, result[0]);
+        let file = Path::new(&filtered_files[1]);
+        assert_eq!(file, result[1]);
 
         let _ = remove_file(gitignore);
         let _ = remove_dir_all(target_dir);

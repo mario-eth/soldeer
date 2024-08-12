@@ -2,7 +2,7 @@ use crate::{
     config::{Dependency, GitDependency, HttpDependency},
     errors::DownloadError,
     remote::get_dependency_url_remote,
-    utils::{hash_folder, read_file, sanitize_dependency_name, sha256_digest},
+    utils::{hash_folder, read_file, sanitize_dependency_name, zipfile_hash},
     DEPENDENCY_DIR,
 };
 use reqwest::IntoUrl;
@@ -21,9 +21,19 @@ pub type Result<T> = std::result::Result<T, DownloadError>;
 #[derive(Debug, Clone, Default)]
 pub struct IntegrityChecksum(pub String);
 
-impl From<IntegrityChecksum> for String {
-    fn from(value: IntegrityChecksum) -> Self {
-        value.0
+impl<T> From<T> for IntegrityChecksum
+where
+    T: Into<String>,
+{
+    fn from(value: T) -> Self {
+        let v: String = value.into();
+        IntegrityChecksum(v)
+    }
+}
+
+impl core::fmt::Display for IntegrityChecksum {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
     }
 }
 
@@ -102,7 +112,7 @@ pub async fn download_dependency(
                 None => get_dependency_url_remote(dependency).await?,
             };
             download_via_http(&url, dep, &dependency_directory).await?;
-            DownloadResult { hash: sha256_digest(dep), url }
+            DownloadResult { hash: zipfile_hash(dep)?.to_string(), url }
         }
         Dependency::Git(dep) => {
             let hash = download_via_git(dep, &dependency_directory).await?;

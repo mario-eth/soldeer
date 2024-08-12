@@ -95,7 +95,7 @@ pub fn write_lock(
                 &dep.version,
                 dep.url.as_ref().unwrap(),
                 dep.checksum.as_ref().unwrap(),
-                integrity.clone().map(Into::into),
+                integrity.clone().map(|c| c.to_string()),
             ),
             Dependency::Git(dep) => {
                 LockEntry::new(&dep.name, &dep.version, &dep.git, dep.rev.as_ref().unwrap(), None)

@@ -1,4 +1,6 @@
-use crate::{config::HttpDependency, dependency_downloader::IntegrityChecksum};
+use crate::{
+    config::HttpDependency, dependency_downloader::IntegrityChecksum, errors::DownloadError,
+};
 use ignore::{WalkBuilder, WalkState};
 use once_cell::sync::Lazy;
 use regex::Regex;
@@ -159,19 +161,18 @@ pub fn sanitize_dependency_name(dependency_name: &str) -> String {
 }
 
 #[cfg(not(test))]
-pub fn sha256_digest(dependency: &HttpDependency) -> String {
+pub fn zipfile_hash(dependency: &HttpDependency) -> Result<IntegrityChecksum, DownloadError> {
     use crate::DEPENDENCY_DIR;
 
     let file_name =
         sanitize_dependency_name(&format!("{}-{}.zip", dependency.name, dependency.version));
-
-    let bytes = std::fs::read(DEPENDENCY_DIR.join(file_name)).unwrap(); // Vec<u8>
-    sha256::digest(bytes)
+    let path = DEPENDENCY_DIR.join(&file_name);
+    hash_file(&path).map_err(|e| DownloadError::IOError { path, source: e })
 }
 
 #[cfg(test)]
-pub fn sha256_digest(_dependency: &HttpDependency) -> String {
-    "5019418b1e9128185398870f77a42e51d624c44315bb1572e7545be51d707016".to_string()
+pub fn zipfile_hash(_dependency: &HttpDependency) -> Result<IntegrityChecksum, DownloadError> {
+    Ok("5019418b1e9128185398870f77a42e51d624c44315bb1572e7545be51d707016".into())
 }
 
 /// Hash the contents of a Reader with SHA256
@@ -252,7 +253,15 @@ pub fn hash_folder(
         hasher.update(hash);
     }
     let hash: [u8; 32] = hasher.finalize().into();
-    Ok(IntegrityChecksum(const_hex::encode(hash)))
+    Ok(const_hex::encode(hash).into())
+}
+
+/// Compute the SHA256 hash of the contents of a file
+pub fn hash_file(path: impl AsRef<Path>) -> Result<IntegrityChecksum, std::io::Error> {
+    let file = File::open(path)?;
+    let mut reader = BufReader::new(file);
+    let bytes = hash_content(&mut reader);
+    Ok(const_hex::encode(&bytes).into())
 }
 
 #[cfg(test)]

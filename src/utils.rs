@@ -160,19 +160,16 @@ pub fn sanitize_dependency_name(dependency_name: &str) -> String {
     sanitize_filename::sanitize_with_options(dependency_name, options)
 }
 
-#[cfg(not(test))]
 pub fn zipfile_hash(dependency: &HttpDependency) -> Result<IntegrityChecksum, DownloadError> {
+    if cfg!(test) {
+        return Ok("5019418b1e9128185398870f77a42e51d624c44315bb1572e7545be51d707016".into());
+    }
     use crate::DEPENDENCY_DIR;
 
     let file_name =
         sanitize_dependency_name(&format!("{}-{}.zip", dependency.name, dependency.version));
     let path = DEPENDENCY_DIR.join(&file_name);
     hash_file(&path).map_err(|e| DownloadError::IOError { path, source: e })
-}
-
-#[cfg(test)]
-pub fn zipfile_hash(_dependency: &HttpDependency) -> Result<IntegrityChecksum, DownloadError> {
-    Ok("5019418b1e9128185398870f77a42e51d624c44315bb1572e7545be51d707016".into())
 }
 
 /// Hash the contents of a Reader with SHA256

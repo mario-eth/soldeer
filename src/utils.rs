@@ -297,6 +297,15 @@ mod tests {
     }
 
     #[test]
+    fn test_hash_content_content_sensitive() {
+        let mut content = "foobar".as_bytes();
+        let hash = hash_content(&mut content);
+        let mut content2 = "baz".as_bytes();
+        let hash2 = hash_content(&mut content2);
+        assert_ne!(hash, hash2);
+    }
+
+    #[test]
     fn test_hash_file() {
         let file = create_random_file("test", "txt");
         let hash = hash_file(&file).unwrap();
@@ -310,6 +319,26 @@ mod tests {
         let hash = hash_folder(&folder, None).unwrap();
         fs::remove_dir_all(&folder).unwrap();
         assert_eq!(hash, "b0bbe5dbf490a7120cce269564ed7a1f1f016ff50ccbb38eb288849f0ce7ab49".into());
+    }
+
+    #[test]
+    fn test_hash_folder_path_sensitive() {
+        let folder1 = create_test_folder("test", "test_hash_folder_path_sensitive");
+        let folder2 = create_test_folder("test", "test_hash_folder_path_sensitive2");
+        let hash1 = hash_folder(&folder1, None).unwrap();
+        let hash2 = hash_folder(&folder2, None).unwrap();
+        fs::remove_dir_all(&folder1).unwrap();
+        fs::remove_dir_all(&folder2).unwrap();
+        assert_ne!(hash1, hash2);
+    }
+
+    #[test]
+    fn test_hash_folder_ignore_path() {
+        let folder = create_test_folder("test", "test_hash_folder_ignore_path");
+        let hash1 = hash_folder(&folder, None).unwrap();
+        let hash2 = hash_folder(&folder, Some(folder.join("a.txt"))).unwrap();
+        fs::remove_dir_all(&folder).unwrap();
+        assert_ne!(hash1, hash2);
     }
 
     fn create_random_file(target_dir: impl AsRef<Path>, extension: &str) -> PathBuf {

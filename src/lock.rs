@@ -261,12 +261,7 @@ integrity = "deadbeef"
             checksum: Some("5019418b1e9128185398870f77a42e51d624c44315bb1572e7545be51d707016".to_string())
         });
         let dependencies = vec![dependency.clone()];
-        write_lock(
-            &dependencies,
-            &[Some(IntegrityChecksum("deadbeef".to_string()))],
-            LockWriteMode::Append,
-        )
-        .unwrap();
+        write_lock(&dependencies, &[Some("deadbeef".into())], LockWriteMode::Append).unwrap();
         assert!(matches!(lock_check(&dependency, true), Err(LockError::DependencyInstalled(_))));
 
         let contents = read_file_to_string(lock_file);
@@ -297,12 +292,7 @@ integrity = "deadbeef"
             checksum: Some("5019418b1e9128185398870f77a42e51d624c44315bb1572e7545be51d707016".to_string())
         });
         dependencies.push(dependency.clone());
-        write_lock(
-            &dependencies,
-            &[Some(IntegrityChecksum("deadbeef".to_string()))],
-            LockWriteMode::Append,
-        )
-        .unwrap();
+        write_lock(&dependencies, &[Some("deadbeef".into())], LockWriteMode::Append).unwrap();
         let contents = read_file_to_string(lock_file);
 
         assert_eq!(
@@ -375,10 +365,7 @@ integrity = "deadbeef"
         let dependencies = vec![dependency.clone(), dependency2.clone()];
         write_lock(
             &dependencies,
-            &[
-                Some(IntegrityChecksum("deadbeef".to_string())),
-                Some(IntegrityChecksum("deadbeef".to_string())),
-            ],
+            &[Some("deadbeef".into()), Some("deadbeef".into())],
             LockWriteMode::Append,
         )
         .unwrap();
@@ -415,12 +402,7 @@ integrity = "deadbeef"
         });
 
         let dependencies = vec![dependency.clone()];
-        write_lock(
-            &dependencies,
-            &[Some(IntegrityChecksum("deadbeef".to_string()))],
-            LockWriteMode::Append,
-        )
-        .unwrap();
+        write_lock(&dependencies, &[Some("deadbeef".into())], LockWriteMode::Append).unwrap();
 
         match remove_lock(&Dependency::Http(HttpDependency {
             name: "non-existent".to_string(),

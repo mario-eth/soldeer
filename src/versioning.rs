@@ -133,7 +133,7 @@ fn filter_files_to_copy(root_directory_path: impl AsRef<Path>) -> Vec<PathBuf> {
         })
     });
 
-    Arc::try_unwrap(files_to_copy)
+    Arc::into_inner(files_to_copy)
         .expect("Arc should have no other strong references")
         .into_inner()
         .expect("mutex should not be poisoned")

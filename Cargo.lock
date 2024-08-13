@@ -1549,7 +1549,7 @@ dependencies = [
 
 [[package]]
 name = "soldeer"
-version = "0.2.19"
+version = "0.3.0"
 dependencies = [
  "chrono",
  "clap",

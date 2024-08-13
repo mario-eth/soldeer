@@ -529,21 +529,12 @@ fn parse_dependency(name: impl Into<String>, value: &Item) -> Result<Dependency>
     // we should have a HTTP dependency
     match table.get("url").map(|v| v.as_str()) {
         Some(None) => Err(ConfigError::InvalidField { field: "url".to_string(), dep: name }),
-        None => match table.get("url").map(|v| v.as_str()) {
-            Some(None) => Err(ConfigError::InvalidField { field: "url".to_string(), dep: name }),
-            None => Ok(Dependency::Http(HttpDependency {
-                name: name.to_string(),
-                version,
-                url: None,
-                checksum: None,
-            })),
-            Some(Some(url)) => Ok(Dependency::Http(HttpDependency {
-                name: name.to_string(),
-                version,
-                url: Some(url.to_string()),
-                checksum: None,
-            })),
-        },
+        None => Ok(Dependency::Http(HttpDependency {
+            name: name.to_string(),
+            version,
+            url: None,
+            checksum: None,
+        })),
         Some(Some(url)) => Ok(Dependency::Http(HttpDependency {
             name: name.to_string(),
             version,

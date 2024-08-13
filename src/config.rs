@@ -354,8 +354,8 @@ pub async fn remappings_txt(
     soldeer_config: &SoldeerConfig,
 ) -> Result<()> {
     let remappings_path = get_current_working_dir().join("remappings.txt");
-    if soldeer_config.remappings_regenerate {
-        let _ = remove_file(&remappings_path);
+    if soldeer_config.remappings_regenerate && remappings_path.exists() {
+        remove_file(&remappings_path).map_err(ConfigError::RemappingsError)?;
     }
     let contents = match remappings_path.exists() {
         true => read_file_to_string(&remappings_path),
@@ -459,28 +459,30 @@ fn parse_dependency(name: impl Into<String>, value: &Item) -> Result<Dependency>
         return Ok(
             HttpDependency { name, version: version.to_string(), url: None, checksum: None }.into()
         );
-    } else if value.is_inline_table() && // TODO: Hacky way of doing this, might need rewritten
-        !value.as_inline_table().unwrap().contains_key("url") &&
-        !value.as_inline_table().unwrap().contains_key("git")
-    {
-        // this function does not retrieve the url, only version
-        return Ok(HttpDependency {
-            name: name.clone(),
-            version: match value.as_inline_table() {
-                // we normalize to inline table
-                Some(table) => {
-                    let version = table.get("version").unwrap().to_string();
-                    version.replace("\"", "").trim().to_string()
-                }
-                None => {
-                    return Err(ConfigError::InvalidDependency(name));
-                }
-            },
-            url: None,
-            checksum: None,
-        }
-        .into());
     }
+
+    // else if value.is_inline_table() && // TODO: Hacky way of doing this, might need rewritten
+    //     !value.as_inline_table().unwrap().contains_key("url") &&
+    //     !value.as_inline_table().unwrap().contains_key("git")
+    // {
+    //     // this function does not retrieve the url, only version
+    //     return Ok(HttpDependency {
+    //         name: name.clone(),
+    //         version: match value.as_inline_table() {
+    //             // we normalize to inline table
+    //             Some(table) => {
+    //                 let version = table.get("version").unwrap().to_string();
+    //                 version.replace("\"", "").trim().to_string()
+    //             }
+    //             None => {
+    //                 return Err(ConfigError::InvalidDependency(name));
+    //             }
+    //         },
+    //         url: None,
+    //         checksum: None,
+    //     }
+    //     .into());
+    // }
 
     // we should have a table or inline table
     let table = {
@@ -534,7 +536,21 @@ fn parse_dependency(name: impl Into<String>, value: &Item) -> Result<Dependency>
     // we should have a HTTP dependency
     match table.get("url").map(|v| v.as_str()) {
         Some(None) => Err(ConfigError::InvalidField { field: "url".to_string(), dep: name }),
-        None => Err(ConfigError::MissingField { field: "url".to_string(), dep: name }),
+        None => match table.get("url").map(|v| v.as_str()) {
+            Some(None) => Err(ConfigError::InvalidField { field: "url".to_string(), dep: name }),
+            None => Ok(Dependency::Http(HttpDependency {
+                name: name.to_string(),
+                version,
+                url: None,
+                checksum: None,
+            })),
+            Some(Some(url)) => Ok(Dependency::Http(HttpDependency {
+                name: name.to_string(),
+                version,
+                url: Some(url.to_string()),
+                checksum: None,
+            })),
+        },
         Some(Some(url)) => Ok(Dependency::Http(HttpDependency {
             name: name.to_string(),
             version,

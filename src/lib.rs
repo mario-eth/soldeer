@@ -212,7 +212,6 @@ async fn install_dependency(
             return Err(e.into());
         }
     };
-    let custom_url = dependency.url().is_some();
 
     let mut config = read_soldeer_config(Some(config_path.clone()))?;
     if regenerate_remappings {
@@ -228,10 +227,14 @@ async fn install_dependency(
         .map_err(|e| SoldeerError::DownloadError { dep: dependency.to_string(), source: e })?;
     match dependency {
         Dependency::Http(ref mut dep) => {
+            add_to_config(dep, &config_path)?;
             dep.checksum = Some(result.hash);
             dep.url = Some(result.url);
         }
-        Dependency::Git(ref mut dep) => dep.rev = Some(result.hash),
+        Dependency::Git(ref mut dep) => {
+            dep.rev = Some(result.hash);
+            add_to_config(dep, &config_path)?;
+        }
     }
 
     write_lock(&[dependency.clone()], LockWriteMode::Append)?;
@@ -251,26 +254,6 @@ async fn install_dependency(
         if let Err(e) = install_subdependencies(&dependency) {
             return Err(SoldeerError::DownloadError { dep: dependency.to_string(), source: e });
         };
-    }
-
-    if !custom_url {
-        let new_dep = match get_url_type(dependency.url().unwrap()) {
-            UrlType::Git => Dependency::Git(GitDependency {
-                name: dependency.name().to_string(),
-                version: dependency.version().to_string(),
-                git: "".to_string(),
-                rev: Some(dependency.rev().unwrap().clone()),
-            }),
-            UrlType::Http => Dependency::Http(HttpDependency {
-                name: dependency.name().to_string(),
-                version: dependency.version().to_string(),
-                url: None,
-                checksum: None,
-            }),
-        };
-        add_to_config(&new_dep, &config_path).expect("add to config failed");
-    } else {
-        add_to_config(&dependency, &config_path).expect("add to config failed");
     }
 
     if config.remappings_generate {

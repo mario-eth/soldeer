@@ -122,13 +122,6 @@ impl Dependency {
         }
     }
 
-    pub fn rev(&self) -> Option<&String> {
-        match self {
-            Dependency::Http(dep) => dep.checksum.as_ref(),
-            Dependency::Git(dep) => dep.rev.as_ref(),
-        }
-    }
-
     pub fn to_toml_value(&self) -> (String, Item) {
         match self {
             Dependency::Http(dep) => (

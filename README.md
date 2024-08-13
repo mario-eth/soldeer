@@ -58,7 +58,7 @@ Soldeer has 3 parts:
 
 - soldeer cli - standalone tool that can be used for managing dependencies on project, it is independent and not tied to foundry
 - soldeer repository - a central repository used to store various packages. Anyone can push their own packages as public. The repository works like npmjs or crates.io
-- soldeer foundry (in progress) - a foundry plugin that will allow you to use soldeer in your foundry projects directly from forge
+- soldeer foundry - a foundry plugin that will allow you to use soldeer in your foundry projects directly from forge: `forge soldeer [COMMAND]`
 
 ### HOW TO USE IT
 

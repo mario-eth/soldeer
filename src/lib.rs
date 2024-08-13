@@ -3,7 +3,8 @@ use crate::{
     auth::login,
     config::{delete_config, read_config_deps, remappings_txt, Dependency},
     dependency_downloader::{
-        delete_dependency_files, download_dependencies, unzip_dependencies, unzip_dependency,
+        delete_dependency_files, download_dependencies, install_subdependencies,
+        unzip_dependencies, unzip_dependency,
     },
     janitor::{cleanup_after, healthcheck_dependencies},
     lock::{lock_check, remove_lock, write_lock},
@@ -211,7 +212,6 @@ async fn install_dependency(
             return Err(e.into());
         }
     };
-    add_to_config(&dependency, &config_path)?;
 
     let mut config = read_soldeer_config(Some(config_path.clone()))?;
     if regenerate_remappings {
@@ -222,15 +222,19 @@ async fn install_dependency(
         config.recursive_deps = recursive_deps;
     }
 
-    let result = download_dependency(&dependency, false, config.recursive_deps)
+    let result = download_dependency(&dependency, false)
         .await
         .map_err(|e| SoldeerError::DownloadError { dep: dependency.to_string(), source: e })?;
     match dependency {
         Dependency::Http(ref mut dep) => {
+            add_to_config(&dep.clone().into(), &config_path)?;
             dep.checksum = Some(result.hash);
             dep.url = Some(result.url);
         }
-        Dependency::Git(ref mut dep) => dep.rev = Some(result.hash),
+        Dependency::Git(ref mut dep) => {
+            dep.rev = Some(result.hash);
+            add_to_config(&dependency, &config_path)?;
+        }
     }
 
     let integrity = match &dependency {
@@ -249,6 +253,12 @@ async fn install_dependency(
     janitor::healthcheck_dependency(&dependency)?;
 
     janitor::cleanup_dependency(&dependency, false)?;
+
+    if config.recursive_deps {
+        if let Err(e) = install_subdependencies(&dependency) {
+            return Err(SoldeerError::DownloadError { dep: dependency.to_string(), source: e });
+        };
+    }
 
     if config.remappings_generate {
         if config_path.to_string_lossy().contains("foundry.toml") {
@@ -285,7 +295,7 @@ async fn update(regenerate_remappings: bool, recursive_deps: bool) -> Result<(),
 
     let mut dependencies: Vec<Dependency> = read_config_deps(None)?;
 
-    let results = download_dependencies(&dependencies, true, config.recursive_deps)
+    let results = download_dependencies(&dependencies, true)
         .await
         .map_err(|e| SoldeerError::DownloadError { dep: String::new(), source: e })?;
 
@@ -338,6 +348,7 @@ mod tests {
         io::Write,
         path::{Path, PathBuf},
     };
+    use utils::read_file_to_string;
     use zip::ZipArchive; // 0.8
 
     #[test]
@@ -379,7 +390,8 @@ libs = ["dependencies"]
 
         match run(command) {
             Ok(_) => {}
-            Err(_) => {
+            Err(err) => {
+                println!("Error occurred {:?}", err);
                 clean_test_env(target_config.clone());
                 assert_eq!("Invalid State", "")
             }
@@ -390,6 +402,136 @@ libs = ["dependencies"]
         assert!(path_dependency.exists());
         path_dependency = DEPENDENCY_DIR.join("@openzeppelin-contracts-5.0.2");
         assert!(path_dependency.exists());
+        clean_test_env(target_config);
+    }
+
+    #[test]
+    #[serial]
+    fn soldeer_install_from_git_no_rev_adds_rev_to_config() {
+        let _ = remove_dir_all(DEPENDENCY_DIR.clone());
+        let _ = remove_file(LOCK_FILE.clone());
+        let content = r#"
+# Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
+
+[profile.default]
+script = "script"
+solc = "0.8.26"
+src = "src"
+test = "test"
+libs = ["dependencies"]
+
+[dependencies]
+"#;
+
+        let target_config = define_config(true);
+
+        write_to_config(&target_config, content);
+
+        unsafe {
+            // became unsafe in Rust 1.80
+            env::set_var("base_url", "https://api.soldeer.xyz");
+        }
+
+        let command = Subcommands::Install(Install {
+            dependency: Some("test~1".to_string()),
+            remote_url: Some("https://gitlab.com/mario4582928/Mario.git".to_string()),
+            rev: None,
+            regenerate_remappings: false,
+            recursive_deps: false,
+        });
+
+        match run(command) {
+            Ok(_) => {}
+            Err(err) => {
+                println!("Error occurred {:?}", err);
+                clean_test_env(target_config.clone());
+                assert_eq!("Invalid State", "")
+            }
+        }
+
+        let path_dependency = DEPENDENCY_DIR.join("test-1");
+
+        assert!(path_dependency.exists());
+
+        let expected_content = r#"
+# Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
+
+[profile.default]
+script = "script"
+solc = "0.8.26"
+src = "src"
+test = "test"
+libs = ["dependencies"]
+
+[dependencies]
+test = { version = "1", git = "https://gitlab.com/mario4582928/Mario.git", rev = "22868f426bd4dd0e682b5ec5f9bd55507664240c" }
+"#;
+        assert_eq!(expected_content, read_file_to_string(&target_config));
+        clean_test_env(target_config);
+    }
+
+    #[test]
+    #[serial]
+    fn soldeer_install_from_git_with_rev_adds_rev_to_config() {
+        let _ = remove_dir_all(DEPENDENCY_DIR.clone());
+        let _ = remove_file(LOCK_FILE.clone());
+        let content = r#"
+# Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
+
+[profile.default]
+script = "script"
+solc = "0.8.26"
+src = "src"
+test = "test"
+libs = ["dependencies"]
+
+[dependencies]
+"#;
+
+        let target_config = define_config(true);
+
+        write_to_config(&target_config, content);
+
+        unsafe {
+            // became unsafe in Rust 1.80
+            env::set_var("base_url", "https://api.soldeer.xyz");
+        }
+
+        let command = Subcommands::Install(Install {
+            dependency: Some("test~1".to_string()),
+            remote_url: Some("https://gitlab.com/mario4582928/Mario.git".to_string()),
+            rev: Some("2fd642069600f0b8da3e1897fad42b2c53c6e927".to_string()),
+            regenerate_remappings: false,
+            recursive_deps: false,
+        });
+
+        match run(command) {
+            Ok(_) => {}
+            Err(err) => {
+                println!("Error occurred {:?}", err);
+                clean_test_env(target_config.clone());
+                assert_eq!("Invalid State", "")
+            }
+        }
+
+        let path_dependency = DEPENDENCY_DIR.join("test-1");
+
+        assert!(path_dependency.exists());
+
+        let expected_content = r#"
+# Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
+
+[profile.default]
+script = "script"
+solc = "0.8.26"
+src = "src"
+test = "test"
+libs = ["dependencies"]
+
+[dependencies]
+test = { version = "1", git = "https://gitlab.com/mario4582928/Mario.git", rev = "2fd642069600f0b8da3e1897fad42b2c53c6e927" }
+"#;
+        assert_eq!(expected_content, read_file_to_string(&target_config));
         clean_test_env(target_config);
     }
 
@@ -431,7 +573,8 @@ libs = ["dependencies"]
 
         match run(command) {
             Ok(_) => {}
-            Err(_) => {
+            Err(err) => {
+                println!("Error occurred {:?}", err);
                 clean_test_env(target_config.clone());
                 assert_eq!("Invalid State", "")
             }
@@ -460,6 +603,9 @@ libs = ["dependencies"]
 
 [dependencies]
 "@tt" = {version = "1.6.1", url = "https://soldeer-revisions.s3.amazonaws.com/@openzeppelin-contracts/3_3_0-rc_2_22-01-2024_13:12:57_contracts.zip"}
+forge-std = { version = "1.8.1" }
+solmate = "6.7.0"
+mario = { version = "1.0", git = "https://gitlab.com/mario4582928/Mario.git", rev = "22868f426bd4dd0e682b5ec5f9bd55507664240c" }
 "#;
 
         let target_config = define_config(true);
@@ -476,7 +622,8 @@ libs = ["dependencies"]
 
         match run(command) {
             Ok(_) => {}
-            Err(_) => {
+            Err(err) => {
+                println!("Error occurred {:?}", err);
                 clean_test_env(target_config.clone());
                 assert_eq!("Invalid State", "")
             }
@@ -485,6 +632,81 @@ libs = ["dependencies"]
         let path_dependency = DEPENDENCY_DIR.join("@tt-1.6.1");
 
         assert!(path_dependency.exists());
+        clean_test_env(target_config);
+    }
+
+    #[test]
+    #[serial]
+    fn soldeer_update_success_with_soldeer_config() {
+        let _ = remove_dir_all(DEPENDENCY_DIR.clone());
+        let _ = remove_file(LOCK_FILE.clone());
+        let path_remappings = get_current_working_dir().join("remappings.txt");
+
+        let _ = remove_file(&path_remappings);
+        let content = r#"
+# Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
+
+[profile.default]
+script = "script"
+solc = "0.8.26"
+src = "src"
+test = "test"
+libs = ["dependencies"]
+
+[dependencies]
+"@tt" = {version = "1.6.1", url = "https://soldeer-revisions.s3.amazonaws.com/@openzeppelin-contracts/3_3_0-rc_2_22-01-2024_13:12:57_contracts.zip"}
+forge-std = { version = "1.8.1" }
+solmate = "6.7.0"
+mario = { version = "1.0", git = "https://gitlab.com/mario4582928/mario-soldeer-dependency.git", rev = "9800b422749c438fb59f289f3c2d5b1a173707ea" }
+
+[soldeer]
+remappings_generate = true
+remappings_regenerate = true
+remappings_location = "config"
+remappings_prefix = "@custom@"
+recursive_deps = true
+"#;
+
+        let target_config = define_config(true);
+
+        write_to_config(&target_config, content);
+
+        unsafe {
+            // became unsafe in Rust 1.80
+            env::set_var("base_url", "https://api.soldeer.xyz");
+        }
+
+        let command =
+            Subcommands::Update(Update { regenerate_remappings: false, recursive_deps: false });
+
+        match run(command) {
+            Ok(_) => {}
+            Err(err) => {
+                println!("Error occurred {:?}", err);
+                clean_test_env(target_config.clone());
+                assert_eq!("Invalid State", "")
+            }
+        }
+
+        let path_dependency = DEPENDENCY_DIR.join("@tt-1.6.1");
+        assert!(path_dependency.exists());
+
+        let path_dependency = DEPENDENCY_DIR.join("forge-std-1.8.1");
+        assert!(path_dependency.exists());
+
+        let path_dependency = DEPENDENCY_DIR.join("solmate-6.7.0");
+        assert!(path_dependency.exists());
+
+        let path_dependency = DEPENDENCY_DIR.join("mario-1.0");
+        assert!(path_dependency.exists());
+
+        let expected_remappings = r#"@custom@@tt-1.6.1/=dependencies/@tt-1.6.1/
+@custom@forge-std-1.8.1/=dependencies/forge-std-1.8.1/
+@custom@mario-1.0/=dependencies/mario-1.0/
+@custom@solmate-6.7.0/=dependencies/solmate-6.7.0/
+"#;
+        assert_eq!(expected_remappings, read_file_to_string(path_remappings));
+
         clean_test_env(target_config);
     }
 
@@ -524,7 +746,7 @@ libs = ["dependencies"]
         match run(command) {
             Ok(_) => {}
             Err(err) => {
-                println!("Err {:?}", err);
+                println!("Error occurred {:?}", err);
                 clean_test_env(target_config.clone());
                 assert_eq!("Invalid State", "")
             }
@@ -626,7 +848,8 @@ libs = ["dependencies"]
 
         match run(command) {
             Ok(_) => {}
-            Err(_) => {
+            Err(err) => {
+                println!("Error occurred {:?}", err);
                 clean_test_env(PathBuf::default());
                 assert_eq!("Invalid State", "")
             }
@@ -664,7 +887,8 @@ libs = ["dependencies"]
 
         match run(command) {
             Ok(_) => {}
-            Err(_) => {
+            Err(err) => {
+                println!("Error occurred {:?}", err);
                 clean_test_env(PathBuf::default());
                 assert_eq!("Invalid State", "")
             }
@@ -778,7 +1002,7 @@ libs = ["dependencies"]
         match run(command) {
             Ok(_) => {}
             Err(err) => {
-                println!("Err {}", err);
+                println!("Error occurred {:?}", err);
                 clean_test_env(target_config.clone());
                 assert_eq!("Invalid State", "")
             }
@@ -834,7 +1058,7 @@ libs = ["dependencies"]
         match run(command) {
             Ok(_) => {}
             Err(err) => {
-                println!("Err {}", err);
+                println!("Error occurred {:?}", err);
                 clean_test_env(target_config.clone());
                 assert_eq!("Invalid State", "")
             }
@@ -890,7 +1114,7 @@ libs = ["dependencies"]
         match run(command) {
             Ok(_) => {}
             Err(err) => {
-                println!("Err {}", err);
+                println!("Error occurred {:?}", err);
                 clean_test_env(target_config.clone());
                 assert_eq!("Invalid State", "")
             }
@@ -946,7 +1170,7 @@ libs = ["dependencies"]
         match run(command) {
             Ok(_) => {}
             Err(err) => {
-                println!("Err {}", err);
+                println!("Error occurred {:?}", err);
                 clean_test_env(target_config.clone());
                 assert_eq!("Invalid State", "")
             }
@@ -1002,7 +1226,7 @@ libs = ["dependencies"]
         match run(command) {
             Ok(_) => {}
             Err(err) => {
-                println!("Err {}", err);
+                println!("Error occurred {:?}", err);
                 clean_test_env(target_config.clone());
                 assert_eq!("Invalid State", "")
             }
@@ -1036,7 +1260,7 @@ libs = ["dependencies"]
         match run(command) {
             Ok(_) => {}
             Err(err) => {
-                println!("{:?}", err);
+                println!("Error occurred {:?}", err);
                 clean_test_env(target_config.clone());
                 assert_eq!("Invalid State", "")
             }
@@ -1080,7 +1304,7 @@ libs = ["dependencies"]
         match run(command) {
             Ok(_) => {}
             Err(err) => {
-                println!("{:?}", err);
+                println!("Error occurred {:?}", err);
                 clean_test_env(target_config.clone());
                 assert_eq!("Invalid State", "")
             }
@@ -1093,6 +1317,230 @@ libs = ["dependencies"]
         clean_test_env(target_config);
         let _ = remove_file(submodules_path);
         let _ = remove_dir_all(lib_path);
+    }
+
+    #[test]
+    #[serial]
+    fn download_dependency_with_subdependencies_on_soldeer_success_arg_config() {
+        let _ = remove_dir_all(DEPENDENCY_DIR.clone());
+        let _ = remove_file(LOCK_FILE.clone());
+        let content = r#"
+# Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
+
+[profile.default]
+script = "script"
+solc = "0.8.26"
+src = "src"
+test = "test"
+libs = ["dependencies"]
+
+[dependencies]
+"#;
+
+        let target_config = define_config(true);
+
+        write_to_config(&target_config, content);
+
+        unsafe {
+            // became unsafe in Rust 1.80
+            env::set_var("base_url", "https://api.soldeer.xyz");
+        }
+
+        let command = Subcommands::Install(Install {
+            dependency: Some("dep1~1.0".to_string()),
+            remote_url: Some(
+                "https://gitlab.com/mario4582928/mario-soldeer-dependency.git".to_string(),
+            ),
+            rev: None,
+            regenerate_remappings: false,
+            recursive_deps: true,
+        });
+
+        match run(command) {
+            Ok(_) => {}
+            Err(err) => {
+                println!("Error occurred {:?}", err);
+                clean_test_env(target_config.clone());
+                assert_eq!("Invalid State", "")
+            }
+        }
+
+        let path_dir = DEPENDENCY_DIR.join("dep1-1.0");
+        assert!(path_dir.exists());
+        let path_dir = DEPENDENCY_DIR
+            .join("dep1-1.0")
+            .join("dependencies")
+            .join("@openzeppelin-contracts-5.0.2")
+            .join("token");
+        assert!(path_dir.exists());
+        clean_test_env(target_config);
+    }
+
+    #[test]
+    #[serial]
+    fn download_dependency_with_subdependencies_on_soldeer_success_soldeer_config() {
+        let _ = remove_dir_all(DEPENDENCY_DIR.clone());
+        let _ = remove_file(LOCK_FILE.clone());
+        let content = r#"
+# Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
+
+[profile.default]
+script = "script"
+solc = "0.8.26"
+src = "src"
+test = "test"
+libs = ["dependencies"]
+
+[dependencies]
+
+[soldeer]
+recursive_deps = true
+"#;
+
+        let target_config = define_config(true);
+
+        write_to_config(&target_config, content);
+
+        unsafe {
+            // became unsafe in Rust 1.80
+            env::set_var("base_url", "https://api.soldeer.xyz");
+        }
+
+        let command = Subcommands::Install(Install {
+            dependency: Some("dep1~1.0".to_string()),
+            remote_url: Some(
+                "https://gitlab.com/mario4582928/mario-soldeer-dependency.git".to_string(),
+            ),
+            rev: None,
+            regenerate_remappings: false,
+            recursive_deps: false,
+        });
+
+        match run(command) {
+            Ok(_) => {}
+            Err(err) => {
+                println!("Error occurred {:?}", err);
+                clean_test_env(target_config.clone());
+                assert_eq!("Invalid State", "")
+            }
+        }
+
+        let path_dir = DEPENDENCY_DIR.join("dep1-1.0");
+        assert!(path_dir.exists());
+        let path_dir = DEPENDENCY_DIR
+            .join("dep1-1.0")
+            .join("dependencies")
+            .join("@openzeppelin-contracts-5.0.2")
+            .join("token");
+        assert!(path_dir.exists());
+        clean_test_env(target_config);
+    }
+
+    #[test]
+    #[serial]
+    fn download_dependency_with_subdependencies_on_git_success_arg_config() {
+        let _ = remove_dir_all(DEPENDENCY_DIR.clone());
+        let _ = remove_file(LOCK_FILE.clone());
+        let content = r#"
+# Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
+
+[profile.default]
+script = "script"
+solc = "0.8.26"
+src = "src"
+test = "test"
+libs = ["dependencies"]
+
+[dependencies]
+"#;
+
+        let target_config = define_config(true);
+
+        write_to_config(&target_config, content);
+
+        unsafe {
+            // became unsafe in Rust 1.80
+            env::set_var("base_url", "https://api.soldeer.xyz");
+        }
+
+        let command = Subcommands::Install(Install {
+            dependency: Some("dep1~1.0".to_string()),
+            remote_url: Some("https://gitlab.com/mario4582928/mario-git-submodule.git".to_string()),
+            rev: None,
+            regenerate_remappings: false,
+            recursive_deps: true,
+        });
+
+        match run(command) {
+            Ok(_) => {}
+            Err(err) => {
+                println!("Error occurred {:?}", err);
+                clean_test_env(target_config.clone());
+                assert_eq!("Invalid State", "")
+            }
+        }
+
+        let path_dir = DEPENDENCY_DIR.join("dep1-1.0");
+        assert!(path_dir.exists());
+        let path_dir =
+            DEPENDENCY_DIR.join("dep1-1.0").join("lib").join("mario").join("foundry.toml");
+        assert!(path_dir.exists());
+        clean_test_env(target_config);
+    }
+
+    #[test]
+    #[serial]
+    fn download_dependency_with_subdependencies_on_git_success_soldeer_config() {
+        let _ = remove_dir_all(DEPENDENCY_DIR.clone());
+        let _ = remove_file(LOCK_FILE.clone());
+        let content = r#"
+# Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
+
+[profile.default]
+script = "script"
+solc = "0.8.26"
+src = "src"
+test = "test"
+libs = ["dependencies"]
+
+[dependencies]
+
+[soldeer]
+recursive_deps = true
+"#;
+
+        let target_config = define_config(true);
+
+        write_to_config(&target_config, content);
+
+        unsafe {
+            // became unsafe in Rust 1.80
+            env::set_var("base_url", "https://api.soldeer.xyz");
+        }
+
+        let command = Subcommands::Install(Install {
+            dependency: Some("dep1~1.0".to_string()),
+            remote_url: Some("https://gitlab.com/mario4582928/mario-git-submodule.git".to_string()),
+            rev: None,
+            regenerate_remappings: false,
+            recursive_deps: false,
+        });
+
+        match run(command) {
+            Ok(_) => {}
+            Err(err) => {
+                println!("Error occurred {:?}", err);
+                clean_test_env(target_config.clone());
+                assert_eq!("Invalid State", "")
+            }
+        }
+
+        let path_dir = DEPENDENCY_DIR.join("dep1-1.0");
+        assert!(path_dir.exists());
+        let path_dir =
+            DEPENDENCY_DIR.join("dep1-1.0").join("lib").join("mario").join("foundry.toml");
+        assert!(path_dir.exists());
+        clean_test_env(target_config);
     }
 
     fn clean_test_env(target_config: PathBuf) {

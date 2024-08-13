@@ -16,7 +16,6 @@ pub async fn get_dependency_url_remote(dependency: &Dependency) -> Result<String
         dependency.version()
     );
     let req = Client::new().get(url);
-
     if let Ok(response) = req.send().await {
         if response.status().is_success() {
             let response_text = response.text().await.unwrap();

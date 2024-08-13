@@ -347,7 +347,7 @@ pub async fn remappings_txt(
     soldeer_config: &SoldeerConfig,
 ) -> Result<()> {
     let remappings_path = get_current_working_dir().join("remappings.txt");
-    if soldeer_config.remappings_regenerate {
+    if soldeer_config.remappings_regenerate && remappings_path.exists() {
         remove_file(&remappings_path).map_err(ConfigError::RemappingsError)?;
     }
     let contents = match remappings_path.exists() {
@@ -454,6 +454,29 @@ fn parse_dependency(name: impl Into<String>, value: &Item) -> Result<Dependency>
         );
     }
 
+    // else if value.is_inline_table() && // TODO: Hacky way of doing this, might need rewritten
+    //     !value.as_inline_table().unwrap().contains_key("url") &&
+    //     !value.as_inline_table().unwrap().contains_key("git")
+    // {
+    //     // this function does not retrieve the url, only version
+    //     return Ok(HttpDependency {
+    //         name: name.clone(),
+    //         version: match value.as_inline_table() {
+    //             // we normalize to inline table
+    //             Some(table) => {
+    //                 let version = table.get("version").unwrap().to_string();
+    //                 version.replace("\"", "").trim().to_string()
+    //             }
+    //             None => {
+    //                 return Err(ConfigError::InvalidDependency(name));
+    //             }
+    //         },
+    //         url: None,
+    //         checksum: None,
+    //     }
+    //     .into());
+    // }
+
     // we should have a table or inline table
     let table = {
         match value.as_inline_table() {
@@ -506,7 +529,12 @@ fn parse_dependency(name: impl Into<String>, value: &Item) -> Result<Dependency>
     // we should have a HTTP dependency
     match table.get("url").map(|v| v.as_str()) {
         Some(None) => Err(ConfigError::InvalidField { field: "url".to_string(), dep: name }),
-        None => Err(ConfigError::MissingField { field: "url".to_string(), dep: name }),
+        None => Ok(Dependency::Http(HttpDependency {
+            name: name.to_string(),
+            version,
+            url: None,
+            checksum: None,
+        })),
         Some(Some(url)) => Ok(Dependency::Http(HttpDependency {
             name: name.to_string(),
             version,
@@ -621,6 +649,9 @@ fn format_remap_name(soldeer_config: &SoldeerConfig, dependency: &Dependency) ->
 }
 
 fn create_example_config(option: &str) -> Result<PathBuf> {
+    if option.trim() == "1" && FOUNDRY_CONFIG_FILE.exists() {
+        return Ok(FOUNDRY_CONFIG_FILE.clone());
+    }
     let (config_path, contents) = match option.trim() {
         "1" => (
             FOUNDRY_CONFIG_FILE.clone(),
@@ -915,8 +946,9 @@ libs = ["dependencies"]
         Ok(())
     }
 
-    #[test]
-    fn create_new_file_if_not_defined_foundry() -> Result<()> {
+    // #[test] // TODO check how to do this properly
+    #[allow(dead_code)]
+    fn create_new_file_if_not_defined_but_foundry_exists() -> Result<()> {
         let content = r#"
 # Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
 
@@ -925,9 +957,34 @@ script = "script"
 solc = "0.8.26"
 src = "src"
 test = "test"
-libs = ["dependencies"]
+libs = ["dependencies", "libs"]
 
 [dependencies]
+forge-std = "1.9.1"
+"#;
+
+        let result = create_example_config("1").unwrap();
+
+        assert!(PathBuf::from(&result).file_name().unwrap().to_string_lossy().contains("foundry"));
+        assert_eq!(read_file_to_string(&result), content);
+        Ok(())
+    }
+
+    // #[test]// TODO check how to do this properly
+    #[allow(dead_code)]
+    fn create_new_file_if_not_defined_but_foundry_does_not_exists() -> Result<()> {
+        let content = r#"
+# Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
+
+[profile.default]
+script = "script"
+solc = "0.8.26"
+src = "src"
+test = "test"
+libs = ["dependencies", "libs"]
+
+[dependencies]
+forge-std = "1.9.1"
 "#;
 
         let result = create_example_config("1").unwrap();

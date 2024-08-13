@@ -43,7 +43,6 @@ impl core::fmt::Display for IntegrityChecksum {
 pub async fn download_dependencies(
     dependencies: &[Dependency],
     clean: bool,
-    recursive_deps: bool,
 ) -> Result<Vec<DownloadResult>> {
     // clean dependencies folder if flag is true
     if clean {
@@ -63,7 +62,7 @@ pub async fn download_dependencies(
     for dep in dependencies {
         set.spawn({
             let d = dep.clone();
-            async move { download_dependency(&d, true, recursive_deps).await }
+            async move { download_dependency(&d, true).await }
         });
     }
 
@@ -100,7 +99,6 @@ pub struct DownloadResult {
 pub async fn download_dependency(
     dependency: &Dependency,
     skip_folder_check: bool,
-    recursive_deps: bool,
 ) -> Result<DownloadResult> {
     let dependency_directory: PathBuf = DEPENDENCY_DIR.clone();
     // if we called this method from `download_dependencies` we don't need to check if the folder
@@ -139,9 +137,6 @@ pub async fn download_dependency(
         }
     };
 
-    if recursive_deps {
-        install_subdependencies(dependency)?;
-    }
     println!("{}", format!("Dependency {dependency} downloaded!").green());
 
     Ok(res)
@@ -268,7 +263,7 @@ async fn download_via_http(
     let resp = reqwest::get(url).await?;
     let mut resp = resp.error_for_status()?;
 
-    let file_path = dependency_directory.join(zip_to_download);
+    let file_path = dependency_directory.join(&zip_to_download);
     let mut file = tokio_fs::File::create(&file_path)
         .await
         .map_err(|e| DownloadError::IOError { path: file_path.clone(), source: e })?;
@@ -293,7 +288,7 @@ pub fn delete_dependency_files(dependency: &Dependency) -> Result<()> {
     Ok(())
 }
 
-fn install_subdependencies(dependency: &Dependency) -> Result<()> {
+pub fn install_subdependencies(dependency: &Dependency) -> Result<()> {
     let dep_name =
         sanitize_dependency_name(&format!("{}-{}", dependency.name(), dependency.version()));
 
@@ -358,7 +353,7 @@ mod tests {
             checksum: None
         });
         dependencies.push(dependency.clone());
-        let results = download_dependencies(&dependencies, false, false).await.unwrap();
+        let results = download_dependencies(&dependencies, false).await.unwrap();
         let path_zip =
             DEPENDENCY_DIR.join(format!("{}-{}.zip", &dependency.name(), &dependency.version()));
         assert!(path_zip.exists());
@@ -379,7 +374,7 @@ mod tests {
             rev: Some("7a0663eaf7488732f39550be655bad6694974cb3".to_string()),
         });
         dependencies.push(dependency.clone());
-        let results = download_dependencies(&dependencies, false, false).await.unwrap();
+        let results = download_dependencies(&dependencies, false).await.unwrap();
         let path_dir =
             DEPENDENCY_DIR.join(format!("{}-{}", &dependency.name(), &dependency.version()));
         assert!(path_dir.exists());
@@ -408,7 +403,7 @@ mod tests {
             rev: None,
         });
         dependencies.push(dependency.clone());
-        let results = download_dependencies(&dependencies, false, false).await.unwrap();
+        let results = download_dependencies(&dependencies, false).await.unwrap();
         let path_dir =
             DEPENDENCY_DIR.join(format!("{}-{}", &dependency.name(), &dependency.version()));
         assert!(path_dir.exists());
@@ -438,7 +433,7 @@ mod tests {
         });
 
         dependencies.push(dependency_two.clone());
-        let results = download_dependencies(&dependencies, false, false).await.unwrap();
+        let results = download_dependencies(&dependencies, false).await.unwrap();
         let mut path_zip = DEPENDENCY_DIR.join(format!(
             "{}-{}.zip",
             &dependency_one.name(),
@@ -478,7 +473,7 @@ mod tests {
         });
 
         dependencies.push(dependency_two.clone());
-        let results = download_dependencies(&dependencies, false, false).await.unwrap();
+        let results = download_dependencies(&dependencies, false).await.unwrap();
         let mut path_dir = DEPENDENCY_DIR.join(format!(
             "{}-{}",
             &dependency_one.name(),
@@ -522,7 +517,7 @@ mod tests {
         });
         dependencies.push(dependency_one.clone());
 
-        download_dependencies(&dependencies, false, false).await.unwrap();
+        download_dependencies(&dependencies, false).await.unwrap();
         let path_zip = DEPENDENCY_DIR.join(format!(
             "{}-{}.zip",
             &dependency_one.name(),
@@ -540,7 +535,7 @@ mod tests {
         dependencies = Vec::new();
         dependencies.push(dependency_two.clone());
 
-        let results = download_dependencies(&dependencies, false, false).await.unwrap();
+        let results = download_dependencies(&dependencies, false).await.unwrap();
         let size_of_two = fs::metadata(Path::new(&path_zip)).unwrap().len();
 
         assert!(size_of_two > size_of_one);
@@ -561,7 +556,7 @@ mod tests {
         });
 
         dependencies.push(dependency_old.clone());
-        download_dependencies(&dependencies, false, false).await.unwrap();
+        download_dependencies(&dependencies, false).await.unwrap();
 
         // making sure the dependency exists so we can check the deletion
         let path_zip_old = DEPENDENCY_DIR.join(format!(
@@ -580,7 +575,7 @@ mod tests {
         dependencies = Vec::new();
         dependencies.push(dependency.clone());
 
-        let results = download_dependencies(&dependencies, true, false).await.unwrap();
+        let results = download_dependencies(&dependencies, true).await.unwrap();
         let path_zip =
             DEPENDENCY_DIR.join(format!("{}-{}.zip", &dependency.name(), &dependency.version()));
         assert!(!path_zip_old.exists());
@@ -603,7 +598,7 @@ mod tests {
         });
         dependencies.push(dependency.clone());
 
-        match download_dependencies(&dependencies, false, false).await {
+        match download_dependencies(&dependencies, false).await {
             Ok(_) => {
                 assert_eq!("Invalid state", "");
             }
@@ -627,7 +622,7 @@ mod tests {
         });
         dependencies.push(dependency.clone());
 
-        match download_dependencies(&dependencies, false, false).await {
+        match download_dependencies(&dependencies, false).await {
             Ok(_) => {
                 assert_eq!("Invalid state", "");
             }
@@ -651,7 +646,7 @@ mod tests {
             checksum: None
         });
         dependencies.push(dependency.clone());
-        download_dependencies(&dependencies, false, false).await.unwrap();
+        download_dependencies(&dependencies, false).await.unwrap();
         let path = DEPENDENCY_DIR.join(format!("{}-{}", &dependency.name(), &dependency.version()));
         match unzip_dependencies(&dependencies) {
             Ok(_) => {
@@ -680,7 +675,7 @@ mod tests {
             checksum: None,
         });
         dependencies.push(dependency.clone());
-        download_dependencies(&dependencies, false, false).await.unwrap();
+        download_dependencies(&dependencies, false).await.unwrap();
         match unzip_dependencies(&dependencies) {
             Ok(_) => {
                 clean_dependency_directory();
@@ -703,7 +698,7 @@ mod tests {
             url: Some("https://soldeer-revisions.s3.amazonaws.com/@openzeppelin-contracts/3_3_0-rc_2_22-01-2024_13:12:57_contracts.zip".to_string()),
             checksum: None,
         }));
-        download_dependencies(&dependencies, false, false).await.unwrap();
+        download_dependencies(&dependencies, false).await.unwrap();
         unzip_dependency(dependencies[0].as_http().unwrap()).unwrap();
         healthcheck_dependency(&dependencies[0]).unwrap();
         assert!(DEPENDENCY_DIR
@@ -746,7 +741,7 @@ mod tests {
         });
         dependencies.push(dependency.clone());
 
-        match download_dependencies(&dependencies, false, false).await {
+        match download_dependencies(&dependencies, false).await {
             Ok(_) => {}
             Err(_) => {
                 assert_eq!("Invalid state", "");
@@ -756,53 +751,5 @@ mod tests {
         assert!(!DEPENDENCY_DIR
             .join(format!("{}~{}", dependency.name(), dependency.version()))
             .exists());
-    }
-
-    #[tokio::test]
-    #[serial]
-    async fn download_dependency_with_subdependencies_on_soldeer_success() {
-        clean_dependency_directory();
-        let mut dependencies: Vec<Dependency> = Vec::new();
-        let dependency = Dependency::Git(GitDependency {
-            name: "dep1".to_string(),
-            version: "1.0".to_string(),
-            git: "https://gitlab.com/mario4582928/mario-soldeer-dependency.git".to_string(),
-            rev: None,
-        });
-        dependencies.push(dependency.clone());
-        let results = download_dependencies(&dependencies, false, true).await.unwrap();
-        let path_dir =
-            DEPENDENCY_DIR.join(format!("{}-{}", &dependency.name(), &dependency.version()));
-        assert!(path_dir.exists());
-        assert!(path_dir
-            .join("dependencies")
-            .join("@openzeppelin-contracts-5.0.2")
-            .join("README.md")
-            .exists());
-        assert!(results.len() == 1);
-        assert!(!results[0].hash.is_empty());
-        clean_dependency_directory();
-    }
-
-    #[tokio::test]
-    #[serial]
-    async fn download_dependency_with_subdependencies_on_git_success() {
-        clean_dependency_directory();
-        let mut dependencies: Vec<Dependency> = Vec::new();
-        let dependency = Dependency::Git(GitDependency {
-            name: "dep1".to_string(),
-            version: "1.0".to_string(),
-            git: "https://gitlab.com/mario4582928/mario-git-submodule.git".to_string(),
-            rev: None,
-        });
-        dependencies.push(dependency.clone());
-        let results = download_dependencies(&dependencies, false, true).await.unwrap();
-        let path_dir =
-            DEPENDENCY_DIR.join(format!("{}-{}", &dependency.name(), &dependency.version()));
-        assert!(path_dir.exists());
-        assert!(path_dir.join("lib").join("mario").join("README.md").exists());
-        assert!(results.len() == 1);
-        assert!(!results[0].hash.is_empty());
-        clean_dependency_directory();
     }
 }

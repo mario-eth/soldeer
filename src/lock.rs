@@ -1,5 +1,6 @@
 use crate::{
     config::Dependency,
+    dependency_downloader::IntegrityChecksum,
     errors::LockError,
     utils::{get_current_working_dir, read_file_to_string},
     LOCK_FILE,
@@ -12,11 +13,13 @@ pub type Result<T> = std::result::Result<T, LockError>;
 
 // Top level struct to hold the TOML data.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub struct LockEntry {
     name: String,
     version: String,
     source: String,
     checksum: String,
+    integrity: Option<String>,
 }
 
 impl LockEntry {
@@ -26,12 +29,14 @@ impl LockEntry {
         version: impl Into<String>,
         source: impl Into<String>,
         checksum: impl Into<String>,
+        integrity: Option<String>,
     ) -> Self {
         LockEntry {
             name: name.into(),
             version: version.into(),
             source: source.into(),
             checksum: checksum.into(),
+            integrity,
         }
     }
 }
@@ -63,7 +68,11 @@ pub enum LockWriteMode {
     Append,
 }
 
-pub fn write_lock(dependencies: &[Dependency], mode: LockWriteMode) -> Result<()> {
+pub fn write_lock(
+    dependencies: &[Dependency],
+    integrity_checksums: &[Option<IntegrityChecksum>],
+    mode: LockWriteMode,
+) -> Result<()> {
     let lock_file: PathBuf = if cfg!(test) {
         get_current_working_dir().join("test").join("soldeer.lock")
     } else {
@@ -79,16 +88,17 @@ pub fn write_lock(dependencies: &[Dependency], mode: LockWriteMode) -> Result<()
     }
 
     let mut entries = read_lock()?;
-    for dep in dependencies {
+    for (dep, integrity) in dependencies.iter().zip(integrity_checksums.iter()) {
         let entry = match dep {
             Dependency::Http(dep) => LockEntry::new(
                 &dep.name,
                 &dep.version,
                 dep.url.as_ref().unwrap(),
                 dep.checksum.as_ref().unwrap(),
+                integrity.clone().map(|c| c.to_string()),
             ),
             Dependency::Git(dep) => {
-                LockEntry::new(&dep.name, &dep.version, &dep.git, dep.rev.as_ref().unwrap())
+                LockEntry::new(&dep.name, &dep.version, &dep.git, dep.rev.as_ref().unwrap(), None)
             }
         };
         // check for entry already existing
@@ -198,12 +208,14 @@ name = "@openzeppelin-contracts"
 version = "2.3.0"
 source = "registry+https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@openzeppelin-contracts~2.3.0.zip"
 checksum = "a2d469062adeb62f7a4aada78237acae4ad3c168ba65c3ac9c76e290332c11ec"
+integrity = "deadbeef"
 
 [[dependencies]]
 name = "@prb-test"
 version = "0.6.5"
 source = "registry+https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@prb-test~0.6.5.zip"
 checksum = "5019418b1e9128185398870f77a42e51d624c44315bb1572e7545be51d707016"
+integrity = "deadbeef"
 "#;
         File::create(lock_file).unwrap().write_all(lock_contents.as_bytes()).unwrap();
     }
@@ -249,7 +261,7 @@ checksum = "5019418b1e9128185398870f77a42e51d624c44315bb1572e7545be51d707016"
             checksum: Some("5019418b1e9128185398870f77a42e51d624c44315bb1572e7545be51d707016".to_string())
         });
         let dependencies = vec![dependency.clone()];
-        write_lock(&dependencies, LockWriteMode::Append).unwrap();
+        write_lock(&dependencies, &[Some("deadbeef".into())], LockWriteMode::Append).unwrap();
         assert!(matches!(lock_check(&dependency, true), Err(LockError::DependencyInstalled(_))));
 
         let contents = read_file_to_string(lock_file);
@@ -261,6 +273,7 @@ name = "@openzeppelin-contracts"
 version = "2.5.0"
 source = "https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@openzeppelin-contracts~2.5.0.zip"
 checksum = "5019418b1e9128185398870f77a42e51d624c44315bb1572e7545be51d707016"
+integrity = "deadbeef"
 "#
         );
         assert!(matches!(lock_check(&dependency, true), Err(LockError::DependencyInstalled(_))));
@@ -279,7 +292,7 @@ checksum = "5019418b1e9128185398870f77a42e51d624c44315bb1572e7545be51d707016"
             checksum: Some("5019418b1e9128185398870f77a42e51d624c44315bb1572e7545be51d707016".to_string())
         });
         dependencies.push(dependency.clone());
-        write_lock(&dependencies, LockWriteMode::Append).unwrap();
+        write_lock(&dependencies, &[Some("deadbeef".into())], LockWriteMode::Append).unwrap();
         let contents = read_file_to_string(lock_file);
 
         assert_eq!(
@@ -289,18 +302,21 @@ name = "@openzeppelin-contracts"
 version = "2.3.0"
 source = "registry+https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@openzeppelin-contracts~2.3.0.zip"
 checksum = "a2d469062adeb62f7a4aada78237acae4ad3c168ba65c3ac9c76e290332c11ec"
+integrity = "deadbeef"
 
 [[dependencies]]
 name = "@openzeppelin-contracts-2"
 version = "2.6.0"
 source = "https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@openzeppelin-contracts~2.6.0.zip"
 checksum = "5019418b1e9128185398870f77a42e51d624c44315bb1572e7545be51d707016"
+integrity = "deadbeef"
 
 [[dependencies]]
 name = "@prb-test"
 version = "0.6.5"
 source = "registry+https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@prb-test~0.6.5.zip"
 checksum = "5019418b1e9128185398870f77a42e51d624c44315bb1572e7545be51d707016"
+integrity = "deadbeef"
 "#
         );
 
@@ -318,7 +334,8 @@ checksum = "5019418b1e9128185398870f77a42e51d624c44315bb1572e7545be51d707016"
             checksum: Some("5019418b1e9128185398870f77a42e51d624c44315bb1572e7545be51d707016".to_string())
         });
         let dependencies = vec![dependency.clone()];
-        write_lock(&dependencies, LockWriteMode::Append).unwrap();
+        write_lock(&dependencies, &[Some(IntegrityChecksum::default())], LockWriteMode::Append)
+            .unwrap();
 
         match remove_lock(&dependency) {
             Ok(_) => {}
@@ -346,7 +363,12 @@ checksum = "5019418b1e9128185398870f77a42e51d624c44315bb1572e7545be51d707016"
             checksum: Some("5019418b1e9128185398870f77a42e51d624c44315bb1572e7545be51d707016".to_string())
         });
         let dependencies = vec![dependency.clone(), dependency2.clone()];
-        write_lock(&dependencies, LockWriteMode::Append).unwrap();
+        write_lock(
+            &dependencies,
+            &[Some("deadbeef".into()), Some("deadbeef".into())],
+            LockWriteMode::Append,
+        )
+        .unwrap();
 
         match remove_lock(&dependency) {
             Ok(_) => {}
@@ -363,6 +385,7 @@ name = "@openzeppelin-contracts2"
 version = "2.5.0"
 source = "https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@openzeppelin-contracts~2.5.0.zip"
 checksum = "5019418b1e9128185398870f77a42e51d624c44315bb1572e7545be51d707016"
+integrity = "deadbeef"
 "#
         );
     }
@@ -379,7 +402,7 @@ checksum = "5019418b1e9128185398870f77a42e51d624c44315bb1572e7545be51d707016"
         });
 
         let dependencies = vec![dependency.clone()];
-        write_lock(&dependencies, LockWriteMode::Append).unwrap();
+        write_lock(&dependencies, &[Some("deadbeef".into())], LockWriteMode::Append).unwrap();
 
         match remove_lock(&Dependency::Http(HttpDependency {
             name: "non-existent".to_string(),
@@ -401,6 +424,7 @@ name = "@openzeppelin-contracts"
 version = "2.5.0"
 source = "https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@openzeppelin-contracts~2.5.0.zip"
 checksum = "5019418b1e9128185398870f77a42e51d624c44315bb1572e7545be51d707016"
+integrity = "deadbeef"
 "#
         );
     }

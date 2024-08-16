@@ -2,8 +2,9 @@ use crate::{
     auth::get_token,
     errors::{AuthError, PublishError},
     remote::get_project_id,
-    utils::{get_base_url, get_current_working_dir, read_file, read_file_to_string},
+    utils::{get_base_url, read_file},
 };
+use ignore::{WalkBuilder, WalkState};
 use regex::Regex;
 use reqwest::{
     header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE},
@@ -14,10 +15,9 @@ use std::{
     fs::{remove_file, File},
     io::{self, Read, Write},
     path::{Path, PathBuf},
+    sync::{Arc, Mutex},
 };
-use walkdir::WalkDir;
 use yansi::Paint as _;
-use yash_fnmatch::{without_escape, Pattern};
 use zip::{write::SimpleFileOptions, CompressionMethod, ZipWriter};
 
 pub type Result<T> = std::result::Result<T, PublishError>;
@@ -110,69 +110,33 @@ fn zip_file(
     Ok(zip_file_path)
 }
 
-fn filter_files_to_copy(root_directory_path: &Path) -> Vec<PathBuf> {
-    let ignore_files: Vec<String> = read_ignore_file();
-
-    let root_directory: &str = &(root_directory_path.to_str().unwrap().to_owned() + "/");
-    let mut files_to_copy: Vec<PathBuf> = Vec::new();
-    for entry in WalkDir::new(root_directory).into_iter().filter_map(|e| e.ok()) {
-        let is_dir = entry.path().is_dir();
-        let file_path: String = entry.path().to_str().unwrap().to_string();
-        if file_path.is_empty() || is_dir {
-            continue;
-        }
-        let mut found: bool = false;
-        for ignore_file in ignore_files.iter() {
-            let p = Pattern::parse(without_escape(ignore_file)).unwrap();
-            let exists = p.find(&file_path);
-            if exists.is_some() {
-                found = true;
-                break;
+fn filter_files_to_copy(root_directory_path: impl AsRef<Path>) -> Vec<PathBuf> {
+    let files_to_copy = Arc::new(Mutex::new(Vec::with_capacity(100)));
+    let walker = WalkBuilder::new(root_directory_path)
+        .add_custom_ignore_filename(".soldeerignore")
+        .hidden(false)
+        .build_parallel();
+    walker.run(|| {
+        let files_to_copy = Arc::clone(&files_to_copy);
+        // function executed for each DirEntry
+        Box::new(move |result| {
+            let Ok(entry) = result else {
+                return WalkState::Continue;
+            };
+            let path = entry.path();
+            if path.is_dir() {
+                return WalkState::Continue;
             }
-        }
+            let mut files_to_copy = files_to_copy.lock().expect("mutex should not be poisoned");
+            files_to_copy.push(path.to_path_buf());
+            WalkState::Continue
+        })
+    });
 
-        if found {
-            continue;
-        }
-
-        files_to_copy.push(entry.path().to_path_buf());
-    }
-    files_to_copy
-}
-
-fn read_ignore_file() -> Vec<String> {
-    let mut current_dir = get_current_working_dir();
-    if cfg!(test) {
-        current_dir = get_current_working_dir().join("test");
-    }
-    let gitignore = current_dir.join(".gitignore");
-    let soldeerignore = current_dir.join(".soldeerignore");
-
-    let mut files: Vec<String> = Vec::new();
-
-    if soldeerignore.exists() {
-        let contents = read_file_to_string(&soldeerignore);
-        let current_read_file = contents.lines();
-        files.append(&mut escape_lines(current_read_file.collect()));
-    }
-
-    if gitignore.exists() {
-        let contents = read_file_to_string(&gitignore);
-        let current_read_file = contents.lines();
-        files.append(&mut escape_lines(current_read_file.collect()));
-    }
-
-    files
-}
-
-fn escape_lines(lines: Vec<&str>) -> Vec<String> {
-    let mut escaped_liens: Vec<String> = vec![];
-    for line in lines {
-        if !line.trim().is_empty() {
-            escaped_liens.push(line.trim().to_string());
-        }
-    }
-    escaped_liens
+    Arc::into_inner(files_to_copy)
+        .expect("Arc should have no other strong references")
+        .into_inner()
+        .expect("mutex should not be poisoned")
 }
 
 async fn push_to_repo(
@@ -238,77 +202,11 @@ async fn push_to_repo(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::utils::get_current_working_dir;
     use io::Cursor;
     use rand::{distributions::Alphanumeric, Rng};
     use serial_test::serial;
     use std::fs::{self, create_dir_all, remove_dir_all, remove_file};
-
-    #[test]
-    #[serial]
-    fn read_ignore_files_only_soldeerignore() {
-        let soldeerignore = define_ignore_file(false);
-        let gitignore = define_ignore_file(true);
-        let _ = remove_file(gitignore);
-        let ignore_contents = r#"
-*.toml
-*.zip
-        "#;
-        write_to_ignore(&soldeerignore, ignore_contents);
-        let expected_results: Vec<String> = vec!["*.toml".to_string(), "*.zip".to_string()];
-
-        assert_eq!(read_ignore_file(), expected_results);
-        let _ = remove_file(soldeerignore);
-    }
-
-    #[test]
-    #[serial]
-    fn read_ignore_files_only_gitignore() {
-        let soldeerignore = define_ignore_file(false);
-        let gitignore = define_ignore_file(true);
-        let _ = remove_file(soldeerignore);
-
-        let ignore_contents = r#"
-*.toml
-*.zip
-        "#;
-        write_to_ignore(&gitignore, ignore_contents);
-        let expected_results: Vec<String> = vec!["*.toml".to_string(), "*.zip".to_string()];
-
-        assert_eq!(read_ignore_file(), expected_results);
-        let _ = remove_file(gitignore);
-    }
-
-    #[test]
-    #[serial]
-    fn read_ignore_files_both_gitignore_soldeerignore() {
-        let soldeerignore = define_ignore_file(false);
-        let gitignore = define_ignore_file(true);
-        let _ = remove_file(&soldeerignore);
-        let _ = remove_file(&gitignore);
-
-        let ignore_contents_git = r#"
-*.toml
-*.zip
-        "#;
-        write_to_ignore(&gitignore, ignore_contents_git);
-
-        let ignore_contents_soldeer = r#"
-        *.sol
-        *.txt
-                "#;
-        write_to_ignore(&soldeerignore, ignore_contents_soldeer);
-
-        let expected_results: Vec<String> = vec![
-            "*.sol".to_string(),
-            "*.txt".to_string(),
-            "*.toml".to_string(),
-            "*.zip".to_string(),
-        ];
-
-        assert_eq!(read_ignore_file(), expected_results);
-        let _ = remove_file(gitignore);
-        let _ = remove_file(soldeerignore);
-    }
 
     #[test]
     #[serial]
@@ -317,16 +215,16 @@ mod tests {
         let _ = remove_dir_all(&target_dir);
         let _ = create_dir_all(&target_dir);
 
-        let soldeerignore = define_ignore_file(false);
-        let gitignore = define_ignore_file(true);
+        let soldeerignore = define_ignore_file(&target_dir, false);
+        let gitignore = define_ignore_file(&target_dir, true);
         let _ = remove_file(soldeerignore);
 
         let mut ignored_files = vec![];
-        let mut filtered_files = vec![];
-        ignored_files.push(create_random_file(&target_dir, "toml".to_string()));
-        ignored_files.push(create_random_file(&target_dir, "zip".to_string()));
-        ignored_files.push(create_random_file(&target_dir, "toml".to_string()));
-        filtered_files.push(create_random_file(&target_dir, "txt".to_string()));
+        let mut filtered_files = vec![gitignore.clone()];
+        ignored_files.push(create_random_file(&target_dir, "toml"));
+        ignored_files.push(create_random_file(&target_dir, "zip"));
+        ignored_files.push(create_random_file(&target_dir, "toml"));
+        filtered_files.push(create_random_file(&target_dir, "txt"));
 
         let ignore_contents_git = r#"
 *.toml
@@ -336,8 +234,9 @@ mod tests {
 
         let result = filter_files_to_copy(&target_dir);
         assert_eq!(filtered_files.len(), result.len());
-        let file = Path::new(&filtered_files[0]);
-        assert_eq!(file, result[0]);
+        for res in result {
+            assert!(filtered_files.contains(&res), "File {:?} not found in filtered files", res);
+        }
 
         let _ = remove_file(gitignore);
         let _ = remove_dir_all(target_dir);
@@ -350,13 +249,13 @@ mod tests {
         let _ = remove_dir_all(&target_dir);
         let _ = create_dir_all(&target_dir);
 
-        let soldeerignore = define_ignore_file(false);
-        let gitignore = define_ignore_file(true);
+        let soldeerignore = define_ignore_file(&target_dir, false);
+        let gitignore = define_ignore_file(&target_dir, true);
         let _ = remove_file(soldeerignore);
 
         // divide ignored vs filtered files to check them later
         let mut ignored_files = vec![];
-        let mut filtered_files = vec![];
+        let mut filtered_files = vec![gitignore.clone()];
 
         // initial dir to test the ignore
         let target_dir = get_current_working_dir().join("test").join("test_push");
@@ -379,27 +278,27 @@ mod tests {
         // --- --- --- --- zip <= ignored
         // --- --- --- --- toml <= ignored
 
-        let random_dir = create_random_directory(&target_dir, "".to_string());
-        let broadcast_dir = create_random_directory(&target_dir, "broadcast".to_string());
+        let random_dir = create_random_directory(&target_dir, None);
+        let broadcast_dir = create_random_directory(&target_dir, Some("broadcast"));
 
-        let the_31337_dir = create_random_directory(&broadcast_dir, "31337".to_string());
-        let random_dir_in_broadcast = create_random_directory(&broadcast_dir, "".to_string());
-        let dry_run_dir = create_random_directory(&random_dir_in_broadcast, "dry_run".to_string());
+        let the_31337_dir = create_random_directory(&broadcast_dir, Some("31337"));
+        let random_dir_in_broadcast = create_random_directory(&broadcast_dir, None);
+        let dry_run_dir = create_random_directory(&random_dir_in_broadcast, Some("dry_run"));
 
-        ignored_files.push(create_random_file(&random_dir, "toml".to_string()));
-        filtered_files.push(create_random_file(&random_dir, "zip".to_string()));
+        ignored_files.push(create_random_file(&random_dir, "toml"));
+        filtered_files.push(create_random_file(&random_dir, "zip"));
 
-        ignored_files.push(create_random_file(&broadcast_dir, "toml".to_string()));
-        filtered_files.push(create_random_file(&broadcast_dir, "zip".to_string()));
+        ignored_files.push(create_random_file(&broadcast_dir, "toml"));
+        filtered_files.push(create_random_file(&broadcast_dir, "zip"));
 
-        ignored_files.push(create_random_file(&the_31337_dir, "toml".to_string()));
-        ignored_files.push(create_random_file(&the_31337_dir, "zip".to_string()));
+        ignored_files.push(create_random_file(&the_31337_dir, "toml"));
+        ignored_files.push(create_random_file(&the_31337_dir, "zip"));
 
-        filtered_files.push(create_random_file(&random_dir_in_broadcast, "zip".to_string()));
-        filtered_files.push(create_random_file(&random_dir_in_broadcast, "toml".to_string()));
+        filtered_files.push(create_random_file(&random_dir_in_broadcast, "zip"));
+        filtered_files.push(create_random_file(&random_dir_in_broadcast, "toml"));
 
-        ignored_files.push(create_random_file(&dry_run_dir, "zip".to_string()));
-        ignored_files.push(create_random_file(&dry_run_dir, "toml".to_string()));
+        ignored_files.push(create_random_file(&dry_run_dir, "zip"));
+        ignored_files.push(create_random_file(&dry_run_dir, "toml"));
 
         let ignore_contents_git = r#"
 *.toml
@@ -417,7 +316,7 @@ mod tests {
                 continue;
             }
 
-            assert!(filtered_files.contains(&res));
+            assert!(filtered_files.contains(&res), "File {:?} not found in filtered files", res);
         }
 
         let _ = remove_file(gitignore);
@@ -441,11 +340,11 @@ mod tests {
         // --- --- --- random_file_3.txt
         // --- --- random_file_2.txt
         // --- random_file_1.txt
-        let random_dir_1 = create_random_directory(&target_dir, "".to_string());
-        let random_dir_2 = create_random_directory(Path::new(&random_dir_1), "".to_string());
-        let random_file_1 = create_random_file(&target_dir, "txt".to_string());
-        let random_file_2 = create_random_file(Path::new(&random_dir_1), "txt".to_string());
-        let random_file_3 = create_random_file(Path::new(&random_dir_2), "txt".to_string());
+        let random_dir_1 = create_random_directory(&target_dir, None);
+        let random_dir_2 = create_random_directory(Path::new(&random_dir_1), None);
+        let random_file_1 = create_random_file(&target_dir, "txt");
+        let random_file_2 = create_random_file(Path::new(&random_dir_1), "txt");
+        let random_file_3 = create_random_file(Path::new(&random_dir_2), "txt");
 
         let files_to_copy: Vec<PathBuf> =
             vec![random_file_1.clone(), random_file_3.clone(), random_file_2.clone()];
@@ -483,48 +382,39 @@ mod tests {
         let _ = remove_dir_all(&target_dir_unzip);
     }
 
-    fn define_ignore_file(git: bool) -> PathBuf {
+    fn define_ignore_file(target_dir: impl AsRef<Path>, git: bool) -> PathBuf {
         let mut target = ".soldeerignore";
         if git {
             target = ".gitignore";
         }
-        get_current_working_dir().join("test").join(target)
+        target_dir.as_ref().to_path_buf().join(target)
     }
 
-    fn write_to_ignore(target_file: &PathBuf, content: &str) {
-        if target_file.exists() {
-            let _ = remove_file(target_file);
+    fn write_to_ignore(target_file: impl AsRef<Path>, contents: &str) {
+        if target_file.as_ref().exists() {
+            let _ = remove_file(&target_file);
         }
-        let mut file: std::fs::File =
-            fs::OpenOptions::new().create_new(true).write(true).open(target_file).unwrap();
-        if let Err(e) = write!(file, "{}", content) {
-            eprintln!("Couldn't write to the config file: {}", e);
-        }
+        fs::write(&target_file, contents).expect("Could not write to ignore file");
     }
 
-    fn create_random_file(target_dir: &Path, extension: String) -> PathBuf {
+    fn create_random_file(target_dir: impl AsRef<Path>, extension: &str) -> PathBuf {
         let s: String =
             rand::thread_rng().sample_iter(&Alphanumeric).take(7).map(char::from).collect();
-        let target = target_dir.join(format!("random{}.{}", s, extension));
-        let mut file: std::fs::File =
-            fs::OpenOptions::new().create_new(true).write(true).open(&target).unwrap();
-        if let Err(e) = write!(file, "this is a test file") {
-            eprintln!("Couldn't write to the config file: {}", e);
-        }
+        let target = target_dir.as_ref().join(format!("random{}.{}", s, extension));
+        fs::write(&target, "this is a test file").expect("Could not write to test file");
         target
     }
-    fn create_random_directory(target_dir: &Path, name: String) -> PathBuf {
-        let s: String =
-            rand::thread_rng().sample_iter(&Alphanumeric).take(7).map(char::from).collect();
 
-        if name.is_empty() {
-            let target = target_dir.join(format!("random{}", s));
-            let _ = create_dir_all(&target);
-            target
-        } else {
-            let target = target_dir.join(name);
-            let _ = create_dir_all(&target);
-            target
-        }
+    fn create_random_directory(target_dir: impl AsRef<Path>, name: Option<&str>) -> PathBuf {
+        let target = match name {
+            Some(name) => target_dir.as_ref().join(name),
+            None => {
+                let s: String =
+                    rand::thread_rng().sample_iter(&Alphanumeric).take(7).map(char::from).collect();
+                target_dir.as_ref().join(format!("random{}", s))
+            }
+        };
+        let _ = create_dir_all(&target);
+        target
     }
 }

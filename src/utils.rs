@@ -1,15 +1,23 @@
+use crate::{
+    config::HttpDependency, dependency_downloader::IntegrityChecksum, errors::DownloadError,
+};
+use ignore::{WalkBuilder, WalkState};
 use once_cell::sync::Lazy;
 use regex::Regex;
+use sha2::{Digest, Sha256};
 use simple_home_dir::home_dir;
 use std::{
     env,
     fs::{self, File},
     io::{BufReader, Read, Write},
+    os::unix::ffi::OsStrExt as _,
     path::{Path, PathBuf},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, Mutex,
+    },
 };
 use yansi::Paint as _;
-
-use crate::config::HttpDependency;
 
 static GIT_SSH_REGEX: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"^(?:git@github\.com|git@gitlab)").expect("git ssh regex should compile")
@@ -152,25 +160,112 @@ pub fn sanitize_dependency_name(dependency_name: &str) -> String {
     sanitize_filename::sanitize_with_options(dependency_name, options)
 }
 
-#[cfg(not(test))]
-pub fn sha256_digest(dependency: &HttpDependency) -> String {
+pub fn zipfile_hash(dependency: &HttpDependency) -> Result<IntegrityChecksum, DownloadError> {
     use crate::DEPENDENCY_DIR;
 
     let file_name =
         sanitize_dependency_name(&format!("{}-{}.zip", dependency.name, dependency.version));
-
-    let bytes = std::fs::read(DEPENDENCY_DIR.join(file_name)).unwrap(); // Vec<u8>
-    sha256::digest(bytes)
+    let path = DEPENDENCY_DIR.join(&file_name);
+    hash_file(&path).map_err(|e| DownloadError::IOError { path, source: e })
 }
 
-#[cfg(test)]
-pub fn sha256_digest(_dependency: &HttpDependency) -> String {
-    "5019418b1e9128185398870f77a42e51d624c44315bb1572e7545be51d707016".to_string()
+/// Hash the contents of a Reader with SHA256
+pub fn hash_content<R: Read>(content: &mut R) -> [u8; 32] {
+    let mut hasher = <Sha256 as Digest>::new();
+    let mut buf = [0; 1024];
+    while let Ok(size) = content.read(&mut buf) {
+        if size == 0 {
+            break;
+        }
+        hasher.update(&buf[0..size]);
+    }
+    hasher.finalize().into()
+}
+
+/// Walk a folder and compute the SHA256 hash of all non-hidden and non-gitignored files inside the
+/// dir, combining them into a single hash.
+///
+/// We hash the name of the folders and files too, so we can check the integrity of their names.
+///
+/// Since the folder contains the zip file still, we need to skip it. TODO: can we remove the zip
+/// file right after unzipping so this is not necessary?
+pub fn hash_folder(
+    folder_path: impl AsRef<Path>,
+    ignore_path: Option<PathBuf>,
+) -> Result<IntegrityChecksum, std::io::Error> {
+    // perf: it's easier to check a boolean than to compare paths, so when we find the zip we skip
+    // the check afterwards
+    let seen_ignore_path = Arc::new(AtomicBool::new(ignore_path.is_none()));
+    // a list of hashes, one for each DirEntry
+    let hashes = Arc::new(Mutex::new(Vec::with_capacity(100)));
+    // we use a parallel walker to speed things up
+    let walker = WalkBuilder::new(folder_path).hidden(false).build_parallel();
+    walker.run(|| {
+        let ignore_path = ignore_path.clone();
+        let seen_ignore_path = Arc::clone(&seen_ignore_path);
+        let hashes = Arc::clone(&hashes);
+        // function executed for each DirEntry
+        Box::new(move |result| {
+            let Ok(entry) = result else {
+                return WalkState::Continue;
+            };
+            let path = entry.path();
+            // check if that file is `ignore_path`, unless we've seen it already
+            if !seen_ignore_path.load(Ordering::SeqCst) {
+                let ignore_path = ignore_path
+                    .as_ref()
+                    .expect("ignore_path should always be Some when seen_ignore_path is false");
+                if path == ignore_path {
+                    // record that we've seen the zip file
+                    seen_ignore_path.swap(true, Ordering::SeqCst);
+                    return WalkState::Continue;
+                }
+            }
+            // first hash the filename/dirname to make sure it can't be renamed or removed
+            let mut hasher = <Sha256 as Digest>::new();
+            hasher.update(path.as_os_str().as_bytes());
+            // for files, also hash the contents
+            if let Some(true) = entry.file_type().map(|t| t.is_file()) {
+                if let Ok(file) = File::open(path) {
+                    let mut reader = BufReader::new(file);
+                    let hash = hash_content(&mut reader);
+                    hasher.update(hash);
+                }
+            }
+            // record the hash for that file/folder in the list
+            let hash: [u8; 32] = hasher.finalize().into();
+            let mut hashes_lock = hashes.lock().expect("mutex should not be poisoned");
+            hashes_lock.push(hash);
+            WalkState::Continue
+        })
+    });
+
+    // sort hashes
+    let mut hasher = <Sha256 as Digest>::new();
+    let mut hashes = hashes.lock().expect("mutex should not be poisoned");
+    hashes.sort_unstable();
+    // hash the hashes (yo dawg...)
+    for hash in hashes.iter() {
+        hasher.update(hash);
+    }
+    let hash: [u8; 32] = hasher.finalize().into();
+    Ok(const_hex::encode(hash).into())
+}
+
+/// Compute the SHA256 hash of the contents of a file
+pub fn hash_file(path: impl AsRef<Path>) -> Result<IntegrityChecksum, std::io::Error> {
+    let file = File::open(path)?;
+    let mut reader = BufReader::new(file);
+    let bytes = hash_content(&mut reader);
+    Ok(const_hex::encode(bytes).into())
 }
 
 #[cfg(test)]
 mod tests {
+    use rand::{distributions::Alphanumeric, Rng as _};
+
     use super::*;
+    use std::fs;
 
     #[test]
     fn filename_sanitization() {
@@ -191,5 +286,78 @@ mod tests {
         }
         assert_eq!(sanitize_dependency_name("valid~1.0.0"), "valid~1.0.0");
         assert_eq!(sanitize_dependency_name("valid~1*0.0"), "valid~1-0.0");
+    }
+
+    #[test]
+    fn test_hash_content() {
+        let mut content = "this is a test file".as_bytes();
+        let hash = hash_content(&mut content);
+        assert_eq!(
+            const_hex::encode(hash),
+            "5881707e54b0112f901bc83a1ffbacac8fab74ea46a6f706a3efc5f7d4c1c625".to_string()
+        );
+    }
+
+    #[test]
+    fn test_hash_content_content_sensitive() {
+        let mut content = "foobar".as_bytes();
+        let hash = hash_content(&mut content);
+        let mut content2 = "baz".as_bytes();
+        let hash2 = hash_content(&mut content2);
+        assert_ne!(hash, hash2);
+    }
+
+    #[test]
+    fn test_hash_file() {
+        let file = create_random_file("test", "txt");
+        let hash = hash_file(&file).unwrap();
+        fs::remove_file(&file).unwrap();
+        assert_eq!(hash, "5881707e54b0112f901bc83a1ffbacac8fab74ea46a6f706a3efc5f7d4c1c625".into());
+    }
+
+    #[test]
+    fn test_hash_folder() {
+        let folder = create_test_folder("test", "test_hash_folder");
+        let hash = hash_folder(&folder, None).unwrap();
+        fs::remove_dir_all(&folder).unwrap();
+        assert_eq!(hash, "b0bbe5dbf490a7120cce269564ed7a1f1f016ff50ccbb38eb288849f0ce7ab49".into());
+    }
+
+    #[test]
+    fn test_hash_folder_path_sensitive() {
+        let folder1 = create_test_folder("test", "test_hash_folder_path_sensitive");
+        let folder2 = create_test_folder("test", "test_hash_folder_path_sensitive2");
+        let hash1 = hash_folder(&folder1, None).unwrap();
+        let hash2 = hash_folder(&folder2, None).unwrap();
+        fs::remove_dir_all(&folder1).unwrap();
+        fs::remove_dir_all(&folder2).unwrap();
+        assert_ne!(hash1, hash2);
+    }
+
+    #[test]
+    fn test_hash_folder_ignore_path() {
+        let folder = create_test_folder("test", "test_hash_folder_ignore_path");
+        let hash1 = hash_folder(&folder, None).unwrap();
+        let hash2 = hash_folder(&folder, Some(folder.join("a.txt"))).unwrap();
+        fs::remove_dir_all(&folder).unwrap();
+        assert_ne!(hash1, hash2);
+    }
+
+    fn create_random_file(target_dir: impl AsRef<Path>, extension: &str) -> PathBuf {
+        let s: String =
+            rand::thread_rng().sample_iter(&Alphanumeric).take(7).map(char::from).collect();
+        let random_file = target_dir.as_ref().join(format!("random{}.{}", s, extension));
+        fs::write(&random_file, "this is a test file").expect("could not write to test file");
+        random_file
+    }
+
+    fn create_test_folder(target_dir: impl AsRef<Path>, dirname: &str) -> PathBuf {
+        let test_folder = target_dir.as_ref().join(dirname);
+        fs::create_dir(&test_folder).expect("could not create test folder");
+        fs::write(test_folder.join("a.txt"), "this is a test file")
+            .expect("could not write to test file a");
+        fs::write(test_folder.join("b.txt"), "this is a second test file")
+            .expect("could not write to test file b");
+        test_folder
     }
 }

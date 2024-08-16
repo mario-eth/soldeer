@@ -237,14 +237,18 @@ async fn install_dependency(
         }
     }
 
-    write_lock(&[dependency.clone()], LockWriteMode::Append)?;
+    let integrity = match &dependency {
+        Dependency::Http(dep) => match unzip_dependency(dep) {
+            Ok(i) => Some(i),
+            Err(e) => {
+                cleanup_dependency(&dependency, true)?;
+                return Err(SoldeerError::DownloadError { dep: dependency.to_string(), source: e });
+            }
+        },
+        Dependency::Git(_) => None,
+    };
 
-    if let Dependency::Http(dep) = &dependency {
-        if let Err(e) = unzip_dependency(dep) {
-            cleanup_dependency(&dependency, true)?;
-            return Err(SoldeerError::DownloadError { dep: dependency.to_string(), source: e });
-        }
-    }
+    write_lock(&[dependency.clone()], &[integrity], LockWriteMode::Append)?;
 
     janitor::healthcheck_dependency(&dependency)?;
 
@@ -305,14 +309,14 @@ async fn update(regenerate_remappings: bool, recursive_deps: bool) -> Result<(),
         }
     });
 
-    unzip_dependencies(&dependencies)
+    let integrities = unzip_dependencies(&dependencies)
         .map_err(|e| SoldeerError::DownloadError { dep: String::new(), source: e })?;
 
     healthcheck_dependencies(&dependencies)?;
 
-    write_lock(&dependencies, LockWriteMode::Replace)?;
-
     cleanup_after(&dependencies)?;
+
+    write_lock(&dependencies, &integrities, LockWriteMode::Replace)?;
 
     if config.remappings_generate {
         if config_path.to_string_lossy().contains("foundry.toml") {
@@ -340,9 +344,7 @@ mod tests {
     use serial_test::serial;
     use std::{
         env::{self},
-        fs::{
-            create_dir_all, remove_dir, remove_dir_all, remove_file, File, {self},
-        },
+        fs::{self, create_dir_all, remove_dir, remove_dir_all, remove_file, File},
         io::Write,
         path::{Path, PathBuf},
     };
@@ -1278,7 +1280,6 @@ libs = ["dependencies"]
 
         let submodules_path = get_current_working_dir().join(".gitmodules");
         let lib_path = get_current_working_dir().join("lib");
-
         let lock_test = get_current_working_dir().join("test").join("soldeer.lock");
 
         //remove it just in case
@@ -1286,11 +1287,7 @@ libs = ["dependencies"]
         let _ = remove_dir_all(&lib_path);
         let _ = remove_file(&lock_test);
 
-        let mut file: std::fs::File =
-            fs::OpenOptions::new().create_new(true).write(true).open(&submodules_path).unwrap();
-        if let Err(e) = write!(file, "this is a test file") {
-            eprintln!("Couldn't write to the config file: {}", e);
-        }
+        fs::write(&submodules_path, "this is a test file").unwrap();
         let _ = create_dir_all(&lib_path);
 
         let target_config = define_config(true);

@@ -2,7 +2,7 @@ use crate::{
     config::{Dependency, GitDependency, HttpDependency},
     errors::DownloadError,
     remote::get_dependency_url_remote,
-    utils::{read_file, sanitize_dependency_name, sha256_digest},
+    utils::{hash_folder, read_file, sanitize_dependency_name, zipfile_hash},
     DEPENDENCY_DIR,
 };
 use reqwest::IntoUrl;
@@ -17,6 +17,25 @@ use tokio::{fs as tokio_fs, io::AsyncWriteExt, task::JoinSet};
 use yansi::Paint as _;
 
 pub type Result<T> = std::result::Result<T, DownloadError>;
+
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct IntegrityChecksum(pub String);
+
+impl<T> From<T> for IntegrityChecksum
+where
+    T: Into<String>,
+{
+    fn from(value: T) -> Self {
+        let v: String = value.into();
+        IntegrityChecksum(v)
+    }
+}
+
+impl core::fmt::Display for IntegrityChecksum {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
 
 /// Download the dependencies from the list in parallel
 ///
@@ -58,15 +77,15 @@ pub async fn download_dependencies(
 }
 
 // un-zip-ing dependencies to dependencies folder
-pub fn unzip_dependencies(dependencies: &[Dependency]) -> Result<()> {
-    dependencies
+pub fn unzip_dependencies(dependencies: &[Dependency]) -> Result<Vec<Option<IntegrityChecksum>>> {
+    let res: Vec<_> = dependencies
         .iter()
-        .filter_map(|d| match d {
-            Dependency::Http(dep) => Some(dep),
-            _ => None,
+        .map(|d| match d {
+            Dependency::Http(dep) => unzip_dependency(dep).map(Some),
+            _ => Ok(None),
         })
-        .try_for_each(unzip_dependency)?;
-    Ok(())
+        .collect::<Result<Vec<_>>>()?;
+    Ok(res)
 }
 
 #[derive(Debug, Clone)]
@@ -103,7 +122,7 @@ pub async fn download_dependency(
             DownloadResult {
                 name: dep.name.clone(),
                 version: dep.version.clone(),
-                hash: sha256_digest(dep),
+                hash: zipfile_hash(dep)?.to_string(),
                 url,
             }
         }
@@ -123,17 +142,19 @@ pub async fn download_dependency(
     Ok(res)
 }
 
-pub fn unzip_dependency(dependency: &HttpDependency) -> Result<()> {
+pub fn unzip_dependency(dependency: &HttpDependency) -> Result<IntegrityChecksum> {
     let file_name =
         sanitize_dependency_name(&format!("{}-{}", dependency.name, dependency.version));
     let target_name = format!("{}/", file_name);
-    let current_dir = DEPENDENCY_DIR.join(format!("{file_name}.zip"));
-    let target = DEPENDENCY_DIR.join(target_name);
-    let archive = read_file(current_dir).unwrap();
+    let zip_path = DEPENDENCY_DIR.join(format!("{file_name}.zip"));
+    let target_dir = DEPENDENCY_DIR.join(target_name);
+    let zip_contents = read_file(&zip_path).unwrap();
 
-    zip_extract::extract(Cursor::new(archive), &target, true)?;
+    zip_extract::extract(Cursor::new(zip_contents), &target_dir, true)?;
     println!("{}", format!("The dependency {dependency} was unzipped!").green());
-    Ok(())
+
+    hash_folder(&target_dir, Some(zip_path))
+        .map_err(|e| DownloadError::IOError { path: target_dir, source: e })
 }
 
 pub fn clean_dependency_directory() {

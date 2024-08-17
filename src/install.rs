@@ -4,7 +4,7 @@ use crate::{
     errors::InstallError,
     lock::LockEntry,
     remote::get_dependency_url_remote,
-    utils::{get_url_type, hash_folder, run_git_command},
+    utils::{get_url_type, hash_file, hash_folder, run_git_command},
 };
 use std::path::Path;
 use tokio::fs;
@@ -67,7 +67,10 @@ pub async fn install_dependency_locked(
     match get_url_type(&lock.source) {
         crate::utils::UrlType::Git => {
             println!("{}", format!("Started GIT download of {}", lock.name).green());
-            let commit = clone_repo(&lock.source, lock.checksum.as_ref(), path).await?;
+            // if the dependency was specified without a commit hash and we didn't have a lockfile,
+            // clone the default branch
+            let rev = if lock.checksum.is_empty() { None } else { Some(lock.checksum.clone()) };
+            let commit = clone_repo(&lock.source, rev, path).await?;
             Ok(LockEntry::builder()
                 .name(&lock.name)
                 .version(&lock.version)
@@ -78,13 +81,21 @@ pub async fn install_dependency_locked(
         crate::utils::UrlType::Http => {
             println!("{}", format!("Started HTTP download of {}", lock.name).green());
             let zip_path = download_file(&lock.source, path.as_ref().with_extension("zip")).await?;
-            // TODO: check zipfile checksum
-            let integrity = unzip_file(zip_path).await?;
+            let zip_integrity = tokio::task::spawn_blocking({
+                let zip_path = zip_path.clone();
+                move || hash_file(zip_path)
+            })
+            .await?
+            .map_err(|e| InstallError::IOError { path: zip_path.clone(), source: e })?;
+            if lock.checksum != zip_integrity.to_string() {
+                return Err(InstallError::ZipIntegrityError(zip_path.clone()).into());
+            }
+            let integrity = unzip_file(&zip_path).await?;
             Ok(LockEntry::builder()
                 .name(&lock.name)
                 .version(&lock.version)
                 .source(&lock.source)
-                .maybe_checksum(lock.checksum.as_ref())
+                .checksum(&lock.checksum)
                 .integrity(integrity.to_string())
                 .build())
         }
@@ -112,8 +123,12 @@ async fn check_http_dependency(
     let Some(integrity) = &lock.integrity else {
         return Ok(DependencyStatus::FailedIntegrity);
     };
-    let current_hash =
-        hash_folder(&path, None).map_err(|e| InstallError::IOError { path, source: e })?;
+    let current_hash = tokio::task::spawn_blocking({
+        let path = path.clone();
+        move || hash_folder(path, None)
+    })
+    .await?
+    .map_err(|e| InstallError::IOError { path, source: e })?;
     if &current_hash.to_string() != integrity {
         return Ok(DependencyStatus::FailedIntegrity);
     }
@@ -155,8 +170,7 @@ async fn check_git_dependency(
         return Ok(DependencyStatus::Missing);
     }
     // for git dependencies, the `checksum` field holds the commit hash
-    let rev = lock.checksum.clone().unwrap_or("HEAD".to_string());
-    match run_git_command(&["diff", "--exit-code", &rev], Some(&path)).await {
+    match run_git_command(&["diff", "--exit-code", &lock.checksum], Some(&path)).await {
         Ok(_) => Ok(DependencyStatus::Installed),
         Err(_) => Ok(DependencyStatus::FailedIntegrity),
     }
@@ -168,8 +182,7 @@ async fn check_git_dependency(
 /// directory
 async fn reset_git_dependency(dependency: &GitDependency, lock: &LockEntry) -> Result<()> {
     let path = dependency.install_path();
-    let rev = lock.checksum.clone().unwrap_or("HEAD".to_string());
-    run_git_command(&["reset", "--hard", &rev], Some(&path)).await?;
+    run_git_command(&["reset", "--hard", &lock.checksum], Some(&path)).await?;
     run_git_command(&["clean", "-fd"], Some(&path)).await?;
     Ok(())
 }

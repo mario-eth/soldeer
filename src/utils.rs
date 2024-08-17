@@ -7,8 +7,8 @@ use simple_home_dir::home_dir;
 use std::{
     env,
     ffi::OsStr,
-    fs::{self, File},
-    io::{BufReader, Read, Write},
+    fs as std_fs,
+    io::{self as std_io, Read, Write as _},
     os::unix::ffi::OsStrExt as _,
     path::{Path, PathBuf},
     sync::{
@@ -16,7 +16,7 @@ use std::{
         Arc, Mutex,
     },
 };
-use tokio::{fs as tokio_fs, process::Command};
+use tokio::{fs, io::BufReader, process::Command};
 use yansi::Paint as _;
 
 static GIT_SSH_REGEX: Lazy<Regex> = Lazy::new(|| {
@@ -37,15 +37,15 @@ pub fn get_current_working_dir() -> PathBuf {
 /// # Panics
 /// If the file cannot be read, due to it being non-existent, not a valid UTF-8 string, etc.
 pub fn read_file_to_string(path: impl AsRef<Path>) -> String {
-    fs::read_to_string(path.as_ref()).unwrap_or_else(|_| {
+    std_fs::read_to_string(path.as_ref()).unwrap_or_else(|_| {
         panic!("Could not read file `{:?}`", path.as_ref());
     })
 }
 
 // read a file contents into a vector of bytes so we can unzip it
 pub fn read_file(path: impl AsRef<Path>) -> Result<Vec<u8>, std::io::Error> {
-    let f = File::open(path)?;
-    let mut reader = BufReader::new(f);
+    let f = std_fs::File::open(path)?;
+    let mut reader = std_io::BufReader::new(f);
     let mut buffer = Vec::new();
 
     // Read file into vector.
@@ -80,7 +80,7 @@ pub fn define_security_file_location() -> Result<PathBuf, std::io::Error> {
     let dir = home_dir().unwrap_or_else(get_current_working_dir);
     let security_directory = dir.join(".soldeer");
     if !security_directory.exists() {
-        fs::create_dir(&security_directory)?;
+        std_fs::create_dir(&security_directory)?;
     }
     let security_file = security_directory.join(".soldeer_login");
     Ok(security_file)
@@ -99,7 +99,7 @@ pub fn check_dotfiles(path: impl AsRef<Path>) -> bool {
     if !path.as_ref().is_dir() {
         return false;
     }
-    fs::read_dir(path)
+    std_fs::read_dir(path)
         .unwrap()
         .map_while(Result::ok)
         .any(|entry| entry.file_name().to_string_lossy().starts_with('.'))
@@ -112,7 +112,7 @@ pub fn check_dotfiles_recursive(path: impl AsRef<Path>) -> bool {
     }
 
     if path.as_ref().is_dir() {
-        return fs::read_dir(path)
+        return std_fs::read_dir(path)
             .unwrap()
             .map_while(Result::ok)
             .any(|entry| check_dotfiles(entry.path()));
@@ -225,8 +225,8 @@ pub fn hash_folder(
             hasher.update(path.as_os_str().as_bytes());
             // for files, also hash the contents
             if let Some(true) = entry.file_type().map(|t| t.is_file()) {
-                if let Ok(file) = File::open(path) {
-                    let mut reader = BufReader::new(file);
+                if let Ok(file) = std_fs::File::open(path) {
+                    let mut reader = std_io::BufReader::new(file);
                     let hash = hash_content(&mut reader);
                     hasher.update(hash);
                 }
@@ -253,8 +253,8 @@ pub fn hash_folder(
 
 /// Compute the SHA256 hash of the contents of a file
 pub fn hash_file(path: impl AsRef<Path>) -> Result<IntegrityChecksum, std::io::Error> {
-    let file = File::open(path)?;
-    let mut reader = BufReader::new(file);
+    let file = std_fs::File::open(path)?;
+    let mut reader = std_io::BufReader::new(file);
     let bytes = hash_content(&mut reader);
     Ok(const_hex::encode(bytes).into())
 }
@@ -271,7 +271,7 @@ where
     let mut git = git.args(args).env("GIT_TERMINAL_PROMPT", "0");
     if let Some(current_dir) = current_dir {
         git = git.current_dir(
-            tokio_fs::canonicalize(current_dir)
+            fs::canonicalize(current_dir)
                 .await
                 .map_err(|e| DownloadError::IOError { path: current_dir.clone(), source: e })?,
         );

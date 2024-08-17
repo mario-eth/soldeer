@@ -117,6 +117,9 @@ pub enum DownloadError {
 
 #[derive(Error, Debug)]
 pub enum InstallError {
+    #[error("zipfile checksum does not match: {0}")]
+    ZipIntegrityError(PathBuf),
+
     #[error("error during IO operation for {path:?}: {source}")]
     IOError { path: PathBuf, source: io::Error },
 
@@ -125,6 +128,9 @@ pub enum InstallError {
 
     #[error("error during dependency installation: {0}")]
     DownloadError(#[from] DownloadError),
+
+    #[error("error during async operation: {0}")]
+    AsyncError(#[from] tokio::task::JoinError),
 }
 
 #[derive(Error, Debug)]

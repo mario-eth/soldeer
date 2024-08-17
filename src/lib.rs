@@ -2,7 +2,7 @@
 use crate::{
     auth::login,
     config::{delete_config, read_config_deps, remappings_txt, Dependency},
-    dependency_downloader::{
+    download::{
         delete_dependency_files, download_dependencies, install_subdependencies,
         unzip_dependencies, unzip_dependency,
     },
@@ -16,7 +16,7 @@ use config::{
     add_to_config, get_config_path, read_soldeer_config, remappings_foundry, GitDependency,
     HttpDependency, RemappingsAction, RemappingsLocation,
 };
-use dependency_downloader::download_dependency;
+use download::download_dependency;
 use janitor::cleanup_dependency;
 use lock::LockWriteMode;
 use once_cell::sync::Lazy;
@@ -29,7 +29,7 @@ use yansi::Paint as _;
 mod auth;
 pub mod commands;
 mod config;
-mod dependency_downloader;
+mod download;
 pub mod errors;
 mod janitor;
 mod lock;

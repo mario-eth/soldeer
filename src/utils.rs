@@ -1,6 +1,4 @@
-use crate::{
-    config::HttpDependency, dependency_downloader::IntegrityChecksum, errors::DownloadError,
-};
+use crate::{config::HttpDependency, download::IntegrityChecksum, errors::DownloadError};
 use ignore::{WalkBuilder, WalkState};
 use once_cell::sync::Lazy;
 use regex::Regex;

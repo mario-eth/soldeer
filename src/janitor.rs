@@ -51,9 +51,7 @@ mod tests {
     use super::*;
     use crate::{
         config::HttpDependency,
-        dependency_downloader::{
-            clean_dependency_directory, download_dependencies, unzip_dependency,
-        },
+        download::{clean_dependency_directory, download_dependencies, unzip_dependency},
     };
     use serial_test::serial;
 

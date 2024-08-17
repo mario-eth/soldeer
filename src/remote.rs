@@ -1,6 +1,6 @@
 use crate::{
     config::{Dependency, HttpDependency},
-    dependency_downloader::Result,
+    download::Result,
     errors::DownloadError,
     utils::get_base_url,
 };

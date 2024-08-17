@@ -1,6 +1,6 @@
 use crate::{
     config::Dependency,
-    dependency_downloader::IntegrityChecksum,
+    download::IntegrityChecksum,
     errors::LockError,
     utils::{get_current_working_dir, read_file_to_string},
     LOCK_FILE,

@@ -223,7 +223,7 @@ async fn install_dependency_inner(
                 .build())
         }
         crate::utils::UrlType::Http => {
-            let zip_path = download_file(&dep.source, path.as_ref().with_extension("zip")).await?;
+            let zip_path = download_file(&dep.source, &path).await?;
             let zip_integrity = tokio::task::spawn_blocking({
                 let zip_path = zip_path.clone();
                 move || hash_file(zip_path)

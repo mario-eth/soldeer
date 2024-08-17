@@ -37,11 +37,18 @@ impl core::fmt::Display for IntegrityChecksum {
     }
 }
 
-pub async fn download_file(url: impl IntoUrl, path: impl AsRef<Path>) -> Result<PathBuf> {
+pub async fn download_file(url: impl IntoUrl, folder_path: impl AsRef<Path>) -> Result<PathBuf> {
     let resp = reqwest::get(url).await?;
     let mut resp = resp.error_for_status()?;
 
-    let path = path.as_ref().to_path_buf();
+    let path = folder_path.as_ref().to_path_buf();
+    let mut zip_filename = path
+        .file_name()
+        .expect("folder path should have a folder name")
+        .to_string_lossy()
+        .to_string();
+    zip_filename.push_str(".zip");
+    let path = path.parent().expect("dep folder should have a parent").join(zip_filename);
     let mut file = tokio_fs::File::create(&path)
         .await
         .map_err(|e| DownloadError::IOError { path: path.clone(), source: e })?;

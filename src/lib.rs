@@ -13,7 +13,7 @@ use config::{
     add_to_config, get_config_path, read_soldeer_config, remappings_foundry, RemappingsAction,
     RemappingsLocation,
 };
-use errors::LockError;
+use errors::{InstallError, LockError};
 use install::{
     add_to_remappings, ensure_dependencies_dir, install_dependencies, install_dependency,
     update_remappings,
@@ -82,6 +82,12 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
                 None => {
                     let dependencies: Vec<Dependency> = read_config_deps(Some(&config_path))?;
                     let (locks, lockfile_content) = read_lockfile()?;
+                    if install.clean {
+                        fs::remove_dir_all(DEPENDENCY_DIR.as_path()).map_err(|e| {
+                            InstallError::IOError { path: DEPENDENCY_DIR.to_path_buf(), source: e }
+                        })?;
+                        ensure_dependencies_dir()?;
+                    }
                     let new_locks =
                         install_dependencies(&dependencies, &locks, config.recursive_deps).await?;
                     let new_lockfile_content = generate_lockfile_contents(new_locks);

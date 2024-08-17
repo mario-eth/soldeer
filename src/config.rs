@@ -312,7 +312,7 @@ pub fn get_config_path() -> Result<PathBuf> {
     let foundry_path: PathBuf = if cfg!(test) {
         env::var("config_file").map(|s| s.into()).unwrap_or(FOUNDRY_CONFIG_FILE.clone())
     } else {
-        FOUNDRY_CONFIG_FILE.clone()
+        FOUNDRY_CONFIG_FILE.to_path_buf()
     };
 
     if let Ok(contents) = fs::read_to_string(&foundry_path) {

@@ -58,15 +58,15 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
                 config::remove_forge_lib()?;
             }
 
-            let config_path = get_config_path()?;
-            let config = read_soldeer_config(Some(&config_path))?;
+            let config_path = FOUNDRY_CONFIG_FILE.as_path();
+            let config = read_soldeer_config(Some(config_path))?;
             let dependency = get_latest_forge_std().await.map_err(|e| {
                 SoldeerError::DownloadError { dep: "forge-std".to_string(), source: e }
             })?;
-            add_to_config(&dependency, &config_path)?;
+            add_to_config(&dependency, config_path)?;
             let lock = install_dependency(&dependency, None, false).await?;
             add_to_lockfile(lock)?;
-            add_to_remappings(dependency, &config, &config_path).await?;
+            add_to_remappings(dependency, &config, config_path).await?;
         }
         Subcommands::Install(install) => {
             let config_path = get_config_path()?;

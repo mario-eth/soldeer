@@ -19,7 +19,7 @@ pub struct LockEntry {
     pub name: String,
     pub version: String,
     pub source: String,
-    pub checksum: String,
+    pub checksum: Option<String>,
     pub integrity: Option<String>,
 }
 

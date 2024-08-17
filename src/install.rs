@@ -67,7 +67,7 @@ pub async fn install_dependency_locked(
     match get_url_type(&lock.source) {
         crate::utils::UrlType::Git => {
             println!("{}", format!("Started GIT download of {}", lock.name).green());
-            let commit = clone_repo(&lock.source, &lock.checksum, path).await?;
+            let commit = clone_repo(&lock.source, lock.checksum.as_ref(), path).await?;
             Ok(LockEntry::builder()
                 .name(&lock.name)
                 .version(&lock.version)
@@ -84,7 +84,7 @@ pub async fn install_dependency_locked(
                 .name(&lock.name)
                 .version(&lock.version)
                 .source(&lock.source)
-                .checksum(&lock.checksum)
+                .maybe_checksum(lock.checksum.as_ref())
                 .integrity(integrity.to_string())
                 .build())
         }
@@ -155,7 +155,8 @@ async fn check_git_dependency(
         return Ok(DependencyStatus::Missing);
     }
     // for git dependencies, the `checksum` field holds the commit hash
-    match run_git_command(&["diff", "--exit-code", &lock.checksum], Some(&path)).await {
+    let rev = lock.checksum.clone().unwrap_or("HEAD".to_string());
+    match run_git_command(&["diff", "--exit-code", &rev], Some(&path)).await {
         Ok(_) => Ok(DependencyStatus::Installed),
         Err(_) => Ok(DependencyStatus::FailedIntegrity),
     }
@@ -167,10 +168,11 @@ async fn check_git_dependency(
 /// directory
 async fn reset_git_dependency(dependency: &GitDependency, lock: &LockEntry) -> Result<()> {
     let path = dependency.install_path();
+    let rev = lock.checksum.clone().unwrap_or("HEAD".to_string());
     let reset = Command::new("git")
         .arg("reset")
         .arg("--hard")
-        .arg(&lock.checksum)
+        .arg(rev)
         .current_dir(&path)
         .env("GIT_TERMINAL_PROMPT", "0")
         .output()

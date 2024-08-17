@@ -70,10 +70,16 @@ pub async fn unzip_file(path: impl AsRef<Path>) -> Result<IntegrityChecksum> {
     hash_folder(&out_dir, None).map_err(|e| DownloadError::IOError { path: out_dir, source: e })
 }
 
-pub async fn clone_repo(url: &str, rev: &str, path: impl AsRef<Path>) -> Result<String> {
+pub async fn clone_repo(
+    url: &str,
+    rev: Option<impl AsRef<str>>,
+    path: impl AsRef<Path>,
+) -> Result<String> {
     let path = path.as_ref().to_path_buf();
     run_git_command(&["clone", url, path.to_string_lossy().as_ref()], None).await?;
-    run_git_command(&["checkout", rev], Some(&path)).await?;
+    if let Some(rev) = rev {
+        run_git_command(&["checkout", rev.as_ref()], Some(&path)).await?;
+    }
     let commit =
         run_git_command(&["rev-parse", "--verify", "HEAD"], Some(&path)).await?.trim().to_string();
     Ok(commit)

@@ -13,7 +13,7 @@ use std::{
     process::{Command, Stdio},
     str,
 };
-use tokio::{fs as tokio_fs, io::AsyncWriteExt, process, task::JoinSet};
+use tokio::{fs as tokio_fs, io::AsyncWriteExt, task::JoinSet};
 use yansi::Paint as _;
 
 pub type Result<T> = std::result::Result<T, DownloadError>;

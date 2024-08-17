@@ -53,6 +53,7 @@ pub async fn install_dependency(
             }
             DependencyStatus::FailedIntegrity => match dependency {
                 Dependency::Http(dep) => {
+                    // we know the folder exists because otherwise we would have gotten `Missing`
                     let path = dep.install_path();
                     fs::remove_dir_all(&path)
                         .await
@@ -64,11 +65,24 @@ pub async fn install_dependency(
                     return Ok(lock.clone());
                 }
             },
-            DependencyStatus::Missing => {}
+            DependencyStatus::Missing => {
+                // make sure there is no existing directory for the dependency
+                let path = dependency.install_path();
+                if fs::metadata(&path).await.is_ok() {
+                    fs::remove_dir_all(&path)
+                        .await
+                        .map_err(|e| InstallError::IOError { path, source: e })?;
+                }
+            }
         }
         return install_dependency_inner(&lock.clone().into(), dependency.install_path()).await;
     }
     // no lockfile entry, install from config object
+    // make sure there is no existing directory for the dependency
+    let path = dependency.install_path();
+    if fs::metadata(&path).await.is_ok() {
+        fs::remove_dir_all(&path).await.map_err(|e| InstallError::IOError { path, source: e })?;
+    }
     let url = match dependency.url() {
         Some(url) => url.clone(),
         None => get_dependency_url_remote(dependency).await?,
@@ -177,9 +191,6 @@ async fn check_git_dependency(
         Ok(top_level) => top_level.trim().to_string(),
         Err(_) => {
             // error getting the top level directory, assume the directory is not a git repository
-            fs::remove_dir_all(&path)
-                .await
-                .map_err(|e| InstallError::IOError { path, source: e })?;
             return Ok(DependencyStatus::Missing);
         }
     };
@@ -190,7 +201,6 @@ async fn check_git_dependency(
     if top_level.trim() != absolute_path.to_string_lossy() {
         // the top level directory is not the install path, assume the directory is not a git
         // repository
-        fs::remove_dir_all(&path).await.map_err(|e| InstallError::IOError { path, source: e })?;
         return Ok(DependencyStatus::Missing);
     }
     // for git dependencies, the `checksum` field holds the commit hash

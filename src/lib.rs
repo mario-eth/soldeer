@@ -82,6 +82,8 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
                         version: dependency_version.to_string(),
                         git: url,
                         rev: install.rev,
+                        tag: install.tag,
+                        branch: install.branch,
                     }),
                     UrlType::Http => Dependency::Http(HttpDependency {
                         name: dependency_name.to_string(),
@@ -384,6 +386,8 @@ libs = ["dependencies"]
             dependency: None,
             remote_url: None,
             rev: None,
+            tag: None,
+            branch: None,
             regenerate_remappings: false,
             recursive_deps: false,
         });
@@ -436,6 +440,8 @@ libs = ["dependencies"]
             dependency: Some("test~1".to_string()),
             remote_url: Some("https://gitlab.com/mario4582928/Mario.git".to_string()),
             rev: None,
+            tag: None,
+            branch: None,
             regenerate_remappings: false,
             recursive_deps: false,
         });
@@ -501,6 +507,8 @@ libs = ["dependencies"]
             dependency: Some("test~1".to_string()),
             remote_url: Some("https://gitlab.com/mario4582928/Mario.git".to_string()),
             rev: Some("2fd642069600f0b8da3e1897fad42b2c53c6e927".to_string()),
+            tag: None,
+            branch: None,
             regenerate_remappings: false,
             recursive_deps: false,
         });
@@ -567,6 +575,8 @@ libs = ["dependencies"]
             dependency: None,
             remote_url: None,
             rev: None,
+            tag: None,
+            branch: None,
             regenerate_remappings: false,
             recursive_deps: false,
         });
@@ -606,6 +616,9 @@ libs = ["dependencies"]
 forge-std = { version = "1.8.1" }
 solmate = "6.7.0"
 mario = { version = "1.0", git = "https://gitlab.com/mario4582928/Mario.git", rev = "22868f426bd4dd0e682b5ec5f9bd55507664240c" }
+mario-custom-tag = { version = "1.0", git = "https://gitlab.com/mario4582928/Mario.git", tag = "custom-tag" }
+mario-custom-branch = { version = "1.0", git = "https://gitlab.com/mario4582928/Mario.git", tag = "custom-branch" }
+
 "#;
 
         let target_config = define_config(true);
@@ -803,6 +816,8 @@ libs = ["dependencies"]
             dependency: None,
             remote_url: None,
             rev: None,
+            tag: None,
+            branch: None,
             regenerate_remappings: false,
             recursive_deps: false,
         });
@@ -995,6 +1010,8 @@ libs = ["dependencies"]
             dependency: Some("forge-std~1.9.1".to_string()),
             remote_url: Option::None,
             rev: None,
+            tag: None,
+            branch: None,
             regenerate_remappings: false,
             recursive_deps: false,
         });
@@ -1051,6 +1068,8 @@ libs = ["dependencies"]
             dependency: Some("forge-std~1.9.1".to_string()),
             remote_url: Some("https://soldeer-revisions.s3.amazonaws.com/forge-std/v1_9_0_03-07-2024_14:44:57_forge-std-v1.9.0.zip".to_string()),
             rev: None,
+            tag: None,
+branch: None,
             regenerate_remappings: false,
             recursive_deps: false
         });
@@ -1107,6 +1126,8 @@ libs = ["dependencies"]
             dependency: Some("forge-std~1.9.1".to_string()),
             remote_url: Some("https://github.com/foundry-rs/forge-std.git".to_string()),
             rev: None,
+            tag: None,
+            branch: None,
             regenerate_remappings: false,
             recursive_deps: false,
         });
@@ -1163,6 +1184,8 @@ libs = ["dependencies"]
             dependency: Some("forge-std~1.9.1".to_string()),
             remote_url: Some("https://github.com/foundry-rs/forge-std.git".to_string()),
             rev: None,
+            tag: None,
+            branch: None,
             regenerate_remappings: false,
             recursive_deps: false,
         });
@@ -1219,6 +1242,8 @@ libs = ["dependencies"]
             dependency: Some("forge-std~1.9.1".to_string()),
             remote_url: Some("https://github.com/foundry-rs/forge-std.git".to_string()),
             rev: Some("3778c3cb8e4244cb5a1c3ef3ce1c71a3683e324a".to_string()),
+            tag: None,
+            branch: None,
             regenerate_remappings: false,
             recursive_deps: false,
         });
@@ -1237,6 +1262,167 @@ libs = ["dependencies"]
         assert!(!path_dependency.exists()); // this should not exists at that commit
         path_dependency = DEPENDENCY_DIR.join("forge-std-1.9.1").join("src").join("Test.sol");
         assert!(path_dependency.exists()); // this should exists at that commit
+
+        let content = r#"
+# Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
+
+[profile.default]
+script = "script"
+solc = "0.8.26"
+src = "src"
+test = "test"
+libs = ["dependencies"]
+
+[dependencies]
+forge-std = { version = "1.9.1", git = "https://github.com/foundry-rs/forge-std.git", rev = "3778c3cb8e4244cb5a1c3ef3ce1c71a3683e324a" }
+"#;
+        assert_eq!(read_file_to_string(&target_config), content);
+        clean_test_env(target_config);
+    }
+
+    #[test]
+    #[serial]
+    fn install_dependency_custom_git_giturl_custom_tag() {
+        let _ = remove_dir_all(DEPENDENCY_DIR.clone());
+        let _ = remove_file(LOCK_FILE.clone());
+        let test_dir = env::current_dir().unwrap().join("test").join("install_http");
+
+        // Create test directory
+        if !test_dir.exists() {
+            std::fs::create_dir(&test_dir).unwrap();
+        }
+
+        let content = r#"
+# Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
+
+[profile.default]
+script = "script"
+solc = "0.8.26"
+src = "src"
+test = "test"
+libs = ["dependencies"]
+
+[dependencies]
+"#;
+
+        let target_config = define_config(true);
+
+        write_to_config(&target_config, content);
+
+        unsafe {
+            // became unsafe in Rust 1.80
+            env::set_var("base_url", "https://api.soldeer.xyz");
+        }
+
+        let command = Subcommands::Install(Install {
+            dependency: Some("dep~1".to_string()),
+            remote_url: Some("https://gitlab.com/mario4582928/Mario.git".to_string()),
+            rev: None,
+            tag: Some("custom-tag".to_string()),
+            branch: None,
+            regenerate_remappings: false,
+            recursive_deps: false,
+        });
+
+        match run(command) {
+            Ok(_) => {}
+            Err(err) => {
+                println!("Error occurred {:?}", err);
+                clean_test_env(target_config.clone());
+                assert_eq!("Invalid State", "")
+            }
+        }
+
+        let path_dependency = DEPENDENCY_DIR.join("dep-1").join("CustomTagFileBranch");
+        assert!(path_dependency.exists()); // this should exists at that tag
+
+        let content = r#"
+# Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
+
+[profile.default]
+script = "script"
+solc = "0.8.26"
+src = "src"
+test = "test"
+libs = ["dependencies"]
+
+[dependencies]
+dep = { version = "1", git = "https://gitlab.com/mario4582928/Mario.git", tag = "custom-tag" }
+"#;
+        assert_eq!(read_file_to_string(&target_config), content);
+        clean_test_env(target_config);
+    }
+
+    #[test]
+    #[serial]
+    fn install_dependency_custom_git_giturl_custom_branch() {
+        let _ = remove_dir_all(DEPENDENCY_DIR.clone());
+        let _ = remove_file(LOCK_FILE.clone());
+        let test_dir = env::current_dir().unwrap().join("test").join("install_http");
+
+        // Create test directory
+        if !test_dir.exists() {
+            std::fs::create_dir(&test_dir).unwrap();
+        }
+
+        let content = r#"
+# Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
+
+[profile.default]
+script = "script"
+solc = "0.8.26"
+src = "src"
+test = "test"
+libs = ["dependencies"]
+
+[dependencies]
+"#;
+
+        let target_config = define_config(true);
+
+        write_to_config(&target_config, content);
+
+        unsafe {
+            // became unsafe in Rust 1.80
+            env::set_var("base_url", "https://api.soldeer.xyz");
+        }
+
+        let command = Subcommands::Install(Install {
+            dependency: Some("dep~1".to_string()),
+            remote_url: Some("https://gitlab.com/mario4582928/Mario.git".to_string()),
+            rev: None,
+            tag: None,
+            branch: Some("custom-branch".to_string()),
+            regenerate_remappings: false,
+            recursive_deps: false,
+        });
+
+        match run(command) {
+            Ok(_) => {}
+            Err(err) => {
+                println!("Error occurred {:?}", err);
+                clean_test_env(target_config.clone());
+                assert_eq!("Invalid State", "")
+            }
+        }
+
+        let path_dependency = DEPENDENCY_DIR.join("dep-1").join("CustomFileBranch");
+        assert!(path_dependency.exists()); // this should exists at that branch
+
+        let content = r#"
+# Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
+
+[profile.default]
+script = "script"
+solc = "0.8.26"
+src = "src"
+test = "test"
+libs = ["dependencies"]
+
+[dependencies]
+dep = { version = "1", git = "https://gitlab.com/mario4582928/Mario.git", branch = "custom-branch" }
+"#;
+        assert_eq!(read_file_to_string(&target_config), content);
         clean_test_env(target_config);
     }
 
@@ -1352,6 +1538,8 @@ libs = ["dependencies"]
                 "https://gitlab.com/mario4582928/mario-soldeer-dependency.git".to_string(),
             ),
             rev: None,
+            tag: None,
+            branch: None,
             regenerate_remappings: false,
             recursive_deps: true,
         });
@@ -1412,6 +1600,8 @@ recursive_deps = true
                 "https://gitlab.com/mario4582928/mario-soldeer-dependency.git".to_string(),
             ),
             rev: None,
+            tag: None,
+            branch: None,
             regenerate_remappings: false,
             recursive_deps: false,
         });
@@ -1467,6 +1657,8 @@ libs = ["dependencies"]
             dependency: Some("dep1~1.0".to_string()),
             remote_url: Some("https://gitlab.com/mario4582928/mario-git-submodule.git".to_string()),
             rev: None,
+            tag: None,
+            branch: None,
             regenerate_remappings: false,
             recursive_deps: true,
         });
@@ -1522,6 +1714,8 @@ recursive_deps = true
             dependency: Some("dep1~1.0".to_string()),
             remote_url: Some("https://gitlab.com/mario4582928/mario-git-submodule.git".to_string()),
             rev: None,
+            tag: None,
+            branch: None,
             regenerate_remappings: false,
             recursive_deps: false,
         });

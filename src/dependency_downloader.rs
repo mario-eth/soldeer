@@ -195,60 +195,70 @@ async fn download_via_git(
         ));
     }
 
-    let rev = match dependency.rev.clone() {
-        Some(rev) => {
-            let mut git_get_commit = Command::new("git");
-            let result = git_get_commit
-                .args(["checkout".to_string(), rev.to_string()])
-                .env("GIT_TERMINAL_PROMPT", "0")
-                .current_dir(&path)
-                .stdout(Stdio::piped())
-                .stderr(Stdio::piped());
-
-            let out = result.output().expect("Checkout to revision status failed");
-            let status = result.status().expect("Checkout to revision getting output failed");
-
-            if !status.success() {
-                let _ = fs::remove_dir_all(&path);
-                return Err(DownloadError::GitError(
-                    str::from_utf8(&out.stderr).unwrap().trim().to_string(),
-                ));
-            }
-            rev
-        }
-        None => {
-            let mut git_checkout = Command::new("git");
-
-            let result = git_checkout
-                .args(["rev-parse".to_string(), "--verify".to_string(), "HEAD".to_string()])
-                .env("GIT_TERMINAL_PROMPT", "0")
-                .current_dir(&path)
-                .stdout(Stdio::piped())
-                .stderr(Stdio::piped());
-
-            let out = result.output().expect("Getting revision status failed");
-            let status = result.status().expect("Getting revision output failed");
-            if !status.success() {
-                let _ = fs::remove_dir_all(&path);
-                return Err(DownloadError::GitError(
-                    str::from_utf8(&out.stderr).unwrap().trim().to_string(),
-                ));
-            }
-
-            let hash = str::from_utf8(&out.stdout).unwrap().trim().to_string();
-            // check the commit hash
-            if !hash.is_empty() && hash.len() != 40 {
-                let _ = fs::remove_dir_all(&path);
-                return Err(DownloadError::GitError(format!("invalid revision hash: {hash}")));
-            }
-            hash
-        }
+    let checkout_target = match dependency.rev.clone() {
+        Some(rev) => Some(rev),
+        None => match dependency.tag.clone() {
+            Some(tag) => Some(tag),
+            None => match dependency.branch.clone() {
+                Some(branch) => Some(branch),
+                None => None,
+            },
+        },
     };
+
+    match checkout_target.clone() {
+        Some(target) => {
+            let mut git_checkout = Command::new("git");
+            let result = git_checkout
+                .args(["checkout".to_string(), target.to_string()])
+                .env("GIT_TERMINAL_PROMPT", "0")
+                .current_dir(&path)
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped());
+
+            let out = result.output().expect("Checkout status failed");
+            let status = result.status().expect("Checkout getting output failed");
+
+            if !status.success() {
+                let _ = fs::remove_dir_all(&path);
+                return Err(DownloadError::GitError(
+                    str::from_utf8(&out.stderr).unwrap().trim().to_string(),
+                ));
+            }
+        }
+        None => {}
+    };
+
+    let mut git_checkout = Command::new("git");
+
+    let result = git_checkout
+        .args(["rev-parse".to_string(), "--verify".to_string(), "HEAD".to_string()])
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .current_dir(&path)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+
+    let out = result.output().expect("Getting revision status failed");
+    let status = result.status().expect("Getting revision output failed");
+    if !status.success() {
+        let _ = fs::remove_dir_all(&path);
+        return Err(DownloadError::GitError(
+            str::from_utf8(&out.stderr).unwrap().trim().to_string(),
+        ));
+    }
+
+    let hash = str::from_utf8(&out.stdout).unwrap().trim().to_string();
+    // check the commit hash
+    if !hash.is_empty() && hash.len() != 40 {
+        let _ = fs::remove_dir_all(&path);
+        return Err(DownloadError::GitError(format!("invalid revision hash: {hash}")));
+    }
+
     println!(
         "{}",
         format!("Successfully downloaded {} the dependency via git", dependency,).green()
     );
-    Ok(rev)
+    Ok(hash)
 }
 
 async fn download_via_http(
@@ -372,6 +382,8 @@ mod tests {
             version: "2.3.0".to_string(),
             git: "https://gitlab.com/mario4582928/Mario.git".to_string(),
             rev: Some("7a0663eaf7488732f39550be655bad6694974cb3".to_string()),
+            tag: None,
+            branch: None,
         });
         dependencies.push(dependency.clone());
         let results = download_dependencies(&dependencies, false).await.unwrap();
@@ -401,6 +413,8 @@ mod tests {
             version: "2.3.0".to_string(),
             git: "https://gitlab.com/mario4582928/Mario.git".to_string(),
             rev: None,
+            tag: None,
+            branch: None,
         });
         dependencies.push(dependency.clone());
         let results = download_dependencies(&dependencies, false).await.unwrap();
@@ -462,6 +476,8 @@ mod tests {
             version: "2.3.0".to_string(),
             git: "https://github.com/transmissions11/solmate.git".to_string(),
             rev: None,
+            tag: None,
+            branch: None,
         });
         dependencies.push(dependency_one.clone());
 
@@ -470,6 +486,8 @@ mod tests {
             version: "1.0.0-beta.4".to_string(),
             git: "https://gitlab.com/mario4582928/Mario.git".to_string(),
             rev: None,
+            tag: None,
+            branch: None,
         });
 
         dependencies.push(dependency_two.clone());
@@ -619,6 +637,8 @@ mod tests {
             version: "2.3.0".to_string(),
             git: "git@github.com:transmissions11/solmate-wrong.git".to_string(),
             rev: None,
+            tag: None,
+            branch: None,
         });
         dependencies.push(dependency.clone());
 
@@ -738,6 +758,8 @@ mod tests {
             version: "2.3.0".to_string(),
             git: "https://github.com/transmissions11/solmate.git".to_string(),
             rev: None,
+            tag: None,
+            branch: None,
         });
         dependencies.push(dependency.clone());
 

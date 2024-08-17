@@ -70,6 +70,8 @@ pub struct GitDependency {
     pub version: String,
     pub git: String,
     pub rev: Option<String>,
+    pub tag: Option<String>,
+    pub branch: Option<String>,
 }
 
 impl core::fmt::Display for GitDependency {
@@ -144,48 +146,49 @@ impl Dependency {
                     None => value(&dep.version),
                 },
             ),
-            Dependency::Git(dep) => (
-                dep.name.clone(),
-                match &dep.rev {
-                    Some(rev) => {
-                        let mut table = InlineTable::new();
-                        table.insert(
-                            "version",
-                            value(&dep.version)
-                                .into_value()
-                                .expect("version should be a valid toml value"),
-                        );
-                        table.insert(
-                            "git",
-                            value(&dep.git)
-                                .into_value()
-                                .expect("git URL should be a valid toml value"),
-                        );
-                        table.insert(
-                            "rev",
-                            value(rev).into_value().expect("rev should be a valid toml value"),
-                        );
-                        value(table)
-                    }
-                    None => {
-                        let mut table = InlineTable::new();
-                        table.insert(
-                            "version",
-                            value(&dep.version)
-                                .into_value()
-                                .expect("version should be a valid toml value"),
-                        );
-                        table.insert(
-                            "git",
-                            value(&dep.git)
-                                .into_value()
-                                .expect("git URL should be a valid toml value"),
-                        );
+            Dependency::Git(dep) => {
+                let mut table = InlineTable::new();
+                table.insert(
+                    "version",
+                    value(&dep.version).into_value().expect("version should be a valid toml value"),
+                );
+                table.insert(
+                    "git",
+                    value(&dep.git).into_value().expect("git URL should be a valid toml value"),
+                );
 
-                        value(table)
+                match &dep.tag {
+                    Some(tag) => {
+                        table.insert(
+                            "tag",
+                            value(tag).into_value().expect("tag should be a valid toml value"),
+                        );
                     }
-                },
-            ),
+                    None => match &dep.branch {
+                        Some(branch) => {
+                            table.insert(
+                                "branch",
+                                value(branch)
+                                    .into_value()
+                                    .expect("branch should be a valid toml value"),
+                            );
+                        }
+                        None => match &dep.rev {
+                            Some(rev) => {
+                                table.insert(
+                                    "rev",
+                                    value(rev)
+                                        .into_value()
+                                        .expect("rev should be a valid toml value"),
+                                );
+                            }
+                            None => {}
+                        },
+                    },
+                };
+
+                (dep.name.clone(), value(table))
+            }
         }
     }
 
@@ -454,29 +457,6 @@ fn parse_dependency(name: impl Into<String>, value: &Item) -> Result<Dependency>
         );
     }
 
-    // else if value.is_inline_table() && // TODO: Hacky way of doing this, might need rewritten
-    //     !value.as_inline_table().unwrap().contains_key("url") &&
-    //     !value.as_inline_table().unwrap().contains_key("git")
-    // {
-    //     // this function does not retrieve the url, only version
-    //     return Ok(HttpDependency {
-    //         name: name.clone(),
-    //         version: match value.as_inline_table() {
-    //             // we normalize to inline table
-    //             Some(table) => {
-    //                 let version = table.get("version").unwrap().to_string();
-    //                 version.replace("\"", "").trim().to_string()
-    //             }
-    //             None => {
-    //                 return Err(ConfigError::InvalidDependency(name));
-    //             }
-    //         },
-    //         url: None,
-    //         checksum: None,
-    //     }
-    //     .into());
-    // }
-
     // we should have a table or inline table
     let table = {
         match value.as_inline_table() {
@@ -516,11 +496,32 @@ fn parse_dependency(name: impl Into<String>, value: &Item) -> Result<Dependency>
                 }
                 None => None,
             };
+
+            let tag = match table.get("tag").map(|v| v.as_str()) {
+                Some(Some(tag)) => Some(tag.to_string()),
+                Some(None) => {
+                    return Err(ConfigError::InvalidField { field: "tag".to_string(), dep: name });
+                }
+                None => None,
+            };
+
+            let branch = match table.get("branch").map(|v| v.as_str()) {
+                Some(Some(tag)) => Some(tag.to_string()),
+                Some(None) => {
+                    return Err(ConfigError::InvalidField {
+                        field: "branch".to_string(),
+                        dep: name,
+                    });
+                }
+                None => None,
+            };
             return Ok(Dependency::Git(GitDependency {
                 name: name.to_string(),
                 git: git.to_string(),
                 version,
                 rev,
+                tag,
+                branch,
             }));
         }
         None => {}
@@ -1442,6 +1443,8 @@ gas_reports = ['*']
             version: "1.0.0".to_string(),
             git: "git@github.com:foundry-rs/forge-std.git".to_string(),
             rev: Some("07263d193d621c4b2b0ce8b4d54af58f6957d97d".to_string()),
+            tag: None,
+            branch: None,
         });
 
         add_to_config(&dependency, &target_config).unwrap();
@@ -1458,6 +1461,218 @@ gas_reports = ['*']
 
 [dependencies]
 dep1 = { version = "1.0.0", git = "git@github.com:foundry-rs/forge-std.git", rev = "07263d193d621c4b2b0ce8b4d54af58f6957d97d" }
+
+# we don't have [dependencies] declared
+"#;
+
+        assert_eq!(read_file_to_string(&target_config), content);
+
+        let _ = remove_file(target_config);
+        Ok(())
+    }
+
+    #[test]
+    fn add_to_config_foundry_github_with_tag() -> Result<()> {
+        let mut content = r#"
+# Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
+
+[profile.default]
+script = "script"
+solc = "0.8.26"
+src = "src"
+test = "test"
+libs = ["dependencies"]
+gas_reports = ['*']
+
+# we don't have [dependencies] declared
+"#;
+
+        let target_config = define_config(true);
+
+        write_to_config(&target_config, content);
+
+        let dependency = Dependency::Git(GitDependency {
+            name: "dep1".to_string(),
+            version: "1.0.0".to_string(),
+            git: "https://gitlab.com/mario4582928/Mario.git".to_string(),
+            rev: None,
+            tag: Some("custom-tag".to_string()),
+            branch: None,
+        });
+
+        add_to_config(&dependency, &target_config).unwrap();
+        content = r#"
+# Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
+
+[profile.default]
+script = "script"
+solc = "0.8.26"
+src = "src"
+test = "test"
+libs = ["dependencies"]
+gas_reports = ['*']
+
+[dependencies]
+dep1 = { version = "1.0.0", git = "https://gitlab.com/mario4582928/Mario.git", tag = "custom-tag" }
+
+# we don't have [dependencies] declared
+"#;
+
+        assert_eq!(read_file_to_string(&target_config), content);
+
+        let _ = remove_file(target_config);
+        Ok(())
+    }
+
+    #[test]
+    fn add_to_config_foundry_github_with_tag_when_revision_present() -> Result<()> {
+        let mut content = r#"
+# Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
+
+[profile.default]
+script = "script"
+solc = "0.8.26"
+src = "src"
+test = "test"
+libs = ["dependencies"]
+gas_reports = ['*']
+
+# we don't have [dependencies] declared
+"#;
+
+        let target_config = define_config(true);
+
+        write_to_config(&target_config, content);
+
+        let dependency = Dependency::Git(GitDependency {
+            name: "dep1".to_string(),
+            version: "1.0.0".to_string(),
+            git: "https://gitlab.com/mario4582928/Mario.git".to_string(),
+            rev: Some("22868f426bd4dd0e682b5ec5f9bd55507664240c".to_string()),
+            tag: Some("custom-tag".to_string()),
+            branch: None,
+        });
+
+        add_to_config(&dependency, &target_config).unwrap();
+        content = r#"
+# Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
+
+[profile.default]
+script = "script"
+solc = "0.8.26"
+src = "src"
+test = "test"
+libs = ["dependencies"]
+gas_reports = ['*']
+
+[dependencies]
+dep1 = { version = "1.0.0", git = "https://gitlab.com/mario4582928/Mario.git", tag = "custom-tag" }
+
+# we don't have [dependencies] declared
+"#;
+
+        assert_eq!(read_file_to_string(&target_config), content);
+
+        let _ = remove_file(target_config);
+        Ok(())
+    }
+
+    #[test]
+    fn add_to_config_foundry_github_with_branch() -> Result<()> {
+        let mut content = r#"
+# Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
+
+[profile.default]
+script = "script"
+solc = "0.8.26"
+src = "src"
+test = "test"
+libs = ["dependencies"]
+gas_reports = ['*']
+
+# we don't have [dependencies] declared
+"#;
+
+        let target_config = define_config(true);
+
+        write_to_config(&target_config, content);
+
+        let dependency = Dependency::Git(GitDependency {
+            name: "dep1".to_string(),
+            version: "1.0.0".to_string(),
+            git: "https://gitlab.com/mario4582928/Mario.git".to_string(),
+            rev: None,
+            tag: None,
+            branch: Some("custom-branch".to_string()),
+        });
+
+        add_to_config(&dependency, &target_config).unwrap();
+        content = r#"
+# Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
+
+[profile.default]
+script = "script"
+solc = "0.8.26"
+src = "src"
+test = "test"
+libs = ["dependencies"]
+gas_reports = ['*']
+
+[dependencies]
+dep1 = { version = "1.0.0", git = "https://gitlab.com/mario4582928/Mario.git", branch = "custom-branch" }
+
+# we don't have [dependencies] declared
+"#;
+
+        assert_eq!(read_file_to_string(&target_config), content);
+
+        let _ = remove_file(target_config);
+        Ok(())
+    }
+
+    #[test]
+    fn add_to_config_foundry_github_with_rev_tag_branch() -> Result<()> {
+        let mut content = r#"
+# Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
+
+[profile.default]
+script = "script"
+solc = "0.8.26"
+src = "src"
+test = "test"
+libs = ["dependencies"]
+gas_reports = ['*']
+
+# we don't have [dependencies] declared
+"#;
+
+        let target_config = define_config(true);
+
+        write_to_config(&target_config, content);
+
+        let dependency = Dependency::Git(GitDependency {
+            name: "dep1".to_string(),
+            version: "1.0.0".to_string(),
+            git: "https://gitlab.com/mario4582928/Mario.git".to_string(),
+            rev: Some("custom-rev".to_string()),
+            tag: Some("custom-tag".to_string()),
+            branch: Some("custom-branch".to_string()),
+        });
+
+        add_to_config(&dependency, &target_config).unwrap();
+        content = r#"
+# Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
+
+[profile.default]
+script = "script"
+solc = "0.8.26"
+src = "src"
+test = "test"
+libs = ["dependencies"]
+gas_reports = ['*']
+
+[dependencies]
+dep1 = { version = "1.0.0", git = "https://gitlab.com/mario4582928/Mario.git", tag = "custom-tag" }
 
 # we don't have [dependencies] declared
 "#;
@@ -1496,6 +1711,8 @@ dep1 = { version = "1.0.0", git = "git@github.com:foundry-rs/forge-std.git" }
             version: "1.0.0".to_string(),
             git: "git@github.com:foundry-rs/forge-std.git".to_string(),
             rev: Some("07263d193d621c4b2b0ce8b4d54af58f6957d97d".to_string()),
+            tag: None,
+            branch: None,
         });
 
         add_to_config(&dependency, &target_config).unwrap();

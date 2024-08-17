@@ -50,7 +50,11 @@ You can install a dependency from the Soldeer repository, a custom URL pointing 
 - **Example from Git:**
   soldeer install @openzeppelin-contracts~2.3.0 git@github.com:OpenZeppelin/openzeppelin-contracts.git
 - **Example from Git with a specified commit:**
-  soldeer install @openzeppelin-contracts~2.3.0 git@github.com:OpenZeppelin/openzeppelin-contracts.git --rev 05f218fb6617932e56bf5388c3b389c3028a7b73",
+  soldeer install @openzeppelin-contracts~2.3.0 git@github.com:OpenZeppelin/openzeppelin-contracts.git --rev 05f218fb6617932e56bf5388c3b389c3028a7b73
+  - **Example from Git with a specified tag:**
+  soldeer install @openzeppelin-contracts~2.3.0 git@github.com:OpenZeppelin/openzeppelin-contracts.git --tag my-tag
+  - **Example from Git with a specified branch:**
+  soldeer install @openzeppelin-contracts~2.3.0 git@github.com:OpenZeppelin/openzeppelin-contracts.git --branch my-branch",
     after_help = "For more information, read the README.md"
 )]
 pub struct Install {
@@ -69,6 +73,14 @@ pub struct Install {
     /// The revision of the dependency, if from Git
     #[arg(long)]
     pub rev: Option<String>,
+
+    /// The tag of the dependency, if from Git
+    #[arg(long)]
+    pub tag: Option<String>,
+
+    /// The branch of the dependency, if from Git
+    #[arg(long)]
+    pub branch: Option<String>,
 
     /// If set, this command will delete the existing remappings and re-create them
     #[arg(short = 'g', long, default_value_t = false)]

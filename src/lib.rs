@@ -67,6 +67,7 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
             let lock = install_dependency(&dependency, None, false).await?;
             add_to_lockfile(lock)?;
             add_to_remappings(dependency, &config, config_path).await?;
+            // TODO: add `dependencies` to the .gitignore file if it exists
         }
         Subcommands::Install(install) => {
             let config_path = get_config_path()?;

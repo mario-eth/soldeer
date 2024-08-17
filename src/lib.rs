@@ -2,35 +2,26 @@
 use crate::{
     auth::login,
     config::{delete_config, read_config_deps, remappings_txt, Dependency},
-    download::{
-        delete_dependency_files, download_dependencies, install_subdependencies,
-        unzip_dependencies, unzip_dependency,
-    },
+    download::{delete_dependency_files, download_dependencies, unzip_dependencies},
     janitor::{cleanup_after, healthcheck_dependencies},
-    lock::{lock_check, remove_lock, write_lock},
+    lock::{remove_lock, write_lock},
     utils::{check_dotfiles_recursive, get_current_working_dir, prompt_user_for_confirmation},
     versioning::push_version,
 };
 pub use crate::{commands::Subcommands, errors::SoldeerError};
 use config::{
-    add_to_config, get_config_path, read_soldeer_config, remappings_foundry, GitDependency,
-    HttpDependency, RemappingsAction, RemappingsLocation, SoldeerConfig,
+    add_to_config, get_config_path, read_soldeer_config, remappings_foundry, RemappingsAction,
+    RemappingsLocation,
 };
-use download::download_dependency;
 use errors::LockError;
 use install::{
     add_to_remappings, ensure_dependencies_dir, install_dependencies, install_dependency,
     update_remappings,
 };
-use janitor::cleanup_dependency;
 use lock::{add_to_lockfile, generate_lockfile_contents, read_lockfile, LockWriteMode};
 use once_cell::sync::Lazy;
 use remote::get_latest_forge_std;
-use std::{
-    env, fs,
-    path::{Path, PathBuf},
-};
-use utils::{get_url_type, UrlType};
+use std::{env, fs, path::PathBuf};
 use versioning::validate_name;
 use yansi::Paint as _;
 

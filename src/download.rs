@@ -54,14 +54,14 @@ pub async fn download_file(url: impl IntoUrl, path: impl AsRef<Path>) -> Result<
     Ok(path)
 }
 
-pub async fn unzip_file(path: impl AsRef<Path>) -> Result<()> {
+pub async fn unzip_file(path: impl AsRef<Path>, into: impl AsRef<Path>) -> Result<()> {
     let path = path.as_ref().to_path_buf();
-    let out_dir = path.with_extension("");
+    let out_dir = into.as_ref();
     let zip_contents = tokio_fs::read(&path)
         .await
         .map_err(|e| DownloadError::IOError { path: path.clone(), source: e })?;
 
-    zip_extract::extract(Cursor::new(zip_contents), &out_dir, true)?;
+    zip_extract::extract(Cursor::new(zip_contents), out_dir, true)?;
 
     tokio_fs::remove_file(&path)
         .await

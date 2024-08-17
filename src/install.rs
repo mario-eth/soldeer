@@ -235,7 +235,7 @@ async fn install_dependency_inner(
                     return Err(InstallError::ZipIntegrityError(zip_path.clone()));
                 }
             }
-            unzip_file(&zip_path).await?;
+            unzip_file(&zip_path, &path).await?;
             if subdependencies {
                 install_subdependencies(&path).await?;
             }

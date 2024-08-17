@@ -1,5 +1,5 @@
 use crate::{
-    config::Dependency, errors::JanitorError, lock::remove_lock, utils::sanitize_dependency_name,
+    config::Dependency, errors::JanitorError, lock::remove_lock, utils::sanitize_filename,
     DEPENDENCY_DIR,
 };
 use std::fs;
@@ -20,7 +20,7 @@ pub fn cleanup_after(dependencies: &[Dependency]) -> Result<()> {
 
 pub fn healthcheck_dependency(dependency: &Dependency) -> Result<()> {
     let file_name =
-        sanitize_dependency_name(&format!("{}-{}", dependency.name(), dependency.version()));
+        sanitize_filename(&format!("{}-{}", dependency.name(), dependency.version()));
     let new_path = DEPENDENCY_DIR.join(file_name);
     match fs::metadata(new_path) {
         Ok(_) => Ok(()),
@@ -30,7 +30,7 @@ pub fn healthcheck_dependency(dependency: &Dependency) -> Result<()> {
 
 pub fn cleanup_dependency(dependency: &Dependency, full: bool) -> Result<()> {
     let sanitized_name =
-        sanitize_dependency_name(&format!("{}-{}", dependency.name(), dependency.version()));
+        sanitize_filename(&format!("{}-{}", dependency.name(), dependency.version()));
 
     let new_path = DEPENDENCY_DIR.clone().join(format!("{sanitized_name}.zip"));
     if let Dependency::Http(_) = dependency {

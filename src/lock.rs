@@ -2,7 +2,7 @@ use crate::{
     config::Dependency,
     download::IntegrityChecksum,
     errors::LockError,
-    utils::{get_current_working_dir, read_file_to_string, sanitize_dependency_name},
+    utils::{get_current_working_dir, read_file_to_string, sanitize_filename},
     DEPENDENCY_DIR, LOCK_FILE,
 };
 use serde::{Deserialize, Serialize};
@@ -25,7 +25,7 @@ pub struct LockEntry {
 
 impl LockEntry {
     pub fn install_path(&self) -> PathBuf {
-        let sanitized_name = sanitize_dependency_name(&format!("{}-{}", self.name, self.version));
+        let sanitized_name = sanitize_filename(&format!("{}-{}", self.name, self.version));
         DEPENDENCY_DIR.join(sanitized_name)
     }
 }

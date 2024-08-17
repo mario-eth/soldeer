@@ -153,7 +153,7 @@ pub fn get_url_type(dependency_url: &str) -> UrlType {
     UrlType::Http
 }
 
-pub fn sanitize_dependency_name(dependency_name: &str) -> String {
+pub fn sanitize_filename(dependency_name: &str) -> String {
     let options =
         sanitize_filename::Options { truncate: true, windows: cfg!(windows), replacement: "-" };
 
@@ -163,8 +163,7 @@ pub fn sanitize_dependency_name(dependency_name: &str) -> String {
 pub fn zipfile_hash(dependency: &HttpDependency) -> Result<IntegrityChecksum, DownloadError> {
     use crate::DEPENDENCY_DIR;
 
-    let file_name =
-        sanitize_dependency_name(&format!("{}-{}.zip", dependency.name, dependency.version));
+    let file_name = sanitize_filename(&format!("{}-{}.zip", dependency.name, dependency.version));
     let path = DEPENDENCY_DIR.join(&file_name);
     hash_file(&path).map_err(|e| DownloadError::IOError { path, source: e })
 }
@@ -306,10 +305,10 @@ mod tests {
         ];
 
         for filename in filenames {
-            assert_eq!(sanitize_dependency_name(filename), "valid-filename.txt");
+            assert_eq!(sanitize_filename(filename), "valid-filename.txt");
         }
-        assert_eq!(sanitize_dependency_name("valid~1.0.0"), "valid~1.0.0");
-        assert_eq!(sanitize_dependency_name("valid~1*0.0"), "valid~1-0.0");
+        assert_eq!(sanitize_filename("valid~1.0.0"), "valid~1.0.0");
+        assert_eq!(sanitize_filename("valid~1*0.0"), "valid~1-0.0");
     }
 
     #[test]

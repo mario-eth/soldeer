@@ -1,6 +1,6 @@
 use crate::{
     errors::ConfigError,
-    utils::{get_current_working_dir, read_file_to_string, sanitize_dependency_name},
+    utils::{get_current_working_dir, read_file_to_string, sanitize_filename},
     DEPENDENCY_DIR, FOUNDRY_CONFIG_FILE, SOLDEER_CONFIG_FILE,
 };
 use serde::{Deserialize, Serialize};
@@ -74,7 +74,7 @@ pub struct GitDependency {
 
 impl GitDependency {
     pub fn install_path(&self) -> PathBuf {
-        let sanitized_name = sanitize_dependency_name(&format!("{}-{}", self.name, self.version));
+        let sanitized_name = sanitize_filename(&format!("{}-{}", self.name, self.version));
         DEPENDENCY_DIR.join(sanitized_name)
     }
 }
@@ -95,7 +95,7 @@ pub struct HttpDependency {
 
 impl HttpDependency {
     pub fn install_path(&self) -> PathBuf {
-        let sanitized_name = sanitize_dependency_name(&format!("{}-{}", self.name, self.version));
+        let sanitized_name = sanitize_filename(&format!("{}-{}", self.name, self.version));
         DEPENDENCY_DIR.join(sanitized_name)
     }
 }
@@ -597,7 +597,7 @@ fn generate_remappings(
         match &dependency {
             RemappingsAction::Remove(remove_dep) => {
                 // only keep items not matching the dependency to remove
-                let sanitized_name = sanitize_dependency_name(&format!(
+                let sanitized_name = sanitize_filename(&format!(
                     "{}-{}",
                     remove_dep.name(),
                     remove_dep.version()
@@ -616,7 +616,7 @@ fn generate_remappings(
                 // remapping
                 let new_dep_remapped = format_remap_name(soldeer_config, add_dep);
                 let sanitized_name =
-                    sanitize_dependency_name(&format!("{}-{}", add_dep.name(), add_dep.version()));
+                    sanitize_filename(&format!("{}-{}", add_dep.name(), add_dep.version()));
                 let new_dep_orig = format!("dependencies/{}/", sanitized_name);
                 let mut found = false; // whether a remapping existed for that dep already
                 for (remapped, orig) in existing_remappings {

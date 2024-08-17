@@ -2,7 +2,7 @@ use crate::{
     config::{Dependency, GitDependency, HttpDependency},
     errors::DownloadError,
     remote::get_dependency_url_remote,
-    utils::{hash_folder, read_file, run_git_command, sanitize_dependency_name, zipfile_hash},
+    utils::{hash_folder, read_file, run_git_command, sanitize_filename, zipfile_hash},
     DEPENDENCY_DIR,
 };
 use reqwest::IntoUrl;
@@ -191,8 +191,7 @@ pub async fn download_dependency(
 }
 
 pub fn unzip_dependency(dependency: &HttpDependency) -> Result<IntegrityChecksum> {
-    let file_name =
-        sanitize_dependency_name(&format!("{}-{}", dependency.name, dependency.version));
+    let file_name = sanitize_filename(&format!("{}-{}", dependency.name, dependency.version));
     let target_name = format!("{}/", file_name);
     let zip_path = DEPENDENCY_DIR.join(format!("{file_name}.zip"));
     let target_dir = DEPENDENCY_DIR.join(target_name);
@@ -217,8 +216,7 @@ async fn download_via_git(
     dependency_directory: &Path,
 ) -> Result<String> {
     println!("{}", format!("Started GIT download of {dependency}").green());
-    let target_dir =
-        sanitize_dependency_name(&format!("{}-{}", dependency.name, dependency.version));
+    let target_dir = sanitize_filename(&format!("{}-{}", dependency.name, dependency.version));
     let path = dependency_directory.join(target_dir);
     let path_str = path.to_string_lossy().to_string();
     if path.exists() {
@@ -306,7 +304,7 @@ async fn download_via_http(
 ) -> Result<()> {
     println!("{}", format!("Started HTTP download of {dependency}").green());
     let zip_to_download =
-        sanitize_dependency_name(&format!("{}-{}.zip", dependency.name, dependency.version));
+        sanitize_filename(&format!("{}-{}.zip", dependency.name, dependency.version));
 
     let resp = reqwest::get(url).await?;
     let mut resp = resp.error_for_status()?;
@@ -327,7 +325,7 @@ async fn download_via_http(
 }
 
 pub fn delete_dependency_files(dependency: &Dependency) -> Result<()> {
-    let path = DEPENDENCY_DIR.join(sanitize_dependency_name(&format!(
+    let path = DEPENDENCY_DIR.join(sanitize_filename(&format!(
         "{}-{}",
         dependency.name(),
         dependency.version()
@@ -337,8 +335,7 @@ pub fn delete_dependency_files(dependency: &Dependency) -> Result<()> {
 }
 
 pub fn install_subdependencies(dependency: &Dependency) -> Result<()> {
-    let dep_name =
-        sanitize_dependency_name(&format!("{}-{}", dependency.name(), dependency.version()));
+    let dep_name = sanitize_filename(&format!("{}-{}", dependency.name(), dependency.version()));
 
     let dep_dir = DEPENDENCY_DIR.join(dep_name);
     if !dep_dir.exists() {

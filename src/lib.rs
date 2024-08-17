@@ -14,14 +14,21 @@ use crate::{
 pub use crate::{commands::Subcommands, errors::SoldeerError};
 use config::{
     add_to_config, get_config_path, read_soldeer_config, remappings_foundry, GitDependency,
-    HttpDependency, RemappingsAction, RemappingsLocation,
+    HttpDependency, RemappingsAction, RemappingsLocation, SoldeerConfig,
 };
 use download::download_dependency;
+use install::{
+    add_to_remappings, ensure_dependencies_dir, install_dependencies, install_dependency,
+    update_remappings,
+};
 use janitor::cleanup_dependency;
-use lock::LockWriteMode;
+use lock::{add_to_lockfile, generate_lockfile_contents, try_read_lockfile, LockWriteMode};
 use once_cell::sync::Lazy;
-use remote::get_latest_forge_std_dependency;
-use std::{env, path::PathBuf};
+use remote::get_latest_forge_std;
+use std::{
+    env,
+    path::{Path, PathBuf},
+};
 use utils::{get_url_type, UrlType};
 use versioning::validate_name;
 use yansi::Paint as _;
@@ -57,49 +64,57 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
                 config::remove_forge_lib()?;
             }
 
-            let dependency: Dependency = get_latest_forge_std_dependency().await.map_err(|e| {
+            let config_path = get_config_path()?;
+            let config = read_soldeer_config(Some(&config_path))?;
+            let dependency = get_latest_forge_std().await.map_err(|e| {
                 SoldeerError::DownloadError { dep: "forge-std".to_string(), source: e }
             })?;
-            install_dependency(dependency, true, false).await?;
+            add_to_config(&dependency, &config_path)?;
+            let lock = install_dependency(&dependency, None, false).await?;
+            add_to_lockfile(lock)?;
+            add_to_remappings(dependency, &config, &config_path).await?;
         }
         Subcommands::Install(install) => {
-            let regenerate_remappings = install.regenerate_remappings;
-            let Some(dependency) = install.dependency else {
-                return update(regenerate_remappings, install.recursive_deps).await; // TODO: instead, check which
-                                                                                    // dependencies
-                                                                                    // do
-                                                                                    // not match the
-                                                                                    // integrity checksum and install those
-            };
-
-            println!("{}", "🦌 Running Soldeer install 🦌".green());
-            let (dependency_name, dependency_version) =
-                dependency.split_once('~').expect("dependency string should have name and version");
-
-            let dep = match install.remote_url {
-                Some(url) => match get_url_type(&url) {
-                    UrlType::Git => Dependency::Git(GitDependency {
-                        name: dependency_name.to_string(),
-                        version: dependency_version.to_string(),
-                        git: url,
-                        rev: install.rev,
-                    }),
-                    UrlType::Http => Dependency::Http(HttpDependency {
-                        name: dependency_name.to_string(),
-                        version: dependency_version.to_string(),
-                        url: Some(url),
-                        checksum: None,
-                    }),
-                },
-                None => Dependency::Http(HttpDependency {
-                    name: dependency_name.to_string(),
-                    version: dependency_version.to_string(),
-                    url: None,
-                    checksum: None,
-                }),
-            };
-
-            install_dependency(dep, regenerate_remappings, install.recursive_deps).await?;
+            let config_path = get_config_path()?;
+            let mut config = read_soldeer_config(Some(&config_path))?;
+            if install.regenerate_remappings {
+                config.remappings_regenerate = true;
+            }
+            if install.recursive_deps {
+                config.recursive_deps = true;
+            }
+            ensure_dependencies_dir()?;
+            match install.dependency {
+                None => {
+                    let dependencies: Vec<Dependency> = read_config_deps(Some(&config_path))?;
+                    let (locks, lockfile_content) = try_read_lockfile()?;
+                    let new_locks =
+                        install_dependencies(&dependencies, &locks, config.recursive_deps).await?;
+                    let new_lockfile_content = generate_lockfile_contents(new_locks);
+                    if new_lockfile_content != lockfile_content {
+                        eprintln!("{}", "Warning: the lock file is out of sync with the dependencies. Consider running `soldeer lock` or `soldeer update` to re-generate the lockfile.".yellow())
+                    }
+                    update_remappings(&config, &config_path).await?;
+                }
+                Some(dependency) => {
+                    let mut dep =
+                        Dependency::from_name_version(&dependency, install.remote_url, install.rev);
+                    // for HTTP deps, we can already add them to the config (no further information
+                    // needed).
+                    if dep.is_http() {
+                        add_to_config(&dep, &config_path)?;
+                    }
+                    let lock = install_dependency(&dep, None, config.recursive_deps).await?;
+                    // for GIT deps, we need to add the commit hash before adding them to the
+                    // config.
+                    if let Some(git_dep) = dep.as_git_mut() {
+                        git_dep.rev = Some(lock.checksum.clone());
+                        add_to_config(&dep, &config_path)?;
+                    }
+                    add_to_lockfile(lock)?;
+                    add_to_remappings(dep, &config, &config_path).await?;
+                }
+            }
         }
         Subcommands::Update(update_args) => {
             return update(update_args.regenerate_remappings, update_args.recursive_deps).await;
@@ -199,88 +214,6 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
     Ok(())
 }
 
-async fn install_dependency(
-    mut dependency: Dependency,
-    regenerate_remappings: bool,
-    recursive_deps: bool,
-) -> Result<(), SoldeerError> {
-    lock_check(&dependency, true)?;
-
-    let config_path = match get_config_path() {
-        Ok(file) => file,
-        Err(e) => {
-            cleanup_dependency(&dependency, true)?;
-            return Err(e.into());
-        }
-    };
-
-    let mut config = read_soldeer_config(Some(config_path.clone()))?;
-    if regenerate_remappings {
-        config.remappings_regenerate = regenerate_remappings;
-    }
-
-    if recursive_deps {
-        config.recursive_deps = recursive_deps;
-    }
-
-    let result = download_dependency(&dependency, false)
-        .await
-        .map_err(|e| SoldeerError::DownloadError { dep: dependency.to_string(), source: e })?;
-    match dependency {
-        Dependency::Http(ref mut dep) => {
-            add_to_config(&dep.clone().into(), &config_path)?;
-            dep.checksum = Some(result.hash);
-            dep.url = Some(result.url);
-        }
-        Dependency::Git(ref mut dep) => {
-            dep.rev = Some(result.hash);
-            add_to_config(&dependency, &config_path)?;
-        }
-    }
-
-    let integrity = match &dependency {
-        Dependency::Http(dep) => match unzip_dependency(dep) {
-            Ok(i) => Some(i),
-            Err(e) => {
-                cleanup_dependency(&dependency, true)?;
-                return Err(SoldeerError::DownloadError { dep: dependency.to_string(), source: e });
-            }
-        },
-        Dependency::Git(_) => None,
-    };
-
-    write_lock(&[dependency.clone()], &[integrity], LockWriteMode::Append)?;
-
-    janitor::healthcheck_dependency(&dependency)?;
-
-    janitor::cleanup_dependency(&dependency, false)?;
-
-    if config.recursive_deps {
-        if let Err(e) = install_subdependencies(&dependency) {
-            return Err(SoldeerError::DownloadError { dep: dependency.to_string(), source: e });
-        };
-    }
-
-    if config.remappings_generate {
-        if config_path.to_string_lossy().contains("foundry.toml") {
-            match config.remappings_location {
-                RemappingsLocation::Txt => {
-                    remappings_txt(&RemappingsAction::Add(dependency), &config_path, &config)
-                        .await?
-                }
-                RemappingsLocation::Config => {
-                    remappings_foundry(&RemappingsAction::Add(dependency), &config_path, &config)
-                        .await?
-                }
-            }
-        } else {
-            remappings_txt(&RemappingsAction::Add(dependency), &config_path, &config).await?;
-        }
-    }
-
-    Ok(())
-}
-
 async fn update(regenerate_remappings: bool, recursive_deps: bool) -> Result<(), SoldeerError> {
     println!("{}", "🦌 Running Soldeer update 🦌".green());
 
@@ -294,7 +227,7 @@ async fn update(regenerate_remappings: bool, recursive_deps: bool) -> Result<(),
         config.recursive_deps = recursive_deps;
     }
 
-    let mut dependencies: Vec<Dependency> = read_config_deps(None)?;
+    let mut dependencies: Vec<Dependency> = read_config_deps(None::<PathBuf>)?;
 
     let results = download_dependencies(&dependencies, true)
         .await
@@ -387,6 +320,7 @@ libs = ["dependencies"]
             rev: None,
             regenerate_remappings: false,
             recursive_deps: false,
+            clean: false,
         });
 
         match run(command) {
@@ -439,6 +373,7 @@ libs = ["dependencies"]
             rev: None,
             regenerate_remappings: false,
             recursive_deps: false,
+            clean: false,
         });
 
         match run(command) {
@@ -504,6 +439,7 @@ libs = ["dependencies"]
             rev: Some("2fd642069600f0b8da3e1897fad42b2c53c6e927".to_string()),
             regenerate_remappings: false,
             recursive_deps: false,
+            clean: false,
         });
 
         match run(command) {
@@ -570,6 +506,7 @@ libs = ["dependencies"]
             rev: None,
             regenerate_remappings: false,
             recursive_deps: false,
+            clean: false,
         });
 
         match run(command) {
@@ -806,6 +743,7 @@ libs = ["dependencies"]
             rev: None,
             regenerate_remappings: false,
             recursive_deps: false,
+            clean: false,
         });
 
         match run(command) {
@@ -998,6 +936,7 @@ libs = ["dependencies"]
             rev: None,
             regenerate_remappings: false,
             recursive_deps: false,
+            clean: false,
         });
 
         match run(command) {
@@ -1053,7 +992,8 @@ libs = ["dependencies"]
             remote_url: Some("https://soldeer-revisions.s3.amazonaws.com/forge-std/v1_9_0_03-07-2024_14:44:57_forge-std-v1.9.0.zip".to_string()),
             rev: None,
             regenerate_remappings: false,
-            recursive_deps: false
+            recursive_deps: false,
+            clean: false,
         });
 
         match run(command) {
@@ -1110,6 +1050,7 @@ libs = ["dependencies"]
             rev: None,
             regenerate_remappings: false,
             recursive_deps: false,
+            clean: false,
         });
 
         match run(command) {
@@ -1166,6 +1107,7 @@ libs = ["dependencies"]
             rev: None,
             regenerate_remappings: false,
             recursive_deps: false,
+            clean: false,
         });
 
         match run(command) {
@@ -1222,6 +1164,7 @@ libs = ["dependencies"]
             rev: Some("3778c3cb8e4244cb5a1c3ef3ce1c71a3683e324a".to_string()),
             regenerate_remappings: false,
             recursive_deps: false,
+            clean: false,
         });
 
         match run(command) {
@@ -1355,6 +1298,7 @@ libs = ["dependencies"]
             rev: None,
             regenerate_remappings: false,
             recursive_deps: true,
+            clean: false,
         });
 
         match run(command) {
@@ -1415,6 +1359,7 @@ recursive_deps = true
             rev: None,
             regenerate_remappings: false,
             recursive_deps: false,
+            clean: false,
         });
 
         match run(command) {
@@ -1470,6 +1415,7 @@ libs = ["dependencies"]
             rev: None,
             regenerate_remappings: false,
             recursive_deps: true,
+            clean: false,
         });
 
         match run(command) {
@@ -1525,6 +1471,7 @@ recursive_deps = true
             rev: None,
             regenerate_remappings: false,
             recursive_deps: false,
+            clean: false,
         });
 
         match run(command) {

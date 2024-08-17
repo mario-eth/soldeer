@@ -56,32 +56,25 @@ pub async fn get_project_id(dependency_name: &str) -> Result<String> {
     Err(DownloadError::ProjectNotFound(dependency_name.to_string()))
 }
 
-pub async fn get_latest_forge_std_dependency() -> Result<Dependency> {
+pub async fn get_latest_forge_std() -> Result<Dependency> {
     let dependency_name = "forge-std";
     let url = format!(
         "{}/api/v1/revision?project_name={}&offset=0&limit=1",
         get_base_url(),
         dependency_name
     );
-    let req = Client::new().get(url);
-    if let Ok(response) = req.send().await {
-        if response.status().is_success() {
-            let response_text = response.text().await.unwrap();
-            let revision = serde_json::from_str::<RevisionResponse>(&response_text);
-            if let Ok(revision) = revision {
-                if revision.data.is_empty() {
-                    return Err(DownloadError::ForgeStdError);
-                }
-                return Ok(Dependency::Http(HttpDependency {
-                    name: dependency_name.to_string(),
-                    version: revision.data[0].clone().version,
-                    url: Some(revision.data[0].clone().url),
-                    checksum: None,
-                }));
-            }
-        }
-    }
-    Err(DownloadError::ForgeStdError)
+    let res = reqwest::get(url).await?;
+    let res = res.error_for_status()?;
+    let revision: RevisionResponse = res.json().await?;
+    let Some(data) = revision.data.first() else {
+        return Err(DownloadError::ForgeStdError);
+    };
+    Ok(Dependency::Http(HttpDependency {
+        name: dependency_name.to_string(),
+        version: data.clone().version,
+        url: Some(data.clone().url),
+        checksum: None,
+    }))
 }
 
 #[allow(non_snake_case)]

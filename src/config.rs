@@ -1,6 +1,8 @@
 use crate::{
     errors::ConfigError,
-    utils::{get_current_working_dir, read_file_to_string, sanitize_filename},
+    utils::{
+        get_current_working_dir, get_url_type, read_file_to_string, sanitize_filename, UrlType,
+    },
     DEPENDENCY_DIR, FOUNDRY_CONFIG_FILE, SOLDEER_CONFIG_FILE,
 };
 use serde::{Deserialize, Serialize};
@@ -114,6 +116,41 @@ pub enum Dependency {
 }
 
 impl Dependency {
+    #[must_use]
+    pub fn from_name_version(
+        name_version: &str,
+        custom_url: Option<impl Into<String>>,
+        rev: Option<impl Into<String>>,
+    ) -> Self {
+        let (dependency_name, dependency_version) =
+            name_version.split_once('~').expect("dependency string should have name and version");
+        match custom_url {
+            Some(url) => {
+                let url: String = url.into();
+                match get_url_type(&url) {
+                    UrlType::Git => Dependency::Git(GitDependency {
+                        name: dependency_name.to_string(),
+                        version: dependency_version.to_string(),
+                        git: url,
+                        rev: rev.map(|r| r.into()),
+                    }),
+                    UrlType::Http => Dependency::Http(HttpDependency {
+                        name: dependency_name.to_string(),
+                        version: dependency_version.to_string(),
+                        url: Some(url),
+                        checksum: None,
+                    }),
+                }
+            }
+            None => Dependency::Http(HttpDependency {
+                name: dependency_name.to_string(),
+                version: dependency_version.to_string(),
+                url: None,
+                checksum: None,
+            }),
+        }
+    }
+
     pub fn name(&self) -> &str {
         match self {
             Dependency::Http(dep) => &dep.name,
@@ -209,7 +246,10 @@ impl Dependency {
         }
     }
 
-    #[allow(dead_code)]
+    pub fn is_http(&self) -> bool {
+        matches!(self, Self::Http(_))
+    }
+
     pub fn as_http(&self) -> Option<&HttpDependency> {
         if let Self::Http(v) = self {
             Some(v)
@@ -218,8 +258,27 @@ impl Dependency {
         }
     }
 
-    #[allow(dead_code)]
+    pub fn as_http_mut(&mut self) -> Option<&mut HttpDependency> {
+        if let Self::Http(v) = self {
+            Some(v)
+        } else {
+            None
+        }
+    }
+
+    pub fn is_git(&self) -> bool {
+        matches!(self, Self::Git(_))
+    }
+
     pub fn as_git(&self) -> Option<&GitDependency> {
+        if let Self::Git(v) = self {
+            Some(v)
+        } else {
+            None
+        }
+    }
+
+    pub fn as_git_mut(&mut self) -> Option<&mut GitDependency> {
         if let Self::Git(v) = self {
             Some(v)
         } else {
@@ -286,9 +345,9 @@ pub fn get_config_path() -> Result<PathBuf> {
 ///
 /// If no config file path is provided, then the path is inferred automatically
 /// The returned list is sorted by name and version
-pub fn read_config_deps(path: Option<PathBuf>) -> Result<Vec<Dependency>> {
+pub fn read_config_deps(path: Option<impl AsRef<Path>>) -> Result<Vec<Dependency>> {
     let path: PathBuf = match path {
-        Some(p) => p,
+        Some(p) => p.as_ref().to_path_buf(),
         None => get_config_path()?,
     };
     let contents = read_file_to_string(&path);
@@ -307,9 +366,9 @@ pub fn read_config_deps(path: Option<PathBuf>) -> Result<Vec<Dependency>> {
     Ok(dependencies)
 }
 
-pub fn read_soldeer_config(path: Option<PathBuf>) -> Result<SoldeerConfig> {
+pub fn read_soldeer_config(path: Option<impl AsRef<Path>>) -> Result<SoldeerConfig> {
     let path: PathBuf = match path {
-        Some(p) => p,
+        Some(p) => p.as_ref().to_path_buf(),
         None => get_config_path()?,
     };
     let contents = read_file_to_string(&path);
@@ -597,11 +656,8 @@ fn generate_remappings(
         match &dependency {
             RemappingsAction::Remove(remove_dep) => {
                 // only keep items not matching the dependency to remove
-                let sanitized_name = sanitize_filename(&format!(
-                    "{}-{}",
-                    remove_dep.name(),
-                    remove_dep.version()
-                ));
+                let sanitized_name =
+                    sanitize_filename(&format!("{}-{}", remove_dep.name(), remove_dep.version()));
                 let remove_dep_orig = format!("dependencies/{sanitized_name}/");
                 for (remapped, orig) in existing_remappings {
                     if orig != remove_dep_orig {

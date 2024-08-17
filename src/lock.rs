@@ -13,7 +13,7 @@ pub type Result<T> = std::result::Result<T, LockError>;
 
 // Top level struct to hold the TOML data.
 #[bon::builder]
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Hash)]
 #[non_exhaustive]
 pub struct LockEntry {
     pub name: String,
@@ -29,6 +29,49 @@ impl LockEntry {
         DEPENDENCY_DIR.join(sanitized_name)
     }
 }
+
+// parse file contents
+#[derive(Serialize, Deserialize, Default)]
+struct LockFileParsed {
+    dependencies: Vec<LockEntry>,
+}
+
+pub fn try_read_lockfile() -> Result<(Vec<LockEntry>, String)> {
+    let lock_file: PathBuf = if cfg!(test) {
+        get_current_working_dir().join("test").join("soldeer.lock")
+    } else {
+        LOCK_FILE.clone()
+    };
+    if !lock_file.exists() {
+        return Ok((vec![], String::new()));
+    }
+    let contents = fs::read_to_string(&lock_file)?;
+
+    let data: LockFileParsed = toml_edit::de::from_str(&contents).unwrap_or_default();
+    Ok((data.dependencies, contents))
+}
+
+pub fn generate_lockfile_contents(mut entries: Vec<LockEntry>) -> String {
+    entries.sort_unstable_by(|a, b| a.name.cmp(&b.name).then_with(|| a.version.cmp(&b.version)));
+    let data = LockFileParsed { dependencies: entries };
+    toml_edit::ser::to_string_pretty(&data).expect("Lock entries should be serializable")
+}
+
+pub fn add_to_lockfile(entry: LockEntry) -> Result<()> {
+    let (mut entries, _) = try_read_lockfile()?;
+    if let Some(index) =
+        entries.iter().position(|e| e.name == entry.name && e.version == entry.version)
+    {
+        std::mem::replace(&mut entries[index], entry);
+    } else {
+        entries.push(entry);
+    }
+    let new_contents = generate_lockfile_contents(entries);
+    fs::write(LOCK_FILE.as_path(), new_contents)?;
+    Ok(())
+}
+
+// OLD CODE ---------------------------------------------------------
 
 pub fn lock_check(dependency: &Dependency, allow_missing_lockfile: bool) -> Result<()> {
     let lock_entries = match read_lock() {

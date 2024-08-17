@@ -1,15 +1,19 @@
 use crate::{
-    config::{Dependency, GitDependency, HttpDependency},
+    commands::Install,
+    config::{
+        remappings_foundry, remappings_txt, Dependency, GitDependency, HttpDependency,
+        RemappingsAction, RemappingsLocation, SoldeerConfig,
+    },
     download::{clone_repo, download_file, unzip_file},
     errors::InstallError,
     lock::LockEntry,
     remote::get_dependency_url_remote,
     utils::{get_url_type, hash_file, hash_folder, run_forge_command, run_git_command},
+    DEPENDENCY_DIR,
 };
-use std::path::Path;
-use tokio::fs;
+use std::{fs as std_fs, path::Path};
+use tokio::{fs, task::JoinSet};
 use toml_edit::DocumentMut;
-use yansi::Paint as _;
 
 pub type Result<T> = std::result::Result<T, InstallError>;
 
@@ -40,6 +44,30 @@ impl From<LockEntry> for InstallInfo {
             integrity: lock.integrity,
         }
     }
+}
+
+pub async fn install_dependencies(
+    dependencies: &[Dependency],
+    locks: &[LockEntry],
+    subdependencies: bool,
+) -> Result<Vec<LockEntry>> {
+    let mut set = JoinSet::new();
+    for dep in dependencies {
+        set.spawn({
+            let d = dep.clone();
+            let lock = locks
+                .iter()
+                .find(|l| l.name == dep.name() && l.version == dep.version())
+                .map(|l| l.clone());
+            async move { install_dependency(&d, lock.as_ref(), subdependencies).await }
+        });
+    }
+
+    let mut results = Vec::new();
+    while let Some(res) = set.join_next().await {
+        results.push(res??);
+    }
+    Ok(results)
 }
 
 pub async fn install_dependency(
@@ -125,6 +153,57 @@ pub async fn check_dependency_integrity(
     }
 }
 
+pub fn ensure_dependencies_dir() -> Result<()> {
+    let path = DEPENDENCY_DIR.clone();
+    if !path.exists() {
+        std_fs::create_dir(&path).map_err(|e| InstallError::IOError { path, source: e })?;
+    }
+    Ok(())
+}
+
+pub async fn add_to_remappings(
+    dep: Dependency,
+    config: &SoldeerConfig,
+    config_path: impl AsRef<Path>,
+) -> Result<()> {
+    if config.remappings_generate {
+        if config_path.as_ref().to_string_lossy().contains("foundry.toml") {
+            match config.remappings_location {
+                RemappingsLocation::Txt => {
+                    remappings_txt(&RemappingsAction::Add(dep), &config_path, &config).await?
+                }
+                RemappingsLocation::Config => {
+                    remappings_foundry(&RemappingsAction::Add(dep), &config_path, &config).await?
+                }
+            }
+        } else {
+            remappings_txt(&RemappingsAction::Add(dep), &config_path, &config).await?;
+        }
+    }
+    Ok(())
+}
+
+pub async fn update_remappings(
+    config: &SoldeerConfig,
+    config_path: impl AsRef<Path>,
+) -> Result<()> {
+    if config.remappings_generate {
+        if config_path.as_ref().to_string_lossy().contains("foundry.toml") {
+            match config.remappings_location {
+                RemappingsLocation::Txt => {
+                    remappings_txt(&RemappingsAction::None, &config_path, &config).await?
+                }
+                RemappingsLocation::Config => {
+                    remappings_foundry(&RemappingsAction::None, &config_path, &config).await?
+                }
+            }
+        } else {
+            remappings_txt(&RemappingsAction::None, &config_path, &config).await?;
+        }
+    }
+    Ok(())
+}
+
 async fn install_dependency_inner(
     dep: &InstallInfo,
     path: impl AsRef<Path>,
@@ -132,7 +211,6 @@ async fn install_dependency_inner(
 ) -> Result<LockEntry> {
     match get_url_type(&dep.source) {
         crate::utils::UrlType::Git => {
-            println!("{}", format!("Started GIT download of {}", dep.name).green());
             // if the dependency was specified without a commit hash and we didn't have a lockfile,
             // clone the default branch
             let commit = clone_repo(&dep.source, dep.rev_checksum.as_ref(), &path).await?;
@@ -147,7 +225,6 @@ async fn install_dependency_inner(
                 .build())
         }
         crate::utils::UrlType::Http => {
-            println!("{}", format!("Started HTTP download of {}", dep.name).green());
             let zip_path = download_file(&dep.source, path.as_ref().with_extension("zip")).await?;
             let zip_integrity = tokio::task::spawn_blocking({
                 let zip_path = zip_path.clone();

@@ -65,8 +65,7 @@ pub async fn unzip_file(path: impl AsRef<Path>) -> Result<()> {
 
     tokio_fs::remove_file(&path)
         .await
-        .map_err(|e| DownloadError::IOError { path: path.clone(), source: e })?;
-    Ok(())
+        .map_err(|e| DownloadError::IOError { path: path.clone(), source: e })
 }
 
 pub async fn clone_repo(
@@ -83,6 +82,8 @@ pub async fn clone_repo(
         run_git_command(&["rev-parse", "--verify", "HEAD"], Some(&path)).await?.trim().to_string();
     Ok(commit)
 }
+
+// OLD CODE ---------------------------------------------------------
 
 /// Download the dependencies from the list in parallel
 ///

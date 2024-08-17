@@ -129,6 +129,9 @@ pub enum InstallError {
     #[error("error during dependency installation: {0}")]
     DownloadError(#[from] DownloadError),
 
+    #[error("error during dependency installation: {0}")]
+    ConfigError(#[from] ConfigError),
+
     #[error("error during async operation: {0}")]
     AsyncError(#[from] tokio::task::JoinError),
 

@@ -78,6 +78,10 @@ pub struct Install {
     /// soldeer)
     #[arg(short = 'd', long, default_value_t = false)]
     pub recursive_deps: bool,
+
+    /// Perform a clean install by re-installing the dependencies
+    #[arg(long, default_value_t = false)]
+    pub clean: bool,
 }
 
 /// Update dependencies by reading the config file

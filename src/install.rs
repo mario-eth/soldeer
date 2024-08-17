@@ -169,28 +169,7 @@ async fn check_git_dependency(
 async fn reset_git_dependency(dependency: &GitDependency, lock: &LockEntry) -> Result<()> {
     let path = dependency.install_path();
     let rev = lock.checksum.clone().unwrap_or("HEAD".to_string());
-    let reset = Command::new("git")
-        .arg("reset")
-        .arg("--hard")
-        .arg(rev)
-        .current_dir(&path)
-        .env("GIT_TERMINAL_PROMPT", "0")
-        .output()
-        .await
-        .map_err(|e| InstallError::IOError { path: path.clone(), source: e })?;
-    if !reset.status.success() {
-        return Err(InstallError::GitError(String::from_utf8(reset.stdout).unwrap_or_default()));
-    }
-    let clean = Command::new("git")
-        .arg("clean")
-        .arg("-fd")
-        .current_dir(&path)
-        .env("GIT_TERMINAL_PROMPT", "0")
-        .output()
-        .await
-        .map_err(|e| InstallError::IOError { path, source: e })?;
-    if !clean.status.success() {
-        return Err(InstallError::GitError(String::from_utf8(clean.stdout).unwrap_or_default()));
-    }
+    run_git_command(&["reset", "--hard", &rev], Some(&path)).await?;
+    run_git_command(&["clean", "-fd"], Some(&path)).await?;
     Ok(())
 }

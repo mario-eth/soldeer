@@ -17,6 +17,7 @@ use config::{
     HttpDependency, RemappingsAction, RemappingsLocation, SoldeerConfig,
 };
 use download::download_dependency;
+use errors::LockError;
 use install::{
     add_to_remappings, ensure_dependencies_dir, install_dependencies, install_dependency,
     update_remappings,
@@ -26,7 +27,7 @@ use lock::{add_to_lockfile, generate_lockfile_contents, read_lockfile, LockWrite
 use once_cell::sync::Lazy;
 use remote::get_latest_forge_std;
 use std::{
-    env,
+    env, fs,
     path::{Path, PathBuf},
 };
 use utils::{get_url_type, UrlType};
@@ -93,8 +94,11 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
                     let new_locks =
                         install_dependencies(&dependencies, &locks, config.recursive_deps).await?;
                     let new_lockfile_content = generate_lockfile_contents(new_locks);
-                    if new_lockfile_content != lockfile_content {
+                    if !locks.is_empty() && new_lockfile_content != lockfile_content {
                         eprintln!("{}", "Warning: the lock file is out of sync with the dependencies. Consider running `soldeer lock` or `soldeer update` to re-generate the lockfile.".yellow())
+                    } else if locks.is_empty() {
+                        fs::write(LOCK_FILE.as_path(), new_lockfile_content)
+                            .map_err(LockError::IOError)?;
                     }
                     update_remappings(&config, &config_path).await?;
                 }

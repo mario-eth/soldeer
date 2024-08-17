@@ -7,7 +7,7 @@ use crate::{
     utils::{get_url_type, hash_folder, run_git_command},
 };
 use std::path::Path;
-use tokio::{fs, process::Command};
+use tokio::fs;
 use yansi::Paint as _;
 
 pub type Result<T> = std::result::Result<T, InstallError>;

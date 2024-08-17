@@ -19,6 +19,28 @@ pub enum DependencyStatus {
     Installed,
 }
 
+#[bon::builder]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct InstallInfo {
+    name: String,
+    version: String,
+    source: String,
+    rev_checksum: Option<String>,
+    integrity: Option<String>,
+}
+
+impl From<LockEntry> for InstallInfo {
+    fn from(lock: LockEntry) -> Self {
+        Self {
+            name: lock.name,
+            version: lock.version,
+            source: lock.source,
+            rev_checksum: Some(lock.checksum),
+            integrity: lock.integrity,
+        }
+    }
+}
+
 pub async fn install_dependency(
     dependency: &Dependency,
     lock: Option<&LockEntry>,
@@ -44,62 +66,24 @@ pub async fn install_dependency(
             },
             DependencyStatus::Missing => {}
         }
-        return install_dependency_locked(lock, dependency.install_path()).await;
+        return install_dependency_inner(&lock.clone().into(), dependency.install_path()).await;
     }
     // no lockfile entry, install from config object
     let url = match dependency.url() {
         Some(url) => url.clone(),
         None => get_dependency_url_remote(dependency).await?,
     };
-    Ok(LockEntry::builder()
+    let checksum = match &dependency {
+        Dependency::Http(_) => None,
+        Dependency::Git(dep) => dep.rev.clone(),
+    };
+    let info = InstallInfo::builder()
         .name(dependency.name())
         .version(dependency.version())
         .source(url)
-        .checksum(String::new()) // TODO
-        .maybe_integrity(None::<String>) // TODO
-        .build())
-}
-
-pub async fn install_dependency_locked(
-    lock: &LockEntry,
-    path: impl AsRef<Path>,
-) -> Result<LockEntry> {
-    match get_url_type(&lock.source) {
-        crate::utils::UrlType::Git => {
-            println!("{}", format!("Started GIT download of {}", lock.name).green());
-            // if the dependency was specified without a commit hash and we didn't have a lockfile,
-            // clone the default branch
-            let rev = if lock.checksum.is_empty() { None } else { Some(lock.checksum.clone()) };
-            let commit = clone_repo(&lock.source, rev, path).await?;
-            Ok(LockEntry::builder()
-                .name(&lock.name)
-                .version(&lock.version)
-                .source(&lock.source)
-                .checksum(commit)
-                .build())
-        }
-        crate::utils::UrlType::Http => {
-            println!("{}", format!("Started HTTP download of {}", lock.name).green());
-            let zip_path = download_file(&lock.source, path.as_ref().with_extension("zip")).await?;
-            let zip_integrity = tokio::task::spawn_blocking({
-                let zip_path = zip_path.clone();
-                move || hash_file(zip_path)
-            })
-            .await?
-            .map_err(|e| InstallError::IOError { path: zip_path.clone(), source: e })?;
-            if lock.checksum != zip_integrity.to_string() {
-                return Err(InstallError::ZipIntegrityError(zip_path.clone()).into());
-            }
-            let integrity = unzip_file(&zip_path).await?;
-            Ok(LockEntry::builder()
-                .name(&lock.name)
-                .version(&lock.version)
-                .source(&lock.source)
-                .checksum(&lock.checksum)
-                .integrity(integrity.to_string())
-                .build())
-        }
-    }
+        .maybe_rev_checksum(checksum)
+        .build();
+    install_dependency_inner(&info, dependency.install_path()).await
 }
 
 pub async fn check_dependency_integrity(
@@ -109,6 +93,46 @@ pub async fn check_dependency_integrity(
     match dependency {
         Dependency::Http(http) => check_http_dependency(http, lock).await,
         Dependency::Git(git) => check_git_dependency(git, lock).await,
+    }
+}
+
+async fn install_dependency_inner(dep: &InstallInfo, path: impl AsRef<Path>) -> Result<LockEntry> {
+    match get_url_type(&dep.source) {
+        crate::utils::UrlType::Git => {
+            println!("{}", format!("Started GIT download of {}", dep.name).green());
+            // if the dependency was specified without a commit hash and we didn't have a lockfile,
+            // clone the default branch
+            let commit = clone_repo(&dep.source, dep.rev_checksum.as_ref(), path).await?;
+            Ok(LockEntry::builder()
+                .name(&dep.name)
+                .version(&dep.version)
+                .source(&dep.source)
+                .checksum(commit)
+                .build())
+        }
+        crate::utils::UrlType::Http => {
+            println!("{}", format!("Started HTTP download of {}", dep.name).green());
+            let zip_path = download_file(&dep.source, path.as_ref().with_extension("zip")).await?;
+            let zip_integrity = tokio::task::spawn_blocking({
+                let zip_path = zip_path.clone();
+                move || hash_file(zip_path)
+            })
+            .await?
+            .map_err(|e| InstallError::IOError { path: zip_path.clone(), source: e })?;
+            if let Some(checksum) = &dep.rev_checksum {
+                if checksum != &zip_integrity.to_string() {
+                    return Err(InstallError::ZipIntegrityError(zip_path.clone()));
+                }
+            }
+            let integrity = unzip_file(&zip_path).await?;
+            Ok(LockEntry::builder()
+                .name(&dep.name)
+                .version(&dep.version)
+                .source(&dep.source)
+                .checksum(zip_integrity.to_string())
+                .integrity(integrity.to_string())
+                .build())
+        }
     }
 }
 

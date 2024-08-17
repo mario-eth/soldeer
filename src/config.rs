@@ -3,7 +3,7 @@ use crate::{
     utils::{
         get_current_working_dir, get_url_type, read_file_to_string, sanitize_filename, UrlType,
     },
-    DEPENDENCY_DIR, FOUNDRY_CONFIG_FILE, SOLDEER_CONFIG_FILE,
+    DEPENDENCY_DIR, FOUNDRY_CONFIG_FILE, REMAPPINGS_FILE, SOLDEER_CONFIG_FILE,
 };
 use serde::{Deserialize, Serialize};
 use std::{
@@ -425,24 +425,19 @@ pub async fn remappings_txt(
     config_path: impl AsRef<Path>,
     soldeer_config: &SoldeerConfig,
 ) -> Result<()> {
-    let remappings_path = get_current_working_dir().join("remappings.txt");
-    if soldeer_config.remappings_regenerate && remappings_path.exists() {
-        remove_file(&remappings_path).map_err(ConfigError::RemappingsError)?;
+    if soldeer_config.remappings_regenerate && REMAPPINGS_FILE.exists() {
+        remove_file(REMAPPINGS_FILE.as_path()).map_err(ConfigError::RemappingsError)?;
     }
-    let contents = match remappings_path.exists() {
-        true => read_file_to_string(&remappings_path),
+    let contents = match REMAPPINGS_FILE.exists() {
+        true => fs::read_to_string(REMAPPINGS_FILE.as_path())?,
         false => "".to_string(),
     };
     let existing_remappings = contents.lines().filter_map(|r| r.split_once('=')).collect();
 
-    if !remappings_path.exists() {
-        File::create(remappings_path.clone()).unwrap();
-    }
-
     let new_remappings =
         generate_remappings(dependency, config_path, soldeer_config, existing_remappings)?;
 
-    let mut file = File::create(remappings_path)?;
+    let mut file = File::create(REMAPPINGS_FILE.as_path())?;
     for remapping in new_remappings {
         writeln!(file, "{}", remapping)?;
     }
@@ -454,7 +449,7 @@ pub async fn remappings_foundry(
     config_path: impl AsRef<Path>,
     soldeer_config: &SoldeerConfig,
 ) -> Result<()> {
-    let contents = read_file_to_string(&config_path);
+    let contents = fs::read_to_string(&config_path)?;
     let mut doc: DocumentMut = contents.parse::<DocumentMut>().expect("invalid doc");
 
     let Some(profiles) = doc["profile"].as_table_mut() else {

@@ -2,8 +2,8 @@ use crate::{
     config::Dependency,
     download::IntegrityChecksum,
     errors::LockError,
-    utils::{get_current_working_dir, read_file_to_string, sanitize_filename},
-    DEPENDENCY_DIR, LOCK_FILE,
+    utils::{get_current_working_dir, read_file_to_string},
+    LOCK_FILE,
 };
 use serde::{Deserialize, Serialize};
 use std::{fs, path::PathBuf};
@@ -21,13 +21,6 @@ pub struct LockEntry {
     pub source: String,
     pub checksum: String,
     pub integrity: Option<String>,
-}
-
-impl LockEntry {
-    pub fn install_path(&self) -> PathBuf {
-        let sanitized_name = sanitize_filename(&format!("{}-{}", self.name, self.version));
-        DEPENDENCY_DIR.join(sanitized_name)
-    }
 }
 
 // parse file contents
@@ -62,7 +55,7 @@ pub fn add_to_lockfile(entry: LockEntry) -> Result<()> {
     if let Some(index) =
         entries.iter().position(|e| e.name == entry.name && e.version == entry.version)
     {
-        std::mem::replace(&mut entries[index], entry);
+        let _ = std::mem::replace(&mut entries[index], entry);
     } else {
         entries.push(entry);
     }

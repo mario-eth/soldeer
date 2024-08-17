@@ -52,6 +52,8 @@ pub static SOLDEER_CONFIG_FILE: Lazy<PathBuf> =
     Lazy::new(|| get_current_working_dir().join("soldeer.toml"));
 pub static FOUNDRY_CONFIG_FILE: Lazy<PathBuf> =
     Lazy::new(|| get_current_working_dir().join("foundry.toml"));
+pub static REMAPPINGS_FILE: Lazy<PathBuf> =
+    Lazy::new(|| get_current_working_dir().join("remappings.txt"));
 
 #[tokio::main]
 pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {

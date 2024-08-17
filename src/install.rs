@@ -55,10 +55,8 @@ pub async fn install_dependencies(
     for dep in dependencies {
         set.spawn({
             let d = dep.clone();
-            let lock = locks
-                .iter()
-                .find(|l| l.name == dep.name() && l.version == dep.version())
-                .map(|l| l.clone());
+            let lock =
+                locks.iter().find(|l| l.name == dep.name() && l.version == dep.version()).cloned();
             async move { install_dependency(&d, lock.as_ref(), subdependencies).await }
         });
     }
@@ -170,14 +168,14 @@ pub async fn add_to_remappings(
         if config_path.as_ref().to_string_lossy().contains("foundry.toml") {
             match config.remappings_location {
                 RemappingsLocation::Txt => {
-                    remappings_txt(&RemappingsAction::Add(dep), &config_path, &config).await?
+                    remappings_txt(&RemappingsAction::Add(dep), &config_path, config).await?
                 }
                 RemappingsLocation::Config => {
-                    remappings_foundry(&RemappingsAction::Add(dep), &config_path, &config).await?
+                    remappings_foundry(&RemappingsAction::Add(dep), &config_path, config).await?
                 }
             }
         } else {
-            remappings_txt(&RemappingsAction::Add(dep), &config_path, &config).await?;
+            remappings_txt(&RemappingsAction::Add(dep), &config_path, config).await?;
         }
     }
     Ok(())
@@ -191,14 +189,14 @@ pub async fn update_remappings(
         if config_path.as_ref().to_string_lossy().contains("foundry.toml") {
             match config.remappings_location {
                 RemappingsLocation::Txt => {
-                    remappings_txt(&RemappingsAction::None, &config_path, &config).await?
+                    remappings_txt(&RemappingsAction::None, &config_path, config).await?
                 }
                 RemappingsLocation::Config => {
-                    remappings_foundry(&RemappingsAction::None, &config_path, &config).await?
+                    remappings_foundry(&RemappingsAction::None, &config_path, config).await?
                 }
             }
         } else {
-            remappings_txt(&RemappingsAction::None, &config_path, &config).await?;
+            remappings_txt(&RemappingsAction::None, &config_path, config).await?;
         }
     }
     Ok(())

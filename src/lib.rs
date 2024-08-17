@@ -102,8 +102,11 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
                     update_remappings(&config, &config_path).await?;
                 }
                 Some(dependency) => {
-                    let mut dep =
-                        Dependency::from_name_version(&dependency, install.remote_url, install.rev);
+                    let mut dep = Dependency::from_name_version(
+                        &dependency,
+                        install.remote_url,
+                        install.rev,
+                    )?;
                     // for HTTP deps, we can already add them to the config (no further information
                     // needed).
                     if dep.is_http() {

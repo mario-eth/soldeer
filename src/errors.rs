@@ -83,6 +83,9 @@ pub enum ConfigError {
 
     #[error("error parsing config file: {0}")]
     DeserializeError(#[from] toml_edit::de::Error),
+
+    #[error("error during config operation: {0}")]
+    DownloadError(#[from] DownloadError),
 }
 
 #[derive(Error, Debug)]
@@ -99,20 +102,23 @@ pub enum DownloadError {
     #[error("error during IO operation for {path:?}: {source}")]
     IOError { path: PathBuf, source: io::Error },
 
-    #[error("Project {0} not found, please check the dependency name (project name) or create a new project on https://soldeer.xyz")]
+    #[error("project {0} not found, please check the dependency name (project name) or create a new project on https://soldeer.xyz")]
     ProjectNotFound(String),
 
-    #[error("Could not get the dependency URL for {0}")]
+    #[error("could not get the dependency URL for {0}")]
     URLNotFound(String),
 
-    #[error("Could not get the last forge dependency")]
+    #[error("could not get the last forge dependency")]
     ForgeStdError,
 
     #[error("error during async operation: {0}")]
     AsyncError(#[from] tokio::task::JoinError),
 
-    #[error("Could download the dependencies of this dependency {0}")]
+    #[error("could download the dependencies of this dependency {0}")]
     SubdependencyError(String),
+
+    #[error("the provided URL is invalid: {0}")]
+    InvalidUrl(String),
 }
 
 #[derive(Error, Debug)]

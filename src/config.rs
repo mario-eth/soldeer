@@ -121,13 +121,13 @@ impl Dependency {
         name_version: &str,
         custom_url: Option<impl Into<String>>,
         rev: Option<impl Into<String>>,
-    ) -> Self {
+    ) -> Result<Self> {
         let (dependency_name, dependency_version) =
             name_version.split_once('~').expect("dependency string should have name and version");
-        match custom_url {
+        Ok(match custom_url {
             Some(url) => {
                 let url: String = url.into();
-                match get_url_type(&url) {
+                match get_url_type(&url)? {
                     UrlType::Git => Dependency::Git(GitDependency {
                         name: dependency_name.to_string(),
                         version: dependency_version.to_string(),
@@ -148,7 +148,7 @@ impl Dependency {
                 url: None,
                 checksum: None,
             }),
-        }
+        })
     }
 
     pub fn name(&self) -> &str {

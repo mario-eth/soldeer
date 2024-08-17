@@ -765,19 +765,23 @@ mod tests {
     #[test]
     fn get_download_tunnel_http() {
         assert_eq!(
-            get_url_type("https://github.com/foundry-rs/forge-std/archive/refs/tags/v1.9.1.zip"),
+            get_url_type("https://github.com/foundry-rs/forge-std/archive/refs/tags/v1.9.1.zip")
+                .unwrap(),
             UrlType::Http
         );
     }
 
     #[test]
     fn get_download_tunnel_git_giturl() {
-        assert_eq!(get_url_type("git@github.com:foundry-rs/forge-std.git"), UrlType::Git);
+        assert_eq!(get_url_type("git@github.com:foundry-rs/forge-std.git").unwrap(), UrlType::Git);
     }
 
     #[test]
     fn get_download_tunnel_git_githttp() {
-        assert_eq!(get_url_type("https://github.com/foundry-rs/forge-std.git"), UrlType::Git);
+        assert_eq!(
+            get_url_type("https://github.com/foundry-rs/forge-std.git").unwrap(),
+            UrlType::Git
+        );
     }
 
     #[tokio::test]

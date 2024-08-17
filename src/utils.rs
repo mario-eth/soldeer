@@ -26,10 +26,6 @@ use yansi::Paint as _;
 static GIT_SSH_REGEX: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"^(?:git@github\.com|git@gitlab)").expect("git ssh regex should compile")
 });
-static GIT_HTTPS_REGEX: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"^(?:https://github\.com|https://gitlab\.com).*\.git$")
-        .expect("git https regex should compile")
-});
 
 // get the current working directory
 pub fn get_current_working_dir() -> PathBuf {
@@ -150,11 +146,22 @@ pub enum UrlType {
     Http,
 }
 
-pub fn get_url_type(dependency_url: &str) -> UrlType {
-    if GIT_SSH_REGEX.is_match(dependency_url) || GIT_HTTPS_REGEX.is_match(dependency_url) {
-        return UrlType::Git;
+pub fn get_url_type(dependency_url: &str) -> Result<UrlType, DownloadError> {
+    if GIT_SSH_REGEX.is_match(dependency_url) {
+        return Ok(UrlType::Git);
+    } else if let Ok(url) = reqwest::Url::parse(dependency_url) {
+        return Ok(match url.domain() {
+            Some("github.com") | Some("gitlab.com") => {
+                if url.path().ends_with(".git") {
+                    UrlType::Git
+                } else {
+                    UrlType::Http
+                }
+            }
+            _ => UrlType::Http,
+        });
     }
-    UrlType::Http
+    Err(DownloadError::InvalidUrl(dependency_url.to_string()))
 }
 
 pub fn sanitize_filename(dependency_name: &str) -> String {

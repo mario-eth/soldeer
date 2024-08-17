@@ -7,7 +7,7 @@ use crate::{
     errors::InstallError,
     lock::LockEntry,
     remote::get_dependency_url_remote,
-    utils::{get_url_type, hash_file, hash_folder, run_forge_command, run_git_command},
+    utils::{get_url_type, hash_file, hash_folder, run_forge_command, run_git_command, UrlType},
     DEPENDENCY_DIR,
 };
 use std::{fs as std_fs, path::Path};
@@ -206,8 +206,8 @@ async fn install_dependency_inner(
     path: impl AsRef<Path>,
     subdependencies: bool,
 ) -> Result<LockEntry> {
-    match get_url_type(&dep.source) {
-        crate::utils::UrlType::Git => {
+    match get_url_type(&dep.source)? {
+        UrlType::Git => {
             // if the dependency was specified without a commit hash and we didn't have a lockfile,
             // clone the default branch
             let commit = clone_repo(&dep.source, dep.rev_checksum.as_ref(), &path).await?;
@@ -221,7 +221,7 @@ async fn install_dependency_inner(
                 .checksum(commit)
                 .build())
         }
-        crate::utils::UrlType::Http => {
+        UrlType::Http => {
             let zip_path = download_file(&dep.source, &path).await?;
             let zip_integrity = tokio::task::spawn_blocking({
                 let zip_path = zip_path.clone();

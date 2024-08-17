@@ -1,12 +1,14 @@
 use crate::{
     config::{Dependency, GitDependency, HttpDependency},
-    download::IntegrityChecksum,
+    download::{clone_repo, download_file, unzip_file, IntegrityChecksum},
     errors::InstallError,
     lock::LockEntry,
     remote::get_dependency_url_remote,
-    utils::hash_folder,
+    utils::{get_url_type, hash_folder, run_git_command},
 };
+use std::path::Path;
 use tokio::{fs, process::Command};
+use yansi::Paint as _;
 
 pub type Result<T> = std::result::Result<T, InstallError>;
 
@@ -24,6 +26,7 @@ pub async fn install_dependency(
     if let Some(lock) = lock {
         match check_dependency_integrity(dependency, lock).await? {
             DependencyStatus::Installed => {
+                // no action needed, dependency is already installed and matches the lockfile entry
                 return Ok(lock.clone());
             }
             DependencyStatus::FailedIntegrity => match dependency {
@@ -41,7 +44,9 @@ pub async fn install_dependency(
             },
             DependencyStatus::Missing => {}
         }
+        return install_dependency_locked(lock, dependency.install_path()).await;
     }
+    // no lockfile entry, install from config object
     let url = match dependency.url() {
         Some(url) => url.clone(),
         None => get_dependency_url_remote(dependency).await?,
@@ -53,6 +58,37 @@ pub async fn install_dependency(
         .checksum(String::new()) // TODO
         .maybe_integrity(None::<String>) // TODO
         .build())
+}
+
+pub async fn install_dependency_locked(
+    lock: &LockEntry,
+    path: impl AsRef<Path>,
+) -> Result<LockEntry> {
+    match get_url_type(&lock.source) {
+        crate::utils::UrlType::Git => {
+            println!("{}", format!("Started GIT download of {}", lock.name).green());
+            let commit = clone_repo(&lock.source, &lock.checksum, path).await?;
+            Ok(LockEntry::builder()
+                .name(&lock.name)
+                .version(&lock.version)
+                .source(&lock.source)
+                .checksum(commit)
+                .build())
+        }
+        crate::utils::UrlType::Http => {
+            println!("{}", format!("Started HTTP download of {}", lock.name).green());
+            let zip_path = download_file(&lock.source, path.as_ref().with_extension("zip")).await?;
+            // TODO: check zipfile checksum
+            let integrity = unzip_file(zip_path).await?;
+            Ok(LockEntry::builder()
+                .name(&lock.name)
+                .version(&lock.version)
+                .source(&lock.source)
+                .checksum(&lock.checksum)
+                .integrity(integrity.to_string())
+                .build())
+        }
+    }
 }
 
 pub async fn check_dependency_integrity(
@@ -93,20 +129,22 @@ async fn check_git_dependency(
         return Ok(DependencyStatus::Missing);
     }
     // check that the location is a git repository
-    let top_level = Command::new("git")
-        .arg("rev-parse")
-        .arg("--show-toplevel")
-        .current_dir(&path)
-        .output()
-        .await
-        .map_err(|e| InstallError::IOError { path: path.clone(), source: e })?;
-    if !top_level.status.success() {
-        // error getting the top level directory, assume the directory is not a git repository
-        fs::remove_dir_all(&path).await.map_err(|e| InstallError::IOError { path, source: e })?;
-        return Ok(DependencyStatus::Missing);
-    }
+    let top_level = match run_git_command(
+        &["rev-parse", "--show-toplevel", path.to_string_lossy().as_ref()],
+        Some(&path),
+    )
+    .await
+    {
+        Ok(top_level) => top_level.trim().to_string(),
+        Err(_) => {
+            // error getting the top level directory, assume the directory is not a git repository
+            fs::remove_dir_all(&path)
+                .await
+                .map_err(|e| InstallError::IOError { path, source: e })?;
+            return Ok(DependencyStatus::Missing);
+        }
+    };
     // compare the top level directory to the install path
-    let top_level = String::from_utf8(top_level.stdout).unwrap_or_default();
     let absolute_path = fs::canonicalize(&path)
         .await
         .map_err(|e| InstallError::IOError { path: path.clone(), source: e })?;
@@ -117,18 +155,10 @@ async fn check_git_dependency(
         return Ok(DependencyStatus::Missing);
     }
     // for git dependencies, the `checksum` field holds the commit hash
-    let mut diff = Command::new("git")
-        .arg("diff")
-        .arg("--exit-code")
-        .arg(&lock.checksum)
-        .current_dir(&path)
-        .spawn()
-        .map_err(|e| InstallError::IOError { path: path.clone(), source: e })?;
-    let status = diff.wait().await.map_err(|e| InstallError::IOError { path, source: e })?;
-    if !status.success() {
-        return Ok(DependencyStatus::FailedIntegrity);
+    match run_git_command(&["diff", "--exit-code", &lock.checksum], Some(&path)).await {
+        Ok(_) => Ok(DependencyStatus::Installed),
+        Err(_) => Ok(DependencyStatus::FailedIntegrity),
     }
-    Ok(DependencyStatus::Installed)
 }
 
 /// Reset a git dependency to the commit specified in the lockfile entry
@@ -142,6 +172,7 @@ async fn reset_git_dependency(dependency: &GitDependency, lock: &LockEntry) -> R
         .arg("--hard")
         .arg(&lock.checksum)
         .current_dir(&path)
+        .env("GIT_TERMINAL_PROMPT", "0")
         .output()
         .await
         .map_err(|e| InstallError::IOError { path: path.clone(), source: e })?;
@@ -152,6 +183,7 @@ async fn reset_git_dependency(dependency: &GitDependency, lock: &LockEntry) -> R
         .arg("clean")
         .arg("-fd")
         .current_dir(&path)
+        .env("GIT_TERMINAL_PROMPT", "0")
         .output()
         .await
         .map_err(|e| InstallError::IOError { path, source: e })?;

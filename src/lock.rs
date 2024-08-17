@@ -2,8 +2,8 @@ use crate::{
     config::Dependency,
     download::IntegrityChecksum,
     errors::LockError,
-    utils::{get_current_working_dir, read_file_to_string},
-    LOCK_FILE,
+    utils::{get_current_working_dir, read_file_to_string, sanitize_dependency_name},
+    DEPENDENCY_DIR, LOCK_FILE,
 };
 use serde::{Deserialize, Serialize};
 use std::{fs, path::PathBuf};
@@ -21,6 +21,13 @@ pub struct LockEntry {
     pub source: String,
     pub checksum: String,
     pub integrity: Option<String>,
+}
+
+impl LockEntry {
+    pub fn install_path(&self) -> PathBuf {
+        let sanitized_name = sanitize_dependency_name(&format!("{}-{}", self.name, self.version));
+        DEPENDENCY_DIR.join(sanitized_name)
+    }
 }
 
 pub fn lock_check(dependency: &Dependency, allow_missing_lockfile: bool) -> Result<()> {

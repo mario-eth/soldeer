@@ -2,7 +2,7 @@ use crate::{
     config::{Dependency, GitDependency, HttpDependency},
     errors::DownloadError,
     remote::get_dependency_url_remote,
-    utils::{hash_folder, read_file, sanitize_dependency_name, zipfile_hash},
+    utils::{hash_folder, read_file, run_git_command, sanitize_dependency_name, zipfile_hash},
     DEPENDENCY_DIR,
 };
 use reqwest::IntoUrl;
@@ -13,7 +13,7 @@ use std::{
     process::{Command, Stdio},
     str,
 };
-use tokio::{fs as tokio_fs, io::AsyncWriteExt, task::JoinSet};
+use tokio::{fs as tokio_fs, io::AsyncWriteExt, process, task::JoinSet};
 use yansi::Paint as _;
 
 pub type Result<T> = std::result::Result<T, DownloadError>;
@@ -35,6 +35,48 @@ impl core::fmt::Display for IntegrityChecksum {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(&self.0)
     }
+}
+
+pub async fn download_file(url: impl IntoUrl, path: impl AsRef<Path>) -> Result<PathBuf> {
+    let resp = reqwest::get(url).await?;
+    let mut resp = resp.error_for_status()?;
+
+    let path = path.as_ref().to_path_buf();
+    let mut file = tokio_fs::File::create(&path)
+        .await
+        .map_err(|e| DownloadError::IOError { path: path.clone(), source: e })?;
+    while let Some(mut chunk) = resp.chunk().await? {
+        file.write_all_buf(&mut chunk)
+            .await
+            .map_err(|e| DownloadError::IOError { path: path.clone(), source: e })?;
+    }
+    file.flush().await.map_err(|e| DownloadError::IOError { path: path.clone(), source: e })?;
+    Ok(path)
+}
+
+pub async fn unzip_file(path: impl AsRef<Path>) -> Result<IntegrityChecksum> {
+    let path = path.as_ref().to_path_buf();
+    let out_dir = path.with_extension("");
+    let zip_contents = tokio_fs::read(&path)
+        .await
+        .map_err(|e| DownloadError::IOError { path: path.clone(), source: e })?;
+
+    zip_extract::extract(Cursor::new(zip_contents), &out_dir, true)?;
+
+    tokio_fs::remove_file(&path)
+        .await
+        .map_err(|e| DownloadError::IOError { path: path.clone(), source: e })?;
+
+    hash_folder(&out_dir, None).map_err(|e| DownloadError::IOError { path: out_dir, source: e })
+}
+
+pub async fn clone_repo(url: &str, rev: &str, path: impl AsRef<Path>) -> Result<String> {
+    let path = path.as_ref().to_path_buf();
+    run_git_command(&["clone", url, path.to_string_lossy().as_ref()], None).await?;
+    run_git_command(&["checkout", rev], Some(&path)).await?;
+    let commit =
+        run_git_command(&["rev-parse", "--verify", "HEAD"], Some(&path)).await?.trim().to_string();
+    Ok(commit)
 }
 
 /// Download the dependencies from the list in parallel

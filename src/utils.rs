@@ -6,6 +6,7 @@ use sha2::{Digest, Sha256};
 use simple_home_dir::home_dir;
 use std::{
     env,
+    ffi::OsStr,
     fs::{self, File},
     io::{BufReader, Read, Write},
     os::unix::ffi::OsStrExt as _,
@@ -15,6 +16,7 @@ use std::{
         Arc, Mutex,
     },
 };
+use tokio::{fs as tokio_fs, process::Command};
 use yansi::Paint as _;
 
 static GIT_SSH_REGEX: Lazy<Regex> = Lazy::new(|| {
@@ -256,6 +258,30 @@ pub fn hash_file(path: impl AsRef<Path>) -> Result<IntegrityChecksum, std::io::E
     let mut reader = BufReader::new(file);
     let bytes = hash_content(&mut reader);
     Ok(const_hex::encode(bytes).into())
+}
+
+pub async fn run_git_command<I, S>(
+    args: I,
+    current_dir: Option<&PathBuf>,
+) -> Result<String, DownloadError>
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<OsStr>,
+{
+    let mut git = Command::new("git");
+    let mut git = git.args(args).env("GIT_TERMINAL_PROMPT", "0");
+    if let Some(current_dir) = current_dir {
+        git = git.current_dir(
+            tokio_fs::canonicalize(current_dir)
+                .await
+                .map_err(|e| DownloadError::IOError { path: current_dir.clone(), source: e })?,
+        );
+    }
+    let git = git.output().await.map_err(|e| DownloadError::GitError(e.to_string()))?;
+    if !git.status.success() {
+        return Err(DownloadError::GitError(String::from_utf8(git.stdout).unwrap_or_default()))
+    }
+    Ok(String::from_utf8(git.stdout).expect("git command output should be valid utf-8"))
 }
 
 #[cfg(test)]

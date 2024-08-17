@@ -4,10 +4,11 @@ use crate::{
     errors::InstallError,
     lock::LockEntry,
     remote::get_dependency_url_remote,
-    utils::{get_url_type, hash_file, hash_folder, run_git_command},
+    utils::{get_url_type, hash_file, hash_folder, run_forge_command, run_git_command},
 };
 use std::path::Path;
 use tokio::fs;
+use toml_edit::DocumentMut;
 use yansi::Paint as _;
 
 pub type Result<T> = std::result::Result<T, InstallError>;
@@ -44,6 +45,7 @@ impl From<LockEntry> for InstallInfo {
 pub async fn install_dependency(
     dependency: &Dependency,
     lock: Option<&LockEntry>,
+    subdependencies: bool,
 ) -> Result<LockEntry> {
     match lock {
         Some(lock) => {
@@ -78,7 +80,12 @@ pub async fn install_dependency(
                     }
                 }
             }
-            install_dependency_inner(&lock.clone().into(), dependency.install_path()).await
+            install_dependency_inner(
+                &lock.clone().into(),
+                dependency.install_path(),
+                subdependencies,
+            )
+            .await
         }
         None => {
             // no lockfile entry, install from config object
@@ -103,7 +110,7 @@ pub async fn install_dependency(
                 .source(url)
                 .maybe_rev_checksum(checksum)
                 .build();
-            install_dependency_inner(&info, dependency.install_path()).await
+            install_dependency_inner(&info, dependency.install_path(), subdependencies).await
         }
     }
 }
@@ -118,13 +125,20 @@ pub async fn check_dependency_integrity(
     }
 }
 
-async fn install_dependency_inner(dep: &InstallInfo, path: impl AsRef<Path>) -> Result<LockEntry> {
+async fn install_dependency_inner(
+    dep: &InstallInfo,
+    path: impl AsRef<Path>,
+    subdependencies: bool,
+) -> Result<LockEntry> {
     match get_url_type(&dep.source) {
         crate::utils::UrlType::Git => {
             println!("{}", format!("Started GIT download of {}", dep.name).green());
             // if the dependency was specified without a commit hash and we didn't have a lockfile,
             // clone the default branch
-            let commit = clone_repo(&dep.source, dep.rev_checksum.as_ref(), path).await?;
+            let commit = clone_repo(&dep.source, dep.rev_checksum.as_ref(), &path).await?;
+            if subdependencies {
+                install_subdependencies(&path).await?;
+            }
             Ok(LockEntry::builder()
                 .name(&dep.name)
                 .version(&dep.version)
@@ -146,7 +160,14 @@ async fn install_dependency_inner(dep: &InstallInfo, path: impl AsRef<Path>) -> 
                     return Err(InstallError::ZipIntegrityError(zip_path.clone()));
                 }
             }
-            let integrity = unzip_file(&zip_path).await?;
+            unzip_file(&zip_path).await?;
+            if subdependencies {
+                install_subdependencies(&path).await?;
+            }
+            let integrity = hash_folder(&path, None).map_err(|e| InstallError::IOError {
+                path: path.as_ref().to_path_buf(),
+                source: e,
+            })?;
             Ok(LockEntry::builder()
                 .name(&dep.name)
                 .version(&dep.version)
@@ -156,6 +177,31 @@ async fn install_dependency_inner(dep: &InstallInfo, path: impl AsRef<Path>) -> 
                 .build())
         }
     }
+}
+
+async fn install_subdependencies(path: impl AsRef<Path>) -> Result<()> {
+    let path = path.as_ref().to_path_buf();
+    let gitmodules_path = path.join(".gitmodules");
+    if fs::metadata(&gitmodules_path).await.is_ok() {
+        // initialize submodules
+        run_git_command(&["submodule", "update", "--init", "--recursive"], Some(&path)).await?;
+    }
+    let soldeer_config_path = path.join("soldeer.toml");
+    if fs::metadata(&soldeer_config_path).await.is_ok() {
+        // install subdependencies
+        run_forge_command(&["soldeer", "install"], Some(&path)).await?;
+        return Ok(());
+    }
+    // check if deps are defined in the foundry.toml file
+    let foundry_path = path.join("foundry.toml");
+    if let Ok(contents) = fs::read_to_string(&foundry_path).await {
+        if let Ok(doc) = contents.parse::<DocumentMut>() {
+            if doc.contains_table("dependencies") {
+                run_forge_command(&["soldeer", "install"], Some(&path)).await?;
+            }
+        }
+    }
+    Ok(())
 }
 
 async fn check_http_dependency(

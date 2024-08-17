@@ -1,4 +1,8 @@
-use crate::{config::HttpDependency, download::IntegrityChecksum, errors::DownloadError};
+use crate::{
+    config::HttpDependency,
+    download::IntegrityChecksum,
+    errors::{DownloadError, InstallError},
+};
 use ignore::{WalkBuilder, WalkState};
 use once_cell::sync::Lazy;
 use regex::Regex;
@@ -281,6 +285,30 @@ where
         return Err(DownloadError::GitError(String::from_utf8(git.stdout).unwrap_or_default()))
     }
     Ok(String::from_utf8(git.stdout).expect("git command output should be valid utf-8"))
+}
+
+pub async fn run_forge_command<I, S>(
+    args: I,
+    current_dir: Option<&PathBuf>,
+) -> Result<String, InstallError>
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<OsStr>,
+{
+    let mut forge = Command::new("forge");
+    let mut forge = forge.args(args);
+    if let Some(current_dir) = current_dir {
+        forge = forge.current_dir(
+            tokio_fs::canonicalize(current_dir)
+                .await
+                .map_err(|e| InstallError::IOError { path: current_dir.clone(), source: e })?,
+        );
+    }
+    let forge = forge.output().await.map_err(|e| InstallError::ForgeError(e.to_string()))?;
+    if !forge.status.success() {
+        return Err(InstallError::ForgeError(String::from_utf8(forge.stdout).unwrap_or_default()))
+    }
+    Ok(String::from_utf8(forge.stdout).expect("forge command output should be valid utf-8"))
 }
 
 #[cfg(test)]

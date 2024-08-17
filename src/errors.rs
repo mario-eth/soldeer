@@ -131,6 +131,9 @@ pub enum InstallError {
 
     #[error("error during async operation: {0}")]
     AsyncError(#[from] tokio::task::JoinError),
+
+    #[error("error during forge command: {0}")]
+    ForgeError(String),
 }
 
 #[derive(Error, Debug)]

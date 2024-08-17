@@ -54,7 +54,7 @@ pub async fn download_file(url: impl IntoUrl, path: impl AsRef<Path>) -> Result<
     Ok(path)
 }
 
-pub async fn unzip_file(path: impl AsRef<Path>) -> Result<IntegrityChecksum> {
+pub async fn unzip_file(path: impl AsRef<Path>) -> Result<()> {
     let path = path.as_ref().to_path_buf();
     let out_dir = path.with_extension("");
     let zip_contents = tokio_fs::read(&path)
@@ -66,8 +66,7 @@ pub async fn unzip_file(path: impl AsRef<Path>) -> Result<IntegrityChecksum> {
     tokio_fs::remove_file(&path)
         .await
         .map_err(|e| DownloadError::IOError { path: path.clone(), source: e })?;
-
-    hash_folder(&out_dir, None).map_err(|e| DownloadError::IOError { path: out_dir, source: e })
+    Ok(())
 }
 
 pub async fn clone_repo(

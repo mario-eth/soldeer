@@ -183,16 +183,17 @@ async fn install_subdependencies(path: impl AsRef<Path>) -> Result<()> {
     let path = path.as_ref().to_path_buf();
     let gitmodules_path = path.join(".gitmodules");
     if fs::metadata(&gitmodules_path).await.is_ok() {
-        // initialize submodules
+        // clone submodules
         run_git_command(&["submodule", "update", "--init", "--recursive"], Some(&path)).await?;
     }
+    // if there is a soldeer.toml file, install the soldeer deps
     let soldeer_config_path = path.join("soldeer.toml");
     if fs::metadata(&soldeer_config_path).await.is_ok() {
         // install subdependencies
         run_forge_command(&["soldeer", "install"], Some(&path)).await?;
         return Ok(());
     }
-    // check if deps are defined in the foundry.toml file
+    // if soldeer deps are defined in the foundry.toml file, install them
     let foundry_path = path.join("foundry.toml");
     if let Ok(contents) = fs::read_to_string(&foundry_path).await {
         if let Ok(doc) = contents.parse::<DocumentMut>() {

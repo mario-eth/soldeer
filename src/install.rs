@@ -1,6 +1,6 @@
 use crate::{
     config::{Dependency, GitDependency, HttpDependency},
-    download::{clone_repo, download_file, unzip_file, IntegrityChecksum},
+    download::{clone_repo, download_file, unzip_file},
     errors::InstallError,
     lock::LockEntry,
     remote::get_dependency_url_remote,

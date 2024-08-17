@@ -12,33 +12,15 @@ use yansi::Paint as _;
 pub type Result<T> = std::result::Result<T, LockError>;
 
 // Top level struct to hold the TOML data.
+#[bon::builder]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub struct LockEntry {
-    name: String,
-    version: String,
-    source: String,
-    checksum: String,
-    integrity: Option<String>,
-}
-
-impl LockEntry {
-    #[must_use]
-    pub fn new(
-        name: impl Into<String>,
-        version: impl Into<String>,
-        source: impl Into<String>,
-        checksum: impl Into<String>,
-        integrity: Option<String>,
-    ) -> Self {
-        LockEntry {
-            name: name.into(),
-            version: version.into(),
-            source: source.into(),
-            checksum: checksum.into(),
-            integrity,
-        }
-    }
+    pub name: String,
+    pub version: String,
+    pub source: String,
+    pub checksum: String,
+    pub integrity: Option<String>,
 }
 
 pub fn lock_check(dependency: &Dependency, allow_missing_lockfile: bool) -> Result<()> {
@@ -90,16 +72,19 @@ pub fn write_lock(
     let mut entries = read_lock()?;
     for (dep, integrity) in dependencies.iter().zip(integrity_checksums.iter()) {
         let entry = match dep {
-            Dependency::Http(dep) => LockEntry::new(
-                &dep.name,
-                &dep.version,
-                dep.url.as_ref().unwrap(),
-                dep.checksum.as_ref().unwrap(),
-                integrity.clone().map(|c| c.to_string()),
-            ),
-            Dependency::Git(dep) => {
-                LockEntry::new(&dep.name, &dep.version, &dep.git, dep.rev.as_ref().unwrap(), None)
-            }
+            Dependency::Http(dep) => LockEntry::builder()
+                .name(&dep.name)
+                .version(&dep.version)
+                .source(dep.url.as_ref().expect("url field should be present"))
+                .checksum(dep.checksum.as_ref().expect("checksum field should be present"))
+                .maybe_integrity(integrity.clone().map(|c| c.to_string()))
+                .build(),
+            Dependency::Git(dep) => LockEntry::builder()
+                .name(&dep.name)
+                .version(&dep.version)
+                .source(&dep.git)
+                .checksum(dep.rev.as_ref().expect("rev field should be present"))
+                .build(),
         };
         // check for entry already existing
         match entries.iter().position(|e| e.name == entry.name && e.version == entry.version) {

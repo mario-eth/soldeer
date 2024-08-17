@@ -1,7 +1,7 @@
 use crate::{
     errors::ConfigError,
     utils::{get_current_working_dir, read_file_to_string, sanitize_dependency_name},
-    FOUNDRY_CONFIG_FILE, SOLDEER_CONFIG_FILE,
+    DEPENDENCY_DIR, FOUNDRY_CONFIG_FILE, SOLDEER_CONFIG_FILE,
 };
 use serde::{Deserialize, Serialize};
 use std::{
@@ -72,6 +72,13 @@ pub struct GitDependency {
     pub rev: Option<String>,
 }
 
+impl GitDependency {
+    pub fn install_path(&self) -> PathBuf {
+        let sanitized_name = sanitize_dependency_name(&format!("{}-{}", self.name, self.version));
+        DEPENDENCY_DIR.join(sanitized_name)
+    }
+}
+
 impl core::fmt::Display for GitDependency {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
         write!(f, "{}~{}", self.name, self.version)
@@ -84,6 +91,13 @@ pub struct HttpDependency {
     pub version: String,
     pub url: Option<String>,
     pub checksum: Option<String>,
+}
+
+impl HttpDependency {
+    pub fn install_path(&self) -> PathBuf {
+        let sanitized_name = sanitize_dependency_name(&format!("{}-{}", self.name, self.version));
+        DEPENDENCY_DIR.join(sanitized_name)
+    }
 }
 
 impl core::fmt::Display for HttpDependency {
@@ -114,11 +128,17 @@ impl Dependency {
         }
     }
 
-    #[allow(dead_code)]
     pub fn url(&self) -> Option<&String> {
         match self {
             Dependency::Http(dep) => dep.url.as_ref(),
             Dependency::Git(dep) => Some(&dep.git),
+        }
+    }
+
+    pub fn install_path(&self) -> PathBuf {
+        match self {
+            Dependency::Http(dep) => dep.install_path(),
+            Dependency::Git(dep) => dep.install_path(),
         }
     }
 

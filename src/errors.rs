@@ -15,6 +15,9 @@ pub enum SoldeerError {
     #[error("error during downloading ({dep}): {source}")]
     DownloadError { dep: String, source: DownloadError },
 
+    #[error("error during install operation: {0}")]
+    InstallError(#[from] InstallError),
+
     #[error("error during janitor operation: {0}")]
     JanitorError(#[from] JanitorError),
 
@@ -110,6 +113,18 @@ pub enum DownloadError {
 
     #[error("Could download the dependencies of this dependency {0}")]
     SubdependencyError(String),
+}
+
+#[derive(Error, Debug)]
+pub enum InstallError {
+    #[error("error during IO operation for {path:?}: {source}")]
+    IOError { path: PathBuf, source: io::Error },
+
+    #[error("error during git command: {0}")]
+    GitError(String),
+
+    #[error("error during dependency installation: {0}")]
+    DownloadError(#[from] DownloadError),
 }
 
 #[derive(Error, Debug)]

@@ -31,6 +31,7 @@ pub mod commands;
 mod config;
 mod download;
 pub mod errors;
+mod install;
 mod janitor;
 mod lock;
 mod remote;

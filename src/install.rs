@@ -1,5 +1,4 @@
 use crate::{
-    commands::Install,
     config::{
         remappings_foundry, remappings_txt, Dependency, GitDependency, HttpDependency,
         RemappingsAction, RemappingsLocation, SoldeerConfig,

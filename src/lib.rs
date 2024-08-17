@@ -37,6 +37,7 @@ mod remote;
 mod utils;
 mod versioning;
 
+// TODO: find the project's root directory and use that as the base path instead of the current dir
 pub static DEPENDENCY_DIR: Lazy<PathBuf> =
     Lazy::new(|| get_current_working_dir().join("dependencies/"));
 pub static LOCK_FILE: Lazy<PathBuf> = Lazy::new(|| get_current_working_dir().join("soldeer.lock"));

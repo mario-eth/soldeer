@@ -29,7 +29,7 @@ struct LockFileParsed {
     dependencies: Vec<LockEntry>,
 }
 
-pub fn try_read_lockfile() -> Result<(Vec<LockEntry>, String)> {
+pub fn read_lockfile() -> Result<(Vec<LockEntry>, String)> {
     let lock_file: PathBuf = if cfg!(test) {
         get_current_working_dir().join("test").join("soldeer.lock")
     } else {
@@ -51,7 +51,7 @@ pub fn generate_lockfile_contents(mut entries: Vec<LockEntry>) -> String {
 }
 
 pub fn add_to_lockfile(entry: LockEntry) -> Result<()> {
-    let (mut entries, _) = try_read_lockfile()?;
+    let (mut entries, _) = read_lockfile()?;
     if let Some(index) =
         entries.iter().position(|e| e.name == entry.name && e.version == entry.version)
     {

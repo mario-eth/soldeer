@@ -22,7 +22,7 @@ use install::{
     update_remappings,
 };
 use janitor::cleanup_dependency;
-use lock::{add_to_lockfile, generate_lockfile_contents, try_read_lockfile, LockWriteMode};
+use lock::{add_to_lockfile, generate_lockfile_contents, read_lockfile, LockWriteMode};
 use once_cell::sync::Lazy;
 use remote::get_latest_forge_std;
 use std::{
@@ -89,7 +89,7 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
             match install.dependency {
                 None => {
                     let dependencies: Vec<Dependency> = read_config_deps(Some(&config_path))?;
-                    let (locks, lockfile_content) = try_read_lockfile()?;
+                    let (locks, lockfile_content) = read_lockfile()?;
                     let new_locks =
                         install_dependencies(&dependencies, &locks, config.recursive_deps).await?;
                     let new_lockfile_content = generate_lockfile_contents(new_locks);

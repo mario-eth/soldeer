@@ -6,12 +6,22 @@ use crate::{
     remote::get_latest_forge_std,
     SoldeerError,
 };
+use clap::Parser;
 use cliclack::{
     log::{remark, success},
     multi_progress,
 };
 
-pub(crate) async fn init_command(cmd: super::Init) -> Result<()> {
+/// Initialize a new Soldeer project for use with Foundry
+#[derive(Debug, Clone, Parser)]
+#[clap(after_help = "For more information, read the README.md")]
+pub struct Init {
+    /// Clean the Foundry project by removing .gitmodules and the lib directory
+    #[arg(long, default_value_t = false)]
+    pub clean: bool,
+}
+
+pub(crate) async fn init_command(cmd: Init) -> Result<()> {
     if cmd.clean {
         remark("Flag `--clean` was set, removing `lib` dir and submodules")?;
         remove_forge_lib().await?;

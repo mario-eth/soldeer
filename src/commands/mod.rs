@@ -1,10 +1,10 @@
+use crate::SoldeerError;
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
-use crate::SoldeerError;
-
-pub(crate) mod init;
-pub(crate) mod install;
+pub mod init;
+pub mod install;
+pub mod update;
 
 pub type Result<T> = std::result::Result<T, SoldeerError>;
 
@@ -18,22 +18,13 @@ pub struct Args {
 
 #[derive(Debug, Clone, Subcommand)]
 pub enum Subcommands {
-    Init(Init),
-    Install(Install),
-    Update(Update),
+    Init(init::Init),
+    Install(install::Install),
+    Update(update::Update),
     Login(Login),
     Push(Push),
     Uninstall(Uninstall),
     Version(Version),
-}
-
-/// Initialize a new Soldeer project for use with Foundry
-#[derive(Debug, Clone, Parser)]
-#[clap(after_help = "For more information, read the README.md")]
-pub struct Init {
-    /// Clean the Foundry project by removing .gitmodules and the lib directory
-    #[arg(long, default_value_t = false)]
-    pub clean: bool,
 }
 
 fn validate_dependency(dep: &str) -> std::result::Result<String, String> {
@@ -41,68 +32,6 @@ fn validate_dependency(dep: &str) -> std::result::Result<String, String> {
         return Err("The dependency should be in the format <DEPENDENCY>~<VERSION>".to_string());
     }
     Ok(dep.to_string())
-}
-
-/// Install a dependency
-#[derive(Debug, Clone, Parser)]
-#[clap(
-    long_about = "Install a dependency
-
-You can install a dependency from the Soldeer repository, a custom URL pointing to a zip file, or from Git using a Git link.
-**Important:** The `~` symbol when specifying the dependency is crucial to differentiate between the name and the version that needs to be installed.
-- **Example from Soldeer repository:**
-  soldeer install @openzeppelin-contracts~2.3.0
-- **Example from a custom URL:**
-  soldeer install @openzeppelin-contracts~2.3.0 https://github.com/OpenZeppelin/openzeppelin-contracts/archive/refs/tags/v5.0.2.zip
-- **Example from Git:**
-  soldeer install @openzeppelin-contracts~2.3.0 git@github.com:OpenZeppelin/openzeppelin-contracts.git
-- **Example from Git with a specified commit:**
-  soldeer install @openzeppelin-contracts~2.3.0 git@github.com:OpenZeppelin/openzeppelin-contracts.git --rev 05f218fb6617932e56bf5388c3b389c3028a7b73",
-    after_help = "For more information, read the README.md"
-)]
-pub struct Install {
-    /// The dependency name and version, separated by a tilde.
-    ///
-    /// If not present, this command will perform `soldeer update`
-    #[arg(value_parser = validate_dependency, value_name = "DEPENDENCY~VERSION")]
-    pub dependency: Option<String>,
-
-    /// The URL to the dependency zip file, if not from the Soldeer repository
-    ///
-    /// Example: https://my-domain/dep.zip
-    #[arg(value_name = "URL")]
-    pub remote_url: Option<String>,
-
-    /// The revision of the dependency, if from Git
-    #[arg(long)]
-    pub rev: Option<String>,
-
-    /// If set, this command will delete the existing remappings and re-create them
-    #[arg(short = 'g', long, default_value_t = false)]
-    pub regenerate_remappings: bool,
-
-    /// If set, this command will install the recursive dependencies (via submodules or via
-    /// soldeer)
-    #[arg(short = 'd', long, default_value_t = false)]
-    pub recursive_deps: bool,
-
-    /// Perform a clean install by re-installing the dependencies
-    #[arg(long, default_value_t = false)]
-    pub clean: bool,
-}
-
-/// Update dependencies by reading the config file
-#[derive(Debug, Clone, Parser)]
-#[clap(after_help = "For more information, read the README.md")]
-pub struct Update {
-    /// If set, this command will delete the existing remappings and re-create them
-    #[arg(short = 'g', long, default_value_t = false)]
-    pub regenerate_remappings: bool,
-
-    /// If set, this command will install the recursive dependencies (via submodules or via
-    /// soldeer)
-    #[arg(short = 'd', long, default_value_t = false)]
-    pub recursive_deps: bool,
 }
 
 /// Display the version of Soldeer

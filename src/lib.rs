@@ -165,22 +165,6 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
     Ok(())
 }
 
-async fn update_command(cmd: commands::Update) -> Result<(), SoldeerError> {
-    let config_path = get_config_path()?;
-    let mut config = read_soldeer_config(Some(&config_path))?;
-    if cmd.regenerate_remappings {
-        config.remappings_regenerate = true;
-    }
-    if cmd.recursive_deps {
-        config.recursive_deps = true;
-    }
-    success("Done reading config")?;
-    let dependencies: Vec<Dependency> = read_config_deps(Some(&config_path))?;
-    // TODO: update dependencies
-
-    Ok(())
-}
-
 async fn update(regenerate_remappings: bool, recursive_deps: bool) -> Result<(), SoldeerError> {
     println!("{}", "🦌 Running Soldeer update 🦌".green());
 
@@ -240,7 +224,7 @@ async fn update(regenerate_remappings: bool, recursive_deps: bool) -> Result<(),
 #[cfg(test)]
 mod tests {
     use super::*;
-    use commands::{Init, Install, Push, Update};
+    use commands::{init::Init, install::Install, update::Update, Push};
     use rand::{distributions::Alphanumeric, Rng};
     use serial_test::serial;
     use std::{

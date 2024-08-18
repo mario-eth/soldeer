@@ -11,7 +11,7 @@ use crate::{
 pub use crate::{commands::Subcommands, errors::SoldeerError};
 use cliclack::{
     intro,
-    log::{remark, success, warning},
+    log::{remark, step, success, warning},
     multi_progress, outro, spinner,
 };
 use config::{
@@ -57,19 +57,21 @@ pub static REMAPPINGS_FILE: Lazy<PathBuf> =
 pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
     match command {
         Subcommands::Init(init) => {
-            println!("{}", "🦌 Soldeer Init 🦌".green());
-            println!("{}", "Initializes a new Soldeer project in foundry".green());
+            intro("🦌 Soldeer Init 🦌")?;
+            step("Initialize Foundry project to use Soldeer")?;
 
             if init.clean {
+                remark("Flag `--clean` was set, removing `lib` dir and submodules")?;
                 config::remove_forge_lib()?;
             }
 
             let config_path = FOUNDRY_CONFIG_FILE.as_path();
             let config = read_soldeer_config(Some(config_path))?;
+            success("Done reading config")?;
             let dependency = get_latest_forge_std().await.map_err(|e| {
                 SoldeerError::DownloadError { dep: "forge-std".to_string(), source: e }
             })?;
-            add_to_config(&dependency, config_path)?;
+            ensure_dependencies_dir()?;
             let multi = multi_progress(format!("Installing {dependency}"));
             let progress = Progress::new(&multi, 1);
             progress.start_all();
@@ -81,8 +83,12 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
                 })?;
             progress.stop_all();
             multi.stop();
+            add_to_config(&dependency, config_path)?;
+            success("Dependency added to config")?;
             add_to_lockfile(lock)?;
+            success("Dependency added to lockfile")?;
             add_to_remappings(dependency, &config, config_path).await?;
+            success("Dependency added to remappings")?;
             // TODO: add `dependencies` to the .gitignore file if it exists
         }
         Subcommands::Install(install) => {
@@ -95,6 +101,7 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
             if install.recursive_deps {
                 config.recursive_deps = true;
             }
+            success("Done reading config")?;
             ensure_dependencies_dir()?;
             let dependencies: Vec<Dependency> = read_config_deps(Some(&config_path))?;
             match install.dependency {

@@ -1,6 +1,13 @@
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
+use crate::SoldeerError;
+
+pub(crate) mod init;
+pub(crate) mod install;
+
+pub type Result<T> = std::result::Result<T, SoldeerError>;
+
 /// A minimal solidity dependency manager.
 #[derive(Parser, Debug)]
 #[clap(name = "soldeer", author = "m4rio.eth", version)]
@@ -29,7 +36,7 @@ pub struct Init {
     pub clean: bool,
 }
 
-fn validate_dependency(dep: &str) -> Result<String, String> {
+fn validate_dependency(dep: &str) -> std::result::Result<String, String> {
     if dep.split('~').count() != 2 {
         return Err("The dependency should be in the format <DEPENDENCY>~<VERSION>".to_string());
     }

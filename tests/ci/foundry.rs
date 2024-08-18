@@ -1,7 +1,7 @@
 use clap::Parser as _;
 use serial_test::serial;
 use soldeer::{
-    commands::{Args, Install, Subcommands},
+    commands::{install::Install, Args, Subcommands},
     DEPENDENCY_DIR, LOCK_FILE,
 };
 use std::{

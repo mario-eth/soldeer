@@ -6,7 +6,7 @@ use crate::{
     download::{clone_repo, download_file, unzip_file},
     errors::InstallError,
     lock::LockEntry,
-    remote::get_dependency_url_remote,
+    registry::get_dependency_url_remote,
     utils::{get_url_type, hash_file, hash_folder, run_forge_command, run_git_command, UrlType},
     DEPENDENCY_DIR,
 };

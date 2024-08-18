@@ -1,7 +1,7 @@
 use crate::{
     config::{Dependency, GitDependency, HttpDependency},
     errors::DownloadError,
-    remote::get_dependency_url_remote,
+    registry::get_dependency_url_remote,
     utils::{hash_folder, read_file, run_git_command, sanitize_filename, zipfile_hash},
     DEPENDENCY_DIR,
 };

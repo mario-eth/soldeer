@@ -1,7 +1,7 @@
 use crate::{
     auth::get_token,
     errors::{AuthError, PublishError},
-    remote::get_project_id,
+    registry::get_project_id,
     utils::{get_base_url, read_file},
 };
 use ignore::{WalkBuilder, WalkState};

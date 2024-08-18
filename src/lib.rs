@@ -32,7 +32,7 @@ pub mod errors;
 mod install;
 mod janitor;
 mod lock;
-mod remote;
+mod registry;
 mod utils;
 mod versioning;
 

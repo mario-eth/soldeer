@@ -15,8 +15,8 @@ use cliclack::{
     multi_progress, outro, spinner,
 };
 use config::{
-    add_to_config, get_config_path, read_soldeer_config, remappings_foundry, RemappingsAction,
-    RemappingsLocation,
+    add_to_config, get_config_path, read_soldeer_config, remappings_foundry, remove_forge_lib,
+    RemappingsAction, RemappingsLocation,
 };
 use errors::{InstallError, LockError};
 use install::{
@@ -62,7 +62,7 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
 
             if init.clean {
                 remark("Flag `--clean` was set, removing `lib` dir and submodules")?;
-                config::remove_forge_lib()?;
+                remove_forge_lib().await?;
             }
 
             let config_path = FOUNDRY_CONFIG_FILE.as_path();

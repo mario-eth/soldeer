@@ -289,7 +289,7 @@ where
     }
     let git = git.output().await.map_err(|e| DownloadError::GitError(e.to_string()))?;
     if !git.status.success() {
-        return Err(DownloadError::GitError(String::from_utf8(git.stdout).unwrap_or_default()))
+        return Err(DownloadError::GitError(String::from_utf8(git.stderr).unwrap_or_default()))
     }
     Ok(String::from_utf8(git.stdout).expect("git command output should be valid utf-8"))
 }
@@ -313,7 +313,7 @@ where
     }
     let forge = forge.output().await.map_err(|e| InstallError::ForgeError(e.to_string()))?;
     if !forge.status.success() {
-        return Err(InstallError::ForgeError(String::from_utf8(forge.stdout).unwrap_or_default()))
+        return Err(InstallError::ForgeError(String::from_utf8(forge.stderr).unwrap_or_default()))
     }
     Ok(String::from_utf8(forge.stdout).expect("forge command output should be valid utf-8"))
 }

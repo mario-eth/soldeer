@@ -1,7 +1,8 @@
 use crate::{
     errors::ConfigError,
     utils::{
-        get_current_working_dir, get_url_type, read_file_to_string, sanitize_filename, UrlType,
+        get_current_working_dir, get_url_type, read_file_to_string, run_git_command,
+        sanitize_filename, UrlType,
     },
     DEPENDENCY_DIR, FOUNDRY_CONFIG_FILE, REMAPPINGS_FILE, SOLDEER_CONFIG_FILE,
 };
@@ -496,12 +497,18 @@ pub fn delete_config(dependency_name: &str, path: impl AsRef<Path>) -> Result<De
     Ok(dependency)
 }
 
-pub fn remove_forge_lib() -> Result<()> {
-    let lib_dir = get_current_working_dir().join("lib/");
-    let gitmodules_file = get_current_working_dir().join(".gitmodules");
-
-    let _ = remove_file(gitmodules_file);
-    let _ = remove_dir_all(lib_dir);
+pub async fn remove_forge_lib() -> Result<()> {
+    let root_dir = get_current_working_dir();
+    let gitmodules_path = root_dir.join(".gitmodules");
+    let lib_dir = root_dir.join("lib");
+    let forge_std_dir = lib_dir.join("forge-std");
+    run_git_command(&["rm", &forge_std_dir.to_string_lossy()], None).await?;
+    if lib_dir.exists() {
+        remove_dir_all(&lib_dir)?;
+    }
+    if gitmodules_path.exists() {
+        remove_file(&gitmodules_path)?;
+    }
     Ok(())
 }
 

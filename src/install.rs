@@ -48,7 +48,7 @@ impl From<LockEntry> for InstallInfo {
 pub async fn install_dependencies(
     dependencies: &[Dependency],
     locks: &[LockEntry],
-    subdependencies: bool,
+    recursive_deps: bool,
 ) -> Result<Vec<LockEntry>> {
     let mut set = JoinSet::new();
     for dep in dependencies {
@@ -56,7 +56,7 @@ pub async fn install_dependencies(
             let d = dep.clone();
             let lock =
                 locks.iter().find(|l| l.name == dep.name() && l.version == dep.version()).cloned();
-            async move { install_dependency(&d, lock.as_ref(), subdependencies).await }
+            async move { install_dependency(&d, lock.as_ref(), recursive_deps).await }
         });
     }
 
@@ -70,7 +70,7 @@ pub async fn install_dependencies(
 pub async fn install_dependency(
     dependency: &Dependency,
     lock: Option<&LockEntry>,
-    subdependencies: bool,
+    recursive_deps: bool,
 ) -> Result<LockEntry> {
     match lock {
         Some(lock) => {
@@ -108,7 +108,7 @@ pub async fn install_dependency(
             install_dependency_inner(
                 &lock.clone().into(),
                 dependency.install_path(),
-                subdependencies,
+                recursive_deps,
             )
             .await
         }
@@ -135,7 +135,7 @@ pub async fn install_dependency(
                 .source(url)
                 .maybe_rev_checksum(checksum)
                 .build();
-            install_dependency_inner(&info, dependency.install_path(), subdependencies).await
+            install_dependency_inner(&info, dependency.install_path(), recursive_deps).await
         }
     }
 }

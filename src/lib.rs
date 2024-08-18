@@ -9,6 +9,11 @@ use crate::{
     versioning::push_version,
 };
 pub use crate::{commands::Subcommands, errors::SoldeerError};
+use cliclack::{
+    intro,
+    log::{remark, success, warning},
+    multi_progress, outro, spinner,
+};
 use config::{
     add_to_config, get_config_path, read_soldeer_config, remappings_foundry, RemappingsAction,
     RemappingsLocation,
@@ -16,7 +21,7 @@ use config::{
 use errors::{InstallError, LockError};
 use install::{
     add_to_remappings, ensure_dependencies_dir, install_dependencies, install_dependency,
-    update_remappings,
+    update_remappings, Progress,
 };
 use lock::{add_to_lockfile, generate_lockfile_contents, read_lockfile, LockWriteMode};
 use once_cell::sync::Lazy;
@@ -65,12 +70,18 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
                 SoldeerError::DownloadError { dep: "forge-std".to_string(), source: e }
             })?;
             add_to_config(&dependency, config_path)?;
-            let lock = install_dependency(&dependency, None, false).await?;
+            let multi = multi_progress(format!("Installing {dependency}"));
+            let progress = Progress::new(&multi, 1);
+            progress.start_all();
+            let lock = install_dependency(&dependency, None, false, progress.clone()).await?;
+            progress.stop_all();
+            multi.stop();
             add_to_lockfile(lock)?;
             add_to_remappings(dependency, &config, config_path).await?;
             // TODO: add `dependencies` to the .gitignore file if it exists
         }
         Subcommands::Install(install) => {
+            intro("🦌 Running Soldeer Install 🦌")?;
             let config_path = get_config_path()?;
             let mut config = read_soldeer_config(Some(&config_path))?;
             if install.regenerate_remappings {
@@ -84,22 +95,35 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
                 None => {
                     let dependencies: Vec<Dependency> = read_config_deps(Some(&config_path))?;
                     let (locks, lockfile_content) = read_lockfile()?;
+                    success("Done reading lockfile")?;
                     if install.clean {
+                        remark("Flag `--clean` was set, re-installing all dependencies")?;
                         fs::remove_dir_all(DEPENDENCY_DIR.as_path()).map_err(|e| {
                             InstallError::IOError { path: DEPENDENCY_DIR.to_path_buf(), source: e }
                         })?;
                         ensure_dependencies_dir()?;
                     }
-                    let new_locks =
-                        install_dependencies(&dependencies, &locks, config.recursive_deps).await?;
+                    let multi = multi_progress("Installing dependencies");
+                    let progress = Progress::new(&multi, dependencies.len() as u64);
+                    progress.start_all();
+                    let new_locks = install_dependencies(
+                        &dependencies,
+                        &locks,
+                        config.recursive_deps,
+                        progress.clone(),
+                    )
+                    .await?;
+                    progress.stop_all();
+                    multi.stop();
                     let new_lockfile_content = generate_lockfile_contents(new_locks);
                     if !locks.is_empty() && new_lockfile_content != lockfile_content {
-                        eprintln!("{}", "Warning: the lock file is out of sync with the dependencies. Consider running `soldeer lock` or `soldeer update` to re-generate the lockfile.".yellow())
+                        warning("Warning: the lock file is out of sync with the dependencies. Consider running `soldeer lock` or `soldeer update` to re-generate the lockfile.")?;
                     } else if locks.is_empty() {
                         fs::write(LOCK_FILE.as_path(), new_lockfile_content)
                             .map_err(LockError::IOError)?;
                     }
                     update_remappings(&config, &config_path).await?;
+                    success("Updated remappings")?;
                 }
                 Some(dependency) => {
                     let mut dep = Dependency::from_name_version(
@@ -107,22 +131,34 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
                         install.remote_url,
                         install.rev,
                     )?;
+                    let multi = multi_progress(format!("Installing {dep}"));
                     // for HTTP deps, we can already add them to the config (no further information
                     // needed).
                     if dep.is_http() {
                         add_to_config(&dep, &config_path)?;
+                        success("Dependency added to config")?;
                     }
-                    let lock = install_dependency(&dep, None, config.recursive_deps).await?;
+                    let progress = Progress::new(&multi, 1);
+                    progress.start_all();
+                    let lock =
+                        install_dependency(&dep, None, config.recursive_deps, progress.clone())
+                            .await?;
+                    progress.stop_all();
+                    multi.stop();
                     // for GIT deps, we need to add the commit hash before adding them to the
                     // config.
                     if let Some(git_dep) = dep.as_git_mut() {
                         git_dep.rev = Some(lock.checksum.clone());
                         add_to_config(&dep, &config_path)?;
+                        success("Dependency added to config")?;
                     }
                     add_to_lockfile(lock)?;
+                    success("Dependency added to lockfile")?;
                     add_to_remappings(dep, &config, &config_path).await?;
+                    success("Dependency added to remappings")?;
                 }
             }
+            outro("Done installing!")?;
         }
         Subcommands::Update(update_args) => {
             return update(update_args.regenerate_remappings, update_args.recursive_deps).await;

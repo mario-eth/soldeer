@@ -26,6 +26,9 @@ pub enum SoldeerError {
 
     #[error("error during publishing: {0}")]
     PublishError(#[from] PublishError),
+
+    #[error("error during IO operation: {0}")]
+    IOError(#[from] io::Error),
 }
 
 #[derive(Error, Debug)]

@@ -10,6 +10,7 @@ use crate::{
     utils::{get_url_type, hash_file, hash_folder, run_forge_command, run_git_command, UrlType},
     DEPENDENCY_DIR,
 };
+use cliclack::{log::warning, progress_bar, MultiProgress, ProgressBar};
 use std::{fs as std_fs, path::Path};
 use tokio::{fs, task::JoinSet};
 use toml_edit::DocumentMut;
@@ -21,6 +22,50 @@ pub enum DependencyStatus {
     Missing,
     FailedIntegrity,
     Installed,
+}
+
+#[derive(Clone)]
+pub struct Progress {
+    pub downloads: ProgressBar,
+    pub unzip: ProgressBar,
+    pub subdependencies: ProgressBar,
+    pub integrity: ProgressBar,
+}
+
+impl Progress {
+    pub fn new(multi: &MultiProgress, deps: u64) -> Self {
+        let download_pb = multi.add(progress_bar(deps));
+        let unzip_pb = multi.add(progress_bar(deps));
+        let subdeps_pb = multi.add(progress_bar(deps));
+        let integrity_pb = multi.add(progress_bar(deps));
+        Self {
+            downloads: download_pb,
+            unzip: unzip_pb,
+            subdependencies: subdeps_pb,
+            integrity: integrity_pb,
+        }
+    }
+
+    pub fn start_all(&self) {
+        self.downloads.start("Downloading dependencies...");
+        self.unzip.start("Unzipping dependencies...");
+        self.subdependencies.start("Installing subdependencies...");
+        self.integrity.start("Checking integrity...");
+    }
+
+    pub fn increment_all(&self) {
+        self.downloads.inc(1);
+        self.unzip.inc(1);
+        self.subdependencies.inc(1);
+        self.integrity.inc(1);
+    }
+
+    pub fn stop_all(&self) {
+        self.downloads.stop("Done downloading dependencies");
+        self.unzip.stop("Done unzipping dependencies");
+        self.subdependencies.stop("Done installing subdependencies");
+        self.integrity.stop("Done checking integrity");
+    }
 }
 
 #[bon::builder]
@@ -49,14 +94,16 @@ pub async fn install_dependencies(
     dependencies: &[Dependency],
     locks: &[LockEntry],
     recursive_deps: bool,
+    progress: Progress,
 ) -> Result<Vec<LockEntry>> {
     let mut set = JoinSet::new();
     for dep in dependencies {
         set.spawn({
             let d = dep.clone();
+            let p = progress.clone();
             let lock =
                 locks.iter().find(|l| l.name == dep.name() && l.version == dep.version()).cloned();
-            async move { install_dependency(&d, lock.as_ref(), recursive_deps).await }
+            async move { install_dependency(&d, lock.as_ref(), recursive_deps, p).await }
         });
     }
 
@@ -71,6 +118,7 @@ pub async fn install_dependency(
     dependency: &Dependency,
     lock: Option<&LockEntry>,
     recursive_deps: bool,
+    progress: Progress,
 ) -> Result<LockEntry> {
     match lock {
         Some(lock) => {
@@ -78,20 +126,28 @@ pub async fn install_dependency(
                 DependencyStatus::Installed => {
                     // no action needed, dependency is already installed and matches the lockfile
                     // entry
+                    progress.increment_all();
                     return Ok(lock.clone());
                 }
                 DependencyStatus::FailedIntegrity => match dependency {
                     Dependency::Http(dep) => {
                         // we know the folder exists because otherwise we would have gotten
                         // `Missing`
+                        let _ = warning(format!(
+                            "Dependency {dependency} failed integrity check, reinstalling"
+                        ));
                         let path = dep.install_path();
                         fs::remove_dir_all(&path)
                             .await
                             .map_err(|e| InstallError::IOError { path, source: e })?;
                     }
                     Dependency::Git(dep) => {
+                        let _ = warning(format!(
+                            "Dependency {dependency} failed integrity check, resetting to commit {}", lock.checksum
+                        ));
                         reset_git_dependency(dep, lock).await?;
                         // dependency should now be at the correct commit, we can exit
+                        progress.increment_all();
                         return Ok(lock.clone());
                     }
                 },
@@ -109,6 +165,7 @@ pub async fn install_dependency(
                 &lock.clone().into(),
                 dependency.install_path(),
                 recursive_deps,
+                progress,
             )
             .await
         }
@@ -135,7 +192,8 @@ pub async fn install_dependency(
                 .source(url)
                 .maybe_rev_checksum(checksum)
                 .build();
-            install_dependency_inner(&info, dependency.install_path(), recursive_deps).await
+            install_dependency_inner(&info, dependency.install_path(), recursive_deps, progress)
+                .await
         }
     }
 }
@@ -205,15 +263,20 @@ async fn install_dependency_inner(
     dep: &InstallInfo,
     path: impl AsRef<Path>,
     subdependencies: bool,
+    progress: Progress,
 ) -> Result<LockEntry> {
     match get_url_type(&dep.source)? {
         UrlType::Git => {
             // if the dependency was specified without a commit hash and we didn't have a lockfile,
             // clone the default branch
             let commit = clone_repo(&dep.source, dep.rev_checksum.as_ref(), &path).await?;
+            progress.downloads.inc(1);
             if subdependencies {
                 install_subdependencies(&path).await?;
             }
+            progress.unzip.inc(1);
+            progress.subdependencies.inc(1);
+            progress.integrity.inc(1);
             Ok(LockEntry::builder()
                 .name(&dep.name)
                 .version(&dep.version)
@@ -223,6 +286,7 @@ async fn install_dependency_inner(
         }
         UrlType::Http => {
             let zip_path = download_file(&dep.source, &path).await?;
+            progress.downloads.inc(1);
             let zip_integrity = tokio::task::spawn_blocking({
                 let zip_path = zip_path.clone();
                 move || hash_file(zip_path)
@@ -235,13 +299,16 @@ async fn install_dependency_inner(
                 }
             }
             unzip_file(&zip_path, &path).await?;
+            progress.unzip.inc(1);
             if subdependencies {
                 install_subdependencies(&path).await?;
             }
+            progress.subdependencies.inc(1);
             let integrity = hash_folder(&path, None).map_err(|e| InstallError::IOError {
                 path: path.as_ref().to_path_buf(),
                 source: e,
             })?;
+            progress.integrity.inc(1);
             Ok(LockEntry::builder()
                 .name(&dep.name)
                 .version(&dep.version)

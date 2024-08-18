@@ -116,7 +116,6 @@ pub enum Dependency {
 }
 
 impl Dependency {
-    #[must_use]
     pub fn from_name_version(
         name_version: &str,
         custom_url: Option<impl Into<String>>,

@@ -91,9 +91,9 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
                 config.recursive_deps = true;
             }
             ensure_dependencies_dir()?;
+            let dependencies: Vec<Dependency> = read_config_deps(Some(&config_path))?;
             match install.dependency {
                 None => {
-                    let dependencies: Vec<Dependency> = read_config_deps(Some(&config_path))?;
                     let (locks, lockfile_content) = read_lockfile()?;
                     success("Done reading lockfile")?;
                     if install.clean {
@@ -131,6 +131,13 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
                         install.remote_url,
                         install.rev,
                     )?;
+                    if dependencies
+                        .iter()
+                        .any(|d| d.name() == dep.name() && d.version() == dep.version())
+                    {
+                        outro(format!("{dep} is already installed"))?;
+                        return Ok(());
+                    }
                     let multi = multi_progress(format!("Installing {dep}"));
                     // for HTTP deps, we can already add them to the config (no further information
                     // needed).

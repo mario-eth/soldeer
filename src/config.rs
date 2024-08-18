@@ -527,29 +527,6 @@ fn parse_dependency(name: impl Into<String>, value: &Item) -> Result<Dependency>
         );
     }
 
-    // else if value.is_inline_table() && // TODO: Hacky way of doing this, might need rewritten
-    //     !value.as_inline_table().unwrap().contains_key("url") &&
-    //     !value.as_inline_table().unwrap().contains_key("git")
-    // {
-    //     // this function does not retrieve the url, only version
-    //     return Ok(HttpDependency {
-    //         name: name.clone(),
-    //         version: match value.as_inline_table() {
-    //             // we normalize to inline table
-    //             Some(table) => {
-    //                 let version = table.get("version").unwrap().to_string();
-    //                 version.replace("\"", "").trim().to_string()
-    //             }
-    //             None => {
-    //                 return Err(ConfigError::InvalidDependency(name));
-    //             }
-    //         },
-    //         url: None,
-    //         checksum: None,
-    //     }
-    //     .into());
-    // }
-
     // we should have a table or inline table
     let table = {
         match value.as_inline_table() {
@@ -645,7 +622,6 @@ fn generate_remappings(
     let mut new_remappings = Vec::new();
     if soldeer_config.remappings_regenerate {
         new_remappings = remappings_from_deps(config_path, soldeer_config)?;
-        println!("{}", "Added all dependencies to remapppings".green());
     } else {
         match &dependency {
             RemappingsAction::Remove(remove_dep) => {
@@ -677,7 +653,6 @@ fn generate_remappings(
                 }
                 if !found {
                     new_remappings.push(format!("{}={}", new_dep_remapped, new_dep_orig));
-                    println!("{}", format!("Added {add_dep} to remappings").green());
                 }
             }
             RemappingsAction::None => {
@@ -687,19 +662,13 @@ fn generate_remappings(
                 new_remappings = remappings_from_deps(config_path, soldeer_config)?;
                 if !existing_remappings.is_empty() {
                     for item in new_remappings.iter_mut() {
-                        let (item_remap, item_orig) =
+                        let (_, item_orig) =
                             item.split_once('=').expect("remappings should have two parts");
                         // try to find an existing item with the same path
                         if let Some((remapped, orig)) =
                             existing_remappings.iter().find(|(_, o)| item_orig == *o)
                         {
                             *item = format!("{}={}", remapped, orig);
-                        } else {
-                            println!(
-                                "{}",
-                                format!("Added {} to remappings", item_remap.trim_end_matches('/'))
-                                    .green()
-                            );
                         }
                     }
                 }

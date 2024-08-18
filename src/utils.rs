@@ -279,9 +279,9 @@ where
     S: AsRef<OsStr>,
 {
     let mut git = Command::new("git");
-    let mut git = git.args(args).env("GIT_TERMINAL_PROMPT", "0");
+    git.args(args).env("GIT_TERMINAL_PROMPT", "0");
     if let Some(current_dir) = current_dir {
-        git = git.current_dir(
+        git.current_dir(
             tokio_fs::canonicalize(current_dir)
                 .await
                 .map_err(|e| DownloadError::IOError { path: current_dir.clone(), source: e })?,
@@ -303,9 +303,9 @@ where
     S: AsRef<OsStr>,
 {
     let mut forge = Command::new("forge");
-    let mut forge = forge.args(args);
+    forge.args(args);
     if let Some(current_dir) = current_dir {
-        forge = forge.current_dir(
+        forge.current_dir(
             tokio_fs::canonicalize(current_dir)
                 .await
                 .map_err(|e| InstallError::IOError { path: current_dir.clone(), source: e })?,

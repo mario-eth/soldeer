@@ -386,7 +386,10 @@ async fn check_git_dependency(
     )
     .await
     {
-        Ok(top_level) => top_level.trim().to_string(),
+        Ok(top_level) => {
+            // stdout contains the path twice, we only keep the first item
+            top_level.split_whitespace().next().unwrap_or_default().to_string()
+        }
         Err(_) => {
             // error getting the top level directory, assume the directory is not a git repository
             return Ok(DependencyStatus::Missing);

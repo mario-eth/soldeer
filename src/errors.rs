@@ -27,6 +27,9 @@ pub enum SoldeerError {
     #[error("error during publishing: {0}")]
     PublishError(#[from] PublishError),
 
+    #[error("error during remappings operation: {0}")]
+    RemappingsError(#[from] RemappingsError),
+
     #[error("error during IO operation: {0}")]
     IOError(#[from] io::Error),
 }
@@ -65,9 +68,6 @@ pub enum ConfigError {
 
     #[error("error writing to config file: {0}")]
     FileWriteError(#[from] io::Error),
-
-    #[error("error writing to remappings file: {0}")]
-    RemappingsError(io::Error),
 
     #[error("empty `version` field in {0}")]
     EmptyVersion(String),
@@ -215,4 +215,13 @@ pub enum PublishError {
 
     #[error("unknown http error")]
     UnknownError,
+}
+
+#[derive(Error, Debug)]
+pub enum RemappingsError {
+    #[error("error writing to remappings file: {0}")]
+    FileWriteError(#[from] io::Error),
+
+    #[error("error while interacting with the config file: {0}")]
+    ConfigError(#[from] ConfigError),
 }

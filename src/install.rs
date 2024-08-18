@@ -1,8 +1,5 @@
 use crate::{
-    config::{
-        remappings_foundry, remappings_txt, Dependency, GitDependency, HttpDependency,
-        RemappingsAction, RemappingsLocation, SoldeerConfig,
-    },
+    config::{Dependency, GitDependency, HttpDependency},
     download::{clone_repo, download_file, unzip_file},
     errors::InstallError,
     lock::LockEntry,
@@ -214,49 +211,6 @@ pub fn ensure_dependencies_dir() -> Result<()> {
     let path = DEPENDENCY_DIR.clone();
     if !path.exists() {
         std_fs::create_dir(&path).map_err(|e| InstallError::IOError { path, source: e })?;
-    }
-    Ok(())
-}
-
-pub async fn add_to_remappings(
-    dep: Dependency,
-    config: &SoldeerConfig,
-    config_path: impl AsRef<Path>,
-) -> Result<()> {
-    if config.remappings_generate {
-        if config_path.as_ref().to_string_lossy().contains("foundry.toml") {
-            match config.remappings_location {
-                RemappingsLocation::Txt => {
-                    remappings_txt(&RemappingsAction::Add(dep), &config_path, config).await?
-                }
-                RemappingsLocation::Config => {
-                    remappings_foundry(&RemappingsAction::Add(dep), &config_path, config).await?
-                }
-            }
-        } else {
-            remappings_txt(&RemappingsAction::Add(dep), &config_path, config).await?;
-        }
-    }
-    Ok(())
-}
-
-pub async fn update_remappings(
-    config: &SoldeerConfig,
-    config_path: impl AsRef<Path>,
-) -> Result<()> {
-    if config.remappings_generate {
-        if config_path.as_ref().to_string_lossy().contains("foundry.toml") {
-            match config.remappings_location {
-                RemappingsLocation::Txt => {
-                    remappings_txt(&RemappingsAction::None, &config_path, config).await?
-                }
-                RemappingsLocation::Config => {
-                    remappings_foundry(&RemappingsAction::None, &config_path, config).await?
-                }
-            }
-        } else {
-            remappings_txt(&RemappingsAction::None, &config_path, config).await?;
-        }
     }
     Ok(())
 }

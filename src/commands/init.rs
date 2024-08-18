@@ -1,9 +1,10 @@
 use super::Result;
 use crate::{
     config::{add_to_config, get_config_path, read_soldeer_config, remove_forge_lib},
-    install::{add_to_remappings, ensure_dependencies_dir, install_dependency, Progress},
+    install::{ensure_dependencies_dir, install_dependency, Progress},
     lock::add_to_lockfile,
     registry::get_latest_forge_std,
+    remappings::add_to_remappings,
     SoldeerError,
 };
 use clap::Parser;

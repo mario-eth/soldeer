@@ -2,11 +2,9 @@ use super::{validate_dependency, Result};
 use crate::{
     config::{add_to_config, get_config_path, read_config_deps, read_soldeer_config, Dependency},
     errors::{InstallError, LockError},
-    install::{
-        add_to_remappings, ensure_dependencies_dir, install_dependencies, install_dependency,
-        update_remappings, Progress,
-    },
+    install::{ensure_dependencies_dir, install_dependencies, install_dependency, Progress},
     lock::{add_to_lockfile, generate_lockfile_contents, read_lockfile},
+    remappings::{add_to_remappings, update_remappings},
     DEPENDENCY_DIR, LOCK_FILE,
 };
 use clap::Parser;

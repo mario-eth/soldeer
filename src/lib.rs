@@ -1,27 +1,18 @@
 #![cfg_attr(docsrs, feature(doc_cfg, doc_auto_cfg))]
 use crate::{
     auth::login,
-    config::{delete_config, read_config_deps, remappings_txt, Dependency},
+    config::{delete_config, get_config_path, read_config_deps, read_soldeer_config, Dependency},
     download::{delete_dependency_files, download_dependencies, unzip_dependencies},
     janitor::{cleanup_after, healthcheck_dependencies},
-    lock::{remove_lock, write_lock},
+    lock::{remove_lock, write_lock, LockWriteMode},
+    remappings::{remappings_foundry, remappings_txt, RemappingsAction, RemappingsLocation},
     utils::{check_dotfiles_recursive, get_current_working_dir, prompt_user_for_confirmation},
-    versioning::push_version,
+    versioning::{push_version, validate_name},
 };
 pub use crate::{commands::Subcommands, errors::SoldeerError};
-use cliclack::{
-    intro,
-    log::{step, success},
-    outro, outro_cancel,
-};
-use config::{
-    get_config_path, read_soldeer_config, remappings_foundry, RemappingsAction, RemappingsLocation,
-};
-
-use lock::LockWriteMode;
+use cliclack::{intro, log::step, outro, outro_cancel};
 use once_cell::sync::Lazy;
 use std::{env, path::PathBuf};
-use versioning::validate_name;
 use yansi::Paint as _;
 
 mod auth;
@@ -33,6 +24,7 @@ mod install;
 mod janitor;
 mod lock;
 mod registry;
+mod remappings;
 mod utils;
 mod versioning;
 

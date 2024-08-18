@@ -177,8 +177,8 @@ async fn init_command(cmd: commands::Init) -> Result<(), SoldeerError> {
         remove_forge_lib().await?;
     }
 
-    let config_path = FOUNDRY_CONFIG_FILE.as_path();
-    let config = read_soldeer_config(Some(config_path))?;
+    let config_path = get_config_path()?;
+    let config = read_soldeer_config(Some(&config_path))?;
     success("Done reading config")?;
     let dependency = get_latest_forge_std()
         .await
@@ -194,11 +194,11 @@ async fn init_command(cmd: commands::Init) -> Result<(), SoldeerError> {
         })?;
     progress.stop_all();
     multi.stop();
-    add_to_config(&dependency, config_path)?;
+    add_to_config(&dependency, &config_path)?;
     success("Dependency added to config")?;
     add_to_lockfile(lock)?;
     success("Dependency added to lockfile")?;
-    add_to_remappings(dependency, &config, config_path).await?;
+    add_to_remappings(dependency, &config, &config_path).await?;
     success("Dependency added to remappings")?;
     // TODO: add `dependencies` to the .gitignore file if it exists
     Ok(())
@@ -274,6 +274,22 @@ async fn install_command(cmd: commands::Install) -> Result<(), SoldeerError> {
             success("Dependency added to remappings")?;
         }
     }
+    Ok(())
+}
+
+async fn update_command(cmd: commands::Update) -> Result<(), SoldeerError> {
+    let config_path = get_config_path()?;
+    let mut config = read_soldeer_config(Some(&config_path))?;
+    if cmd.regenerate_remappings {
+        config.remappings_regenerate = true;
+    }
+    if cmd.recursive_deps {
+        config.recursive_deps = true;
+    }
+    success("Done reading config")?;
+    let dependencies: Vec<Dependency> = read_config_deps(Some(&config_path))?;
+    // TODO: update dependencies
+
     Ok(())
 }
 

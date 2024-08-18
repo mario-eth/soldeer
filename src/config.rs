@@ -6,6 +6,7 @@ use crate::{
     },
     DEPENDENCY_DIR, FOUNDRY_CONFIG_FILE, REMAPPINGS_FILE, SOLDEER_CONFIG_FILE,
 };
+use cliclack::{log::warning, select};
 use serde::{Deserialize, Serialize};
 use std::{
     env,
@@ -308,6 +309,24 @@ impl From<GitDependency> for Dependency {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum ConfigLocation {
+    Foundry,
+    Soldeer,
+}
+
+impl TryFrom<&str> for ConfigLocation {
+    type Error = ConfigError;
+
+    fn try_from(value: &str) -> Result<Self> {
+        match value {
+            "foundry" => Ok(ConfigLocation::Foundry),
+            "soldeer" => Ok(ConfigLocation::Soldeer),
+            _ => Err(ConfigError::InvalidPromptOption),
+        }
+    }
+}
+
 pub fn get_config_path() -> Result<PathBuf> {
     let foundry_path: PathBuf = if cfg!(test) {
         env::var("config_file").map(|s| s.into()).unwrap_or(FOUNDRY_CONFIG_FILE.clone())
@@ -323,22 +342,19 @@ pub fn get_config_path() -> Result<PathBuf> {
     }
 
     let soldeer_path = SOLDEER_CONFIG_FILE.clone();
-    match fs::metadata(&soldeer_path) {
-        Ok(_) => Ok(soldeer_path),
-        Err(_) => {
-            println!("{}", "No config file found. If you wish to proceed, please select how you want Soldeer to be configured:\n1. Using foundry.toml\n2. Using soldeer.toml\n(Press 1 or 2), default is foundry.toml".blue());
-            std::io::stdout().flush().unwrap();
-            let mut option = String::new();
-            io::stdin()
-                .read_line(&mut option)
-                .map_err(|e| ConfigError::PromptError { source: e })?;
-
-            if option.is_empty() {
-                option = "1".to_string();
-            }
-            create_example_config(&option)
-        }
+    if soldeer_path.exists() {
+        return Ok(soldeer_path);
     }
+
+    warning("No soldeer config found")?;
+    let config_option: ConfigLocation = select("Select how you want to configure Soldeer")
+        .initial_value("foundry")
+        .item("foundry", "Using foundry.toml", "")
+        .item("soldeer", "Using soldeer.toml", "")
+        .interact()?
+        .try_into()?;
+
+    create_example_config(config_option)
 }
 
 /// Read the list of dependencies from the config file
@@ -684,14 +700,14 @@ fn format_remap_name(soldeer_config: &SoldeerConfig, dependency: &Dependency) ->
     format!("{}{}{}/", soldeer_config.remappings_prefix, dependency.name(), version_suffix)
 }
 
-fn create_example_config(option: &str) -> Result<PathBuf> {
-    if option.trim() == "1" && FOUNDRY_CONFIG_FILE.exists() {
-        return Ok(FOUNDRY_CONFIG_FILE.clone());
-    }
-    let (config_path, contents) = match option.trim() {
-        "1" => (
-            FOUNDRY_CONFIG_FILE.clone(),
-            r#"
+fn create_example_config(location: ConfigLocation) -> Result<PathBuf> {
+    match location {
+        ConfigLocation::Foundry => {
+            if FOUNDRY_CONFIG_FILE.exists() {
+                return Ok(FOUNDRY_CONFIG_FILE.to_path_buf());
+            }
+            // FIXME: get default config from the foundry crate?
+            let contents = r#"
 # Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
 
 [profile.default]
@@ -702,24 +718,36 @@ test = "test"
 libs = ["dependencies"]
 
 [dependencies]
-"#,
-        ),
-        "2" => (
-            SOLDEER_CONFIG_FILE.clone(),
-            r#"
-[remappings]
-enabled = true
-
-[dependencies]
-"#,
-        ),
-        _ => {
-            return Err(ConfigError::InvalidPromptOption);
+"#;
+            fs::write(FOUNDRY_CONFIG_FILE.as_path(), contents)?;
+            Ok(FOUNDRY_CONFIG_FILE.to_path_buf())
         }
-    };
+        ConfigLocation::Soldeer => {
+            if SOLDEER_CONFIG_FILE.exists() {
+                return Ok(SOLDEER_CONFIG_FILE.to_path_buf());
+            }
+            let config = SoldeerConfig::default();
 
-    fs::write(&config_path, contents)?;
-    Ok(config_path)
+            #[derive(Serialize)]
+            struct Dependencies {
+                _foo: Option<String>,
+            }
+
+            #[derive(Serialize)]
+            struct SoldeerToml {
+                soldeer: SoldeerConfig,
+                dependencies: Dependencies,
+            }
+
+            let contents = toml_edit::ser::to_string_pretty(&SoldeerToml {
+                soldeer: config,
+                dependencies: Dependencies { _foo: None },
+            })?;
+
+            fs::write(SOLDEER_CONFIG_FILE.as_path(), contents)?;
+            Ok(SOLDEER_CONFIG_FILE.to_path_buf())
+        }
+    }
 }
 
 ////////////// TESTS //////////////
@@ -999,7 +1027,7 @@ libs = ["dependencies", "libs"]
 forge-std = "1.9.1"
 "#;
 
-        let result = create_example_config("1").unwrap();
+        let result = create_example_config(ConfigLocation::Foundry).unwrap();
 
         assert!(PathBuf::from(&result).file_name().unwrap().to_string_lossy().contains("foundry"));
         assert_eq!(read_file_to_string(&result), content);
@@ -1023,7 +1051,7 @@ libs = ["dependencies", "libs"]
 forge-std = "1.9.1"
 "#;
 
-        let result = create_example_config("1").unwrap();
+        let result = create_example_config(ConfigLocation::Foundry).unwrap();
 
         assert!(PathBuf::from(&result).file_name().unwrap().to_string_lossy().contains("foundry"));
         assert_eq!(read_file_to_string(&result), content);
@@ -1039,7 +1067,7 @@ enabled = true
 [dependencies]
 "#;
 
-        let result = create_example_config("2").unwrap();
+        let result = create_example_config(ConfigLocation::Soldeer).unwrap();
 
         assert!(PathBuf::from(&result).file_name().unwrap().to_string_lossy().contains("soldeer"));
         assert_eq!(read_file_to_string(&result), content);

@@ -87,6 +87,9 @@ pub enum ConfigError {
     #[error("error parsing config file: {0}")]
     DeserializeError(#[from] toml_edit::de::Error),
 
+    #[error("error generating config file: {0}")]
+    SerializeError(#[from] toml_edit::ser::Error),
+
     #[error("error during config operation: {0}")]
     DownloadError(#[from] DownloadError),
 }

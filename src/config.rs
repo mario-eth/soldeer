@@ -706,19 +706,16 @@ fn create_example_config(location: ConfigLocation) -> Result<PathBuf> {
             if FOUNDRY_CONFIG_FILE.exists() {
                 return Ok(FOUNDRY_CONFIG_FILE.to_path_buf());
             }
-            // FIXME: get default config from the foundry crate?
-            let contents = r#"
-# Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
-
-[profile.default]
-script = "script"
-solc = "0.8.26"
+            let contents = r#"[profile.default]
 src = "src"
-test = "test"
-libs = ["dependencies"]
+out = "out"
+libs = ["lib"]
 
 [dependencies]
+
+# See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
 "#;
+
             fs::write(FOUNDRY_CONFIG_FILE.as_path(), contents)?;
             Ok(FOUNDRY_CONFIG_FILE.to_path_buf())
         }
@@ -726,25 +723,8 @@ libs = ["dependencies"]
             if SOLDEER_CONFIG_FILE.exists() {
                 return Ok(SOLDEER_CONFIG_FILE.to_path_buf());
             }
-            let config = SoldeerConfig::default();
 
-            #[derive(Serialize)]
-            struct Dependencies {
-                _foo: Option<String>,
-            }
-
-            #[derive(Serialize)]
-            struct SoldeerToml {
-                soldeer: SoldeerConfig,
-                dependencies: Dependencies,
-            }
-
-            let contents = toml_edit::ser::to_string_pretty(&SoldeerToml {
-                soldeer: config,
-                dependencies: Dependencies { _foo: None },
-            })?;
-
-            fs::write(SOLDEER_CONFIG_FILE.as_path(), contents)?;
+            fs::write(SOLDEER_CONFIG_FILE.as_path(), "[dependencies]\n")?;
             Ok(SOLDEER_CONFIG_FILE.to_path_buf())
         }
     }

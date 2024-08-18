@@ -90,6 +90,7 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
             add_to_remappings(dependency, &config, config_path).await?;
             success("Dependency added to remappings")?;
             // TODO: add `dependencies` to the .gitignore file if it exists
+            outro("Done initializing!")?;
         }
         Subcommands::Install(install) => {
             intro("🦌 Soldeer Install 🦌")?;

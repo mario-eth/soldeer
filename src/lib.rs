@@ -5,9 +5,9 @@ use crate::{
     download::{delete_dependency_files, download_dependencies, unzip_dependencies},
     janitor::{cleanup_after, healthcheck_dependencies},
     lock::{remove_lock, write_lock, LockWriteMode},
+    push::{push_version, validate_name},
     remappings::{remappings_foundry, remappings_txt, RemappingsAction, RemappingsLocation},
     utils::{check_dotfiles_recursive, get_current_working_dir, prompt_user_for_confirmation},
-    versioning::{push_version, validate_name},
 };
 pub use crate::{commands::Subcommands, errors::SoldeerError};
 use cliclack::{intro, log::step, outro, outro_cancel};
@@ -23,10 +23,10 @@ pub mod errors;
 mod install;
 mod janitor;
 mod lock;
+mod push;
 mod registry;
 mod remappings;
 mod utils;
-mod versioning;
 
 // TODO: find the project's root directory and use that as the base path instead of the current dir
 pub static DEPENDENCY_DIR: Lazy<PathBuf> =

@@ -383,16 +383,6 @@ pub fn read_soldeer_config(path: Option<impl AsRef<Path>>) -> Result<SoldeerConf
 }
 
 pub fn add_to_config(dependency: &Dependency, config_path: impl AsRef<Path>) -> Result<()> {
-    println!(
-        "{}",
-        format!(
-            "Adding dependency {}-{} to the config file",
-            dependency.name(),
-            dependency.version()
-        )
-        .green()
-    );
-
     let contents = read_file_to_string(&config_path);
     let mut doc: DocumentMut = contents.parse::<DocumentMut>()?;
 

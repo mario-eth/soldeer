@@ -57,7 +57,7 @@ pub static REMAPPINGS_FILE: Lazy<PathBuf> =
 pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
     match command {
         Subcommands::Init(init) => {
-            println!("{}", "🦌 Running Soldeer init 🦌".green());
+            println!("{}", "🦌 Soldeer Init 🦌".green());
             println!("{}", "Initializes a new Soldeer project in foundry".green());
 
             if init.clean {
@@ -73,7 +73,12 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
             let multi = multi_progress(format!("Installing {dependency}"));
             let progress = Progress::new(&multi, 1);
             progress.start_all();
-            let lock = install_dependency(&dependency, None, false, progress.clone()).await?;
+            let lock = install_dependency(&dependency, None, false, progress.clone())
+                .await
+                .map_err(|e| {
+                    multi.error(&e);
+                    e
+                })?;
             progress.stop_all();
             multi.stop();
             add_to_lockfile(lock)?;
@@ -81,7 +86,7 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
             // TODO: add `dependencies` to the .gitignore file if it exists
         }
         Subcommands::Install(install) => {
-            intro("🦌 Running Soldeer Install 🦌")?;
+            intro("🦌 Soldeer Install 🦌")?;
             let config_path = get_config_path()?;
             let mut config = read_soldeer_config(Some(&config_path))?;
             if install.regenerate_remappings {
@@ -112,7 +117,11 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
                         config.recursive_deps,
                         progress.clone(),
                     )
-                    .await?;
+                    .await
+                    .map_err(|e| {
+                        multi.error(&e);
+                        e
+                    })?;
                     progress.stop_all();
                     multi.stop();
                     let new_lockfile_content = generate_lockfile_contents(new_locks);
@@ -139,26 +148,24 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
                         return Ok(());
                     }
                     let multi = multi_progress(format!("Installing {dep}"));
-                    // for HTTP deps, we can already add them to the config (no further information
-                    // needed).
-                    if dep.is_http() {
-                        add_to_config(&dep, &config_path)?;
-                        success("Dependency added to config")?;
-                    }
                     let progress = Progress::new(&multi, 1);
                     progress.start_all();
                     let lock =
                         install_dependency(&dep, None, config.recursive_deps, progress.clone())
-                            .await?;
+                            .await
+                            .map_err(|e| {
+                                multi.error(&e);
+                                e
+                            })?;
                     progress.stop_all();
                     multi.stop();
                     // for GIT deps, we need to add the commit hash before adding them to the
                     // config.
                     if let Some(git_dep) = dep.as_git_mut() {
                         git_dep.rev = Some(lock.checksum.clone());
-                        add_to_config(&dep, &config_path)?;
-                        success("Dependency added to config")?;
                     }
+                    add_to_config(&dep, &config_path)?;
+                    success("Dependency added to config")?;
                     add_to_lockfile(lock)?;
                     success("Dependency added to lockfile")?;
                     add_to_remappings(dep, &config, &config_path).await?;

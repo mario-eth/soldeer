@@ -15,6 +15,8 @@ use std::{fs as std_fs, path::Path};
 use tokio::{fs, task::JoinSet};
 use toml_edit::DocumentMut;
 
+const PROGRESS_TEMPLATE: &str = "[{elapsed_precise}] {bar:30.magenta} ({pos}/{len}) {msg}";
+
 pub type Result<T> = std::result::Result<T, InstallError>;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -34,10 +36,10 @@ pub struct Progress {
 
 impl Progress {
     pub fn new(multi: &MultiProgress, deps: u64) -> Self {
-        let download_pb = multi.add(progress_bar(deps));
-        let unzip_pb = multi.add(progress_bar(deps));
-        let subdeps_pb = multi.add(progress_bar(deps));
-        let integrity_pb = multi.add(progress_bar(deps));
+        let download_pb = multi.add(progress_bar(deps).with_template(PROGRESS_TEMPLATE));
+        let unzip_pb = multi.add(progress_bar(deps).with_template(PROGRESS_TEMPLATE));
+        let subdeps_pb = multi.add(progress_bar(deps).with_template(PROGRESS_TEMPLATE));
+        let integrity_pb = multi.add(progress_bar(deps).with_template(PROGRESS_TEMPLATE));
         Self {
             downloads: download_pb,
             unzip: unzip_pb,

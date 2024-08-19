@@ -12,7 +12,7 @@ use std::{fmt::Display, fs as std_fs, path::Path};
 use tokio::{fs, task::JoinSet};
 use toml_edit::DocumentMut;
 
-const PROGRESS_TEMPLATE: &str = "[{elapsed_precise}] {bar:30.magenta} ({pos}/{len}) {msg}";
+pub const PROGRESS_TEMPLATE: &str = "[{elapsed_precise}] {bar:30.magenta} ({pos}/{len}) {msg}";
 
 pub type Result<T> = std::result::Result<T, InstallError>;
 

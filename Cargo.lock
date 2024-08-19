@@ -1611,6 +1611,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0495e4577c672de8254beb68d01a9b62d0e8a13c099edecdbedccce3223cd29f"
 
 [[package]]
+name = "semver"
+version = "1.0.23"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "61697e0a1c7e512e84a621326239844a24d8207b4669b41bc18b32ea5cbf988b"
+
+[[package]]
 name = "serde"
 version = "1.0.208"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1797,6 +1803,7 @@ dependencies = [
  "reqwest",
  "rpassword",
  "sanitize-filename",
+ "semver",
  "serde",
  "serde_json",
  "serial_test",

@@ -26,6 +26,7 @@ mod lock;
 mod push;
 mod registry;
 mod remappings;
+mod update;
 mod utils;
 
 // TODO: find the project's root directory and use that as the base path instead of the current dir

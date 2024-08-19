@@ -30,6 +30,12 @@ pub enum SoldeerError {
     #[error("error during remappings operation: {0}")]
     RemappingsError(#[from] RemappingsError),
 
+    #[error("error during registry operation: {0}")]
+    RegistryError(#[from] RegistryError),
+
+    #[error("error during update operation: {0}")]
+    UpdateError(#[from] UpdateError),
+
     #[error("error during IO operation: {0}")]
     IOError(#[from] io::Error),
 }
@@ -108,15 +114,6 @@ pub enum DownloadError {
     #[error("error during IO operation for {path:?}: {source}")]
     IOError { path: PathBuf, source: io::Error },
 
-    #[error("project {0} not found, please check the dependency name (project name) or create a new project on https://soldeer.xyz")]
-    ProjectNotFound(String),
-
-    #[error("could not get the dependency URL for {0}")]
-    URLNotFound(String),
-
-    #[error("could not get the last forge dependency")]
-    ForgeStdError,
-
     #[error("error during async operation: {0}")]
     AsyncError(#[from] tokio::task::JoinError),
 
@@ -125,6 +122,9 @@ pub enum DownloadError {
 
     #[error("the provided URL is invalid: {0}")]
     InvalidUrl(String),
+
+    #[error("error during registry operation: {0}")]
+    RegistryError(#[from] RegistryError),
 }
 
 #[derive(Error, Debug)]
@@ -149,6 +149,9 @@ pub enum InstallError {
 
     #[error("error during forge command: {0}")]
     ForgeError(String),
+
+    #[error("error during registry operation: {0}")]
+    RegistryError(#[from] RegistryError),
 }
 
 #[derive(Error, Debug)]
@@ -195,8 +198,8 @@ pub enum PublishError {
     #[error("auth error: {0}")]
     AuthError(#[from] AuthError),
 
-    #[error("error during publishing: {0}")]
-    DownloadError(#[from] DownloadError),
+    #[error("registry error during publishing: {0}")]
+    DownloadError(#[from] RegistryError),
 
     #[error("Project not found. Make sure you send the right dependency name. The dependency name is the project name you created on https://soldeer.xyz")]
     ProjectNotFound,
@@ -218,10 +221,43 @@ pub enum PublishError {
 }
 
 #[derive(Error, Debug)]
+pub enum RegistryError {
+    #[error("error with registry request: {0}")]
+    HttpError(#[from] reqwest::Error),
+
+    #[error("could not get the dependency URL for {0}")]
+    URLNotFound(String),
+
+    #[error("project {0} not found, please check the dependency name (project name) or create a new project on https://soldeer.xyz")]
+    ProjectNotFound(String),
+
+    #[error("package {0} has no version")]
+    NoVersion(String),
+}
+
+#[derive(Error, Debug)]
 pub enum RemappingsError {
     #[error("error writing to remappings file: {0}")]
     FileWriteError(#[from] io::Error),
 
     #[error("error while interacting with the config file: {0}")]
     ConfigError(#[from] ConfigError),
+}
+
+#[derive(Error, Debug)]
+pub enum UpdateError {
+    #[error("registry error: {0}")]
+    RegistryError(#[from] RegistryError),
+
+    #[error("no matching version found for {dependency} with version requirement {version_req}")]
+    NoMatchingVersion { dependency: String, version_req: String },
+
+    #[error("download error: {0}")]
+    DownloadError(#[from] DownloadError),
+
+    #[error("error during install operation: {0}")]
+    InstallError(#[from] InstallError),
+
+    #[error("error during async operation: {0}")]
+    AsyncError(#[from] tokio::task::JoinError),
 }

@@ -99,7 +99,7 @@ pub(crate) async fn install_command(cmd: Install) -> Result<()> {
             multi.stop();
             let new_lockfile_content = generate_lockfile_contents(new_locks);
             if !locks.is_empty() && new_lockfile_content != lockfile_content {
-                warning("Warning: the lock file is out of sync with the dependencies. Consider running `soldeer lock` or `soldeer update` to re-generate the lockfile.")?;
+                warning("Warning: the lock file is out of sync with the dependencies. Consider running `soldeer update` to re-generate the lockfile.")?;
             } else if locks.is_empty() {
                 fs::write(LOCK_FILE.as_path(), new_lockfile_content).map_err(LockError::IOError)?;
             }

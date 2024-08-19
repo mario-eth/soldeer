@@ -237,10 +237,12 @@ impl Dependency {
         }
     }
 
+    #[allow(dead_code)]
     pub fn is_http(&self) -> bool {
         matches!(self, Self::Http(_))
     }
 
+    #[allow(dead_code)]
     pub fn as_http(&self) -> Option<&HttpDependency> {
         if let Self::Http(v) = self {
             Some(v)
@@ -249,6 +251,7 @@ impl Dependency {
         }
     }
 
+    #[allow(dead_code)]
     pub fn as_http_mut(&mut self) -> Option<&mut HttpDependency> {
         if let Self::Http(v) = self {
             Some(v)
@@ -257,10 +260,12 @@ impl Dependency {
         }
     }
 
+    #[allow(dead_code)]
     pub fn is_git(&self) -> bool {
         matches!(self, Self::Git(_))
     }
 
+    #[allow(dead_code)]
     pub fn as_git(&self) -> Option<&GitDependency> {
         if let Self::Git(v) = self {
             Some(v)

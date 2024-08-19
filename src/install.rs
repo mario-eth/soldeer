@@ -7,8 +7,8 @@ use crate::{
     utils::{get_url_type, hash_file, hash_folder, run_forge_command, run_git_command, UrlType},
     DEPENDENCY_DIR,
 };
-use cliclack::{log::warning, progress_bar, MultiProgress, ProgressBar};
-use std::{fs as std_fs, path::Path};
+use cliclack::{progress_bar, MultiProgress, ProgressBar};
+use std::{fmt::Display, fs as std_fs, path::Path};
 use tokio::{fs, task::JoinSet};
 use toml_edit::DocumentMut;
 
@@ -25,6 +25,7 @@ pub enum DependencyStatus {
 
 #[derive(Clone)]
 pub struct Progress {
+    pub multi: MultiProgress,
     pub downloads: ProgressBar,
     pub unzip: ProgressBar,
     pub subdependencies: ProgressBar,
@@ -38,6 +39,7 @@ impl Progress {
         let subdeps_pb = multi.add(progress_bar(deps).with_template(PROGRESS_TEMPLATE));
         let integrity_pb = multi.add(progress_bar(deps).with_template(PROGRESS_TEMPLATE));
         Self {
+            multi: multi.clone(),
             downloads: download_pb,
             unzip: unzip_pb,
             subdependencies: subdeps_pb,
@@ -64,6 +66,10 @@ impl Progress {
         self.unzip.stop("Done unzipping dependencies");
         self.subdependencies.stop("Done installing subdependencies");
         self.integrity.stop("Done checking integrity");
+    }
+
+    pub fn log(&self, msg: impl Display) {
+        self.multi.println(msg, false);
     }
 }
 
@@ -132,19 +138,18 @@ pub async fn install_dependency(
                     Dependency::Http(dep) => {
                         // we know the folder exists because otherwise we would have gotten
                         // `Missing`
-                        warning(format!(
+                        progress.log(format!(
                             "Dependency {dependency} failed integrity check, reinstalling"
-                        ))
-                        .ok();
+                        ));
                         let path = dep.install_path();
                         fs::remove_dir_all(&path)
                             .await
                             .map_err(|e| InstallError::IOError { path, source: e })?;
                     }
                     Dependency::Git(dep) => {
-                        warning(format!(
+                        progress.log(format!(
                             "Dependency {dependency} failed integrity check, resetting to commit {}", lock.checksum
-                        )).ok();
+                        ));
                         reset_git_dependency(dep, lock).await?;
                         // dependency should now be at the correct commit, we can exit
                         progress.increment_all();

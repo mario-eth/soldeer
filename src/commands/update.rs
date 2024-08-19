@@ -1,7 +1,17 @@
+use std::fs;
+
 use super::Result;
-use crate::config::{get_config_path, read_config_deps, read_soldeer_config, Dependency};
+use crate::{
+    config::{get_config_path, read_config_deps, read_soldeer_config, Dependency},
+    errors::LockError,
+    install::{ensure_dependencies_dir, Progress as InstallProgress},
+    lock::generate_lockfile_contents,
+    remappings::update_remappings,
+    update::{update_dependencies, Progress},
+    LOCK_FILE,
+};
 use clap::Parser;
-use cliclack::log::success;
+use cliclack::{log::success, multi_progress};
 
 /// Update dependencies by reading the config file
 #[derive(Debug, Clone, Parser)]
@@ -27,8 +37,25 @@ pub(crate) async fn update_command(cmd: Update) -> Result<()> {
         config.recursive_deps = true;
     }
     success("Done reading config")?;
+    ensure_dependencies_dir()?;
     let dependencies: Vec<Dependency> = read_config_deps(Some(&config_path))?;
-    // TODO: update dependencies
+    let multi = multi_progress("Updating dependencies");
+    let install_progress = InstallProgress::new(&multi, dependencies.len() as u64);
+    let progress = Progress::new(&install_progress, dependencies.len() as u64);
+    progress.start_all();
+    let new_items =
+        update_dependencies(&dependencies, config.recursive_deps, progress.clone()).await?;
+    progress.stop_all();
+    multi.stop();
 
+    let (new_deps, new_locks): (Vec<_>, Vec<_>) = new_items.into_iter().unzip();
+
+    // TODO: update config
+
+    let new_lockfile_content = generate_lockfile_contents(new_locks);
+    fs::write(LOCK_FILE.as_path(), new_lockfile_content).map_err(LockError::IOError)?;
+
+    update_remappings(&config, &config_path).await?;
+    success("Updated remappings")?;
     Ok(())
 }

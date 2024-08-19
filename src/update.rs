@@ -27,14 +27,17 @@ impl Progress {
     }
 
     pub fn start_all(&self) {
+        self.install_progress.start_all();
         self.get_versions.start("Retieving all versions...");
     }
 
     pub fn increment_all(&self) {
+        self.install_progress.increment_all();
         self.get_versions.inc(1);
     }
 
     pub fn stop_all(&self) {
+        self.install_progress.stop_all();
         self.get_versions.stop("Done retrieving versions");
     }
 

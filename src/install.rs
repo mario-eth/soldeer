@@ -69,7 +69,7 @@ impl Progress {
     }
 
     pub fn log(&self, msg: impl Display) {
-        self.multi.println(msg, false);
+        self.multi.println(msg);
     }
 }
 

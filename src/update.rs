@@ -42,7 +42,7 @@ impl Progress {
     }
 
     pub fn log(&self, msg: impl Display) {
-        self.install_progress.multi.println(msg, false);
+        self.install_progress.multi.println(msg);
     }
 }
 

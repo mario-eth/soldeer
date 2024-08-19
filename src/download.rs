@@ -341,48 +341,6 @@ pub fn delete_dependency_files(dependency: &Dependency) -> Result<()> {
     Ok(())
 }
 
-pub fn install_subdependencies(dependency: &Dependency) -> Result<()> {
-    let dep_name = sanitize_filename(&format!("{}-{}", dependency.name(), dependency.version()));
-
-    let dep_dir = DEPENDENCY_DIR.join(dep_name);
-    if !dep_dir.exists() {
-        return Err(DownloadError::SubdependencyError(
-            "Dependency directory does not exists".to_string(),
-        ));
-    }
-
-    let mut git = Command::new("git");
-
-    let result = git
-        .args(["submodule", "update", "--init", "--recursive"])
-        .env("GIT_TERMINAL_PROMPT", "0")
-        .current_dir(&dep_dir)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-
-    let status = result.status().expect("Subdependency via GIT failed");
-
-    if !status.success() {
-        println!("{}", "Dependency has no submodule dependency.".yellow());
-    }
-
-    let mut soldeer = Command::new("forge");
-
-    let result = soldeer
-        .args(["soldeer", "install"])
-        .current_dir(&dep_dir)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-
-    let status = result.status().expect("Subdependency via Soldeer failed");
-
-    if !status.success() {
-        println!("{}", "Dependency has no Soldeer dependency.".yellow());
-    }
-
-    Ok(())
-}
-
 #[cfg(test)]
 #[allow(clippy::vec_init_then_push)]
 mod tests {

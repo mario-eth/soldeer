@@ -339,8 +339,8 @@ pub fn get_config_path() -> Result<PathBuf> {
     warning("No soldeer config found")?;
     let config_option: ConfigLocation = select("Select how you want to configure Soldeer")
         .initial_value("foundry")
-        .item("foundry", "Using foundry.toml", "")
-        .item("soldeer", "Using soldeer.toml", "")
+        .item("foundry", "Using foundry.toml", "recommended")
+        .item("soldeer", "Using soldeer.toml", "for non-foundry projects")
         .interact()?
         .try_into()?;
 

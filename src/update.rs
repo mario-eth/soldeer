@@ -79,10 +79,11 @@ pub async fn update_dependency(
             progress.log(format!("{dependency} has a custom URL, version can't be updated"));
             dependency.clone()
         }
-        Dependency::Git(_) => {
-            progress.log(format!("{dependency} is a git dependency, version can't be updated"));
+        Dependency::Git(dep) if dep.rev.is_some() => {
+            progress.log(format!("{dependency} is a git dependency, rev can't be updated"));
             dependency.clone()
         }
+        Dependency::Git(_) => dependency.clone(),
         Dependency::Http(_) => {
             let new_version = match get_all_versions_descending(dependency.name()).await? {
                 Versions::Semver(all_versions) => {
@@ -136,11 +137,18 @@ pub async fn update_dependency(
             let path = dependency.install_path();
             run_git_command(&["reset", "--hard", "HEAD"], Some(&path)).await?;
             run_git_command(&["clean", "-fd"], Some(&path)).await?;
+            let old_commit = run_git_command(&["rev-parse", "--verify", "HEAD"], Some(&path))
+                .await?
+                .trim()
+                .to_string();
             run_git_command(&["pull"], Some(&path)).await?;
             let commit = run_git_command(&["rev-parse", "--verify", "HEAD"], Some(&path))
                 .await?
                 .trim()
                 .to_string();
+            if commit != old_commit {
+                progress.log(format!("Updating {dependency} from {old_commit:.7} to {commit:.7}"));
+            }
             let lock = LockEntry::builder()
                 .name(&dep.name)
                 .version(&dep.version)

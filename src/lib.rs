@@ -46,7 +46,7 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
             intro("🦌 Soldeer Init 🦌")?;
             step("Initialize Foundry project to use Soldeer")?;
             commands::init::init_command(init).await.map_err(|e| {
-                let _ = outro_cancel("An error occurred during initialization");
+                outro_cancel("An error occurred during initialization").ok();
                 e
             })?;
             outro("Done initializing!")?;
@@ -54,7 +54,7 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
         Subcommands::Install(cmd) => {
             intro("🦌 Soldeer Install 🦌")?;
             commands::install::install_command(cmd).await.map_err(|e| {
-                let _ = outro_cancel("An error occurred during installation");
+                outro_cancel("An error occurred during installation").ok();
                 e
             })?;
             outro("Done installing!")?;

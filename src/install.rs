@@ -132,18 +132,19 @@ pub async fn install_dependency(
                     Dependency::Http(dep) => {
                         // we know the folder exists because otherwise we would have gotten
                         // `Missing`
-                        let _ = warning(format!(
+                        warning(format!(
                             "Dependency {dependency} failed integrity check, reinstalling"
-                        ));
+                        ))
+                        .ok();
                         let path = dep.install_path();
                         fs::remove_dir_all(&path)
                             .await
                             .map_err(|e| InstallError::IOError { path, source: e })?;
                     }
                     Dependency::Git(dep) => {
-                        let _ = warning(format!(
+                        warning(format!(
                             "Dependency {dependency} failed integrity check, resetting to commit {}", lock.checksum
-                        ));
+                        )).ok();
                         reset_git_dependency(dep, lock).await?;
                         // dependency should now be at the correct commit, we can exit
                         progress.increment_all();

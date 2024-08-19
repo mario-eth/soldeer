@@ -75,8 +75,14 @@ pub async fn update_dependency(
     // we can't update dependencies that are http with a custom URL or git dependencies with a
     // commit hash
     let new_dependency = match dependency {
-        Dependency::Http(dep) if dep.url.is_some() => dependency.clone(),
-        Dependency::Git(_) => dependency.clone(),
+        Dependency::Http(dep) if dep.url.is_some() => {
+            progress.log(format!("{dependency} has a custom URL, version can't be updated"));
+            dependency.clone()
+        }
+        Dependency::Git(_) => {
+            progress.log(format!("{dependency} is a git dependency, version can't be updated"));
+            dependency.clone()
+        }
         Dependency::Http(_) => {
             let new_version = match get_all_versions_descending(dependency.name()).await? {
                 Versions::Semver(all_versions) => {
@@ -106,6 +112,13 @@ pub async fn update_dependency(
                     all_versions.into_iter().next().expect("there should be at least 1 version")
                 }
             };
+            if new_version != dependency.version() {
+                progress.log(format!(
+                    "Updating {} from {} to {new_version}",
+                    dependency.name(),
+                    dependency.version(),
+                ));
+            }
             Dependency::Http(HttpDependency {
                 name: dependency.name().to_string(),
                 version: new_version,
@@ -134,6 +147,7 @@ pub async fn update_dependency(
                 .source(&dep.git)
                 .checksum(commit)
                 .build();
+            progress.install_progress.increment_all();
             Ok((new_dependency, lock))
         }
         Dependency::Git(ref dep) if dep.rev.is_some() => {

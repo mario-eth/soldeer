@@ -168,7 +168,7 @@ pub async fn update_dependency(
             Ok((new_dependency, new_lock))
         }
         _ => {
-            // for http dependencies, we simply re-install all of them
+            // for http dependencies, we simply re-install them
             let lock = install_dependency(
                 &new_dependency,
                 None,

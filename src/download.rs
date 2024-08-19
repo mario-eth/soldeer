@@ -1,8 +1,7 @@
 use crate::{
-    config::{Dependency, GitDependency, HttpDependency},
+    config::Dependency,
     errors::DownloadError,
-    registry::get_dependency_url_remote,
-    utils::{hash_folder, read_file, run_git_command, sanitize_filename, zipfile_hash},
+    utils::{run_git_command, sanitize_filename},
     DEPENDENCY_DIR,
 };
 use reqwest::IntoUrl;
@@ -10,11 +9,9 @@ use std::{
     fs,
     io::Cursor,
     path::{Path, PathBuf},
-    process::{Command, Stdio},
     str,
 };
-use tokio::{fs as tokio_fs, io::AsyncWriteExt, task::JoinSet};
-use yansi::Paint as _;
+use tokio::{fs as tokio_fs, io::AsyncWriteExt};
 
 pub type Result<T> = std::result::Result<T, DownloadError>;
 
@@ -92,245 +89,6 @@ pub async fn clone_repo(
 
 // OLD CODE ---------------------------------------------------------
 
-/// Download the dependencies from the list in parallel
-///
-/// Note: the dependencies list should be sorted by name and version
-pub async fn download_dependencies(
-    dependencies: &[Dependency],
-    clean: bool,
-) -> Result<Vec<DownloadResult>> {
-    // clean dependencies folder if flag is true
-    if clean {
-        // creates the directory
-        clean_dependency_directory();
-    }
-
-    // create the dependency directory if it doesn't exist
-    let dir = DEPENDENCY_DIR.clone();
-    if tokio_fs::metadata(&dir).await.is_err() {
-        tokio_fs::create_dir(&dir)
-            .await
-            .map_err(|e| DownloadError::IOError { path: dir, source: e })?;
-    }
-
-    let mut set = JoinSet::new();
-    for dep in dependencies {
-        set.spawn({
-            let d = dep.clone();
-            async move { download_dependency(&d, true).await }
-        });
-    }
-
-    let mut results = Vec::new();
-    while let Some(res) = set.join_next().await {
-        results.push(res??);
-    }
-    // sort to make the order consistent with the input dependencies list (which should be sorted)
-    results.sort_unstable_by(|a, b| a.name.cmp(&b.name).then_with(|| a.version.cmp(&b.version)));
-
-    Ok(results)
-}
-
-// un-zip-ing dependencies to dependencies folder
-pub fn unzip_dependencies(dependencies: &[Dependency]) -> Result<Vec<Option<IntegrityChecksum>>> {
-    let res: Vec<_> = dependencies
-        .iter()
-        .map(|d| match d {
-            Dependency::Http(dep) => unzip_dependency(dep).map(Some),
-            _ => Ok(None),
-        })
-        .collect::<Result<Vec<_>>>()?;
-    Ok(res)
-}
-
-#[derive(Debug, Clone)]
-pub struct DownloadResult {
-    pub name: String,
-    pub version: String,
-    pub hash: String,
-    pub url: String,
-}
-
-pub async fn download_dependency(
-    dependency: &Dependency,
-    skip_folder_check: bool,
-) -> Result<DownloadResult> {
-    let dependency_directory: PathBuf = DEPENDENCY_DIR.clone();
-    // if we called this method from `download_dependencies` we don't need to check if the folder
-    // exists, as it was created by the caller
-    if !skip_folder_check && tokio_fs::metadata(&dependency_directory).await.is_err() {
-        if let Err(e) = tokio_fs::create_dir(&dependency_directory).await {
-            // temp fix for race condition until we use tokio fs everywhere
-            if tokio_fs::metadata(&dependency_directory).await.is_err() {
-                return Err(DownloadError::IOError { path: dependency_directory, source: e });
-            }
-        }
-    }
-
-    let res = match dependency {
-        Dependency::Http(dep) => {
-            let url = match &dep.url {
-                Some(url) => url.clone(),
-                None => get_dependency_url_remote(dependency).await?,
-            };
-            download_via_http(&url, dep, &dependency_directory).await?;
-            DownloadResult {
-                name: dep.name.clone(),
-                version: dep.version.clone(),
-                hash: zipfile_hash(dep)?.to_string(),
-                url,
-            }
-        }
-        Dependency::Git(dep) => {
-            let hash = download_via_git(dep, &dependency_directory).await?;
-            DownloadResult {
-                name: dep.name.clone(),
-                version: dep.version.clone(),
-                hash,
-                url: dep.git.clone(),
-            }
-        }
-    };
-
-    println!("{}", format!("Dependency {dependency} downloaded!").green());
-
-    Ok(res)
-}
-
-pub fn unzip_dependency(dependency: &HttpDependency) -> Result<IntegrityChecksum> {
-    let file_name = sanitize_filename(&format!("{}-{}", dependency.name, dependency.version));
-    let target_name = format!("{}/", file_name);
-    let zip_path = DEPENDENCY_DIR.join(format!("{file_name}.zip"));
-    let target_dir = DEPENDENCY_DIR.join(target_name);
-    let zip_contents = read_file(&zip_path).unwrap();
-
-    zip_extract::extract(Cursor::new(zip_contents), &target_dir, true)?;
-    println!("{}", format!("The dependency {dependency} was unzipped!").green());
-
-    hash_folder(&target_dir, Some(zip_path))
-        .map_err(|e| DownloadError::IOError { path: target_dir, source: e })
-}
-
-pub fn clean_dependency_directory() {
-    if fs::metadata(DEPENDENCY_DIR.clone()).is_ok() {
-        fs::remove_dir_all(DEPENDENCY_DIR.clone()).unwrap();
-        fs::create_dir(DEPENDENCY_DIR.clone()).unwrap();
-    }
-}
-
-async fn download_via_git(
-    dependency: &GitDependency,
-    dependency_directory: &Path,
-) -> Result<String> {
-    println!("{}", format!("Started GIT download of {dependency}").green());
-    let target_dir = sanitize_filename(&format!("{}-{}", dependency.name, dependency.version));
-    let path = dependency_directory.join(target_dir);
-    let path_str = path.to_string_lossy().to_string();
-    if path.exists() {
-        let _ = fs::remove_dir_all(&path);
-    }
-
-    let mut git_clone = Command::new("git");
-
-    let result = git_clone
-        .args(["clone", &dependency.git, &path_str])
-        .env("GIT_TERMINAL_PROMPT", "0")
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-
-    let status = result.status().expect("Getting clone status failed");
-    let out = result.output().expect("Getting clone output failed");
-
-    if !status.success() {
-        let _ = fs::remove_dir_all(&path);
-        return Err(DownloadError::GitError(
-            str::from_utf8(&out.stderr).unwrap().trim().to_string(),
-        ));
-    }
-
-    let rev = match dependency.rev.clone() {
-        Some(rev) => {
-            let mut git_get_commit = Command::new("git");
-            let result = git_get_commit
-                .args(["checkout".to_string(), rev.to_string()])
-                .env("GIT_TERMINAL_PROMPT", "0")
-                .current_dir(&path)
-                .stdout(Stdio::piped())
-                .stderr(Stdio::piped());
-
-            let out = result.output().expect("Checkout to revision status failed");
-            let status = result.status().expect("Checkout to revision getting output failed");
-
-            if !status.success() {
-                let _ = fs::remove_dir_all(&path);
-                return Err(DownloadError::GitError(
-                    str::from_utf8(&out.stderr).unwrap().trim().to_string(),
-                ));
-            }
-            rev
-        }
-        None => {
-            let mut git_checkout = Command::new("git");
-
-            let result = git_checkout
-                .args(["rev-parse".to_string(), "--verify".to_string(), "HEAD".to_string()])
-                .env("GIT_TERMINAL_PROMPT", "0")
-                .current_dir(&path)
-                .stdout(Stdio::piped())
-                .stderr(Stdio::piped());
-
-            let out = result.output().expect("Getting revision status failed");
-            let status = result.status().expect("Getting revision output failed");
-            if !status.success() {
-                let _ = fs::remove_dir_all(&path);
-                return Err(DownloadError::GitError(
-                    str::from_utf8(&out.stderr).unwrap().trim().to_string(),
-                ));
-            }
-
-            let hash = str::from_utf8(&out.stdout).unwrap().trim().to_string();
-            // check the commit hash
-            if !hash.is_empty() && hash.len() != 40 {
-                let _ = fs::remove_dir_all(&path);
-                return Err(DownloadError::GitError(format!("invalid revision hash: {hash}")));
-            }
-            hash
-        }
-    };
-    println!(
-        "{}",
-        format!("Successfully downloaded {} the dependency via git", dependency,).green()
-    );
-    Ok(rev)
-}
-
-async fn download_via_http(
-    url: impl IntoUrl,
-    dependency: &HttpDependency,
-    dependency_directory: &Path,
-) -> Result<()> {
-    println!("{}", format!("Started HTTP download of {dependency}").green());
-    let zip_to_download =
-        sanitize_filename(&format!("{}-{}.zip", dependency.name, dependency.version));
-
-    let resp = reqwest::get(url).await?;
-    let mut resp = resp.error_for_status()?;
-
-    let file_path = dependency_directory.join(&zip_to_download);
-    let mut file = tokio_fs::File::create(&file_path)
-        .await
-        .map_err(|e| DownloadError::IOError { path: file_path.clone(), source: e })?;
-
-    while let Some(mut chunk) = resp.chunk().await? {
-        file.write_all_buf(&mut chunk)
-            .await
-            .map_err(|e| DownloadError::IOError { path: file_path.clone(), source: e })?;
-    }
-    // make sure we finished writing the file
-    file.flush().await.map_err(|e| DownloadError::IOError { path: file_path, source: e })?;
-    Ok(())
-}
-
 pub fn delete_dependency_files(dependency: &Dependency) -> Result<()> {
     let path = DEPENDENCY_DIR.join(sanitize_filename(&format!(
         "{}-{}",
@@ -345,14 +103,11 @@ pub fn delete_dependency_files(dependency: &Dependency) -> Result<()> {
 #[allow(clippy::vec_init_then_push)]
 mod tests {
     use super::*;
-    use crate::{
-        janitor::healthcheck_dependency,
-        utils::{get_url_type, UrlType},
-    };
+    use crate::utils::{get_url_type, UrlType};
     use serial_test::serial;
     use std::{fs::metadata, path::Path};
 
-    #[tokio::test]
+    /* #[tokio::test]
     #[serial]
     async fn download_dependencies_http_one_success() {
         let mut dependencies: Vec<Dependency> = Vec::new();
@@ -718,7 +473,7 @@ mod tests {
             .join("ERC20.sol")
             .exists());
         clean_dependency_directory();
-    }
+    } */
 
     #[test]
     fn get_download_tunnel_http() {
@@ -742,7 +497,7 @@ mod tests {
         );
     }
 
-    #[tokio::test]
+    /*     #[tokio::test]
     #[serial]
     async fn remove_one_dependency() {
         let mut dependencies: Vec<Dependency> = Vec::new();
@@ -765,5 +520,5 @@ mod tests {
         assert!(!DEPENDENCY_DIR
             .join(format!("{}~{}", dependency.name(), dependency.version()))
             .exists());
-    }
+    } */
 }

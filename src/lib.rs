@@ -1,10 +1,9 @@
 #![cfg_attr(docsrs, feature(doc_cfg, doc_auto_cfg))]
 use crate::{
     auth::login,
-    config::{delete_config, get_config_path, read_config_deps, read_soldeer_config, Dependency},
-    download::{delete_dependency_files, download_dependencies, unzip_dependencies},
-    janitor::{cleanup_after, healthcheck_dependencies},
-    lock::{remove_lock, write_lock, LockWriteMode},
+    config::{delete_config, get_config_path, read_soldeer_config},
+    download::delete_dependency_files,
+    lock::remove_lock,
     push::{push_version, validate_name},
     remappings::{remappings_foundry, remappings_txt, RemappingsAction, RemappingsLocation},
     utils::{check_dotfiles_recursive, get_current_working_dir, prompt_user_for_confirmation},
@@ -21,7 +20,6 @@ mod config;
 mod download;
 pub mod errors;
 mod install;
-mod janitor;
 mod lock;
 mod push;
 mod registry;
@@ -60,8 +58,13 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
             })?;
             outro("Done installing!")?;
         }
-        Subcommands::Update(update_args) => {
-            return update(update_args.regenerate_remappings, update_args.recursive_deps).await;
+        Subcommands::Update(cmd) => {
+            intro("🦌 Soldeer Update 🦌")?;
+            commands::update::update_command(cmd).await.map_err(|e| {
+                outro_cancel("An error occurred during the update").ok();
+                e
+            })?;
+            outro("Done updating!")?;
         }
         Subcommands::Login(_) => {
             println!("{}", "🦌 Running Soldeer login 🦌".green());
@@ -155,62 +158,6 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
             println!("{}", format!("Current Soldeer {}", VERSION).cyan());
         }
     }
-    Ok(())
-}
-
-async fn update(regenerate_remappings: bool, recursive_deps: bool) -> Result<(), SoldeerError> {
-    println!("{}", "🦌 Running Soldeer update 🦌".green());
-
-    let config_path = get_config_path()?;
-    let mut config = read_soldeer_config(Some(config_path.clone()))?;
-    if regenerate_remappings {
-        config.remappings_regenerate = regenerate_remappings;
-    }
-
-    if recursive_deps {
-        config.recursive_deps = recursive_deps;
-    }
-
-    let mut dependencies: Vec<Dependency> = read_config_deps(None::<PathBuf>)?;
-
-    let results = download_dependencies(&dependencies, true)
-        .await
-        .map_err(|e| SoldeerError::DownloadError { dep: String::new(), source: e })?;
-
-    dependencies.iter_mut().zip(results.into_iter()).for_each(|(dependency, result)| {
-        match dependency {
-            Dependency::Http(ref mut dep) => {
-                dep.checksum = Some(result.hash);
-                dep.url = Some(result.url);
-            }
-            Dependency::Git(ref mut dep) => dep.rev = Some(result.hash),
-        }
-    });
-
-    let integrities = unzip_dependencies(&dependencies)
-        .map_err(|e| SoldeerError::DownloadError { dep: String::new(), source: e })?;
-
-    healthcheck_dependencies(&dependencies)?;
-
-    cleanup_after(&dependencies)?;
-
-    write_lock(&dependencies, &integrities, LockWriteMode::Replace)?;
-
-    if config.remappings_generate {
-        if config_path.to_string_lossy().contains("foundry.toml") {
-            match config.remappings_location {
-                RemappingsLocation::Txt => {
-                    remappings_txt(&RemappingsAction::None, &config_path, &config).await?
-                }
-                RemappingsLocation::Config => {
-                    remappings_foundry(&RemappingsAction::None, &config_path, &config).await?
-                }
-            }
-        } else {
-            remappings_txt(&RemappingsAction::None, &config_path, &config).await?;
-        }
-    }
-
     Ok(())
 }
 

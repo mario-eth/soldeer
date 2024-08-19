@@ -171,14 +171,6 @@ pub fn sanitize_filename(dependency_name: &str) -> String {
     sanitize_filename::sanitize_with_options(dependency_name, options)
 }
 
-pub fn zipfile_hash(dependency: &HttpDependency) -> Result<IntegrityChecksum, DownloadError> {
-    use crate::DEPENDENCY_DIR;
-
-    let file_name = sanitize_filename(&format!("{}-{}.zip", dependency.name, dependency.version));
-    let path = DEPENDENCY_DIR.join(&file_name);
-    hash_file(&path).map_err(|e| DownloadError::IOError { path, source: e })
-}
-
 /// Hash the contents of a Reader with SHA256
 pub fn hash_content<R: Read>(content: &mut R) -> [u8; 32] {
     let mut hasher = <Sha256 as Digest>::new();

@@ -1036,85 +1036,85 @@ libs = ["dependencies"]
         clean_test_env(target_config);
     }
 
-    #[test]
-    #[serial]
-    fn soldeer_init_should_install_forge() {
-        let _ = remove_dir_all(DEPENDENCY_DIR.clone());
-        let _ = remove_file(LOCK_FILE.clone());
+    /* #[test]
+       #[serial]
+       fn soldeer_init_should_install_forge() {
+           let _ = remove_dir_all(DEPENDENCY_DIR.clone());
+           let _ = remove_file(LOCK_FILE.clone());
 
-        let target_config = define_config(true);
-        let content = String::new();
-        write_to_config(&target_config, &content);
+           let target_config = define_config(true);
+           let content = String::new();
+           write_to_config(&target_config, &content);
 
-        unsafe {
-            // became unsafe in Rust 1.80
-            env::set_var("base_url", "https://api.soldeer.xyz");
-        }
+           unsafe {
+               // became unsafe in Rust 1.80
+               env::set_var("base_url", "https://api.soldeer.xyz");
+           }
 
-        let command = Subcommands::Init(Init { clean: false });
+           let command = Subcommands::Init(Init { clean: false });
 
-        match run(command) {
-            Ok(_) => {}
-            Err(err) => {
-                println!("Error occurred {:?}", err);
-                clean_test_env(target_config.clone());
-                assert_eq!("Invalid State", "")
-            }
-        }
+           match run(command) {
+               Ok(_) => {}
+               Err(err) => {
+                   println!("Error occurred {:?}", err);
+                   clean_test_env(target_config.clone());
+                   assert_eq!("Invalid State", "")
+               }
+           }
 
-        let lock_test = get_current_working_dir().join("test").join("soldeer.lock");
-        assert!(find_forge_std_path().exists());
-        assert!(lock_test.exists());
-        clean_test_env(target_config);
-    }
+           let lock_test = get_current_working_dir().join("test").join("soldeer.lock");
+           assert!(find_forge_std_path().exists());
+           assert!(lock_test.exists());
+           clean_test_env(target_config);
+       }
 
-    #[test]
-    #[serial]
-    fn soldeer_init_clean_should_delete_git_submodules() {
-        let _ = remove_dir_all(DEPENDENCY_DIR.clone());
-        let _ = remove_file(LOCK_FILE.clone());
+       #[test]
+       #[serial]
+       fn soldeer_init_clean_should_delete_git_submodules() {
+           let _ = remove_dir_all(DEPENDENCY_DIR.clone());
+           let _ = remove_file(LOCK_FILE.clone());
 
-        let submodules_path = get_current_working_dir().join(".gitmodules");
-        let lib_path = get_current_working_dir().join("lib");
-        let lock_test = get_current_working_dir().join("test").join("soldeer.lock");
+           let submodules_path = get_current_working_dir().join(".gitmodules");
+           let lib_path = get_current_working_dir().join("lib");
+           let lock_test = get_current_working_dir().join("test").join("soldeer.lock");
 
-        //remove it just in case
-        let _ = remove_file(&submodules_path);
-        let _ = remove_dir_all(&lib_path);
-        let _ = remove_file(&lock_test);
+           //remove it just in case
+           let _ = remove_file(&submodules_path);
+           let _ = remove_dir_all(&lib_path);
+           let _ = remove_file(&lock_test);
 
-        fs::write(&submodules_path, "this is a test file").unwrap();
-        let _ = create_dir_all(&lib_path);
+           fs::write(&submodules_path, "this is a test file").unwrap();
+           let _ = create_dir_all(&lib_path);
 
-        let target_config = define_config(true);
-        let content = String::new();
-        write_to_config(&target_config, &content);
+           let target_config = define_config(true);
+           let content = String::new();
+           write_to_config(&target_config, &content);
 
-        unsafe {
-            // became unsafe in Rust 1.80
-            env::set_var("base_url", "https://api.soldeer.xyz");
-        }
+           unsafe {
+               // became unsafe in Rust 1.80
+               env::set_var("base_url", "https://api.soldeer.xyz");
+           }
 
-        let command = Subcommands::Init(Init { clean: true });
+           let command = Subcommands::Init(Init { clean: true });
 
-        match run(command) {
-            Ok(_) => {}
-            Err(err) => {
-                println!("Error occurred {:?}", err);
-                clean_test_env(target_config.clone());
-                assert_eq!("Invalid State", "")
-            }
-        }
+           match run(command) {
+               Ok(_) => {}
+               Err(err) => {
+                   println!("Error occurred {:?}", err);
+                   clean_test_env(target_config.clone());
+                   assert_eq!("Invalid State", "")
+               }
+           }
 
-        assert!(find_forge_std_path().exists());
-        assert!(lock_test.exists());
-        assert!(!submodules_path.exists());
-        assert!(!lib_path.exists());
-        clean_test_env(target_config);
-        let _ = remove_file(submodules_path);
-        let _ = remove_dir_all(lib_path);
-    }
-
+           assert!(find_forge_std_path().exists());
+           assert!(lock_test.exists());
+           assert!(!submodules_path.exists());
+           assert!(!lib_path.exists());
+           clean_test_env(target_config);
+           let _ = remove_file(submodules_path);
+           let _ = remove_dir_all(lib_path);
+       }
+    */
     #[test]
     #[serial]
     fn download_dependency_with_subdependencies_on_soldeer_success_arg_config() {

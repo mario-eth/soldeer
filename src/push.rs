@@ -13,7 +13,6 @@ use reqwest::{
     Client, StatusCode,
 };
 use std::{
-    ffi::OsStr,
     fs::{remove_file, File},
     io::{self, Read, Write},
     path::{Path, PathBuf},

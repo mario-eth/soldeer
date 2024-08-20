@@ -4,7 +4,6 @@ pub use crate::{commands::Subcommands, errors::SoldeerError};
 use cliclack::{intro, log::step, outro, outro_cancel};
 use once_cell::sync::Lazy;
 use std::{env, path::PathBuf};
-use yansi::Paint as _;
 
 mod auth;
 pub mod commands;
@@ -84,7 +83,7 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
         }
         Subcommands::Version(_) => {
             const VERSION: &str = env!("CARGO_PKG_VERSION");
-            println!("{}", format!("Current Soldeer {}", VERSION).cyan());
+            println!("soldeer {VERSION}");
         }
     }
     Ok(())

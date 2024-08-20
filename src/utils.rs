@@ -25,22 +25,12 @@ static GIT_SSH_REGEX: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"^(?:git@github\.com|git@gitlab)").expect("git ssh regex should compile")
 });
 
-// get the current working directory
+/// Get the current working directory
 pub fn get_current_working_dir() -> PathBuf {
-    env::current_dir().unwrap()
+    env::current_dir().expect("could not get current working directory")
 }
 
-/// Read contents of file at path into a string, or panic
-///
-/// # Panics
-/// If the file cannot be read, due to it being non-existent, not a valid UTF-8 string, etc.
-pub fn read_file_to_string(path: impl AsRef<Path>) -> String {
-    fs::read_to_string(path.as_ref()).unwrap_or_else(|_| {
-        panic!("Could not read file `{:?}`", path.as_ref());
-    })
-}
-
-// read a file contents into a vector of bytes so we can unzip it
+/// Read a file contents into a vector of bytes
 pub fn read_file(path: impl AsRef<Path>) -> Result<Vec<u8>, std::io::Error> {
     let f = fs::File::open(path)?;
     let mut reader = std_io::BufReader::new(f);
@@ -92,30 +82,9 @@ pub fn get_base_url() -> String {
     }
 }
 
-// Function to check for the presence of sensitive files or directories
-pub fn check_dotfiles(path: impl AsRef<Path>) -> bool {
-    if !path.as_ref().is_dir() {
-        return false;
-    }
-    fs::read_dir(path)
-        .unwrap()
-        .map_while(Result::ok)
-        .any(|entry| entry.file_name().to_string_lossy().starts_with('.'))
-}
-
-// Function to recursively check for sensitive files or directories in a given path
-pub fn check_dotfiles_recursive(path: impl AsRef<Path>) -> bool {
-    if check_dotfiles(&path) {
-        return true;
-    }
-
-    if path.as_ref().is_dir() {
-        return fs::read_dir(path)
-            .unwrap()
-            .map_while(Result::ok)
-            .any(|entry| check_dotfiles(entry.path()));
-    }
-    false
+/// Check if any file starts with a period
+pub fn check_dotfiles(files: &[PathBuf]) -> bool {
+    files.iter().any(|file| file.file_name().unwrap_or_default().to_string_lossy().starts_with('.'))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -129,7 +98,7 @@ pub fn get_url_type(dependency_url: &str) -> Result<UrlType, DownloadError> {
         return Ok(UrlType::Git);
     } else if let Ok(url) = reqwest::Url::parse(dependency_url) {
         return Ok(match url.domain() {
-            Some("github.com") | Some("gitlab.com") => {
+            Some("github.com" | "gitlab.com") => {
                 if url.path().ends_with(".git") {
                     UrlType::Git
                 } else {
@@ -171,13 +140,13 @@ pub fn hash_content<R: Read>(content: &mut R) -> [u8; 32] {
 /// file right after unzipping so this is not necessary?
 pub fn hash_folder(
     folder_path: impl AsRef<Path>,
-    ignore_path: Option<PathBuf>,
-) -> Result<IntegrityChecksum, std::io::Error> {
+    ignore_path: Option<&PathBuf>,
+) -> IntegrityChecksum {
     // perf: it's easier to check a boolean than to compare paths, so when we find the zip we skip
     // the check afterwards
     let seen_ignore_path = Arc::new(AtomicBool::new(ignore_path.is_none()));
     // a list of hashes, one for each DirEntry
-    let hashes = Arc::new(Mutex::new(Vec::with_capacity(100)));
+    let all_hashes = Arc::new(Mutex::new(Vec::with_capacity(100)));
     // we use a parallel walker to speed things up
     let walker = WalkBuilder::new(folder_path)
         .filter_entry(|entry| {
@@ -186,9 +155,9 @@ pub fn hash_folder(
         .hidden(false)
         .build_parallel();
     walker.run(|| {
-        let ignore_path = ignore_path.clone();
+        let ignore_path = ignore_path.cloned();
         let seen_ignore_path = Arc::clone(&seen_ignore_path);
-        let hashes = Arc::clone(&hashes);
+        let all_hashes = Arc::clone(&all_hashes);
         // function executed for each DirEntry
         Box::new(move |result| {
             let Ok(entry) = result else {
@@ -219,7 +188,7 @@ pub fn hash_folder(
             }
             // record the hash for that file/folder in the list
             let hash: [u8; 32] = hasher.finalize().into();
-            let mut hashes_lock = hashes.lock().expect("mutex should not be poisoned");
+            let mut hashes_lock = all_hashes.lock().expect("mutex should not be poisoned");
             hashes_lock.push(hash);
             WalkState::Continue
         })
@@ -227,14 +196,14 @@ pub fn hash_folder(
 
     // sort hashes
     let mut hasher = <Sha256 as Digest>::new();
-    let mut hashes = hashes.lock().expect("mutex should not be poisoned");
-    hashes.sort_unstable();
+    let mut all_hashes = all_hashes.lock().expect("mutex should not be poisoned");
+    all_hashes.sort_unstable();
     // hash the hashes (yo dawg...)
-    for hash in hashes.iter() {
+    for hash in all_hashes.iter() {
         hasher.update(hash);
     }
     let hash: [u8; 32] = hasher.finalize().into();
-    Ok(const_hex::encode(hash).into())
+    const_hex::encode(hash).into()
 }
 
 /// Compute the SHA256 hash of the contents of a file
@@ -351,7 +320,7 @@ mod tests {
     #[test]
     fn test_hash_folder() {
         let folder = create_test_folder("test", "test_hash_folder");
-        let hash = hash_folder(&folder, None).unwrap();
+        let hash = hash_folder(&folder, None);
         fs::remove_dir_all(&folder).unwrap();
         assert_eq!(hash, "b0bbe5dbf490a7120cce269564ed7a1f1f016ff50ccbb38eb288849f0ce7ab49".into());
     }
@@ -360,8 +329,8 @@ mod tests {
     fn test_hash_folder_path_sensitive() {
         let folder1 = create_test_folder("test", "test_hash_folder_path_sensitive");
         let folder2 = create_test_folder("test", "test_hash_folder_path_sensitive2");
-        let hash1 = hash_folder(&folder1, None).unwrap();
-        let hash2 = hash_folder(&folder2, None).unwrap();
+        let hash1 = hash_folder(&folder1, None);
+        let hash2 = hash_folder(&folder2, None);
         fs::remove_dir_all(&folder1).unwrap();
         fs::remove_dir_all(&folder2).unwrap();
         assert_ne!(hash1, hash2);
@@ -370,8 +339,8 @@ mod tests {
     #[test]
     fn test_hash_folder_ignore_path() {
         let folder = create_test_folder("test", "test_hash_folder_ignore_path");
-        let hash1 = hash_folder(&folder, None).unwrap();
-        let hash2 = hash_folder(&folder, Some(folder.join("a.txt"))).unwrap();
+        let hash1 = hash_folder(&folder, None);
+        let hash2 = hash_folder(&folder, Some(&folder.join("a.txt")));
         fs::remove_dir_all(&folder).unwrap();
         assert_ne!(hash1, hash2);
     }

@@ -1,7 +1,7 @@
 use crate::{
     errors::PublishError,
-    push::{prompt_user_for_confirmation, push_version, validate_name},
-    utils::{check_dotfiles_recursive, get_current_working_dir},
+    push::{filter_files_to_copy, prompt_user_for_confirmation, push_version, validate_name},
+    utils::{check_dotfiles, get_current_working_dir},
 };
 
 use super::{validate_dependency, Result};
@@ -47,10 +47,12 @@ pub struct Push {
 pub(crate) async fn push_command(cmd: Push) -> Result<()> {
     let path = cmd.path.unwrap_or(get_current_working_dir());
 
+    let files_to_copy: Vec<PathBuf> = filter_files_to_copy(&path);
+
     // Check for sensitive files or directories
     if !cmd.dry_run &&
         !cmd.skip_warnings &&
-        check_dotfiles_recursive(&path) &&
+        check_dotfiles(&files_to_copy) &&
         !prompt_user_for_confirmation()?
     {
         return Err(PublishError::UserAborted.into());
@@ -69,6 +71,6 @@ pub(crate) async fn push_command(cmd: Push) -> Result<()> {
 
     validate_name(dependency_name)?;
 
-    push_version(dependency_name, dependency_version, path, cmd.dry_run).await?;
+    push_version(dependency_name, dependency_version, path, &files_to_copy, cmd.dry_run).await?;
     Ok(())
 }

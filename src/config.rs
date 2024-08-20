@@ -1,10 +1,7 @@
 use crate::{
     errors::ConfigError,
     remappings::RemappingsLocation,
-    utils::{
-        get_current_working_dir, get_url_type, read_file_to_string, run_git_command,
-        sanitize_filename, UrlType,
-    },
+    utils::{get_current_working_dir, get_url_type, run_git_command, sanitize_filename, UrlType},
     DEPENDENCY_DIR, FOUNDRY_CONFIG_FILE, SOLDEER_CONFIG_FILE,
 };
 use cliclack::{log::warning, select};
@@ -51,7 +48,7 @@ impl Default for SoldeerConfig {
             remappings_regenerate: false,
             remappings_version: true,
             remappings_prefix: String::new(),
-            remappings_location: Default::default(),
+            remappings_location: RemappingsLocation::default(),
             recursive_deps: false,
         }
     }
@@ -121,7 +118,7 @@ impl Dependency {
                         name: dependency_name.to_string(),
                         version: dependency_version.to_string(),
                         git: url,
-                        rev: rev.map(|r| r.into()),
+                        rev: rev.map(Into::into),
                     }),
                     UrlType::Http => Dependency::Http(HttpDependency {
                         name: dependency_name.to_string(),
@@ -282,8 +279,8 @@ impl Dependency {
 impl core::fmt::Display for Dependency {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
         match self {
-            Dependency::Http(dep) => write!(f, "{}", dep),
-            Dependency::Git(dep) => write!(f, "{}", dep),
+            Dependency::Http(dep) => write!(f, "{dep}"),
+            Dependency::Git(dep) => write!(f, "{dep}"),
         }
     }
 }
@@ -320,7 +317,7 @@ impl TryFrom<&str> for ConfigLocation {
 
 pub fn get_config_path() -> Result<PathBuf> {
     let foundry_path: PathBuf = if cfg!(test) {
-        env::var("config_file").map(|s| s.into()).unwrap_or(FOUNDRY_CONFIG_FILE.clone())
+        env::var("config_file").map(Into::into).unwrap_or(FOUNDRY_CONFIG_FILE.clone())
     } else {
         FOUNDRY_CONFIG_FILE.to_path_buf()
     };
@@ -357,7 +354,7 @@ pub fn read_config_deps(path: Option<impl AsRef<Path>>) -> Result<Vec<Dependency
         Some(p) => p.as_ref().to_path_buf(),
         None => get_config_path()?,
     };
-    let contents = read_file_to_string(&path);
+    let contents = fs::read_to_string(&path)?;
     let doc: DocumentMut = contents.parse::<DocumentMut>()?;
     let Some(Some(data)) = doc.get("dependencies").map(|v| v.as_table()) else {
         return Err(ConfigError::MissingDependencies);
@@ -374,24 +371,25 @@ pub fn read_config_deps(path: Option<impl AsRef<Path>>) -> Result<Vec<Dependency
 }
 
 pub fn read_soldeer_config(path: Option<impl AsRef<Path>>) -> Result<SoldeerConfig> {
-    let path: PathBuf = match path {
-        Some(p) => p.as_ref().to_path_buf(),
-        None => get_config_path()?,
-    };
-    let contents = read_file_to_string(&path);
-
     #[derive(Deserialize)]
     struct SoldeerConfigParsed {
         #[serde(default)]
         soldeer: SoldeerConfig,
     }
+
+    let path: PathBuf = match path {
+        Some(p) => p.as_ref().to_path_buf(),
+        None => get_config_path()?,
+    };
+    let contents = fs::read_to_string(&path)?;
+
     let config: SoldeerConfigParsed = toml_edit::de::from_str(&contents)?;
 
     Ok(config.soldeer)
 }
 
 pub fn add_to_config(dependency: &Dependency, config_path: impl AsRef<Path>) -> Result<()> {
-    let contents = read_file_to_string(&config_path);
+    let contents = fs::read_to_string(&config_path)?;
     let mut doc: DocumentMut = contents.parse::<DocumentMut>()?;
 
     // in case we don't have the dependencies section defined in the config file, we add it
@@ -411,7 +409,7 @@ pub fn add_to_config(dependency: &Dependency, config_path: impl AsRef<Path>) -> 
 }
 
 pub fn update_deps(dependencies: &[Dependency], config_path: impl AsRef<Path>) -> Result<()> {
-    let contents = read_file_to_string(&config_path);
+    let contents = fs::read_to_string(&config_path)?;
     let mut doc: DocumentMut = contents.parse::<DocumentMut>()?;
     // in case we don't have the dependencies section defined in the config file, we add it
     if !doc.contains_table("dependencies") {
@@ -427,7 +425,7 @@ pub fn update_deps(dependencies: &[Dependency], config_path: impl AsRef<Path>) -
 }
 
 pub fn delete_config(dependency_name: &str, path: impl AsRef<Path>) -> Result<Dependency> {
-    let contents = read_file_to_string(&path);
+    let contents = fs::read_to_string(&path)?;
     let mut doc: DocumentMut = contents.parse::<DocumentMut>().expect("invalid doc");
 
     let Some(item_removed) = doc["dependencies"].as_table_mut().unwrap().remove(dependency_name)
@@ -829,7 +827,7 @@ forge-std = "1.9.1"
         let result = create_example_config(ConfigLocation::Foundry).unwrap();
 
         assert!(PathBuf::from(&result).file_name().unwrap().to_string_lossy().contains("foundry"));
-        assert_eq!(read_file_to_string(&result), content);
+        assert_eq!(fs::read_to_string(&result).unwrap(), content);
         Ok(())
     }
 
@@ -853,23 +851,23 @@ forge-std = "1.9.1"
         let result = create_example_config(ConfigLocation::Foundry).unwrap();
 
         assert!(PathBuf::from(&result).file_name().unwrap().to_string_lossy().contains("foundry"));
-        assert_eq!(read_file_to_string(&result), content);
+        assert_eq!(fs::read_to_string(&result).unwrap(), content);
         Ok(())
     }
 
     #[test]
     fn create_new_file_if_not_defined_soldeer() -> Result<()> {
-        let content = r#"
+        let content = "
 [remappings]
 enabled = true
 
 [dependencies]
-"#;
+";
 
         let result = create_example_config(ConfigLocation::Soldeer).unwrap();
 
         assert!(PathBuf::from(&result).file_name().unwrap().to_string_lossy().contains("soldeer"));
-        assert_eq!(read_file_to_string(&result), content);
+        assert_eq!(fs::read_to_string(&result).unwrap(), content);
         Ok(())
     }
 
@@ -911,7 +909,7 @@ libs = ["dependencies"]
 dep1 = "1.0.0"
 "#;
 
-        assert_eq!(read_file_to_string(&target_config), content);
+        assert_eq!(fs::read_to_string(&target_config).unwrap(), content);
 
         let _ = remove_file(target_config);
         Ok(())
@@ -957,7 +955,7 @@ libs = ["dependencies"]
 dep1 = { version = "1.0.0", url = "http://custom_url.com/custom.zip" }
 "#;
 
-        assert_eq!(read_file_to_string(&target_config), content);
+        assert_eq!(fs::read_to_string(&target_config).unwrap(), content);
 
         let _ = remove_file(target_config);
         Ok(())
@@ -1005,7 +1003,7 @@ old_dep = "5.1.0-my-version-is-cool"
 dep1 = "1.0.0"
 "#;
 
-        assert_eq!(read_file_to_string(&target_config), content);
+        assert_eq!(fs::read_to_string(&target_config).unwrap(), content);
 
         let _ = remove_file(target_config);
         Ok(())
@@ -1053,7 +1051,7 @@ old_dep = { version = "5.1.0-my-version-is-cool", url = "http://custom_url.com/c
 dep1 = { version = "1.0.0", url = "http://custom_url.com/custom.zip" }
 "#;
 
-        assert_eq!(read_file_to_string(&target_config), content);
+        assert_eq!(fs::read_to_string(&target_config).unwrap(), content);
 
         let _ = remove_file(target_config);
         Ok(())
@@ -1100,7 +1098,7 @@ libs = ["dependencies"]
 old_dep = { version = "1.0.0", url = "http://custom_url.com/custom.zip" }
 "#;
 
-        assert_eq!(read_file_to_string(&target_config), content);
+        assert_eq!(fs::read_to_string(&target_config).unwrap(), content);
 
         let _ = remove_file(target_config);
         Ok(())
@@ -1147,7 +1145,7 @@ libs = ["dependencies"]
 old_dep = "1.0.0"
 "#;
 
-        assert_eq!(read_file_to_string(&target_config), content);
+        assert_eq!(fs::read_to_string(&target_config).unwrap(), content);
 
         let _ = remove_file(target_config);
         Ok(())
@@ -1197,7 +1195,7 @@ dep1 = "1.0.0"
 # we don't have [dependencies] declared
 "#;
 
-        assert_eq!(read_file_to_string(&target_config), content);
+        assert_eq!(fs::read_to_string(&target_config).unwrap(), content);
 
         let _ = remove_file(target_config);
         Ok(())
@@ -1231,7 +1229,7 @@ enabled = true
 dep1 = "1.0.0"
 "#;
 
-        assert_eq!(read_file_to_string(&target_config), content);
+        assert_eq!(fs::read_to_string(&target_config).unwrap(), content);
 
         let _ = remove_file(target_config);
         Ok(())
@@ -1265,7 +1263,7 @@ enabled = true
 dep1 = { version = "1.0.0", url = "http://custom_url.com/custom.zip" }
 "#;
 
-        assert_eq!(read_file_to_string(&target_config), content);
+        assert_eq!(fs::read_to_string(&target_config).unwrap(), content);
 
         let _ = remove_file(target_config);
         Ok(())
@@ -1316,7 +1314,7 @@ dep1 = { version = "1.0.0", git = "git@github.com:foundry-rs/forge-std.git", rev
 # we don't have [dependencies] declared
 "#;
 
-        assert_eq!(read_file_to_string(&target_config), content);
+        assert_eq!(fs::read_to_string(&target_config).unwrap(), content);
 
         let _ = remove_file(target_config);
         Ok(())
@@ -1370,7 +1368,7 @@ gas_reports = ['*']
 dep1 = { version = "1.0.0", git = "git@github.com:foundry-rs/forge-std.git", rev = "07263d193d621c4b2b0ce8b4d54af58f6957d97d" }
 "#;
 
-        assert_eq!(read_file_to_string(&target_config), content);
+        assert_eq!(fs::read_to_string(&target_config).unwrap(), content);
 
         let _ = remove_file(target_config);
         Ok(())
@@ -1423,7 +1421,7 @@ gas_reports = ['*']
 dep1 = { version = "1.0.0", url = "http://custom_url.com/custom.zip" }
 "#;
 
-        assert_eq!(read_file_to_string(&target_config), content);
+        assert_eq!(fs::read_to_string(&target_config).unwrap(), content);
 
         let _ = remove_file(target_config);
         Ok(())
@@ -1463,7 +1461,7 @@ libs = ["dependencies"]
 [dependencies]
 "#;
 
-        assert_eq!(read_file_to_string(&target_config), content);
+        assert_eq!(fs::read_to_string(&target_config).unwrap(), content);
 
         let _ = remove_file(target_config);
         Ok(())
@@ -1507,7 +1505,7 @@ dep3 = { version = "1.0.0", url = "http://custom_url.com/custom.zip" }
 dep2 = { version = "1.0.0", url = "http://custom_url.com/custom.zip" }
 "#;
 
-        assert_eq!(read_file_to_string(&target_config), content);
+        assert_eq!(fs::read_to_string(&target_config).unwrap(), content);
 
         let _ = remove_file(target_config);
         Ok(())
@@ -1538,7 +1536,7 @@ dep1 = { version = "1.0.0", url = "http://custom_url.com/custom.zip" }
             Err(ConfigError::MissingDependency(_))
         ));
 
-        assert_eq!(read_file_to_string(&target_config), content);
+        assert_eq!(fs::read_to_string(&target_config).unwrap(), content);
 
         let _ = remove_file(target_config);
         Ok(())

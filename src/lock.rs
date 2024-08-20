@@ -1,9 +1,4 @@
-use crate::{
-    config::Dependency,
-    errors::LockError,
-    utils::{get_current_working_dir, read_file_to_string},
-    LOCK_FILE,
-};
+use crate::{config::Dependency, errors::LockError, utils::get_current_working_dir, LOCK_FILE};
 use serde::{Deserialize, Serialize};
 use std::{fs, path::PathBuf};
 
@@ -22,7 +17,7 @@ pub struct LockEntry {
 }
 
 // parse file contents
-#[derive(Serialize, Deserialize, Default)]
+#[derive(Serialize, Deserialize, Debug, Default)]
 struct LockFileParsed {
     dependencies: Vec<LockEntry>,
 }
@@ -62,8 +57,6 @@ pub fn add_to_lockfile(entry: LockEntry) -> Result<()> {
     Ok(())
 }
 
-// OLD CODE ---------------------------------------------------------
-
 pub fn remove_lock(dependency: &Dependency) -> Result<()> {
     let lock_file: PathBuf = if cfg!(test) {
         get_current_working_dir().join("test").join("soldeer.lock")
@@ -71,7 +64,9 @@ pub fn remove_lock(dependency: &Dependency) -> Result<()> {
         LOCK_FILE.clone()
     };
 
-    let entries: Vec<_> = read_lock()?
+    let (entries, _) = read_lockfile()?;
+
+    let entries: Vec<_> = entries
         .into_iter()
         .filter(|e| e.name != dependency.name() || e.version != dependency.version())
         .collect();
@@ -82,33 +77,11 @@ pub fn remove_lock(dependency: &Dependency) -> Result<()> {
         return Ok(());
     }
 
-    let file_contents = toml_edit::ser::to_string_pretty(&LockType { dependencies: entries })?;
+    let file_contents =
+        toml_edit::ser::to_string_pretty(&LockFileParsed { dependencies: entries })?;
 
     // replace contents of lockfile with new contents
     fs::write(lock_file, file_contents)?;
 
     Ok(())
-}
-
-// Top level struct to hold the TOML data.
-#[derive(Serialize, Deserialize, Debug, Default)]
-struct LockType {
-    dependencies: Vec<LockEntry>,
-}
-
-fn read_lock() -> Result<Vec<LockEntry>> {
-    let lock_file: PathBuf = if cfg!(test) {
-        get_current_working_dir().join("test").join("soldeer.lock")
-    } else {
-        LOCK_FILE.clone()
-    };
-
-    if !lock_file.exists() {
-        return Err(LockError::Missing);
-    }
-    let contents = read_file_to_string(lock_file);
-
-    // parse file contents
-    let data: LockType = toml_edit::de::from_str(&contents).unwrap_or_default();
-    Ok(data.dependencies)
 }

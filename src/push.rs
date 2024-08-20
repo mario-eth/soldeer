@@ -26,14 +26,13 @@ pub async fn push_version(
     dependency_name: &str,
     dependency_version: &str,
     root_directory_path: impl AsRef<Path>,
+    files_to_copy: &[PathBuf],
     dry_run: bool,
 ) -> Result<()> {
     let file_name =
         root_directory_path.as_ref().file_name().expect("path should have a last component");
 
-    let files_to_copy: Vec<PathBuf> = filter_files_to_copy(&root_directory_path);
-
-    let zip_archive = match zip_file(&root_directory_path, &files_to_copy, file_name) {
+    let zip_archive = match zip_file(&root_directory_path, files_to_copy, file_name) {
         Ok(zip) => zip,
         Err(err) => {
             return Err(err);
@@ -46,7 +45,7 @@ pub async fn push_version(
     }
 
     match push_to_repo(&zip_archive, dependency_name, dependency_version).await {
-        Ok(_) => {}
+        Ok(()) => {}
         Err(error) => {
             remove_file(zip_archive.to_str().unwrap()).unwrap();
             return Err(error);
@@ -68,7 +67,7 @@ pub fn validate_name(name: &str) -> Result<()> {
 
 fn zip_file(
     root_directory_path: impl AsRef<Path>,
-    files_to_copy: &Vec<PathBuf>,
+    files_to_copy: &[PathBuf],
     file_name: impl Into<PathBuf>,
 ) -> Result<PathBuf> {
     let mut file_name: PathBuf = file_name.into();
@@ -82,7 +81,7 @@ fn zip_file(
     }
 
     for file_path in files_to_copy {
-        let file_to_copy = File::open(file_path.clone())
+        let f = File::open(file_path.clone())
             .map_err(|e| PublishError::IOError { path: file_path.clone(), source: e })?;
         let path = Path::new(&file_path);
         let mut buffer = Vec::new();
@@ -96,7 +95,7 @@ fn zip_file(
         // Some unzip tools unzip files with directory paths correctly, some do not!
         if path.is_file() {
             zip.start_file(relative_file_path.to_string_lossy(), options)?;
-            io::copy(&mut file_to_copy.take(u64::MAX), &mut buffer)
+            io::copy(&mut f.take(u64::MAX), &mut buffer)
                 .map_err(|e| PublishError::IOError { path: file_path.clone(), source: e })?;
             zip.write_all(&buffer)
                 .map_err(|e| PublishError::IOError { path: zip_file_path.clone(), source: e })?;
@@ -108,7 +107,7 @@ fn zip_file(
     Ok(zip_file_path)
 }
 
-fn filter_files_to_copy(root_directory_path: impl AsRef<Path>) -> Vec<PathBuf> {
+pub fn filter_files_to_copy(root_directory_path: impl AsRef<Path>) -> Vec<PathBuf> {
     let files_to_copy = Arc::new(Mutex::new(Vec::with_capacity(100)));
     let walker = WalkBuilder::new(root_directory_path)
         .add_custom_ignore_filename(".soldeerignore")
@@ -152,7 +151,7 @@ async fn push_to_repo(
 
     let mut headers: HeaderMap = HeaderMap::new();
 
-    let header_string = format!("Bearer {}", token);
+    let header_string = format!("Bearer {token}");
     let header_value = HeaderValue::from_str(&header_string);
 
     headers.insert(AUTHORIZATION, header_value.expect("Could not set auth header"));
@@ -237,10 +236,10 @@ mod tests {
         ignored_files.push(create_random_file(&target_dir, "toml"));
         filtered_files.push(create_random_file(&target_dir, "txt"));
 
-        let ignore_contents_git = r#"
+        let ignore_contents_git = "
 *.toml
 *.zip
-        "#;
+        ";
         write_to_ignore(&gitignore, ignore_contents_git);
 
         let result = filter_files_to_copy(&target_dir);

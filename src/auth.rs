@@ -74,7 +74,6 @@ async fn execute_login(login: &Login) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::utils::read_file_to_string;
     use serial_test::serial;
     use std::{env, fs::remove_file};
 
@@ -108,8 +107,8 @@ mod tests {
         })
         .await
         {
-            Ok(_) => {
-                let results = read_file_to_string("./test_save_jwt");
+            Ok(()) => {
+                let results = fs::read_to_string("./test_save_jwt").unwrap();
                 assert_eq!(results, "jwt_token_example");
                 let _ = remove_file("./test_save_jwt");
             }

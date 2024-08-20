@@ -31,7 +31,7 @@ pub enum RemappingsLocation {
     Config,
 }
 
-pub async fn remappings_txt(
+pub fn remappings_txt(
     dependency: &RemappingsAction,
     config_path: impl AsRef<Path>,
     soldeer_config: &SoldeerConfig,
@@ -39,9 +39,10 @@ pub async fn remappings_txt(
     if soldeer_config.remappings_regenerate && REMAPPINGS_FILE.exists() {
         fs::remove_file(REMAPPINGS_FILE.as_path())?;
     }
-    let contents = match REMAPPINGS_FILE.exists() {
-        true => fs::read_to_string(REMAPPINGS_FILE.as_path())?,
-        false => "".to_string(),
+    let contents = if REMAPPINGS_FILE.exists() {
+        fs::read_to_string(REMAPPINGS_FILE.as_path())?
+    } else {
+        String::new()
     };
     let existing_remappings = contents.lines().filter_map(|r| r.split_once('=')).collect();
 
@@ -50,12 +51,12 @@ pub async fn remappings_txt(
 
     let mut file = File::create(REMAPPINGS_FILE.as_path())?;
     for remapping in new_remappings {
-        writeln!(file, "{}", remapping)?;
+        writeln!(file, "{remapping}")?;
     }
     Ok(())
 }
 
-pub async fn remappings_foundry(
+pub fn remappings_foundry(
     dependency: &RemappingsAction,
     config_path: impl AsRef<Path>,
     soldeer_config: &SoldeerConfig,
@@ -75,7 +76,7 @@ pub async fn remappings_foundry(
             if name == "default" {
                 let new_remappings =
                     generate_remappings(dependency, &config_path, soldeer_config, vec![])?;
-                let array = Array::from_iter(new_remappings.into_iter());
+                let array = new_remappings.into_iter().collect::<Array>();
                 profile["remappings"] = value(array);
             }
             continue;
@@ -106,20 +107,20 @@ pub async fn add_to_remappings(
         if config_path.as_ref().to_string_lossy().contains("foundry.toml") {
             match config.remappings_location {
                 RemappingsLocation::Txt => {
-                    remappings_txt(&RemappingsAction::Add(dep), &config_path, config).await?
+                    remappings_txt(&RemappingsAction::Add(dep), &config_path, config)?;
                 }
                 RemappingsLocation::Config => {
-                    remappings_foundry(&RemappingsAction::Add(dep), &config_path, config).await?
+                    remappings_foundry(&RemappingsAction::Add(dep), &config_path, config)?;
                 }
             }
         } else {
-            remappings_txt(&RemappingsAction::Add(dep), &config_path, config).await?;
+            remappings_txt(&RemappingsAction::Add(dep), &config_path, config)?;
         }
     }
     Ok(())
 }
 
-pub async fn remove_from_remappings(
+pub fn remove_from_remappings(
     dep: Dependency,
     config: &SoldeerConfig,
     config_path: impl AsRef<Path>,
@@ -128,14 +129,14 @@ pub async fn remove_from_remappings(
         if config_path.as_ref().to_string_lossy().contains("foundry.toml") {
             match config.remappings_location {
                 RemappingsLocation::Txt => {
-                    remappings_txt(&RemappingsAction::Remove(dep), &config_path, config).await?
+                    remappings_txt(&RemappingsAction::Remove(dep), &config_path, config)?;
                 }
                 RemappingsLocation::Config => {
-                    remappings_foundry(&RemappingsAction::Remove(dep), &config_path, config).await?
+                    remappings_foundry(&RemappingsAction::Remove(dep), &config_path, config)?;
                 }
             }
         } else {
-            remappings_txt(&RemappingsAction::Remove(dep), &config_path, config).await?;
+            remappings_txt(&RemappingsAction::Remove(dep), &config_path, config)?;
         }
     }
     Ok(())
@@ -149,14 +150,14 @@ pub async fn update_remappings(
         if config_path.as_ref().to_string_lossy().contains("foundry.toml") {
             match config.remappings_location {
                 RemappingsLocation::Txt => {
-                    remappings_txt(&RemappingsAction::None, &config_path, config).await?
+                    remappings_txt(&RemappingsAction::None, &config_path, config)?;
                 }
                 RemappingsLocation::Config => {
-                    remappings_foundry(&RemappingsAction::None, &config_path, config).await?
+                    remappings_foundry(&RemappingsAction::None, &config_path, config)?;
                 }
             }
         } else {
-            remappings_txt(&RemappingsAction::None, &config_path, config).await?;
+            remappings_txt(&RemappingsAction::None, &config_path, config)?;
         }
     }
     Ok(())
@@ -180,7 +181,7 @@ fn generate_remappings(
                 let remove_dep_orig = format!("dependencies/{sanitized_name}/");
                 for (remapped, orig) in existing_remappings {
                     if orig != remove_dep_orig {
-                        new_remappings.push(format!("{}={}", remapped, orig));
+                        new_remappings.push(format!("{remapped}={orig}"));
                     }
                 }
             }
@@ -190,16 +191,16 @@ fn generate_remappings(
                 let new_dep_remapped = format_remap_name(soldeer_config, add_dep);
                 let sanitized_name =
                     sanitize_filename(&format!("{}-{}", add_dep.name(), add_dep.version()));
-                let new_dep_orig = format!("dependencies/{}/", sanitized_name);
+                let new_dep_orig = format!("dependencies/{sanitized_name}/");
                 let mut found = false; // whether a remapping existed for that dep already
                 for (remapped, orig) in existing_remappings {
-                    new_remappings.push(format!("{}={}", remapped, orig));
+                    new_remappings.push(format!("{remapped}={orig}"));
                     if orig == new_dep_orig {
                         found = true;
                     }
                 }
                 if !found {
-                    new_remappings.push(format!("{}={}", new_dep_remapped, new_dep_orig));
+                    new_remappings.push(format!("{new_dep_remapped}={new_dep_orig}"));
                 }
             }
             RemappingsAction::None => {
@@ -208,14 +209,14 @@ fn generate_remappings(
                 // We generate all remappings from the dependencies, then replace existing items.
                 new_remappings = remappings_from_deps(config_path, soldeer_config)?;
                 if !existing_remappings.is_empty() {
-                    for item in new_remappings.iter_mut() {
+                    for item in &mut new_remappings {
                         let (_, item_orig) =
                             item.split_once('=').expect("remappings should have two parts");
                         // try to find an existing item with the same path
                         if let Some((remapped, orig)) =
                             existing_remappings.iter().find(|(_, o)| item_orig == *o)
                         {
-                            *item = format!("{}={}", remapped, orig);
+                            *item = format!("{remapped}={orig}");
                         }
                     }
                 }
@@ -263,7 +264,7 @@ mod tests {
 
     use crate::{
         config::{read_soldeer_config, HttpDependency},
-        utils::{get_current_working_dir, read_file_to_string},
+        utils::get_current_working_dir,
     };
 
     use super::*;
@@ -291,8 +292,7 @@ remappings_location = "config"
         });
         let soldeer_config = read_soldeer_config(Some(target_config.clone())).unwrap();
         let _ =
-            remappings_foundry(&RemappingsAction::Add(dependency), &target_config, &soldeer_config)
-                .await;
+            remappings_foundry(&RemappingsAction::Add(dependency), &target_config, &soldeer_config);
 
         content = r#"
 [profile.default]
@@ -306,7 +306,7 @@ remappings_version = true
 remappings_location = "config"
 "#;
 
-        assert_eq!(read_file_to_string(&target_config), content);
+        assert_eq!(fs::read_to_string(&target_config).unwrap(), content);
 
         let _ = remove_file(target_config);
         Ok(())
@@ -337,8 +337,7 @@ remappings_version = false
             &RemappingsAction::Add(dependency),
             target_config.to_str().unwrap(),
             &soldeer_config,
-        )
-        .await;
+        );
 
         content = r#"
 [profile.default]
@@ -351,7 +350,7 @@ remappings_generate = true
 remappings_version = false
 "#;
 
-        assert_eq!(read_file_to_string(&target_config), content);
+        assert_eq!(fs::read_to_string(&target_config).unwrap(), content);
 
         let _ = remove_file(target_config);
         Ok(())
@@ -382,12 +381,11 @@ remappings_version = true
             url: None,
         });
         let soldeer_config = read_soldeer_config(Some(target_config.clone())).unwrap();
-        let _ = remappings_txt(&RemappingsAction::Add(dependency), &target_config, &soldeer_config)
-            .await;
+        let _ = remappings_txt(&RemappingsAction::Add(dependency), &target_config, &soldeer_config);
 
         content = "@dep1-1.0.0/=dependencies/dep1-1.0.0/\n";
 
-        assert_eq!(read_file_to_string(&txt), content);
+        assert_eq!(fs::read_to_string(&txt).unwrap(), content);
 
         let _ = remove_file(target_config);
         Ok(())
@@ -417,12 +415,11 @@ remappings_version = false
             url: None,
         });
         let soldeer_config = read_soldeer_config(Some(target_config.clone())).unwrap();
-        let _ = remappings_txt(&RemappingsAction::Add(dependency), &target_config, &soldeer_config)
-            .await;
+        let _ = remappings_txt(&RemappingsAction::Add(dependency), &target_config, &soldeer_config);
 
         content = "dep1/=dependencies/dep1-1.0.0/\n";
 
-        assert_eq!(read_file_to_string(&txt), content);
+        assert_eq!(fs::read_to_string(&txt).unwrap(), content);
 
         let _ = remove_file(target_config);
         Ok(())
@@ -454,8 +451,7 @@ remappings_generate = true
             &RemappingsAction::Add(dependency),
             target_config.to_str().unwrap(),
             &soldeer_config,
-        )
-        .await;
+        );
 
         content = r#"
 [profile.default]
@@ -469,7 +465,7 @@ ffi = true
 remappings_generate = true
 "#;
 
-        assert_eq!(read_file_to_string(&target_config), content);
+        assert_eq!(fs::read_to_string(&target_config).unwrap(), content);
 
         let _ = remove_file(target_config);
         Ok(())
@@ -503,8 +499,7 @@ remappings_generate = true
             &RemappingsAction::Add(dependency),
             target_config.to_str().unwrap(),
             &soldeer_config,
-        )
-        .await;
+        );
 
         content = r#"
 [profile.default]
@@ -520,7 +515,7 @@ ffi = true
 remappings_generate = true
 "#;
 
-        assert_eq!(read_file_to_string(&target_config), content);
+        assert_eq!(fs::read_to_string(&target_config).unwrap(), content);
 
         let _ = remove_file(target_config);
         Ok(())
@@ -551,8 +546,7 @@ remappings_generate = true
             &RemappingsAction::Add(dependency),
             target_config.to_str().unwrap(),
             &soldeer_config,
-        )
-        .await;
+        );
 
         content = r#"
 [profile.default]
@@ -564,7 +558,7 @@ remappings = ["dep1-1.0.0/=dependencies/dep1-1.0.0/", "dep2-1.0.0/=dependencies/
 remappings_generate = true
 "#;
 
-        assert_eq!(read_file_to_string(&target_config), content);
+        assert_eq!(fs::read_to_string(&target_config).unwrap(), content);
 
         let _ = remove_file(target_config);
         Ok(())
@@ -594,8 +588,7 @@ remappings_regenerate = true
             &RemappingsAction::None,
             target_config.to_str().unwrap(),
             &soldeer_config,
-        )
-        .await;
+        );
 
         content = r#"
 [profile.default]
@@ -609,7 +602,7 @@ remappings_generate = true
 remappings_regenerate = true
 "#;
 
-        assert_eq!(read_file_to_string(&target_config), content);
+        assert_eq!(fs::read_to_string(&target_config).unwrap(), content);
 
         let _ = remove_file(target_config);
         Ok(())
@@ -637,10 +630,9 @@ remappings_generate = true
             &RemappingsAction::None,
             target_config.to_str().unwrap(),
             &soldeer_config,
-        )
-        .await;
+        );
 
-        assert_eq!(read_file_to_string(&target_config), content);
+        assert_eq!(fs::read_to_string(&target_config).unwrap(), content);
 
         let _ = remove_file(target_config);
         Ok(())

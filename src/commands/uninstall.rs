@@ -17,7 +17,7 @@ pub struct Uninstall {
     pub dependency: String,
 }
 
-pub(crate) async fn uninstall_command(cmd: Uninstall) -> Result<()> {
+pub(crate) fn uninstall_command(cmd: &Uninstall) -> Result<()> {
     let config_path = get_config_path()?;
     let config = read_soldeer_config(Some(&config_path))?;
     success("Done reading config")?;
@@ -34,7 +34,7 @@ pub(crate) async fn uninstall_command(cmd: Uninstall) -> Result<()> {
     remove_lock(&dependency)?;
     success("Dependency removed from lockfile")?;
 
-    remove_from_remappings(dependency, &config, &config_path).await?;
+    remove_from_remappings(dependency, &config, &config_path)?;
     success("Dependency removed from remappings")?;
 
     Ok(())

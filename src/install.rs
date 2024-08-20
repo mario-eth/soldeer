@@ -125,81 +125,78 @@ pub async fn install_dependency(
     recursive_deps: bool,
     progress: Progress,
 ) -> Result<LockEntry> {
-    match lock {
-        Some(lock) => {
-            match check_dependency_integrity(dependency, lock).await? {
-                DependencyStatus::Installed => {
-                    // no action needed, dependency is already installed and matches the lockfile
-                    // entry
+    if let Some(lock) = lock {
+        match check_dependency_integrity(dependency, lock).await? {
+            DependencyStatus::Installed => {
+                // no action needed, dependency is already installed and matches the lockfile
+                // entry
+                progress.increment_all();
+                return Ok(lock.clone());
+            }
+            DependencyStatus::FailedIntegrity => match dependency {
+                Dependency::Http(dep) => {
+                    // we know the folder exists because otherwise we would have gotten
+                    // `Missing`
+                    progress.log(format!(
+                        "Dependency {dependency} failed integrity check, reinstalling"
+                    ));
+                    let path = dep.install_path();
+                    fs::remove_dir_all(&path)
+                        .await
+                        .map_err(|e| InstallError::IOError { path, source: e })?;
+                }
+                Dependency::Git(dep) => {
+                    progress.log(format!(
+                        "Dependency {dependency} failed integrity check, resetting to commit {}",
+                        lock.checksum
+                    ));
+                    reset_git_dependency(dep, lock).await?;
+                    // dependency should now be at the correct commit, we can exit
                     progress.increment_all();
                     return Ok(lock.clone());
                 }
-                DependencyStatus::FailedIntegrity => match dependency {
-                    Dependency::Http(dep) => {
-                        // we know the folder exists because otherwise we would have gotten
-                        // `Missing`
-                        progress.log(format!(
-                            "Dependency {dependency} failed integrity check, reinstalling"
-                        ));
-                        let path = dep.install_path();
-                        fs::remove_dir_all(&path)
-                            .await
-                            .map_err(|e| InstallError::IOError { path, source: e })?;
-                    }
-                    Dependency::Git(dep) => {
-                        progress.log(format!(
-                            "Dependency {dependency} failed integrity check, resetting to commit {}", lock.checksum
-                        ));
-                        reset_git_dependency(dep, lock).await?;
-                        // dependency should now be at the correct commit, we can exit
-                        progress.increment_all();
-                        return Ok(lock.clone());
-                    }
-                },
-                DependencyStatus::Missing => {
-                    // make sure there is no existing directory for the dependency
-                    let path = dependency.install_path();
-                    if fs::metadata(&path).await.is_ok() {
-                        fs::remove_dir_all(&path)
-                            .await
-                            .map_err(|e| InstallError::IOError { path, source: e })?;
-                    }
+            },
+            DependencyStatus::Missing => {
+                // make sure there is no existing directory for the dependency
+                let path = dependency.install_path();
+                if fs::metadata(&path).await.is_ok() {
+                    fs::remove_dir_all(&path)
+                        .await
+                        .map_err(|e| InstallError::IOError { path, source: e })?;
                 }
             }
-            install_dependency_inner(
-                &lock.clone().into(),
-                dependency.install_path(),
-                recursive_deps,
-                progress,
-            )
-            .await
         }
-        None => {
-            // no lockfile entry, install from config object
-            // make sure there is no existing directory for the dependency
-            let path = dependency.install_path();
-            if fs::metadata(&path).await.is_ok() {
-                fs::remove_dir_all(&path)
-                    .await
-                    .map_err(|e| InstallError::IOError { path, source: e })?;
-            }
-            let url = match dependency.url() {
-                Some(url) => url.clone(),
-                None => get_dependency_url_remote(dependency).await?,
-            };
-            let checksum = match &dependency {
-                Dependency::Http(_) => None,
-                Dependency::Git(dep) => dep.rev.clone(),
-            };
-            let info = InstallInfo::builder()
-                .name(dependency.name())
-                .version(dependency.version())
-                .source(url)
-                .maybe_rev_checksum(checksum)
-                .build();
-            install_dependency_inner(&info, dependency.install_path(), recursive_deps, progress)
+        install_dependency_inner(
+            &lock.clone().into(),
+            dependency.install_path(),
+            recursive_deps,
+            progress,
+        )
+        .await
+    } else {
+        // no lockfile entry, install from config object
+        // make sure there is no existing directory for the dependency
+        let path = dependency.install_path();
+        if fs::metadata(&path).await.is_ok() {
+            fs::remove_dir_all(&path)
                 .await
+                .map_err(|e| InstallError::IOError { path, source: e })?;
         }
+        let url = match dependency.url() {
+            Some(url) => url.clone(),
+            None => get_dependency_url_remote(dependency).await?,
+        };
+        let checksum = match &dependency {
+            Dependency::Http(_) => None,
+            Dependency::Git(dep) => dep.rev.clone(),
+        };
+        let info = InstallInfo::builder()
+            .name(dependency.name())
+            .version(dependency.version())
+            .source(url)
+            .maybe_rev_checksum(checksum)
+            .build();
+        install_dependency_inner(&info, dependency.install_path(), recursive_deps, progress).await
     }
 }
 
@@ -270,10 +267,7 @@ async fn install_dependency_inner(
                 install_subdependencies(&path).await?;
             }
             progress.subdependencies.inc(1);
-            let integrity = hash_folder(&path, None).map_err(|e| InstallError::IOError {
-                path: path.as_ref().to_path_buf(),
-                source: e,
-            })?;
+            let integrity = hash_folder(&path, None);
             progress.integrity.inc(1);
             Ok(LockEntry::builder()
                 .name(&dep.name)
@@ -327,8 +321,7 @@ async fn check_http_dependency(
         let path = path.clone();
         move || hash_folder(path, None)
     })
-    .await?
-    .map_err(|e| InstallError::IOError { path, source: e })?;
+    .await?;
     if &current_hash.to_string() != integrity {
         return Ok(DependencyStatus::FailedIntegrity);
     }

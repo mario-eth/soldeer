@@ -59,7 +59,7 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
         }
         Subcommands::Uninstall(cmd) => {
             intro("🦌 Soldeer Uninstall 🦌")?;
-            commands::uninstall::uninstall_command(cmd).await.map_err(|e| {
+            commands::uninstall::uninstall_command(&cmd).map_err(|e| {
                 outro_cancel("An error occurred during uninstallation").ok();
                 e
             })?;
@@ -101,7 +101,6 @@ mod tests {
         io::Write,
         path::{Path, PathBuf},
     };
-    use utils::read_file_to_string;
     use zip::ZipArchive; // 0.8
 
     #[test]
@@ -221,7 +220,7 @@ libs = ["dependencies"]
 [dependencies]
 test = { version = "1", git = "https://gitlab.com/mario4582928/Mario.git", rev = "22868f426bd4dd0e682b5ec5f9bd55507664240c" }
 "#;
-        assert_eq!(expected_content, read_file_to_string(&target_config));
+        assert_eq!(expected_content, fs::read_to_string(&target_config).unwrap());
         clean_test_env(target_config);
     }
 
@@ -287,7 +286,7 @@ libs = ["dependencies"]
 [dependencies]
 test = { version = "1", git = "https://gitlab.com/mario4582928/Mario.git", rev = "2fd642069600f0b8da3e1897fad42b2c53c6e927" }
 "#;
-        assert_eq!(expected_content, read_file_to_string(&target_config));
+        assert_eq!(expected_content, fs::read_to_string(&target_config).unwrap());
         clean_test_env(target_config);
     }
 
@@ -457,12 +456,12 @@ recursive_deps = true
         let path_dependency = DEPENDENCY_DIR.join("mario-1.0");
         assert!(path_dependency.exists());
 
-        let expected_remappings = r#"@custom@@tt-1.6.1/=dependencies/@tt-1.6.1/
+        let expected_remappings = "@custom@@tt-1.6.1/=dependencies/@tt-1.6.1/
 @custom@forge-std-1.8.1/=dependencies/forge-std-1.8.1/
 @custom@mario-1.0/=dependencies/mario-1.0/
 @custom@solmate-6.7.0/=dependencies/solmate-6.7.0/
-"#;
-        assert_eq!(expected_remappings, read_file_to_string(path_remappings));
+";
+        assert_eq!(expected_remappings, fs::read_to_string(path_remappings).unwrap());
 
         clean_test_env(target_config);
     }

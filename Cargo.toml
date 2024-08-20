@@ -32,7 +32,6 @@ reqwest = { version = "0.12.5", features = [
     "multipart",
     "stream",
 ], default-features = false }
-rpassword = "7.3.1"
 sanitize-filename = "0.5.0"
 semver = "1.0.23"
 serde = { version = "1.0.204", features = ["derive"] }

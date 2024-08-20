@@ -11,7 +11,6 @@ use std::{
     path::Path,
 };
 use toml_edit::{value, Array, DocumentMut};
-use yansi::Paint as _;
 
 pub type Result<T> = std::result::Result<T, RemappingsError>;
 

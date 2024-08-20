@@ -1,9 +1,4 @@
-use crate::{
-    config::Dependency,
-    errors::DownloadError,
-    utils::{run_git_command, sanitize_filename},
-    DEPENDENCY_DIR,
-};
+use crate::{config::Dependency, errors::DownloadError, utils::run_git_command, DEPENDENCY_DIR};
 use reqwest::IntoUrl;
 use std::{
     fs,

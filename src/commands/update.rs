@@ -52,9 +52,11 @@ pub(crate) async fn update_command(cmd: Update) -> Result<()> {
 
     // update config file
     update_deps(&new_deps, &config_path)?;
+    success("Updated config file")?;
 
     let new_lockfile_content = generate_lockfile_contents(new_locks);
     fs::write(LOCK_FILE.as_path(), new_lockfile_content).map_err(LockError::IOError)?;
+    success("Updated lockfile")?;
 
     update_remappings(&config, &config_path).await?;
     success("Updated remappings")?;

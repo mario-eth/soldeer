@@ -1,6 +1,6 @@
 use crate::{
     download::IntegrityChecksum,
-    errors::{DownloadError, InstallError, PublishError},
+    errors::{DownloadError, InstallError},
 };
 use ignore::{WalkBuilder, WalkState};
 use once_cell::sync::Lazy;
@@ -11,7 +11,7 @@ use std::{
     env,
     ffi::OsStr,
     fs,
-    io::{self as std_io, Read, Write as _},
+    io::{self as std_io, Read},
     os::unix::ffi::OsStrExt as _,
     path::{Path, PathBuf},
     sync::{
@@ -20,7 +20,6 @@ use std::{
     },
 };
 use tokio::{fs as tokio_fs, process::Command};
-use yansi::Paint as _;
 
 static GIT_SSH_REGEX: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"^(?:git@github\.com|git@gitlab)").expect("git ssh regex should compile")

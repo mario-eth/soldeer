@@ -128,15 +128,14 @@ pub async fn remove_from_remappings(
         if config_path.as_ref().to_string_lossy().contains("foundry.toml") {
             match config.remappings_location {
                 RemappingsLocation::Txt => {
-                    remappings_txt(&RemappingsAction::Remove(dep), &config_path, &config).await?
+                    remappings_txt(&RemappingsAction::Remove(dep), &config_path, config).await?
                 }
                 RemappingsLocation::Config => {
-                    remappings_foundry(&RemappingsAction::Remove(dep), &config_path, &config)
-                        .await?
+                    remappings_foundry(&RemappingsAction::Remove(dep), &config_path, config).await?
                 }
             }
         } else {
-            remappings_txt(&RemappingsAction::Remove(dep), &config_path, &config).await?;
+            remappings_txt(&RemappingsAction::Remove(dep), &config_path, config).await?;
         }
     }
     Ok(())

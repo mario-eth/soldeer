@@ -179,7 +179,12 @@ pub fn hash_folder(
     // a list of hashes, one for each DirEntry
     let hashes = Arc::new(Mutex::new(Vec::with_capacity(100)));
     // we use a parallel walker to speed things up
-    let walker = WalkBuilder::new(folder_path).hidden(false).build_parallel();
+    let walker = WalkBuilder::new(folder_path)
+        .filter_entry(|entry| {
+            !(entry.path().is_dir() && entry.path().file_name().unwrap_or_default() == ".git")
+        })
+        .hidden(false)
+        .build_parallel();
     walker.run(|| {
         let ignore_path = ignore_path.clone();
         let seen_ignore_path = Arc::clone(&seen_ignore_path);

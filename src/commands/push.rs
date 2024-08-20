@@ -6,7 +6,7 @@ use crate::{
 
 use super::{validate_dependency, Result};
 use clap::Parser;
-use cliclack::log::{info, warning};
+use cliclack::log::{remark, warning};
 use std::path::PathBuf;
 
 /// Push a dependency to the repository
@@ -57,7 +57,7 @@ pub(crate) async fn push_command(cmd: Push) -> Result<()> {
     }
 
     if cmd.dry_run {
-        info("Running in dry-run mode, a zip file will be created for inspection")?;
+        remark("Running in dry-run mode, a zip file will be created for inspection")?;
     }
 
     if cmd.skip_warnings {

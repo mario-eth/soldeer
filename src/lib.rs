@@ -80,7 +80,7 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
                 outro_cancel("An error occurred during push").ok();
                 e
             })?;
-            outro("Done pushing to registry!")?;
+            outro("Done!")?;
         }
         Subcommands::Version(_) => {
             const VERSION: &str = env!("CARGO_PKG_VERSION");

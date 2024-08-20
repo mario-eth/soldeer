@@ -1,7 +1,7 @@
 use super::Result;
 use crate::{
     config::{add_to_config, get_config_path, read_soldeer_config, remove_forge_lib},
-    install::{install_dependency, Progress},
+    install::{ensure_dependencies_dir, install_dependency, Progress},
     lock::add_to_lockfile,
     registry::get_latest_forge_std,
     remappings::add_to_remappings,
@@ -30,6 +30,7 @@ pub(crate) async fn init_command(cmd: Init) -> Result<()> {
     let config_path = get_config_path()?;
     let config = read_soldeer_config(Some(&config_path))?;
     success("Done reading config")?;
+    ensure_dependencies_dir()?;
     let dependency = get_latest_forge_std().await?;
     let multi = multi_progress(format!("Installing {dependency}"));
     let progress = Progress::new(&multi, 1);

@@ -4,7 +4,7 @@ use crate::{
     registry::get_project_id,
     utils::{get_base_url, read_file},
 };
-use cliclack::log::{info, remark};
+use cliclack::log::{info, remark, success};
 use ignore::{WalkBuilder, WalkState};
 use regex::Regex;
 use reqwest::{
@@ -13,12 +13,12 @@ use reqwest::{
     Client, StatusCode,
 };
 use std::{
+    ffi::OsStr,
     fs::{remove_file, File},
     io::{self, Read, Write},
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
 };
-use yansi::Paint as _;
 use zip::{write::SimpleFileOptions, CompressionMethod, ZipWriter};
 
 pub type Result<T> = std::result::Result<T, PublishError>;
@@ -42,6 +42,7 @@ pub async fn push_version(
     };
 
     if dry_run {
+        info(format!("Zip file created at path {zip_archive:?}")).ok();
         return Ok(());
     }
 
@@ -113,6 +114,9 @@ fn filter_files_to_copy(root_directory_path: impl AsRef<Path>) -> Vec<PathBuf> {
     let walker = WalkBuilder::new(root_directory_path)
         .add_custom_ignore_filename(".soldeerignore")
         .hidden(false)
+        .filter_entry(|entry| {
+            !(entry.path().is_dir() && entry.path().file_name().unwrap_or_default() == ".git")
+        })
         .build_parallel();
     walker.run(|| {
         let files_to_copy = Arc::clone(&files_to_copy);
@@ -183,7 +187,7 @@ async fn push_to_repo(
     let response = res.await.unwrap();
     match response.status() {
         StatusCode::OK => {
-            println!("{}", "Success!".green());
+            success("Pushed to repository!").ok();
             Ok(())
         }
         StatusCode::NO_CONTENT => Err(PublishError::ProjectNotFound),

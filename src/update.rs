@@ -22,13 +22,13 @@ pub struct Progress {
 impl Progress {
     pub fn new(install_progress: &InstallProgress, deps: u64) -> Self {
         let get_version_pb =
-            install_progress.multi.add(progress_bar(deps).with_template(PROGRESS_TEMPLATE));
+            install_progress.multi.insert(0, progress_bar(deps).with_template(PROGRESS_TEMPLATE));
         Self { install_progress: install_progress.clone(), get_versions: get_version_pb }
     }
 
     pub fn start_all(&self) {
         self.install_progress.start_all();
-        self.get_versions.start("Retieving all versions...");
+        self.get_versions.start("Retrieving all versions...");
     }
 
     pub fn stop_all(&self) {

@@ -2,7 +2,7 @@ use std::fs;
 
 use super::Result;
 use crate::{
-    config::{get_config_path, read_config_deps, read_soldeer_config, Dependency},
+    config::{get_config_path, read_config_deps, read_soldeer_config, update_deps, Dependency},
     errors::LockError,
     install::{ensure_dependencies_dir, Progress as InstallProgress},
     lock::generate_lockfile_contents,
@@ -50,7 +50,8 @@ pub(crate) async fn update_command(cmd: Update) -> Result<()> {
 
     let (new_deps, new_locks): (Vec<_>, Vec<_>) = new_items.into_iter().unzip();
 
-    // TODO: update config
+    // update config file
+    update_deps(&new_deps, &config_path)?;
 
     let new_lockfile_content = generate_lockfile_contents(new_locks);
     fs::write(LOCK_FILE.as_path(), new_lockfile_content).map_err(LockError::IOError)?;

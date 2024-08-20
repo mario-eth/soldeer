@@ -1,10 +1,10 @@
 use crate::{
     config::{Dependency, GitDependency, HttpDependency},
     download::{clone_repo, download_file, unzip_file},
-    errors::InstallError,
-    lock::LockEntry,
+    errors::{InstallError, LockError},
+    lock::{GitLockEntry, HttpLockEntry, LockEntry},
     registry::get_dependency_url_remote,
-    utils::{get_url_type, hash_file, hash_folder, run_forge_command, run_git_command, UrlType},
+    utils::{hash_file, hash_folder, run_forge_command, run_git_command},
     DEPENDENCY_DIR,
 };
 use cliclack::{progress_bar, MultiProgress, ProgressBar};
@@ -75,22 +75,59 @@ impl Progress {
 
 #[bon::builder]
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-struct InstallInfo {
+struct HttpInstallInfo {
     name: String,
     version: String,
-    source: String,
-    rev_checksum: Option<String>,
+    url: String,
+    checksum: Option<String>,
     integrity: Option<String>,
+}
+
+#[bon::builder]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct GitInstallInfo {
+    name: String,
+    version: String,
+    git: String,
+    rev: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+enum InstallInfo {
+    Http(HttpInstallInfo),
+    Git(GitInstallInfo),
+}
+
+impl From<HttpInstallInfo> for InstallInfo {
+    fn from(value: HttpInstallInfo) -> Self {
+        Self::Http(value)
+    }
+}
+
+impl From<GitInstallInfo> for InstallInfo {
+    fn from(value: GitInstallInfo) -> Self {
+        Self::Git(value)
+    }
 }
 
 impl From<LockEntry> for InstallInfo {
     fn from(lock: LockEntry) -> Self {
-        Self {
-            name: lock.name,
-            version: lock.version,
-            source: lock.source,
-            rev_checksum: Some(lock.checksum),
-            integrity: lock.integrity,
+        match lock {
+            LockEntry::Http(lock) => HttpInstallInfo {
+                name: lock.name,
+                version: lock.version,
+                url: lock.url,
+                checksum: Some(lock.checksum),
+                integrity: Some(lock.integrity),
+            }
+            .into(),
+            LockEntry::Git(lock) => GitInstallInfo {
+                name: lock.name,
+                version: lock.version,
+                git: lock.git,
+                rev: Some(lock.rev),
+            }
+            .into(),
         }
     }
 }
@@ -106,8 +143,10 @@ pub async fn install_dependencies(
         set.spawn({
             let d = dep.clone();
             let p = progress.clone();
-            let lock =
-                locks.iter().find(|l| l.name == dep.name() && l.version == dep.version()).cloned();
+            let lock = locks
+                .iter()
+                .find(|l| l.name() == dep.name() && l.version() == dep.version())
+                .cloned();
             async move { install_dependency(&d, lock.as_ref(), recursive_deps, p).await }
         });
     }
@@ -148,9 +187,13 @@ pub async fn install_dependency(
                 Dependency::Git(dep) => {
                     progress.log(format!(
                         "Dependency {dependency} failed integrity check, resetting to commit {}",
-                        lock.checksum
+                        lock.as_git().expect("lock entry should be of type git").rev
                     ));
-                    reset_git_dependency(dep, lock).await?;
+                    reset_git_dependency(
+                        dep,
+                        lock.as_git().expect("lock entry should be of type git"),
+                    )
+                    .await?;
                     // dependency should now be at the correct commit, we can exit
                     progress.increment_all();
                     return Ok(lock.clone());
@@ -186,16 +229,21 @@ pub async fn install_dependency(
             Some(url) => url.clone(),
             None => get_dependency_url_remote(dependency).await?,
         };
-        let checksum = match &dependency {
-            Dependency::Http(_) => None,
-            Dependency::Git(dep) => dep.rev.clone(),
+        let info = match &dependency {
+            Dependency::Http(dep) => HttpInstallInfo::builder()
+                .name(&dep.name)
+                .version(&dep.version)
+                .url(url)
+                .build()
+                .into(),
+            Dependency::Git(dep) => GitInstallInfo::builder()
+                .name(&dep.name)
+                .version(&dep.version)
+                .git(url)
+                .maybe_rev(dep.rev.clone())
+                .build()
+                .into(),
         };
-        let info = InstallInfo::builder()
-            .name(dependency.name())
-            .version(dependency.version())
-            .source(url)
-            .maybe_rev_checksum(checksum)
-            .build();
         install_dependency_inner(&info, dependency.install_path(), recursive_deps, progress).await
     }
 }
@@ -204,9 +252,10 @@ pub async fn check_dependency_integrity(
     dependency: &Dependency,
     lock: &LockEntry,
 ) -> Result<DependencyStatus> {
-    match dependency {
-        Dependency::Http(http) => check_http_dependency(http, lock).await,
-        Dependency::Git(git) => check_git_dependency(git, lock).await,
+    match (dependency, lock) {
+        (Dependency::Http(http), LockEntry::Http(lock)) => check_http_dependency(http, lock).await,
+        (Dependency::Git(git), LockEntry::Git(lock)) => check_git_dependency(git, lock).await,
+        _ => Err(LockError::TypeMismatch.into()),
     }
 }
 
@@ -224,27 +273,9 @@ async fn install_dependency_inner(
     subdependencies: bool,
     progress: Progress,
 ) -> Result<LockEntry> {
-    match get_url_type(&dep.source)? {
-        UrlType::Git => {
-            // if the dependency was specified without a commit hash and we didn't have a lockfile,
-            // clone the default branch
-            let commit = clone_repo(&dep.source, dep.rev_checksum.as_ref(), &path).await?;
-            progress.downloads.inc(1);
-            if subdependencies {
-                install_subdependencies(&path).await?;
-            }
-            progress.unzip.inc(1);
-            progress.subdependencies.inc(1);
-            progress.integrity.inc(1);
-            Ok(LockEntry::builder()
-                .name(&dep.name)
-                .version(&dep.version)
-                .source(&dep.source)
-                .checksum(commit)
-                .build())
-        }
-        UrlType::Http => {
-            let zip_path = download_file(&dep.source, &path).await?;
+    match dep {
+        InstallInfo::Http(dep) => {
+            let zip_path = download_file(&dep.url, &path).await?;
             progress.downloads.inc(1);
             let zip_integrity = tokio::task::spawn_blocking({
                 let zip_path = zip_path.clone();
@@ -252,7 +283,7 @@ async fn install_dependency_inner(
             })
             .await?
             .map_err(|e| InstallError::IOError { path: zip_path.clone(), source: e })?;
-            if let Some(checksum) = &dep.rev_checksum {
+            if let Some(checksum) = &dep.checksum {
                 if checksum != &zip_integrity.to_string() {
                     return Err(InstallError::ZipIntegrityError {
                         path: zip_path.clone(),
@@ -269,13 +300,33 @@ async fn install_dependency_inner(
             progress.subdependencies.inc(1);
             let integrity = hash_folder(&path, None);
             progress.integrity.inc(1);
-            Ok(LockEntry::builder()
+            Ok(HttpLockEntry::builder()
                 .name(&dep.name)
                 .version(&dep.version)
-                .source(&dep.source)
+                .url(&dep.url)
                 .checksum(zip_integrity.to_string())
                 .integrity(integrity.to_string())
-                .build())
+                .build()
+                .into())
+        }
+        InstallInfo::Git(dep) => {
+            // if the dependency was specified without a commit hash and we didn't have a lockfile,
+            // clone the default branch
+            let commit = clone_repo(&dep.git, dep.rev.as_ref(), &path).await?;
+            progress.downloads.inc(1);
+            if subdependencies {
+                install_subdependencies(&path).await?;
+            }
+            progress.unzip.inc(1);
+            progress.subdependencies.inc(1);
+            progress.integrity.inc(1);
+            Ok(GitLockEntry::builder()
+                .name(&dep.name)
+                .version(&dep.version)
+                .git(&dep.git)
+                .rev(commit)
+                .build()
+                .into())
         }
     }
 }
@@ -308,21 +359,18 @@ async fn install_subdependencies(path: impl AsRef<Path>) -> Result<()> {
 
 async fn check_http_dependency(
     dependency: &HttpDependency,
-    lock: &LockEntry,
+    lock: &HttpLockEntry,
 ) -> Result<DependencyStatus> {
     let path = dependency.install_path();
     if fs::metadata(&path).await.is_err() {
         return Ok(DependencyStatus::Missing);
     }
-    let Some(integrity) = &lock.integrity else {
-        return Ok(DependencyStatus::FailedIntegrity);
-    };
     let current_hash = tokio::task::spawn_blocking({
         let path = path.clone();
         move || hash_folder(path, None)
     })
     .await?;
-    if &current_hash.to_string() != integrity {
+    if current_hash.to_string() != lock.integrity {
         return Ok(DependencyStatus::FailedIntegrity);
     }
     Ok(DependencyStatus::Installed)
@@ -330,7 +378,7 @@ async fn check_http_dependency(
 
 async fn check_git_dependency(
     dependency: &GitDependency,
-    lock: &LockEntry,
+    lock: &GitLockEntry,
 ) -> Result<DependencyStatus> {
     let path = dependency.install_path();
     if fs::metadata(&path).await.is_err() {
@@ -362,7 +410,7 @@ async fn check_git_dependency(
         return Ok(DependencyStatus::Missing);
     }
     // for git dependencies, the `checksum` field holds the commit hash
-    match run_git_command(&["diff", "--exit-code", &lock.checksum], Some(&path)).await {
+    match run_git_command(&["diff", "--exit-code", &lock.rev], Some(&path)).await {
         Ok(_) => Ok(DependencyStatus::Installed),
         Err(_) => Ok(DependencyStatus::FailedIntegrity),
     }
@@ -372,9 +420,9 @@ async fn check_git_dependency(
 ///
 /// This function runs `git reset --hard <commit>` and `git clean -fd` in the git dependency's
 /// directory
-async fn reset_git_dependency(dependency: &GitDependency, lock: &LockEntry) -> Result<()> {
+async fn reset_git_dependency(dependency: &GitDependency, lock: &GitLockEntry) -> Result<()> {
     let path = dependency.install_path();
-    run_git_command(&["reset", "--hard", &lock.checksum], Some(&path)).await?;
+    run_git_command(&["reset", "--hard", &lock.rev], Some(&path)).await?;
     run_git_command(&["clean", "-fd"], Some(&path)).await?;
     Ok(())
 }

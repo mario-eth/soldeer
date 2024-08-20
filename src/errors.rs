@@ -18,9 +18,6 @@ pub enum SoldeerError {
     #[error("error during install operation: {0}")]
     InstallError(#[from] InstallError),
 
-    #[error("error during janitor operation: {0}")]
-    JanitorError(#[from] JanitorError),
-
     #[error("error during lockfile operation: {0}")]
     LockError(#[from] LockError),
 
@@ -149,18 +146,9 @@ pub enum InstallError {
 
     #[error("error during registry operation: {0}")]
     RegistryError(#[from] RegistryError),
-}
 
-#[derive(Error, Debug)]
-pub enum JanitorError {
-    #[error("missing dependency {0}")]
-    MissingDependency(String),
-
-    #[error("error during IO operation for {path:?}: {source}")]
-    IOError { path: PathBuf, source: io::Error },
-
-    #[error("error during lockfile operation: {0}")]
-    LockError(LockError), // TODO: derive from LockError
+    #[error("error with lockfile: {0}")]
+    LockError(#[from] LockError),
 }
 
 #[derive(Error, Debug)]
@@ -176,6 +164,9 @@ pub enum LockError {
 
     #[error("error generating soldeer.lock contents: {0}")]
     SerializeError(#[from] toml_edit::ser::Error),
+
+    #[error("lock entry does not match expected type")]
+    TypeMismatch,
 }
 
 #[derive(Error, Debug)]

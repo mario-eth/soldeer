@@ -2,7 +2,7 @@ use crate::{
     config::{Dependency, HttpDependency},
     errors::UpdateError,
     install::{install_dependency, Progress as InstallProgress, PROGRESS_TEMPLATE},
-    lock::LockEntry,
+    lock::{GitLockEntry, LockEntry},
     registry::{get_all_versions_descending, Versions},
     utils::run_git_command,
 };
@@ -143,23 +143,25 @@ pub async fn update_dependency(
             if commit != old_commit {
                 progress.log(format!("Updating {dependency} from {old_commit:.7} to {commit:.7}"));
             }
-            let lock = LockEntry::builder()
+            let lock = GitLockEntry::builder()
                 .name(&dep.name)
                 .version(&dep.version)
-                .source(&dep.git)
-                .checksum(commit)
-                .build();
+                .git(&dep.git)
+                .rev(commit)
+                .build()
+                .into();
             progress.install_progress.increment_all();
             Ok((new_dependency, lock))
         }
         Dependency::Git(ref dep) if dep.rev.is_some() => {
             // check integrity against the existing version since we can't update to a new rev
-            let lock = LockEntry::builder()
+            let lock = GitLockEntry::builder()
                 .name(&dep.name)
                 .version(&dep.version)
-                .source(&dep.git)
-                .checksum(dep.rev.clone().expect("rev field should be present"))
-                .build();
+                .git(&dep.git)
+                .rev(dep.rev.clone().expect("rev field should be present"))
+                .build()
+                .into();
             let new_lock = install_dependency(
                 &new_dependency,
                 Some(&lock),

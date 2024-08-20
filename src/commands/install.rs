@@ -98,9 +98,9 @@ pub(crate) async fn install_command(cmd: Install) -> Result<()> {
             progress.stop_all();
             multi.stop();
             let new_lockfile_content = generate_lockfile_contents(new_locks);
-            if !locks.is_empty() && new_lockfile_content != lockfile_content {
+            if !lockfile_content.is_empty() && new_lockfile_content != lockfile_content {
                 warning("Warning: the lock file is out of sync with the dependencies. Consider running `soldeer update` to re-generate the lockfile.")?;
-            } else if locks.is_empty() {
+            } else if lockfile_content.is_empty() {
                 fs::write(LOCK_FILE.as_path(), new_lockfile_content).map_err(LockError::IOError)?;
             }
             update_remappings(&config, &config_path).await?;
@@ -122,7 +122,8 @@ pub(crate) async fn install_command(cmd: Install) -> Result<()> {
             // for GIT deps, we need to add the commit hash before adding them to the
             // config.
             if let Some(git_dep) = dep.as_git_mut() {
-                git_dep.rev = Some(lock.checksum.clone());
+                git_dep.rev =
+                    Some(lock.as_git().expect("lock entry should be of type git").rev.clone());
             }
             add_to_config(&dep, &config_path)?;
             success("Dependency added to config")?;

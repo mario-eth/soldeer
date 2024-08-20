@@ -1,5 +1,4 @@
 use crate::{
-    config::HttpDependency,
     download::IntegrityChecksum,
     errors::{DownloadError, InstallError},
 };

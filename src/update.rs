@@ -31,11 +31,6 @@ impl Progress {
         self.get_versions.start("Retieving all versions...");
     }
 
-    pub fn increment_all(&self) {
-        self.install_progress.increment_all();
-        self.get_versions.inc(1);
-    }
-
     pub fn stop_all(&self) {
         self.install_progress.stop_all();
         self.get_versions.stop("Done retrieving versions");
@@ -124,7 +119,6 @@ pub async fn update_dependency(
                 name: dependency.name().to_string(),
                 version: new_version,
                 url: None,
-                checksum: None,
             })
         }
     };

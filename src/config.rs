@@ -84,7 +84,6 @@ pub struct HttpDependency {
     pub name: String,
     pub version: String,
     pub url: Option<String>,
-    pub checksum: Option<String>,
 }
 
 impl HttpDependency {
@@ -129,7 +128,6 @@ impl Dependency {
                         name: dependency_name.to_string(),
                         version: dependency_version.to_string(),
                         url: Some(url),
-                        checksum: None,
                     }),
                 }
             }
@@ -137,7 +135,6 @@ impl Dependency {
                 name: dependency_name.to_string(),
                 version: dependency_version.to_string(),
                 url: None,
-                checksum: None,
             }),
         })
     }
@@ -457,9 +454,7 @@ fn parse_dependency(name: impl Into<String>, value: &Item) -> Result<Dependency>
             return Err(ConfigError::EmptyVersion(name));
         }
         // this function does not retrieve the url
-        return Ok(
-            HttpDependency { name, version: version.to_string(), url: None, checksum: None }.into()
-        );
+        return Ok(HttpDependency { name, version: version.to_string(), url: None }.into());
     }
 
     // we should have a table or inline table
@@ -514,17 +509,11 @@ fn parse_dependency(name: impl Into<String>, value: &Item) -> Result<Dependency>
     // we should have a HTTP dependency
     match table.get("url").map(|v| v.as_str()) {
         Some(None) => Err(ConfigError::InvalidField { field: "url".to_string(), dep: name }),
-        None => Ok(Dependency::Http(HttpDependency {
-            name: name.to_string(),
-            version,
-            url: None,
-            checksum: None,
-        })),
+        None => Ok(Dependency::Http(HttpDependency { name: name.to_string(), version, url: None })),
         Some(Some(url)) => Ok(Dependency::Http(HttpDependency {
             name: name.to_string(),
             version,
             url: Some(url.to_string()),
-            checksum: None,
         })),
     }
 }
@@ -598,7 +587,6 @@ libs = ["dependencies"]
                 name: "@gearbox-protocol-periphery-v3".to_string(),
                 version: "1.6.1".to_string(),
                 url: None,
-                checksum: None
             })
         );
 
@@ -608,7 +596,6 @@ libs = ["dependencies"]
                 name: "@openzeppelin-contracts".to_string(),
                 version: "5.0.2".to_string(),
                 url: None,
-                checksum: None
             })
         );
         let _ = remove_file(target_config);
@@ -640,7 +627,6 @@ libs = ["dependencies"]
                 name: "@gearbox-protocol-periphery-v3".to_string(),
                 version: "1.6.1".to_string(),
                 url: None,
-                checksum: None
             })
         );
 
@@ -650,7 +636,6 @@ libs = ["dependencies"]
                 name: "@openzeppelin-contracts".to_string(),
                 version: "5.0.2".to_string(),
                 url: None,
-                checksum: None
             })
         );
         let _ = remove_file(target_config);
@@ -680,7 +665,6 @@ enabled = true
                 name: "@gearbox-protocol-periphery-v3".to_string(),
                 version: "1.6.1".to_string(),
                 url: None,
-                checksum: None
             })
         );
 
@@ -690,7 +674,6 @@ enabled = true
                 name: "@openzeppelin-contracts".to_string(),
                 version: "5.0.2".to_string(),
                 url: None,
-                checksum: None
             })
         );
         let _ = remove_file(target_config);
@@ -720,7 +703,6 @@ enabled = true
                 name: "@gearbox-protocol-periphery-v3".to_string(),
                 version: "1.6.1".to_string(),
                 url: None,
-                checksum: None
             })
         );
 
@@ -730,7 +712,6 @@ enabled = true
                 name: "@openzeppelin-contracts".to_string(),
                 version: "5.0.2".to_string(),
                 url: None,
-                checksum: None
             })
         );
         let _ = remove_file(target_config);
@@ -905,7 +886,6 @@ libs = ["dependencies"]
             name: "dep1".to_string(),
             version: "1.0.0".to_string(),
             url: None,
-            checksum: None,
         });
         add_to_config(&dependency, &target_config).unwrap();
         content = r#"
@@ -951,7 +931,6 @@ libs = ["dependencies"]
             name: "dep1".to_string(),
             version: "1.0.0".to_string(),
             url: Some("http://custom_url.com/custom.zip".to_string()),
-            checksum: None,
         });
 
         add_to_config(&dependency, &target_config).unwrap();
@@ -999,7 +978,6 @@ old_dep = "5.1.0-my-version-is-cool"
             name: "dep1".to_string(),
             version: "1.0.0".to_string(),
             url: None,
-            checksum: None,
         });
 
         add_to_config(&dependency, &target_config).unwrap();
@@ -1048,7 +1026,6 @@ old_dep = { version = "5.1.0-my-version-is-cool", url = "http://custom_url.com/c
             name: "dep1".to_string(),
             version: "1.0.0".to_string(),
             url: Some("http://custom_url.com/custom.zip".to_string()),
-            checksum: None,
         });
 
         add_to_config(&dependency, &target_config).unwrap();
@@ -1097,7 +1074,6 @@ old_dep = { version = "5.1.0-my-version-is-cool", url = "http://custom_url.com/c
             name: "old_dep".to_string(),
             version: "1.0.0".to_string(),
             url: Some("http://custom_url.com/custom.zip".to_string()),
-            checksum: None,
         });
 
         add_to_config(&dependency, &target_config).unwrap();
@@ -1145,7 +1121,6 @@ old_dep = { version = "5.1.0-my-version-is-cool", url = "http://custom_url.com/c
             name: "old_dep".to_string(),
             version: "1.0.0".to_string(),
             url: None,
-            checksum: None,
         });
 
         add_to_config(&dependency, &target_config).unwrap();
@@ -1193,7 +1168,6 @@ gas_reports = ['*']
             name: "dep1".to_string(),
             version: "1.0.0".to_string(),
             url: None,
-            checksum: None,
         });
 
         add_to_config(&dependency, &target_config).unwrap();
@@ -1237,7 +1211,6 @@ enabled = true
             name: "dep1".to_string(),
             version: "1.0.0".to_string(),
             url: None,
-            checksum: None,
         });
 
         add_to_config(&dependency, &target_config).unwrap();
@@ -1272,7 +1245,6 @@ enabled = true
             name: "dep1".to_string(),
             version: "1.0.0".to_string(),
             url: Some("http://custom_url.com/custom.zip".to_string()),
-            checksum: None,
         });
 
         add_to_config(&dependency, &target_config).unwrap();
@@ -1422,7 +1394,6 @@ dep1 = { version = "1.0.0", git = "git@github.com:foundry-rs/forge-std.git", rev
             name: "dep1".to_string(),
             version: "1.0.0".to_string(),
             url: Some("http://custom_url.com/custom.zip".to_string()),
-            checksum: None,
         });
 
         add_to_config(&dependency, &target_config).unwrap();

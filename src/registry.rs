@@ -92,7 +92,6 @@ pub async fn get_latest_forge_std() -> Result<Dependency> {
         name: dependency_name.to_string(),
         version: data.clone().version,
         url: Some(data.clone().url),
-        checksum: None,
     }))
 }
 

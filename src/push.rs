@@ -4,6 +4,7 @@ use crate::{
     registry::get_project_id,
     utils::{get_base_url, read_file},
 };
+use cliclack::log::{info, remark};
 use ignore::{WalkBuilder, WalkState};
 use regex::Regex;
 use reqwest::{
@@ -25,14 +26,11 @@ pub type Result<T> = std::result::Result<T, PublishError>;
 pub async fn push_version(
     dependency_name: &str,
     dependency_version: &str,
-    root_directory_path: PathBuf,
+    root_directory_path: impl AsRef<Path>,
     dry_run: bool,
 ) -> Result<()> {
-    let file_name = root_directory_path.file_name().expect("path should have a last component");
-    println!(
-        "{}",
-        format!("Pushing a dependency {}-{}:", dependency_name, dependency_version).green()
-    );
+    let file_name =
+        root_directory_path.as_ref().file_name().expect("path should have a last component");
 
     let files_to_copy: Vec<PathBuf> = filter_files_to_copy(&root_directory_path);
 
@@ -69,13 +67,13 @@ pub fn validate_name(name: &str) -> Result<()> {
 }
 
 fn zip_file(
-    root_directory_path: &Path,
+    root_directory_path: impl AsRef<Path>,
     files_to_copy: &Vec<PathBuf>,
     file_name: impl Into<PathBuf>,
 ) -> Result<PathBuf> {
     let mut file_name: PathBuf = file_name.into();
     file_name.set_extension("zip");
-    let zip_file_path = root_directory_path.join(file_name);
+    let zip_file_path = root_directory_path.as_ref().join(file_name);
     let file = File::create(&zip_file_path).unwrap();
     let mut zip = ZipWriter::new(file);
     let options = SimpleFileOptions::default().compression_method(CompressionMethod::DEFLATE);
@@ -92,7 +90,7 @@ fn zip_file(
         // This is the relative path, we basically get the relative path to the target folder that
         // we want to push and zip that as a name so we won't screw up the file/dir
         // hierarchy in the zip file.
-        let relative_file_path = file_path.strip_prefix(root_directory_path)?;
+        let relative_file_path = file_path.strip_prefix(root_directory_path.as_ref())?;
 
         // Write file or directory explicitly
         // Some unzip tools unzip files with directory paths correctly, some do not!
@@ -197,6 +195,16 @@ async fn push_to_repo(
         }
         _ => Err(PublishError::UnknownError),
     }
+}
+
+// Function to prompt the user for confirmation
+pub fn prompt_user_for_confirmation() -> Result<bool> {
+    remark("You are about to include some sensitive files in this version").ok();
+    info("If you are not sure which files will be included, you can run the command with `--dry-run`and inspect the generated zip file.").ok();
+
+    cliclack::confirm("Do you want to continue?")
+        .interact()
+        .map_err(|e| PublishError::IOError { path: PathBuf::new(), source: e })
 }
 
 #[cfg(test)]

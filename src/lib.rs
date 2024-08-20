@@ -1,9 +1,6 @@
 #![cfg_attr(docsrs, feature(doc_cfg, doc_auto_cfg))]
+use crate::utils::get_current_working_dir;
 pub use crate::{commands::Subcommands, errors::SoldeerError};
-use crate::{
-    push::{push_version, validate_name},
-    utils::{check_dotfiles_recursive, get_current_working_dir, prompt_user_for_confirmation},
-};
 use cliclack::{intro, log::step, outro, outro_cancel};
 use once_cell::sync::Lazy;
 use std::{env, path::PathBuf};
@@ -77,42 +74,13 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
             })?;
             outro("Done logging in!")?;
         }
-        Subcommands::Push(push) => {
-            let path = push.path.unwrap_or(get_current_working_dir());
-            let dry_run = push.dry_run;
-            let skip_warnings = push.skip_warnings;
-
-            // Check for sensitive files or directories
-            if !dry_run &&
-                !skip_warnings &&
-                check_dotfiles_recursive(&path) &&
-                !prompt_user_for_confirmation()
-            {
-                println!("{}", "Push operation aborted by the user.".yellow());
-                return Ok(());
-            }
-
-            if dry_run {
-                println!(
-                    "{}",
-                    "🦌 Running Soldeer push with dry-run, a zip file will be available for inspection 🦌".green()
-                );
-            } else {
-                println!("{}", "🦌 Running Soldeer push 🦌".green());
-            }
-
-            if skip_warnings {
-                println!("{}", "Warning: Skipping sensitive file checks as requested.".yellow());
-            }
-
-            let (dependency_name, dependency_version) = push
-                .dependency
-                .split_once('~')
-                .expect("dependency string should have name and version");
-
-            validate_name(dependency_name)?;
-
-            push_version(dependency_name, dependency_version, path, dry_run).await?;
+        Subcommands::Push(cmd) => {
+            intro("🦌 Soldeer Push 🦌")?;
+            commands::push::push_command(cmd).await.map_err(|e| {
+                outro_cancel("An error occurred during push").ok();
+                e
+            })?;
+            outro("Done pushing to registry!")?;
         }
         Subcommands::Version(_) => {
             const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -125,7 +93,7 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use commands::{init::Init, install::Install, update::Update, Push};
+    use commands::{install::Install, push::Push, update::Update};
     use rand::{distributions::Alphanumeric, Rng};
     use serial_test::serial;
     use std::{

@@ -213,6 +213,9 @@ pub enum PublishError {
     #[error("invalid package name, only alphanumeric characters, `-` and `@` are allowed")]
     InvalidName,
 
+    #[error("user cancelled operation")]
+    UserAborted,
+
     #[error("unknown http error")]
     UnknownError,
 }

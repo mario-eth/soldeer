@@ -1,6 +1,6 @@
 use crate::{
     download::IntegrityChecksum,
-    errors::{DownloadError, InstallError},
+    errors::{DownloadError, InstallError, PublishError},
 };
 use ignore::{WalkBuilder, WalkState};
 use once_cell::sync::Lazy;
@@ -117,26 +117,6 @@ pub fn check_dotfiles_recursive(path: impl AsRef<Path>) -> bool {
             .any(|entry| check_dotfiles(entry.path()));
     }
     false
-}
-
-// Function to prompt the user for confirmation
-pub fn prompt_user_for_confirmation() -> bool {
-    println!(
-        "{}",
-        "You are about to include some sensitive files in this version. Are you sure you want to continue?".yellow()
-    );
-    println!(
-        "{}",
-        "If you are not sure what sensitive files, you can run the dry-run command to check what will be pushed.".cyan()
-    );
-
-    print!("{}", "Do you want to continue? (y/n): ".green());
-    std::io::stdout().flush().unwrap();
-
-    let mut input = String::new();
-    std::io::stdin().read_line(&mut input).unwrap();
-    let input = input.trim().to_lowercase();
-    input == "y" || input == "yes"
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]

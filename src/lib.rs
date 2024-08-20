@@ -1,11 +1,7 @@
 #![cfg_attr(docsrs, feature(doc_cfg, doc_auto_cfg))]
 use crate::{
     auth::login,
-    config::{delete_config, get_config_path, read_soldeer_config},
-    download::delete_dependency_files,
-    lock::remove_lock,
     push::{push_version, validate_name},
-    remappings::{remappings_foundry, remappings_txt, RemappingsAction, RemappingsLocation},
     utils::{check_dotfiles_recursive, get_current_working_dir, prompt_user_for_confirmation},
 };
 pub use crate::{commands::Subcommands, errors::SoldeerError};
@@ -108,49 +104,13 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
             push_version(dependency_name, dependency_version, path, dry_run).await?;
         }
 
-        Subcommands::Uninstall(uninstall) => {
-            // define the config file
-            let config_path = get_config_path()?;
-
-            // delete from the config file and return the dependency
-            let dependency = delete_config(&uninstall.dependency, &config_path)?;
-
-            // deleting the files
-            delete_dependency_files(&dependency).map_err(|e| SoldeerError::DownloadError {
-                dep: dependency.to_string(),
-                source: e,
+        Subcommands::Uninstall(cmd) => {
+            intro("🦌 Soldeer Uninstall 🦌")?;
+            commands::uninstall::uninstall_command(cmd).await.map_err(|e| {
+                outro_cancel("An error occurred during uninstallation").ok();
+                e
             })?;
-
-            // removing the dependency from the lock file
-            remove_lock(&dependency)?;
-
-            let config = read_soldeer_config(Some(config_path.clone()))?;
-
-            if config.remappings_generate {
-                if config_path.to_string_lossy().contains("foundry.toml") {
-                    match config.remappings_location {
-                        RemappingsLocation::Txt => {
-                            remappings_txt(
-                                &RemappingsAction::Remove(dependency),
-                                &config_path,
-                                &config,
-                            )
-                            .await?
-                        }
-                        RemappingsLocation::Config => {
-                            remappings_foundry(
-                                &RemappingsAction::Remove(dependency),
-                                &config_path,
-                                &config,
-                            )
-                            .await?
-                        }
-                    }
-                } else {
-                    remappings_txt(&RemappingsAction::Remove(dependency), &config_path, &config)
-                        .await?;
-                }
-            }
+            outro("Done uninstalling!")?;
         }
 
         Subcommands::Version(_) => {

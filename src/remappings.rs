@@ -120,6 +120,29 @@ pub async fn add_to_remappings(
     Ok(())
 }
 
+pub async fn remove_from_remappings(
+    dep: Dependency,
+    config: &SoldeerConfig,
+    config_path: impl AsRef<Path>,
+) -> Result<()> {
+    if config.remappings_generate {
+        if config_path.as_ref().to_string_lossy().contains("foundry.toml") {
+            match config.remappings_location {
+                RemappingsLocation::Txt => {
+                    remappings_txt(&RemappingsAction::Remove(dep), &config_path, &config).await?
+                }
+                RemappingsLocation::Config => {
+                    remappings_foundry(&RemappingsAction::Remove(dep), &config_path, &config)
+                        .await?
+                }
+            }
+        } else {
+            remappings_txt(&RemappingsAction::Remove(dep), &config_path, &config).await?;
+        }
+    }
+    Ok(())
+}
+
 pub async fn update_remappings(
     config: &SoldeerConfig,
     config_path: impl AsRef<Path>,

@@ -4,6 +4,7 @@ use std::path::PathBuf;
 
 pub mod init;
 pub mod install;
+pub mod uninstall;
 pub mod update;
 
 pub type Result<T> = std::result::Result<T, SoldeerError>;
@@ -23,7 +24,7 @@ pub enum Subcommands {
     Update(update::Update),
     Login(Login),
     Push(Push),
-    Uninstall(Uninstall),
+    Uninstall(uninstall::Uninstall),
     Version(Version),
 }
 
@@ -76,12 +77,4 @@ pub struct Push {
     /// dotfiles like .env.
     #[arg(long, default_value_t = false)]
     pub skip_warnings: bool,
-}
-
-/// Uninstall a dependency
-#[derive(Debug, Clone, Parser)]
-#[clap(after_help = "For more information, read the README.md")]
-pub struct Uninstall {
-    /// The dependency name. Specifying a version is not necessary.
-    pub dependency: String,
 }

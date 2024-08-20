@@ -4,6 +4,7 @@ use std::path::PathBuf;
 
 pub mod init;
 pub mod install;
+pub mod login;
 pub mod uninstall;
 pub mod update;
 
@@ -22,7 +23,7 @@ pub enum Subcommands {
     Init(init::Init),
     Install(install::Install),
     Update(update::Update),
-    Login(Login),
+    Login(login::Login),
     Push(Push),
     Uninstall(uninstall::Uninstall),
     Version(Version),
@@ -38,11 +39,6 @@ fn validate_dependency(dep: &str) -> std::result::Result<String, String> {
 /// Display the version of Soldeer
 #[derive(Debug, Clone, Parser)]
 pub struct Version {}
-
-/// Log into the central repository to push the dependencies
-#[derive(Debug, Clone, Parser)]
-#[clap(after_help = "For more information, read the README.md")]
-pub struct Login {}
 
 /// Push a dependency to the repository
 #[derive(Debug, Clone, Parser)]

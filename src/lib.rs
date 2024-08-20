@@ -1,10 +1,9 @@
 #![cfg_attr(docsrs, feature(doc_cfg, doc_auto_cfg))]
+pub use crate::{commands::Subcommands, errors::SoldeerError};
 use crate::{
-    auth::login,
     push::{push_version, validate_name},
     utils::{check_dotfiles_recursive, get_current_working_dir, prompt_user_for_confirmation},
 };
-pub use crate::{commands::Subcommands, errors::SoldeerError};
 use cliclack::{intro, log::step, outro, outro_cancel};
 use once_cell::sync::Lazy;
 use std::{env, path::PathBuf};
@@ -62,9 +61,21 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
             })?;
             outro("Done updating!")?;
         }
+        Subcommands::Uninstall(cmd) => {
+            intro("🦌 Soldeer Uninstall 🦌")?;
+            commands::uninstall::uninstall_command(cmd).await.map_err(|e| {
+                outro_cancel("An error occurred during uninstallation").ok();
+                e
+            })?;
+            outro("Done uninstalling!")?;
+        }
         Subcommands::Login(_) => {
-            println!("{}", "🦌 Running Soldeer login 🦌".green());
-            login().await?;
+            intro("🦌 Soldeer Login 🦌")?;
+            commands::login::login_command().await.map_err(|e| {
+                outro_cancel("An error occurred during login").ok();
+                e
+            })?;
+            outro("Done logging in!")?;
         }
         Subcommands::Push(push) => {
             let path = push.path.unwrap_or(get_current_working_dir());
@@ -103,16 +114,6 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
 
             push_version(dependency_name, dependency_version, path, dry_run).await?;
         }
-
-        Subcommands::Uninstall(cmd) => {
-            intro("🦌 Soldeer Uninstall 🦌")?;
-            commands::uninstall::uninstall_command(cmd).await.map_err(|e| {
-                outro_cancel("An error occurred during uninstallation").ok();
-                e
-            })?;
-            outro("Done uninstalling!")?;
-        }
-
         Subcommands::Version(_) => {
             const VERSION: &str = env!("CARGO_PKG_VERSION");
             println!("{}", format!("Current Soldeer {}", VERSION).cyan());

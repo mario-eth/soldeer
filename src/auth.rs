@@ -1,16 +1,12 @@
 use crate::{
     errors::AuthError,
-    utils::{define_security_file_location, get_base_url, read_file},
+    utils::{get_base_url, security_file_path},
 };
+use cliclack::log::{info, remark, success};
 use email_address_parser::{EmailAddress, ParsingOptions};
 use reqwest::{Client, StatusCode};
-use rpassword::read_password;
 use serde::{Deserialize, Serialize};
-use std::{
-    fs::OpenOptions,
-    io::{self, Write},
-};
-use yansi::Paint as _;
+use std::fs;
 
 pub type Result<T> = std::result::Result<T, AuthError>;
 
@@ -27,77 +23,51 @@ pub struct LoginResponse {
 }
 
 pub async fn login() -> Result<()> {
-    print!("ℹ️  If you do not have an account, please go to soldeer.xyz to create one.\n📧 Please enter your email: ");
-    std::io::stdout().flush().unwrap();
-    let mut email = String::new();
-    if io::stdin().read_line(&mut email).is_err() {
-        return Err(AuthError::InvalidEmail);
-    }
-    email = match check_email(email) {
-        Ok(e) => e,
-        Err(err) => return Err(err),
-    };
+    remark("If you do not have an account, please visit soldeer.xyz to create one.")?;
+    let email: String = cliclack::input("Email address")
+        .validate(|input: &String| {
+            if input.is_empty() {
+                Err("Email is required")
+            } else {
+                match EmailAddress::parse(input, Some(ParsingOptions::default())) {
+                    None => Err("Invalid email address"),
+                    Some(_) => Ok(()),
+                }
+            }
+        })
+        .interact()?;
 
-    print!("🔓 Please enter your password: ");
-    std::io::stdout().flush().unwrap();
-    let password = read_password().unwrap();
+    let password = cliclack::password("Password").mask('▪').interact()?;
 
-    let login: Login = Login { email, password };
-
-    execute_login(login).await.unwrap();
+    execute_login(&Login { email, password }).await?;
     Ok(())
 }
 
 pub fn get_token() -> Result<String> {
-    let security_file = define_security_file_location()?;
-    let jwt = read_file(security_file);
-    match jwt {
-        Ok(token) => Ok(String::from_utf8(token)
-            .expect("You are not logged in. Please login using the 'soldeer login' command")),
-        Err(_) => Err(AuthError::MissingToken),
+    let security_file = security_file_path()?;
+    let jwt =
+        fs::read_to_string(&security_file).map_err(|_| AuthError::MissingToken)?.trim().to_string();
+    if jwt.is_empty() {
+        return Err(AuthError::MissingToken);
     }
+    Ok(jwt)
 }
 
-fn check_email(email_str: String) -> Result<String> {
-    let email_str = email_str.trim().to_string().to_ascii_lowercase();
-
-    let email: Option<EmailAddress> =
-        EmailAddress::parse(&email_str, Some(ParsingOptions::default()));
-    if email.is_none() {
-        Err(AuthError::InvalidEmail)
-    } else {
-        Ok(email_str)
-    }
-}
-
-async fn execute_login(login: Login) -> Result<()> {
+async fn execute_login(login: &Login) -> Result<()> {
+    let security_file = security_file_path()?;
     let url = format!("{}/api/v1/auth/login", get_base_url());
-    let req = Client::new().post(url).json(&login);
-
-    let login_response = req.send().await;
-
-    let security_file = define_security_file_location()?;
-    let response = login_response?;
-
-    match response.status() {
+    let client = Client::new();
+    let res = client.post(&url).json(login).send().await?;
+    match res.status() {
         s if s.is_success() => {
-            println!("{}", "Login successful".green());
-            let jwt = serde_json::from_str::<LoginResponse>(&response.text().await.unwrap())
-                .unwrap()
-                .token;
-            let mut file: std::fs::File = OpenOptions::new()
-                .create(true)
-                .truncate(true)
-                .write(true)
-                .append(false)
-                .open(&security_file)
-                .unwrap();
-            write!(file, "{}", &jwt)?;
-            println!("{}", format!("Login details saved in: {:?}", &security_file).green());
+            success("Login successful")?;
+            let response: LoginResponse = res.json().await?;
+            fs::write(&security_file, response.token)?;
+            info(format!("Login details saved in: {:?}", &security_file))?;
             Ok(())
         }
         StatusCode::UNAUTHORIZED => Err(AuthError::InvalidCredentials),
-        _ => Err(AuthError::HttpError(response.error_for_status().unwrap_err())),
+        _ => Err(AuthError::HttpError(res.error_for_status().unwrap_err())),
     }
 }
 
@@ -107,17 +77,6 @@ mod tests {
     use crate::utils::read_file_to_string;
     use serial_test::serial;
     use std::{env, fs::remove_file};
-
-    #[test]
-    #[serial]
-    fn email_validation() {
-        let valid_email = String::from("test@test.com");
-        let invalid_email = String::from("test");
-
-        assert_eq!(check_email(valid_email.clone()).unwrap(), valid_email);
-
-        assert!(matches!(check_email(invalid_email), Err(AuthError::InvalidEmail)));
-    }
 
     #[tokio::test]
     #[serial]
@@ -143,7 +102,7 @@ mod tests {
             .with_body(data)
             .create();
 
-        match execute_login(Login {
+        match execute_login(&Login {
             email: "test@test.com".to_string(),
             password: "1234".to_string(),
         })
@@ -182,7 +141,7 @@ mod tests {
             .create();
 
         assert!(matches!(
-            execute_login(Login {
+            execute_login(&Login {
                 email: "test@test.com".to_string(),
                 password: "1234".to_string(),
             })
@@ -214,7 +173,7 @@ mod tests {
             .create();
 
         assert!(matches!(
-            execute_login(Login {
+            execute_login(&Login {
                 email: "test@test.com".to_string(),
                 password: "1234".to_string(),
             })

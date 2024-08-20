@@ -42,9 +42,6 @@ pub enum SoldeerError {
 
 #[derive(Error, Debug)]
 pub enum AuthError {
-    #[error("login error: invalid email")]
-    InvalidEmail,
-
     #[error("login error: invalid email or password")]
     InvalidCredentials,
 

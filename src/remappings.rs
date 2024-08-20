@@ -289,7 +289,6 @@ remappings_location = "config"
             name: "dep1".to_string(),
             version: "1.0.0".to_string(),
             url: None,
-            checksum: None,
         });
         let soldeer_config = read_soldeer_config(Some(target_config.clone())).unwrap();
         let _ =
@@ -333,7 +332,6 @@ remappings_version = false
             name: "dep1".to_string(),
             version: "1.0.0".to_string(),
             url: None,
-            checksum: None,
         });
         let soldeer_config = read_soldeer_config(Some(target_config.clone())).unwrap();
         let _ = remappings_foundry(
@@ -383,7 +381,6 @@ remappings_version = true
             name: "dep1".to_string(),
             version: "1.0.0".to_string(),
             url: None,
-            checksum: None,
         });
         let soldeer_config = read_soldeer_config(Some(target_config.clone())).unwrap();
         let _ = remappings_txt(&RemappingsAction::Add(dependency), &target_config, &soldeer_config)
@@ -419,7 +416,6 @@ remappings_version = false
             name: "dep1".to_string(),
             version: "1.0.0".to_string(),
             url: None,
-            checksum: None,
         });
         let soldeer_config = read_soldeer_config(Some(target_config.clone())).unwrap();
         let _ = remappings_txt(&RemappingsAction::Add(dependency), &target_config, &soldeer_config)
@@ -453,7 +449,6 @@ remappings_generate = true
             name: "dep1".to_string(),
             version: "1.0.0".to_string(),
             url: None,
-            checksum: None,
         });
         let soldeer_config = read_soldeer_config(Some(target_config.clone())).unwrap();
         let _ = remappings_foundry(
@@ -503,7 +498,6 @@ remappings_generate = true
             name: "dep1".to_string(),
             version: "1.0.0".to_string(),
             url: None,
-            checksum: None,
         });
         let soldeer_config = read_soldeer_config(Some(target_config.clone())).unwrap();
         let _ = remappings_foundry(
@@ -552,7 +546,6 @@ remappings_generate = true
             name: "dep1".to_string(),
             version: "1.0.0".to_string(),
             url: None,
-            checksum: None,
         });
         let soldeer_config = read_soldeer_config(Some(target_config.clone())).unwrap();
         let _ = remappings_foundry(

@@ -62,7 +62,7 @@ pub fn read_file(path: impl AsRef<Path>) -> Result<Vec<u8>, std::io::Error> {
 /// For reading (e.g. when pushing to the registry), the path can be overridden by
 /// setting the `SOLDEER_LOGIN_FILE` environment variable.
 /// For login, the custom path will only be used if the file already exists.
-pub fn define_security_file_location() -> Result<PathBuf, std::io::Error> {
+pub fn security_file_path() -> Result<PathBuf, std::io::Error> {
     let custom_security_file = if cfg!(test) {
         return Ok(PathBuf::from("./test_save_jwt"));
     } else {

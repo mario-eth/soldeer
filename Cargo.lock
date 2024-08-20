@@ -316,7 +316,7 @@ checksum = "1462739cb27611015575c0c11df5df7601141071f07518d56fcc1be504cbec97"
 [[package]]
 name = "cliclack"
 version = "0.3.3"
-source = "git+https://github.com/beeb/cliclack.git?branch=multi-println#f742a2c3f7f3ecd48aec9cdb5d9de2d5121c6376"
+source = "git+https://github.com/beeb/cliclack.git?branch=multiprogress-improvements#aaeaf10b5ead30a6c4dcea99c8f8d97c57e2b107"
 dependencies = [
  "console",
  "indicatif",

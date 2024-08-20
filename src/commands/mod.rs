@@ -37,5 +37,5 @@ fn validate_dependency(dep: &str) -> std::result::Result<String, String> {
 }
 
 /// Display the version of Soldeer
-#[derive(Debug, Clone, Parser)]
+#[derive(Debug, Clone, Default, Parser)]
 pub struct Version {}

@@ -13,7 +13,7 @@ use cliclack::{
 };
 
 /// Initialize a new Soldeer project for use with Foundry
-#[derive(Debug, Clone, Parser)]
+#[derive(Debug, Clone, Default, Parser)]
 #[clap(after_help = "For more information, read the README.md")]
 pub struct Init {
     /// Clean the Foundry project by removing .gitmodules and the lib directory

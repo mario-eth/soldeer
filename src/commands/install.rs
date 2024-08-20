@@ -15,7 +15,7 @@ use cliclack::{
 use std::fs;
 
 /// Install a dependency
-#[derive(Debug, Clone, Parser)]
+#[derive(Debug, Clone, Default, Parser)]
 #[clap(
     long_about = "Install a dependency
 

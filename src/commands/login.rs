@@ -3,7 +3,7 @@ use crate::auth::login;
 use clap::Parser;
 
 /// Log into the central repository to push the dependencies
-#[derive(Debug, Clone, Parser)]
+#[derive(Debug, Clone, Default, Parser)]
 #[clap(after_help = "For more information, read the README.md")]
 pub struct Login {}
 

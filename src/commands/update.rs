@@ -14,7 +14,7 @@ use clap::Parser;
 use cliclack::{log::success, multi_progress};
 
 /// Update dependencies by reading the config file
-#[derive(Debug, Clone, Parser)]
+#[derive(Debug, Clone, Default, Parser)]
 #[clap(after_help = "For more information, read the README.md")]
 pub struct Update {
     /// If set, this command will delete the existing remappings and re-create them

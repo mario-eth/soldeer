@@ -257,7 +257,11 @@ async fn install_dependency_inner(
             .map_err(|e| InstallError::IOError { path: zip_path.clone(), source: e })?;
             if let Some(checksum) = &dep.rev_checksum {
                 if checksum != &zip_integrity.to_string() {
-                    return Err(InstallError::ZipIntegrityError(zip_path.clone()));
+                    return Err(InstallError::ZipIntegrityError {
+                        path: zip_path.clone(),
+                        expected: checksum.to_string(),
+                        actual: zip_integrity.to_string(),
+                    });
                 }
             }
             unzip_file(&zip_path, &path).await?;

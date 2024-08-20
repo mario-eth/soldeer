@@ -129,8 +129,8 @@ pub enum DownloadError {
 
 #[derive(Error, Debug)]
 pub enum InstallError {
-    #[error("zipfile checksum does not match: {0}")]
-    ZipIntegrityError(PathBuf),
+    #[error("zip checksum for {path} does not match lock file: expected {expected}, got {actual}")]
+    ZipIntegrityError { path: PathBuf, expected: String, actual: String },
 
     #[error("error during IO operation for {path:?}: {source}")]
     IOError { path: PathBuf, source: io::Error },

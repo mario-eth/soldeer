@@ -27,6 +27,9 @@ pub struct Update {
     pub recursive_deps: bool,
 }
 
+// TODO: add a parameter for a dependency name, where we would only update that particular
+// dependency
+
 pub(crate) async fn update_command(cmd: Update) -> Result<()> {
     let config_path = get_config_path()?;
     let mut config = read_soldeer_config(Some(&config_path))?;

@@ -15,7 +15,6 @@ use std::{
     path::{Path, PathBuf},
 };
 use toml_edit::{value, DocumentMut, InlineTable, Item, Table};
-use yansi::Paint as _;
 
 pub type Result<T> = std::result::Result<T, ConfigError>;
 
@@ -428,11 +427,6 @@ pub fn update_deps(dependencies: &[Dependency], config_path: impl AsRef<Path>) -
 }
 
 pub fn delete_config(dependency_name: &str, path: impl AsRef<Path>) -> Result<Dependency> {
-    println!(
-        "{}",
-        format!("Removing the dependency {dependency_name} from the config file").green()
-    );
-
     let contents = read_file_to_string(&path);
     let mut doc: DocumentMut = contents.parse::<DocumentMut>().expect("invalid doc");
 
@@ -444,7 +438,6 @@ pub fn delete_config(dependency_name: &str, path: impl AsRef<Path>) -> Result<De
     let dependency = parse_dependency(dependency_name, &item_removed)?;
 
     fs::write(path, doc.to_string())?;
-
     Ok(dependency)
 }
 

@@ -183,8 +183,6 @@ fn generate_remappings(
                 for (remapped, orig) in existing_remappings {
                     if orig != remove_dep_orig {
                         new_remappings.push(format!("{}={}", remapped, orig));
-                    } else {
-                        println!("{}", format!("Removed {remove_dep} from remappings").green());
                     }
                 }
             }

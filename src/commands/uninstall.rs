@@ -24,12 +24,15 @@ pub(crate) async fn uninstall_command(cmd: Uninstall) -> Result<()> {
 
     // delete from the config file and return the dependency
     let dependency = delete_config(&cmd.dependency, &config_path)?;
+    success("Dependency removed from config file")?;
 
     // deleting the files
     delete_dependency_files(&dependency)
         .map_err(|e| SoldeerError::DownloadError { dep: dependency.to_string(), source: e })?;
+    success("Dependency removed from disk")?;
 
     remove_lock(&dependency)?;
+    success("Dependency removed from lockfile")?;
 
     remove_from_remappings(dependency, &config, &config_path).await?;
     success("Dependency removed from remappings")?;

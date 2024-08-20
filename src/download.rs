@@ -87,17 +87,13 @@ pub async fn clone_repo(
     Ok(commit)
 }
 
-// OLD CODE ---------------------------------------------------------
-
 pub fn delete_dependency_files(dependency: &Dependency) -> Result<()> {
-    let path = DEPENDENCY_DIR.join(sanitize_filename(&format!(
-        "{}-{}",
-        dependency.name(),
-        dependency.version()
-    )));
+    let path = DEPENDENCY_DIR.join(dependency.install_path());
     fs::remove_dir_all(&path).map_err(|e| DownloadError::IOError { path, source: e })?;
     Ok(())
 }
+
+// OLD CODE ---------------------------------------------------------
 
 #[cfg(test)]
 #[allow(clippy::vec_init_then_push)]

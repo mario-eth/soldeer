@@ -345,6 +345,28 @@ mod tests {
         assert_ne!(hash1, hash2);
     }
 
+    #[test]
+    fn get_download_tunnel_http() {
+        assert_eq!(
+            get_url_type("https://github.com/foundry-rs/forge-std/archive/refs/tags/v1.9.1.zip")
+                .unwrap(),
+            UrlType::Http
+        );
+    }
+
+    #[test]
+    fn get_download_tunnel_git_giturl() {
+        assert_eq!(get_url_type("git@github.com:foundry-rs/forge-std.git").unwrap(), UrlType::Git);
+    }
+
+    #[test]
+    fn get_download_tunnel_git_githttp() {
+        assert_eq!(
+            get_url_type("https://github.com/foundry-rs/forge-std.git").unwrap(),
+            UrlType::Git
+        );
+    }
+
     fn create_random_file(target_dir: impl AsRef<Path>, extension: &str) -> PathBuf {
         let s: String =
             rand::thread_rng().sample_iter(&Alphanumeric).take(7).map(char::from).collect();

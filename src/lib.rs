@@ -1358,16 +1358,4 @@ recursive_deps = true
         }
         String::from(target.to_str().unwrap())
     }
-
-    fn find_forge_std_path() -> PathBuf {
-        for entry in fs::read_dir(DEPENDENCY_DIR.clone()).unwrap().filter_map(Result::ok) {
-            let path = entry.path();
-            if path.is_dir() &&
-                path.file_name().unwrap().to_string_lossy().starts_with("forge-std-")
-            {
-                return path;
-            }
-        }
-        panic!("could not find forge-std folder in dependency dir");
-    }
 }

@@ -91,10 +91,6 @@ pub fn delete_dependency_files(dependency: &Dependency) -> Result<()> {
 #[cfg(test)]
 #[allow(clippy::vec_init_then_push)]
 mod tests {
-    use super::*;
-    use crate::utils::{get_url_type, UrlType};
-    use serial_test::serial;
-    use std::{fs::metadata, path::Path};
 
     /* #[tokio::test]
     #[serial]
@@ -463,28 +459,6 @@ mod tests {
             .exists());
         clean_dependency_directory();
     } */
-
-    #[test]
-    fn get_download_tunnel_http() {
-        assert_eq!(
-            get_url_type("https://github.com/foundry-rs/forge-std/archive/refs/tags/v1.9.1.zip")
-                .unwrap(),
-            UrlType::Http
-        );
-    }
-
-    #[test]
-    fn get_download_tunnel_git_giturl() {
-        assert_eq!(get_url_type("git@github.com:foundry-rs/forge-std.git").unwrap(), UrlType::Git);
-    }
-
-    #[test]
-    fn get_download_tunnel_git_githttp() {
-        assert_eq!(
-            get_url_type("https://github.com/foundry-rs/forge-std.git").unwrap(),
-            UrlType::Git
-        );
-    }
 
     /*     #[tokio::test]
     #[serial]

@@ -45,7 +45,7 @@ pub enum AuthError {
     #[error("login error: invalid email or password")]
     InvalidCredentials,
 
-    #[error("missing token, you are not connected")]
+    #[error("missing token, run `soldeer login`")]
     MissingToken,
 
     #[error("error during IO operation for the security file: {0}")]

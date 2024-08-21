@@ -1,3 +1,5 @@
+use std::fs;
+
 use super::Result;
 use crate::{
     config::{add_to_config, get_config_path, read_soldeer_config, remove_forge_lib},
@@ -5,6 +7,7 @@ use crate::{
     lock::add_to_lockfile,
     registry::get_latest_forge_std,
     remappings::add_to_remappings,
+    utils::get_current_working_dir,
 };
 use clap::Parser;
 use cliclack::{
@@ -49,6 +52,16 @@ pub(crate) async fn init_command(cmd: Init) -> Result<()> {
     success("Dependency added to lockfile")?;
     add_to_remappings(dependency, &config, &config_path).await?;
     success("Dependency added to remappings")?;
-    // TODO: add `dependencies` to the .gitignore file if it exists
+
+    let gitignore_path = get_current_working_dir().join(".gitignore");
+    if gitignore_path.exists() {
+        let mut gitignore = fs::read_to_string(&gitignore_path)?;
+        if !gitignore.contains("dependencies") {
+            gitignore.push_str("\n\n# Soldeer\n/dependencies\n");
+            fs::write(&gitignore_path, gitignore)?;
+        }
+    }
+    success("Added `dependencies` to .gitignore")?;
+
     Ok(())
 }

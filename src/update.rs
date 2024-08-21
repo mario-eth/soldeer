@@ -45,7 +45,7 @@ pub async fn update_dependencies(
     dependencies: &[Dependency],
     recursive_deps: bool,
     progress: Progress,
-) -> Result<Vec<(Dependency, LockEntry)>> {
+) -> Result<Vec<LockEntry>> {
     let mut set = JoinSet::new();
     for dep in dependencies {
         set.spawn({
@@ -66,7 +66,7 @@ pub async fn update_dependency(
     dependency: &Dependency,
     recursive_deps: bool,
     progress: Progress,
-) -> Result<(Dependency, LockEntry)> {
+) -> Result<LockEntry> {
     // we can't update dependencies that are http with a custom URL or git dependencies with a
     // commit hash
     let new_dependency = match dependency {
@@ -151,7 +151,7 @@ pub async fn update_dependency(
                 .build()
                 .into();
             progress.install_progress.increment_all();
-            Ok((new_dependency, lock))
+            Ok(lock)
         }
         Dependency::Git(ref dep) if dep.rev.is_some() => {
             // check integrity against the existing version since we can't update to a new rev
@@ -169,7 +169,7 @@ pub async fn update_dependency(
                 progress.install_progress,
             )
             .await?;
-            Ok((new_dependency, new_lock))
+            Ok(new_lock)
         }
         _ => {
             // for http dependencies, we simply re-install them
@@ -180,7 +180,7 @@ pub async fn update_dependency(
                 progress.install_progress,
             )
             .await?;
-            Ok((new_dependency, lock))
+            Ok(lock)
         }
     }
 }

@@ -408,22 +408,6 @@ pub fn add_to_config(dependency: &Dependency, config_path: impl AsRef<Path>) -> 
     Ok(())
 }
 
-pub fn update_deps(dependencies: &[Dependency], config_path: impl AsRef<Path>) -> Result<()> {
-    let contents = fs::read_to_string(&config_path)?;
-    let mut doc: DocumentMut = contents.parse::<DocumentMut>()?;
-    // in case we don't have the dependencies section defined in the config file, we add it
-    if !doc.contains_table("dependencies") {
-        doc.insert("dependencies", Item::Table(Table::default()));
-    }
-    let deps = doc["dependencies"].as_table_mut().expect("dependencies should be a table");
-    for dep in dependencies {
-        let (name, value) = dep.to_toml_value();
-        deps.insert(&name, value);
-    }
-    fs::write(config_path, doc.to_string())?;
-    Ok(())
-}
-
 pub fn delete_config(dependency_name: &str, path: impl AsRef<Path>) -> Result<Dependency> {
     let contents = fs::read_to_string(&path)?;
     let mut doc: DocumentMut = contents.parse::<DocumentMut>().expect("invalid doc");

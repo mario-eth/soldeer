@@ -4,7 +4,7 @@ use crate::{
     utils::get_base_url,
 };
 use chrono::{DateTime, Utc};
-use semver::Version;
+use semver::{Version, VersionReq};
 use serde::{Deserialize, Serialize};
 
 pub type Result<T> = std::result::Result<T, RegistryError>;
@@ -48,12 +48,12 @@ pub struct ProjectResponse {
     status: String,
 }
 
-pub async fn get_dependency_url_remote(dependency: &Dependency) -> Result<String> {
+pub async fn get_dependency_url_remote(dependency: &Dependency, version: &str) -> Result<String> {
     let url = format!(
         "{}/api/v1/revision-cli?project_name={}&revision={}",
         get_base_url(),
         dependency.name(),
-        dependency.version()
+        version
     );
     let res = reqwest::get(url).await?;
     let res = res.error_for_status()?;
@@ -88,11 +88,12 @@ pub async fn get_latest_forge_std() -> Result<Dependency> {
     let Some(data) = revision.data.first() else {
         return Err(RegistryError::URLNotFound(dependency_name.to_string()));
     };
-    Ok(Dependency::Http(HttpDependency {
+    Ok(HttpDependency {
         name: dependency_name.to_string(),
-        version: data.clone().version,
+        version_req: data.clone().version,
         url: None,
-    }))
+    }
+    .into())
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -133,4 +134,61 @@ pub async fn get_all_versions_descending(dependency_name: &str) -> Result<Versio
             Ok(Versions::NonSemver(revision.data.iter().map(|r| r.version.to_string()).collect()))
         }
     }
+}
+
+pub async fn get_latest_supported_version(dependency: &Dependency) -> Result<String> {
+    match get_all_versions_descending(dependency.name()).await? {
+        Versions::Semver(all_versions) => {
+            match parse_version_req(dependency.version_req()) {
+                Some(req) => {
+                    let new_version = all_versions
+                        .iter()
+                        .find(|version| req.matches(version))
+                        .ok_or(RegistryError::NoMatchingVersion {
+                            dependency: dependency.name().to_string(),
+                            version_req: dependency.version_req().to_string(),
+                        })?;
+                    Ok(new_version.to_string())
+                }
+                None => {
+                    // we can't check which version is newer, so we just take the latest one
+                    Ok(all_versions
+                        .into_iter()
+                        .next()
+                        .map(|v| v.to_string())
+                        .expect("there should be at least 1 version"))
+                }
+            }
+        }
+        Versions::NonSemver(all_versions) => {
+            // we can't check which version is newer, so we just take the latest one
+            Ok(all_versions.into_iter().next().expect("there should be at least 1 version"))
+        }
+    }
+}
+
+/// Parse a version requirement string into a `VersionReq`.
+///
+/// Adds the "equal" operator to the req if it doesn't have an operator.
+/// This is necessary because the semver crate considers no operator to be equivalent to the
+/// "compatible" operator, but we want to treat it as the "equal" operator.
+pub fn parse_version_req(version_req: &str) -> Option<VersionReq> {
+    let Ok(mut req) = version_req.parse::<VersionReq>() else {
+        return None;
+    };
+    if req.comparators.is_empty() {
+        return None;
+    }
+    let orig_items: Vec<_> = version_req.split(',').collect();
+    // we only perform the operator conversion if we can reference the original string, i.e. if the
+    // parsed result has the same number of comparators as the original string
+    if orig_items.len() == req.comparators.len() {
+        for (comparator, orig) in req.comparators.iter_mut().zip(orig_items.into_iter()) {
+            if comparator.op == semver::Op::Caret && !orig.trim_start_matches(' ').starts_with('^')
+            {
+                comparator.op = semver::Op::Exact;
+            }
+        }
+    }
+    Some(req)
 }

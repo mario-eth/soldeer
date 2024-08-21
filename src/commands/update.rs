@@ -4,10 +4,10 @@ use super::Result;
 use crate::{
     config::{get_config_path, read_config_deps, read_soldeer_config, Dependency},
     errors::LockError,
-    install::{ensure_dependencies_dir, Progress as InstallProgress},
-    lock::generate_lockfile_contents,
+    install::{ensure_dependencies_dir, Progress},
+    lock::{generate_lockfile_contents, read_lockfile},
     remappings::update_remappings,
-    update::{update_dependencies, Progress},
+    update::update_dependencies,
     LOCK_FILE,
 };
 use clap::Parser;
@@ -42,12 +42,13 @@ pub(crate) async fn update_command(cmd: Update) -> Result<()> {
     success("Done reading config")?;
     ensure_dependencies_dir()?;
     let dependencies: Vec<Dependency> = read_config_deps(Some(&config_path))?;
+    let (locks, _) = read_lockfile()?;
+    success("Done reading lockfile")?;
     let multi = multi_progress("Updating dependencies");
-    let install_progress = InstallProgress::new(&multi, dependencies.len() as u64);
-    let progress = Progress::new(&install_progress, dependencies.len() as u64);
+    let progress = Progress::new(&multi, dependencies.len() as u64);
     progress.start_all();
     let new_locks =
-        update_dependencies(&dependencies, config.recursive_deps, progress.clone()).await?;
+        update_dependencies(&dependencies, &locks, config.recursive_deps, progress.clone()).await?;
     progress.stop_all();
     multi.stop();
 

@@ -1,7 +1,7 @@
 use crate::{
     config::{read_config_deps, Dependency, SoldeerConfig},
     errors::RemappingsError,
-    utils::sanitize_filename,
+    utils::get_current_working_dir,
     REMAPPINGS_FILE,
 };
 use serde::{Deserialize, Serialize};
@@ -163,6 +163,15 @@ pub async fn update_remappings(
     Ok(())
 }
 
+pub fn format_remap_name(soldeer_config: &SoldeerConfig, dependency: &Dependency) -> String {
+    let version_suffix = if soldeer_config.remappings_version {
+        &format!("-{}", dependency.version_req().replace('=', ""))
+    } else {
+        ""
+    };
+    format!("{}{}{}/", soldeer_config.remappings_prefix, dependency.name(), version_suffix)
+}
+
 fn generate_remappings(
     dependency: &RemappingsAction,
     config_path: impl AsRef<Path>,
@@ -176,11 +185,9 @@ fn generate_remappings(
         match &dependency {
             RemappingsAction::Remove(remove_dep) => {
                 // only keep items not matching the dependency to remove
-                let sanitized_name =
-                    sanitize_filename(&format!("{}-{}", remove_dep.name(), remove_dep.version()));
-                let remove_dep_orig = format!("dependencies/{sanitized_name}/");
+                let remove_remapped = format_remap_name(soldeer_config, remove_dep);
                 for (remapped, orig) in existing_remappings {
-                    if orig != remove_dep_orig {
+                    if remapped != remove_remapped {
                         new_remappings.push(format!("{remapped}={orig}"));
                     }
                 }
@@ -189,18 +196,16 @@ fn generate_remappings(
                 // we only add the remapping if it's not already existing, otherwise we keep the old
                 // remapping
                 let new_dep_remapped = format_remap_name(soldeer_config, add_dep);
-                let sanitized_name =
-                    sanitize_filename(&format!("{}-{}", add_dep.name(), add_dep.version()));
-                let new_dep_orig = format!("dependencies/{sanitized_name}/");
+                let new_dep_path = get_install_dir_relative(add_dep)?;
                 let mut found = false; // whether a remapping existed for that dep already
                 for (remapped, orig) in existing_remappings {
                     new_remappings.push(format!("{remapped}={orig}"));
-                    if orig == new_dep_orig {
+                    if remapped == new_dep_remapped {
                         found = true;
                     }
                 }
                 if !found {
-                    new_remappings.push(format!("{new_dep_remapped}={new_dep_orig}"));
+                    new_remappings.push(format!("{new_dep_remapped}={new_dep_path}"));
                 }
             }
             RemappingsAction::None => {
@@ -210,11 +215,11 @@ fn generate_remappings(
                 new_remappings = remappings_from_deps(config_path, soldeer_config)?;
                 if !existing_remappings.is_empty() {
                     for item in &mut new_remappings {
-                        let (_, item_orig) =
+                        let (item_remapped, _) =
                             item.split_once('=').expect("remappings should have two parts");
-                        // try to find an existing item with the same path
+                        // try to find an existing item with the same name
                         if let Some((remapped, orig)) =
-                            existing_remappings.iter().find(|(_, o)| item_orig == *o)
+                            existing_remappings.iter().find(|(r, _)| item_remapped == *r)
                         {
                             *item = format!("{remapped}={orig}");
                         }
@@ -235,23 +240,26 @@ fn remappings_from_deps(
 ) -> Result<Vec<String>> {
     let config_path = config_path.as_ref().to_path_buf();
     let dependencies = read_config_deps(Some(config_path))?;
-    Ok(dependencies
+    dependencies
         .iter()
         .map(|dependency| {
             let dependency_name_formatted = format_remap_name(soldeer_config, dependency);
-            format!(
-                "{dependency_name_formatted}=dependencies/{}-{}/",
-                dependency.name(),
-                dependency.version()
-            )
+            let relative_path = get_install_dir_relative(dependency)?;
+            Ok(format!("{dependency_name_formatted}={relative_path}/"))
         })
-        .collect())
+        .collect::<Result<Vec<_>>>()
 }
 
-fn format_remap_name(soldeer_config: &SoldeerConfig, dependency: &Dependency) -> String {
-    let version_suffix =
-        if soldeer_config.remappings_version { &format!("-{}", dependency.version()) } else { "" };
-    format!("{}{}{}/", soldeer_config.remappings_prefix, dependency.name(), version_suffix)
+fn get_install_dir_relative(dependency: &Dependency) -> Result<String> {
+    let path = dependency
+        .install_path_sync()
+        .ok_or(RemappingsError::DependencyNotFound(dependency.to_string()))?
+        .canonicalize()?;
+    Ok(path
+        .strip_prefix(get_current_working_dir().canonicalize()?)
+        .map_err(|_| RemappingsError::DependencyNotFound(dependency.to_string()))?
+        .to_string_lossy()
+        .to_string())
 }
 
 #[cfg(test)]
@@ -287,7 +295,7 @@ remappings_location = "config"
         write_to_config(&target_config, content);
         let dependency = Dependency::Http(HttpDependency {
             name: "dep1".to_string(),
-            version: "1.0.0".to_string(),
+            version_req: "1.0.0".to_string(),
             url: None,
         });
         let soldeer_config = read_soldeer_config(Some(target_config.clone())).unwrap();
@@ -329,7 +337,7 @@ remappings_version = false
         write_to_config(&target_config, content);
         let dependency = Dependency::Http(HttpDependency {
             name: "dep1".to_string(),
-            version: "1.0.0".to_string(),
+            version_req: "1.0.0".to_string(),
             url: None,
         });
         let soldeer_config = read_soldeer_config(Some(target_config.clone())).unwrap();
@@ -377,7 +385,7 @@ remappings_version = true
         write_to_config(&target_config, content);
         let dependency = Dependency::Http(HttpDependency {
             name: "dep1".to_string(),
-            version: "1.0.0".to_string(),
+            version_req: "1.0.0".to_string(),
             url: None,
         });
         let soldeer_config = read_soldeer_config(Some(target_config.clone())).unwrap();
@@ -411,7 +419,7 @@ remappings_version = false
         write_to_config(&target_config, content);
         let dependency = Dependency::Http(HttpDependency {
             name: "dep1".to_string(),
-            version: "1.0.0".to_string(),
+            version_req: "1.0.0".to_string(),
             url: None,
         });
         let soldeer_config = read_soldeer_config(Some(target_config.clone())).unwrap();
@@ -443,7 +451,7 @@ remappings_generate = true
         write_to_config(&target_config, content);
         let dependency = Dependency::Http(HttpDependency {
             name: "dep1".to_string(),
-            version: "1.0.0".to_string(),
+            version_req: "1.0.0".to_string(),
             url: None,
         });
         let soldeer_config = read_soldeer_config(Some(target_config.clone())).unwrap();
@@ -491,7 +499,7 @@ remappings_generate = true
         write_to_config(&target_config, content);
         let dependency = Dependency::Http(HttpDependency {
             name: "dep1".to_string(),
-            version: "1.0.0".to_string(),
+            version_req: "1.0.0".to_string(),
             url: None,
         });
         let soldeer_config = read_soldeer_config(Some(target_config.clone())).unwrap();
@@ -538,7 +546,7 @@ remappings_generate = true
         write_to_config(&target_config, content);
         let dependency = Dependency::Http(HttpDependency {
             name: "dep1".to_string(),
-            version: "1.0.0".to_string(),
+            version_req: "1.0.0".to_string(),
             url: None,
         });
         let soldeer_config = read_soldeer_config(Some(target_config.clone())).unwrap();

@@ -1,4 +1,9 @@
-use crate::{config::Dependency, errors::LockError, utils::get_current_working_dir, LOCK_FILE};
+use crate::{
+    config::Dependency,
+    errors::LockError,
+    utils::{get_current_working_dir, sanitize_filename},
+    DEPENDENCY_DIR, LOCK_FILE,
+};
 use serde::{Deserialize, Serialize};
 use std::{fs, path::PathBuf};
 
@@ -14,6 +19,12 @@ pub struct GitLockEntry {
     pub rev: String,
 }
 
+impl GitLockEntry {
+    pub fn install_path(&self) -> PathBuf {
+        format_install_path(&self.name, &self.version)
+    }
+}
+
 #[bon::builder]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Hash)]
 #[non_exhaustive]
@@ -23,6 +34,12 @@ pub struct HttpLockEntry {
     pub url: String,
     pub checksum: String,
     pub integrity: String,
+}
+
+impl HttpLockEntry {
+    pub fn install_path(&self) -> PathBuf {
+        format_install_path(&self.name, &self.version)
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Hash)]
@@ -70,27 +87,39 @@ impl From<LockEntry> for TomlLockEntry {
     }
 }
 
-impl From<TomlLockEntry> for LockEntry {
-    fn from(value: TomlLockEntry) -> Self {
+impl TryFrom<TomlLockEntry> for LockEntry {
+    type Error = LockError;
+
+    fn try_from(value: TomlLockEntry) -> std::result::Result<Self, Self::Error> {
         if let Some(url) = value.url {
-            HttpLockEntry::builder()
-                .name(value.name)
+            Ok(HttpLockEntry::builder()
+                .name(&value.name)
                 .version(value.version)
                 .url(url)
-                .checksum(value.checksum.expect("http lock entry should have a checksum"))
-                .integrity(
-                    value.integrity.expect("http lock entry should have an integrity checksum"),
-                )
+                .checksum(value.checksum.ok_or(LockError::MissingField {
+                    field: "checksum".to_string(),
+                    dep: value.name.clone(),
+                })?)
+                .integrity(value.integrity.ok_or(LockError::MissingField {
+                    field: "integrity".to_string(),
+                    dep: value.name.clone(),
+                })?)
                 .build()
-                .into()
+                .into())
         } else {
-            GitLockEntry::builder()
-                .name(value.name)
+            Ok(GitLockEntry::builder()
+                .name(&value.name)
                 .version(value.version)
-                .git(value.git.expect("git lock entry should have a git URL"))
-                .rev(value.rev.expect("git lock entry should have a rev"))
+                .git(value.git.ok_or(LockError::MissingField {
+                    field: "git".to_string(),
+                    dep: value.name.clone(),
+                })?)
+                .rev(value.rev.ok_or(LockError::MissingField {
+                    field: "rev".to_string(),
+                    dep: value.name.clone(),
+                })?)
                 .build()
-                .into()
+                .into())
         }
     }
 }
@@ -107,6 +136,13 @@ impl LockEntry {
         match self {
             LockEntry::Git(lock) => &lock.version,
             LockEntry::Http(lock) => &lock.version,
+        }
+    }
+
+    pub fn install_path(&self) -> PathBuf {
+        match self {
+            LockEntry::Git(lock) => lock.install_path(),
+            LockEntry::Http(lock) => lock.install_path(),
         }
     }
 
@@ -157,7 +193,7 @@ pub fn read_lockfile() -> Result<(Vec<LockEntry>, String)> {
     let contents = fs::read_to_string(&lock_file)?;
 
     let data: LockFileParsed = toml_edit::de::from_str(&contents).unwrap_or_default();
-    Ok((data.dependencies.into_iter().map(Into::into).collect(), contents))
+    Ok((data.dependencies.into_iter().filter_map(|d| d.try_into().ok()).collect(), contents))
 }
 
 pub fn generate_lockfile_contents(mut entries: Vec<LockEntry>) -> String {
@@ -192,13 +228,7 @@ pub fn remove_lock(dependency: &Dependency) -> Result<()> {
 
     let entries: Vec<_> = entries
         .into_iter()
-        .filter_map(|e| {
-            if e.name() != dependency.name() || e.version() != dependency.version() {
-                Some(e.into())
-            } else {
-                None
-            }
-        })
+        .filter_map(|e| if e.name() != dependency.name() { Some(e.into()) } else { None })
         .collect();
 
     if entries.is_empty() {
@@ -214,4 +244,8 @@ pub fn remove_lock(dependency: &Dependency) -> Result<()> {
     fs::write(lock_file, file_contents)?;
 
     Ok(())
+}
+
+pub fn format_install_path(name: &str, version: &str) -> PathBuf {
+    DEPENDENCY_DIR.join(sanitize_filename(&format!("{}-{}", name, version)))
 }

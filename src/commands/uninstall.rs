@@ -1,7 +1,7 @@
 use super::Result;
 use crate::{
     config::{delete_config, get_config_path, read_soldeer_config},
-    download::delete_dependency_files,
+    download::delete_dependency_files_sync,
     lock::remove_lock,
     remappings::remove_from_remappings,
     SoldeerError,
@@ -27,7 +27,7 @@ pub(crate) fn uninstall_command(cmd: &Uninstall) -> Result<()> {
     success("Dependency removed from config file")?;
 
     // deleting the files
-    delete_dependency_files(&dependency)
+    delete_dependency_files_sync(&dependency)
         .map_err(|e| SoldeerError::DownloadError { dep: dependency.to_string(), source: e })?;
     success("Dependency removed from disk")?;
 

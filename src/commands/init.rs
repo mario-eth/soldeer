@@ -35,11 +35,12 @@ pub(crate) async fn init_command(cmd: Init) -> Result<()> {
     let multi = multi_progress(format!("Installing {dependency}"));
     let progress = Progress::new(&multi, 1);
     progress.start_all();
-    let lock =
-        install_dependency(&dependency, None, false, progress.clone()).await.map_err(|e| {
+    let lock = install_dependency(&dependency, None, None, false, progress.clone()).await.map_err(
+        |e| {
             multi.error(&e);
             e
-        })?;
+        },
+    )?;
     progress.stop_all();
     multi.stop();
     add_to_config(&dependency, &config_path)?;

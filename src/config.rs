@@ -1,8 +1,9 @@
 use crate::{
+    download::{find_install_path, find_install_path_sync},
     errors::ConfigError,
     remappings::RemappingsLocation,
-    utils::{get_current_working_dir, get_url_type, run_git_command, sanitize_filename, UrlType},
-    DEPENDENCY_DIR, FOUNDRY_CONFIG_FILE, SOLDEER_CONFIG_FILE,
+    utils::{get_current_working_dir, get_url_type, run_git_command, UrlType},
+    FOUNDRY_CONFIG_FILE, SOLDEER_CONFIG_FILE,
 };
 use cliclack::{log::warning, select};
 use serde::{Deserialize, Serialize};
@@ -54,44 +55,54 @@ impl Default for SoldeerConfig {
     }
 }
 
+#[bon::builder]
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct GitDependency {
     pub name: String,
-    pub version: String,
+    #[serde(rename = "version")]
+    pub version_req: String,
     pub git: String,
     pub rev: Option<String>,
 }
 
 impl GitDependency {
-    pub fn install_path(&self) -> PathBuf {
-        let sanitized_name = sanitize_filename(&format!("{}-{}", self.name, self.version));
-        DEPENDENCY_DIR.join(sanitized_name)
+    pub fn install_path_sync(&self) -> Option<PathBuf> {
+        find_install_path_sync(&self.into())
+    }
+
+    pub async fn install_path(&self) -> Option<PathBuf> {
+        find_install_path(&self.into()).await
     }
 }
 
 impl core::fmt::Display for GitDependency {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
-        write!(f, "{}~{}", self.name, self.version)
+        write!(f, "{}~{}", self.name, self.version_req)
     }
 }
 
+#[bon::builder]
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct HttpDependency {
     pub name: String,
-    pub version: String,
+    #[serde(rename = "version")]
+    pub version_req: String,
     pub url: Option<String>,
 }
 
 impl HttpDependency {
-    pub fn install_path(&self) -> PathBuf {
-        let sanitized_name = sanitize_filename(&format!("{}-{}", self.name, self.version));
-        DEPENDENCY_DIR.join(sanitized_name)
+    pub fn install_path_sync(&self) -> Option<PathBuf> {
+        find_install_path_sync(&self.into())
+    }
+
+    pub async fn install_path(&self) -> Option<PathBuf> {
+        find_install_path(&self.into()).await
     }
 }
 
 impl core::fmt::Display for HttpDependency {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
-        write!(f, "{}~{}", self.name, self.version)
+        write!(f, "{}~{}", self.name, self.version_req)
     }
 }
 
@@ -108,30 +119,41 @@ impl Dependency {
         custom_url: Option<impl Into<String>>,
         rev: Option<impl Into<String>>,
     ) -> Result<Self> {
-        let (dependency_name, dependency_version) =
-            name_version.split_once('~').expect("dependency string should have name and version");
+        let (dependency_name, dependency_version_req) = name_version
+            .split_once('~')
+            .expect("dependency string should have name and version requirement");
         Ok(match custom_url {
             Some(url) => {
                 let url: String = url.into();
+                // in this case (custom url or git dependency), the version requirement string is
+                // going to be used as part of the folder name inside the
+                // dependencies folder. As such, it's not allowed to contain the "="
+                // character, because that would break the remappings.
+                if dependency_version_req.contains('=') {
+                    return Err(ConfigError::InvalidVersionReq);
+                }
                 match get_url_type(&url)? {
-                    UrlType::Git => Dependency::Git(GitDependency {
+                    UrlType::Git => GitDependency {
                         name: dependency_name.to_string(),
-                        version: dependency_version.to_string(),
+                        version_req: dependency_version_req.to_string(),
                         git: url,
                         rev: rev.map(Into::into),
-                    }),
-                    UrlType::Http => Dependency::Http(HttpDependency {
+                    }
+                    .into(),
+                    UrlType::Http => HttpDependency {
                         name: dependency_name.to_string(),
-                        version: dependency_version.to_string(),
+                        version_req: dependency_version_req.to_string(),
                         url: Some(url),
-                    }),
+                    }
+                    .into(),
                 }
             }
-            None => Dependency::Http(HttpDependency {
+            None => HttpDependency {
                 name: dependency_name.to_string(),
-                version: dependency_version.to_string(),
+                version_req: dependency_version_req.to_string(),
                 url: None,
-            }),
+            }
+            .into(),
         })
     }
 
@@ -142,10 +164,10 @@ impl Dependency {
         }
     }
 
-    pub fn version(&self) -> &str {
+    pub fn version_req(&self) -> &str {
         match self {
-            Dependency::Http(dep) => &dep.version,
-            Dependency::Git(dep) => &dep.version,
+            Dependency::Http(dep) => &dep.version_req,
+            Dependency::Git(dep) => &dep.version_req,
         }
     }
 
@@ -156,10 +178,17 @@ impl Dependency {
         }
     }
 
-    pub fn install_path(&self) -> PathBuf {
+    pub fn install_path_sync(&self) -> Option<PathBuf> {
         match self {
-            Dependency::Http(dep) => dep.install_path(),
-            Dependency::Git(dep) => dep.install_path(),
+            Dependency::Http(dep) => dep.install_path_sync(),
+            Dependency::Git(dep) => dep.install_path_sync(),
+        }
+    }
+
+    pub async fn install_path(&self) -> Option<PathBuf> {
+        match self {
+            Dependency::Http(dep) => dep.install_path().await,
+            Dependency::Git(dep) => dep.install_path().await,
         }
     }
 
@@ -172,7 +201,7 @@ impl Dependency {
                         let mut table = InlineTable::new();
                         table.insert(
                             "version",
-                            value(&dep.version)
+                            value(&dep.version_req)
                                 .into_value()
                                 .expect("version should be a valid toml value"),
                         );
@@ -182,7 +211,7 @@ impl Dependency {
                         );
                         value(table)
                     }
-                    None => value(&dep.version),
+                    None => value(&dep.version_req),
                 },
             ),
             Dependency::Git(dep) => (
@@ -192,7 +221,7 @@ impl Dependency {
                         let mut table = InlineTable::new();
                         table.insert(
                             "version",
-                            value(&dep.version)
+                            value(&dep.version_req)
                                 .into_value()
                                 .expect("version should be a valid toml value"),
                         );
@@ -212,7 +241,7 @@ impl Dependency {
                         let mut table = InlineTable::new();
                         table.insert(
                             "version",
-                            value(&dep.version)
+                            value(&dep.version_req)
                                 .into_value()
                                 .expect("version should be a valid toml value"),
                         );
@@ -291,9 +320,21 @@ impl From<HttpDependency> for Dependency {
     }
 }
 
+impl From<&HttpDependency> for Dependency {
+    fn from(dep: &HttpDependency) -> Self {
+        Dependency::Http(dep.clone())
+    }
+}
+
 impl From<GitDependency> for Dependency {
     fn from(dep: GitDependency) -> Self {
         Dependency::Git(dep)
+    }
+}
+
+impl From<&GitDependency> for Dependency {
+    fn from(dep: &GitDependency) -> Self {
+        Dependency::Git(dep.clone())
     }
 }
 
@@ -345,10 +386,9 @@ pub fn get_config_path() -> Result<PathBuf> {
     create_example_config(config_option)
 }
 
-/// Read the list of dependencies from the config file
+/// Read the list of dependencies from the config file.
 ///
-/// If no config file path is provided, then the path is inferred automatically
-/// The returned list is sorted by name and version
+/// If no config file path is provided, then the path is inferred automatically.
 pub fn read_config_deps(path: Option<impl AsRef<Path>>) -> Result<Vec<Dependency>> {
     let path: PathBuf = match path {
         Some(p) => p.as_ref().to_path_buf(),
@@ -364,8 +404,6 @@ pub fn read_config_deps(path: Option<impl AsRef<Path>>) -> Result<Vec<Dependency
     for (name, v) in data {
         dependencies.push(parse_dependency(name, v)?);
     }
-    dependencies
-        .sort_unstable_by(|a, b| a.name().cmp(b.name()).then_with(|| a.version().cmp(b.version())));
 
     Ok(dependencies)
 }
@@ -440,12 +478,12 @@ pub async fn remove_forge_lib() -> Result<()> {
 
 fn parse_dependency(name: impl Into<String>, value: &Item) -> Result<Dependency> {
     let name: String = name.into();
-    if let Some(version) = value.as_str() {
-        if version.is_empty() {
+    if let Some(version_req) = value.as_str() {
+        if version_req.is_empty() {
             return Err(ConfigError::EmptyVersion(name));
         }
         // this function does not retrieve the url
-        return Ok(HttpDependency { name, version: version.to_string(), url: None }.into());
+        return Ok(HttpDependency { name, version_req: version_req.to_string(), url: None }.into());
     }
 
     // we should have a table or inline table
@@ -463,14 +501,14 @@ fn parse_dependency(name: impl Into<String>, value: &Item) -> Result<Dependency>
     };
 
     // version is needed in both cases
-    let version = match table.get("version").map(|v| v.as_str()) {
+    let version_req = match table.get("version").map(|v| v.as_str()) {
         Some(None) => {
             return Err(ConfigError::InvalidField { field: "version".to_string(), dep: name });
         }
         None => {
             return Err(ConfigError::MissingField { field: "version".to_string(), dep: name });
         }
-        Some(Some(version)) => version.to_string(),
+        Some(Some(version_req)) => version_req.to_string(),
     };
 
     // check if it's a git dependency
@@ -487,12 +525,13 @@ fn parse_dependency(name: impl Into<String>, value: &Item) -> Result<Dependency>
                 }
                 None => None,
             };
-            return Ok(Dependency::Git(GitDependency {
+            return Ok(GitDependency {
                 name: name.to_string(),
                 git: git.to_string(),
-                version,
+                version_req,
                 rev,
-            }));
+            }
+            .into());
         }
         None => {}
     }
@@ -500,12 +539,11 @@ fn parse_dependency(name: impl Into<String>, value: &Item) -> Result<Dependency>
     // we should have a HTTP dependency
     match table.get("url").map(|v| v.as_str()) {
         Some(None) => Err(ConfigError::InvalidField { field: "url".to_string(), dep: name }),
-        None => Ok(Dependency::Http(HttpDependency { name: name.to_string(), version, url: None })),
-        Some(Some(url)) => Ok(Dependency::Http(HttpDependency {
-            name: name.to_string(),
-            version,
-            url: Some(url.to_string()),
-        })),
+        None => Ok(HttpDependency { name: name.to_string(), version_req, url: None }.into()),
+        Some(Some(url)) => {
+            Ok(HttpDependency { name: name.to_string(), version_req, url: Some(url.to_string()) }
+                .into())
+        }
     }
 }
 
@@ -576,7 +614,7 @@ libs = ["dependencies"]
             result[0],
             Dependency::Http(HttpDependency {
                 name: "@gearbox-protocol-periphery-v3".to_string(),
-                version: "1.6.1".to_string(),
+                version_req: "1.6.1".to_string(),
                 url: None,
             })
         );
@@ -585,7 +623,7 @@ libs = ["dependencies"]
             result[1],
             Dependency::Http(HttpDependency {
                 name: "@openzeppelin-contracts".to_string(),
-                version: "5.0.2".to_string(),
+                version_req: "5.0.2".to_string(),
                 url: None,
             })
         );
@@ -616,7 +654,7 @@ libs = ["dependencies"]
             result[0],
             Dependency::Http(HttpDependency {
                 name: "@gearbox-protocol-periphery-v3".to_string(),
-                version: "1.6.1".to_string(),
+                version_req: "1.6.1".to_string(),
                 url: None,
             })
         );
@@ -625,7 +663,7 @@ libs = ["dependencies"]
             result[1],
             Dependency::Http(HttpDependency {
                 name: "@openzeppelin-contracts".to_string(),
-                version: "5.0.2".to_string(),
+                version_req: "5.0.2".to_string(),
                 url: None,
             })
         );
@@ -654,7 +692,7 @@ enabled = true
             result[0],
             Dependency::Http(HttpDependency {
                 name: "@gearbox-protocol-periphery-v3".to_string(),
-                version: "1.6.1".to_string(),
+                version_req: "1.6.1".to_string(),
                 url: None,
             })
         );
@@ -663,7 +701,7 @@ enabled = true
             result[1],
             Dependency::Http(HttpDependency {
                 name: "@openzeppelin-contracts".to_string(),
-                version: "5.0.2".to_string(),
+                version_req: "5.0.2".to_string(),
                 url: None,
             })
         );
@@ -692,7 +730,7 @@ enabled = true
             result[0],
             Dependency::Http(HttpDependency {
                 name: "@gearbox-protocol-periphery-v3".to_string(),
-                version: "1.6.1".to_string(),
+                version_req: "1.6.1".to_string(),
                 url: None,
             })
         );
@@ -701,7 +739,7 @@ enabled = true
             result[1],
             Dependency::Http(HttpDependency {
                 name: "@openzeppelin-contracts".to_string(),
-                version: "5.0.2".to_string(),
+                version_req: "5.0.2".to_string(),
                 url: None,
             })
         );
@@ -875,7 +913,7 @@ libs = ["dependencies"]
         write_to_config(&target_config, content);
         let dependency = Dependency::Http(HttpDependency {
             name: "dep1".to_string(),
-            version: "1.0.0".to_string(),
+            version_req: "1.0.0".to_string(),
             url: None,
         });
         add_to_config(&dependency, &target_config).unwrap();
@@ -920,7 +958,7 @@ libs = ["dependencies"]
 
         let dependency = Dependency::Http(HttpDependency {
             name: "dep1".to_string(),
-            version: "1.0.0".to_string(),
+            version_req: "1.0.0".to_string(),
             url: Some("http://custom_url.com/custom.zip".to_string()),
         });
 
@@ -967,7 +1005,7 @@ old_dep = "5.1.0-my-version-is-cool"
 
         let dependency = Dependency::Http(HttpDependency {
             name: "dep1".to_string(),
-            version: "1.0.0".to_string(),
+            version_req: "1.0.0".to_string(),
             url: None,
         });
 
@@ -1015,7 +1053,7 @@ old_dep = { version = "5.1.0-my-version-is-cool", url = "http://custom_url.com/c
 
         let dependency = Dependency::Http(HttpDependency {
             name: "dep1".to_string(),
-            version: "1.0.0".to_string(),
+            version_req: "1.0.0".to_string(),
             url: Some("http://custom_url.com/custom.zip".to_string()),
         });
 
@@ -1063,7 +1101,7 @@ old_dep = { version = "5.1.0-my-version-is-cool", url = "http://custom_url.com/c
 
         let dependency = Dependency::Http(HttpDependency {
             name: "old_dep".to_string(),
-            version: "1.0.0".to_string(),
+            version_req: "1.0.0".to_string(),
             url: Some("http://custom_url.com/custom.zip".to_string()),
         });
 
@@ -1110,7 +1148,7 @@ old_dep = { version = "5.1.0-my-version-is-cool", url = "http://custom_url.com/c
 
         let dependency = Dependency::Http(HttpDependency {
             name: "old_dep".to_string(),
-            version: "1.0.0".to_string(),
+            version_req: "1.0.0".to_string(),
             url: None,
         });
 
@@ -1157,7 +1195,7 @@ gas_reports = ['*']
 
         let dependency = Dependency::Http(HttpDependency {
             name: "dep1".to_string(),
-            version: "1.0.0".to_string(),
+            version_req: "1.0.0".to_string(),
             url: None,
         });
 
@@ -1200,7 +1238,7 @@ enabled = true
 
         let dependency = Dependency::Http(HttpDependency {
             name: "dep1".to_string(),
-            version: "1.0.0".to_string(),
+            version_req: "1.0.0".to_string(),
             url: None,
         });
 
@@ -1234,7 +1272,7 @@ enabled = true
 
         let dependency = Dependency::Http(HttpDependency {
             name: "dep1".to_string(),
-            version: "1.0.0".to_string(),
+            version_req: "1.0.0".to_string(),
             url: Some("http://custom_url.com/custom.zip".to_string()),
         });
 
@@ -1275,7 +1313,7 @@ gas_reports = ['*']
 
         let dependency = Dependency::Git(GitDependency {
             name: "dep1".to_string(),
-            version: "1.0.0".to_string(),
+            version_req: "1.0.0".to_string(),
             git: "git@github.com:foundry-rs/forge-std.git".to_string(),
             rev: Some("07263d193d621c4b2b0ce8b4d54af58f6957d97d".to_string()),
         });
@@ -1329,7 +1367,7 @@ dep1 = { version = "1.0.0", git = "git@github.com:foundry-rs/forge-std.git" }
 
         let dependency = Dependency::Git(GitDependency {
             name: "dep1".to_string(),
-            version: "1.0.0".to_string(),
+            version_req: "1.0.0".to_string(),
             git: "git@github.com:foundry-rs/forge-std.git".to_string(),
             rev: Some("07263d193d621c4b2b0ce8b4d54af58f6957d97d".to_string()),
         });
@@ -1383,7 +1421,7 @@ dep1 = { version = "1.0.0", git = "git@github.com:foundry-rs/forge-std.git", rev
 
         let dependency = Dependency::Http(HttpDependency {
             name: "dep1".to_string(),
-            version: "1.0.0".to_string(),
+            version_req: "1.0.0".to_string(),
             url: Some("http://custom_url.com/custom.zip".to_string()),
         });
 

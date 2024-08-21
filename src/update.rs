@@ -1,48 +1,18 @@
 use crate::{
-    config::{Dependency, HttpDependency},
+    config::Dependency,
     errors::UpdateError,
-    install::{install_dependency, Progress as InstallProgress, PROGRESS_TEMPLATE},
-    lock::{GitLockEntry, LockEntry},
-    registry::{get_all_versions_descending, Versions},
+    install::{install_dependency, Progress},
+    lock::{format_install_path, GitLockEntry, LockEntry},
+    registry::get_latest_supported_version,
     utils::run_git_command,
 };
-use cliclack::{progress_bar, ProgressBar};
-use semver::VersionReq;
-use std::fmt::Display;
 use tokio::task::JoinSet;
 
 pub type Result<T> = std::result::Result<T, UpdateError>;
 
-#[derive(Clone)]
-pub struct Progress {
-    pub install_progress: InstallProgress,
-    pub get_versions: ProgressBar,
-}
-
-impl Progress {
-    pub fn new(install_progress: &InstallProgress, deps: u64) -> Self {
-        let get_version_pb =
-            install_progress.multi.insert(0, progress_bar(deps).with_template(PROGRESS_TEMPLATE));
-        Self { install_progress: install_progress.clone(), get_versions: get_version_pb }
-    }
-
-    pub fn start_all(&self) {
-        self.install_progress.start_all();
-        self.get_versions.start("Retrieving all versions...");
-    }
-
-    pub fn stop_all(&self) {
-        self.install_progress.stop_all();
-        self.get_versions.stop("Done retrieving versions");
-    }
-
-    pub fn log(&self, msg: impl Display) {
-        self.install_progress.multi.println(msg);
-    }
-}
-
 pub async fn update_dependencies(
     dependencies: &[Dependency],
+    locks: &[LockEntry],
     recursive_deps: bool,
     progress: Progress,
 ) -> Result<Vec<LockEntry>> {
@@ -51,7 +21,8 @@ pub async fn update_dependencies(
         set.spawn({
             let d = dep.clone();
             let p = progress.clone();
-            async move { update_dependency(&d, recursive_deps, p).await }
+            let lock = locks.iter().find(|l| l.name() == dep.name()).cloned();
+            async move { update_dependency(&d, lock.as_ref(), recursive_deps, p).await }
         });
     }
 
@@ -64,71 +35,20 @@ pub async fn update_dependencies(
 
 pub async fn update_dependency(
     dependency: &Dependency,
+    lock: Option<&LockEntry>,
     recursive_deps: bool,
     progress: Progress,
 ) -> Result<LockEntry> {
-    // we can't update dependencies that are http with a custom URL or git dependencies with a
-    // commit hash
-    let new_dependency = match dependency {
-        Dependency::Http(dep) if dep.url.is_some() => {
-            progress.log(format!("{dependency} has a custom URL, version can't be updated"));
-            dependency.clone()
-        }
-        Dependency::Git(dep) if dep.rev.is_some() => {
-            progress.log(format!("{dependency} is a git dependency, rev can't be updated"));
-            dependency.clone()
-        }
-        Dependency::Git(_) => dependency.clone(),
-        Dependency::Http(_) => {
-            let new_version = match get_all_versions_descending(dependency.name()).await? {
-                Versions::Semver(all_versions) => {
-                    match dependency.version().parse::<VersionReq>() {
-                        Ok(req) => {
-                            let new_version = all_versions
-                                .iter()
-                                .find(|version| req.matches(version))
-                                .ok_or(UpdateError::NoMatchingVersion {
-                                    dependency: dependency.name().to_string(),
-                                    version_req: dependency.version().to_string(),
-                                })?;
-                            new_version.to_string()
-                        }
-                        Err(_) => {
-                            // we can't check which version is newer, so we just take the latest one
-                            all_versions
-                                .into_iter()
-                                .next()
-                                .map(|v| v.to_string())
-                                .expect("there should be at least 1 version")
-                        }
-                    }
-                }
-                Versions::NonSemver(all_versions) => {
-                    // we can't check which version is newer, so we just take the latest one
-                    all_versions.into_iter().next().expect("there should be at least 1 version")
-                }
-            };
-            if new_version != dependency.version() {
-                progress.log(format!(
-                    "Updating {} from {} to {new_version}",
-                    dependency.name(),
-                    dependency.version(),
-                ));
-            }
-            Dependency::Http(HttpDependency {
-                name: dependency.name().to_string(),
-                version: new_version,
-                url: None,
-            })
-        }
-    };
-    progress.get_versions.inc(1);
-
-    match new_dependency {
+    match dependency {
         Dependency::Git(ref dep) if dep.rev.is_none() => {
             // we handle the git case in a special way because we don't need to re-clone the repo
             // update to the latest commit (git pull)
-            let path = dependency.install_path();
+            let path = match lock {
+                Some(lock) => lock.install_path(),
+                None => dependency.install_path().await.unwrap_or_else(|| {
+                    format_install_path(dependency.name(), dependency.version_req())
+                }),
+            };
             run_git_command(&["reset", "--hard", "HEAD"], Some(&path)).await?;
             run_git_command(&["clean", "-fd"], Some(&path)).await?;
             let old_commit = run_git_command(&["rev-parse", "--verify", "HEAD"], Some(&path))
@@ -143,44 +63,56 @@ pub async fn update_dependency(
             if commit != old_commit {
                 progress.log(format!("Updating {dependency} from {old_commit:.7} to {commit:.7}"));
             }
-            let lock = GitLockEntry::builder()
+            let new_lock = GitLockEntry::builder()
                 .name(&dep.name)
-                .version(&dep.version)
+                .version(&dep.version_req)
                 .git(&dep.git)
                 .rev(commit)
                 .build()
                 .into();
-            progress.install_progress.increment_all();
-            Ok(lock)
+            progress.increment_all();
+            Ok(new_lock)
         }
         Dependency::Git(ref dep) if dep.rev.is_some() => {
             // check integrity against the existing version since we can't update to a new rev
-            let lock = GitLockEntry::builder()
-                .name(&dep.name)
-                .version(&dep.version)
-                .git(&dep.git)
-                .rev(dep.rev.clone().expect("rev field should be present"))
-                .build()
-                .into();
-            let new_lock = install_dependency(
-                &new_dependency,
-                Some(&lock),
-                recursive_deps,
-                progress.install_progress,
-            )
-            .await?;
+            let lock = match lock {
+                Some(lock) => lock,
+                None => &GitLockEntry::builder()
+                    .name(&dep.name)
+                    .version(&dep.version_req)
+                    .git(&dep.git)
+                    .rev(dep.rev.clone().expect("rev field should be present"))
+                    .build()
+                    .into(),
+            };
+            let new_lock =
+                install_dependency(dependency, Some(lock), None, recursive_deps, progress).await?;
             Ok(new_lock)
         }
         _ => {
-            // for http dependencies, we simply re-install them
-            let lock = install_dependency(
-                &new_dependency,
-                None,
-                recursive_deps,
-                progress.install_progress,
-            )
-            .await?;
-            Ok(lock)
+            // for http dependencies, we simply install them as if there was no lock entry
+
+            // to show which version we update to, we already need to know the new version, so we
+            // can pass it to `install_dependency` to spare us from another call to the
+            // registry
+            let force_version = match (dependency.url(), lock) {
+                (None, Some(lock)) => {
+                    let new_version = get_latest_supported_version(dependency).await?;
+                    if lock.version() != new_version {
+                        progress.log(format!(
+                            "Updating {} from {} to {new_version}",
+                            dependency.name(),
+                            lock.version(),
+                        ));
+                    }
+                    Some(new_version)
+                }
+                _ => None,
+            };
+            let new_lock =
+                install_dependency(dependency, None, force_version, recursive_deps, progress)
+                    .await?;
+            Ok(new_lock)
         }
     }
 }

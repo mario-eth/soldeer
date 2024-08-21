@@ -108,7 +108,10 @@ pub(crate) async fn install_command(cmd: Install) -> Result<()> {
         }
         Some(dependency) => {
             let mut dep = Dependency::from_name_version(&dependency, cmd.remote_url, cmd.rev)?;
-            if dependencies.iter().any(|d| d.name() == dep.name() && d.version() == dep.version()) {
+            if dependencies
+                .iter()
+                .any(|d| d.name() == dep.name() && d.version_req() == dep.version_req())
+            {
                 outro(format!("{dep} is already installed"))?;
                 return Ok(());
             }
@@ -116,7 +119,8 @@ pub(crate) async fn install_command(cmd: Install) -> Result<()> {
             let progress = Progress::new(&multi, 1);
             progress.start_all();
             let lock =
-                install_dependency(&dep, None, config.recursive_deps, progress.clone()).await?;
+                install_dependency(&dep, None, None, config.recursive_deps, progress.clone())
+                    .await?;
             progress.stop_all();
             multi.stop();
             // for GIT deps, we need to add the commit hash before adding them to the

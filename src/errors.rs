@@ -92,6 +92,9 @@ pub enum ConfigError {
 
     #[error("error during config operation: {0}")]
     DownloadError(#[from] DownloadError),
+
+    #[error("the version requirement string cannot contain the equal symbol for git dependencies and http dependencies with a custom URL")]
+    InvalidVersionReq,
 }
 
 #[derive(Error, Debug)]
@@ -119,6 +122,9 @@ pub enum DownloadError {
 
     #[error("error during registry operation: {0}")]
     RegistryError(#[from] RegistryError),
+
+    #[error("dependency not found: {0}")]
+    DependencyNotFound(String),
 }
 
 #[derive(Error, Debug)]
@@ -167,6 +173,9 @@ pub enum LockError {
 
     #[error("lock entry does not match expected type")]
     TypeMismatch,
+
+    #[error("missing `{field}` field in lock entry for {dep}")]
+    MissingField { field: String, dep: String },
 }
 
 #[derive(Error, Debug)]
@@ -224,6 +233,9 @@ pub enum RegistryError {
 
     #[error("package {0} has no version")]
     NoVersion(String),
+
+    #[error("no matching version found for {dependency} with version requirement {version_req}")]
+    NoMatchingVersion { dependency: String, version_req: String },
 }
 
 #[derive(Error, Debug)]
@@ -233,15 +245,15 @@ pub enum RemappingsError {
 
     #[error("error while interacting with the config file: {0}")]
     ConfigError(#[from] ConfigError),
+
+    #[error("dependency not found: {0}")]
+    DependencyNotFound(String),
 }
 
 #[derive(Error, Debug)]
 pub enum UpdateError {
     #[error("registry error: {0}")]
     RegistryError(#[from] RegistryError),
-
-    #[error("no matching version found for {dependency} with version requirement {version_req}")]
-    NoMatchingVersion { dependency: String, version_req: String },
 
     #[error("download error: {0}")]
     DownloadError(#[from] DownloadError),

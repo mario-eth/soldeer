@@ -1,4 +1,9 @@
-use crate::{config::Dependency, errors::DownloadError, utils::run_git_command, DEPENDENCY_DIR};
+use crate::{
+    config::Dependency,
+    errors::DownloadError,
+    utils::{run_git_command, sanitize_filename},
+    DEPENDENCY_DIR,
+};
 use reqwest::IntoUrl;
 use std::{
     fs,
@@ -82,10 +87,69 @@ pub async fn clone_repo(
     Ok(commit)
 }
 
-pub fn delete_dependency_files(dependency: &Dependency) -> Result<()> {
-    let path = DEPENDENCY_DIR.join(dependency.install_path());
+pub fn delete_dependency_files_sync(dependency: &Dependency) -> Result<()> {
+    let Some(path) = find_install_path_sync(dependency) else {
+        return Err(DownloadError::DependencyNotFound(dependency.to_string()));
+    };
     fs::remove_dir_all(&path).map_err(|e| DownloadError::IOError { path, source: e })?;
     Ok(())
+}
+
+pub fn find_install_path_sync(dependency: &Dependency) -> Option<PathBuf> {
+    let Ok(read_dir) = fs::read_dir(DEPENDENCY_DIR.as_path()) else {
+        return None;
+    };
+    for entry in read_dir {
+        let Ok(entry) = entry else {
+            continue;
+        };
+        let path = entry.path();
+        if !path.is_dir() {
+            continue;
+        }
+        let Some(dir_name) = path.file_name() else {
+            continue;
+        };
+        if dir_name
+            .to_string_lossy()
+            .starts_with(&format!("{}-", sanitize_filename(dependency.name())))
+        {
+            return Some(path);
+        }
+    }
+    None
+}
+
+pub async fn delete_dependency_files(dependency: &Dependency) -> Result<()> {
+    let Some(path) = find_install_path(dependency).await else {
+        return Err(DownloadError::DependencyNotFound(dependency.to_string()));
+    };
+    tokio_fs::remove_dir_all(&path)
+        .await
+        .map_err(|e| DownloadError::IOError { path, source: e })?;
+    Ok(())
+}
+
+pub async fn find_install_path(dependency: &Dependency) -> Option<PathBuf> {
+    let Ok(mut read_dir) = tokio_fs::read_dir(DEPENDENCY_DIR.as_path()).await else {
+        return None;
+    };
+    while let Ok(Some(entry)) = read_dir.next_entry().await {
+        let path = entry.path();
+        if !path.is_dir() {
+            continue;
+        }
+        let Some(dir_name) = path.file_name() else {
+            continue;
+        };
+        if dir_name
+            .to_string_lossy()
+            .starts_with(&format!("{}-", sanitize_filename(dependency.name())))
+        {
+            return Some(path);
+        }
+    }
+    None
 }
 
 #[cfg(test)]

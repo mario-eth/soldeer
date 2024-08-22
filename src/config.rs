@@ -38,6 +38,20 @@ impl Paths {
         Ok(Self { root, config, dependencies, lock, remappings })
     }
 
+    /// Generate the paths object from a known root directory
+    ///
+    /// The `SOLDEER_PROJECT_ROOT` environment variable is ignored.
+    #[allow(unused)]
+    pub fn from_root(root: impl AsRef<Path>) -> Result<Self> {
+        let root = root.as_ref().to_path_buf();
+        let config = Self::get_config_path(&root)?;
+        let dependencies = root.join("dependencies");
+        let lock = root.join("soldeer.lock");
+        let remappings = root.join("remappings.txt");
+
+        Ok(Self { root, config, dependencies, lock, remappings })
+    }
+
     /// TODO: find the project's root directory and use that as the root instead of the current dir
     fn get_root_path() -> PathBuf {
         env::var("SOLDEER_PROJECT_ROOT")
@@ -620,6 +634,48 @@ mod tests {
     }
 
     #[test]
+    fn test_paths_config_soldeer() {
+        let config_path = write_to_config("[dependencies]\n", "soldeer.toml");
+        with_var(
+            "SOLDEER_PROJECT_ROOT",
+            Some(config_path.parent().unwrap().to_string_lossy().to_string()),
+            || {
+                let res = Paths::new();
+                assert!(res.is_ok(), "{res:?}");
+                assert_eq!(res.unwrap().config, config_path);
+            },
+        );
+    }
+
+    #[test]
+    fn test_paths_config_foundry() {
+        let config_contents = r#"[profile.default]
+libs = ["dependencies"]
+
+[dependencies]
+"#;
+        let config_path = write_to_config(config_contents, "foundry.toml");
+        with_var(
+            "SOLDEER_PROJECT_ROOT",
+            Some(config_path.parent().unwrap().to_string_lossy().to_string()),
+            || {
+                let res = Paths::new();
+                assert!(res.is_ok(), "{res:?}");
+                assert_eq!(res.unwrap().config, config_path);
+            },
+        );
+    }
+
+    #[test]
+    fn test_paths_from_root() {
+        let config_path = write_to_config("[dependencies]\n", "soldeer.toml");
+        let root = config_path.parent().unwrap();
+        let res = Paths::from_root(root);
+        assert!(res.is_ok(), "{res:?}");
+        assert_eq!(res.unwrap().root, root);
+    }
+
+    #[test]
     fn test_from_name_version_no_url() {
         let res = Dependency::from_name_version("dependency~1.0.0", None::<&str>, None::<&str>);
         assert!(res.is_ok(), "{res:?}");
@@ -767,42 +823,6 @@ mod tests {
             None::<&str>,
         );
         assert!(matches!(res, Err(ConfigError::InvalidVersionReq(_))), "{res:?}");
-    }
-
-    #[test]
-    fn test_config_path_soldeer() {
-        let config_contents = "[dependencies]\n";
-        let config_path = write_to_config(config_contents, "soldeer.toml");
-        println!("{:?}", config_path);
-        with_var(
-            "SOLDEER_PROJECT_ROOT",
-            Some(config_path.parent().unwrap().to_string_lossy().to_string()),
-            || {
-                let res = Paths::new();
-                assert!(res.is_ok(), "{res:?}");
-                assert_eq!(res.unwrap().config, config_path);
-            },
-        );
-    }
-
-    #[test]
-    fn test_config_path_foundry() {
-        let config_contents = r#"[profile.default]
-libs = ["dependencies"]
-
-[dependencies]
-"#;
-        let config_path = write_to_config(config_contents, "foundry.toml");
-        println!("{:?}", config_path);
-        with_var(
-            "SOLDEER_PROJECT_ROOT",
-            Some(config_path.parent().unwrap().to_string_lossy().to_string()),
-            || {
-                let res = Paths::new();
-                assert!(res.is_ok(), "{res:?}");
-                assert_eq!(res.unwrap().config, config_path);
-            },
-        );
     }
 
     #[test]

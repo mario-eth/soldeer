@@ -302,7 +302,7 @@ mod tests {
                ignored_files.push(create_random_file(&dry_run_dir, "zip"));
                ignored_files.push(create_random_file(&dry_run_dir, "toml"));
         */
-        let ignore_contents_git = r#"
+        let _ = r#"
 *.toml
 !/broadcast
 /broadcast/31337/

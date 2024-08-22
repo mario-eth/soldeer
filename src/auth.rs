@@ -78,7 +78,7 @@ mod tests {
     use testdir::testdir;
 
     #[tokio::test]
-    async fn login_success() {
+    async fn test_login_success() {
         let mut server = mockito::Server::new_async().await;
         let data = r#"
         {
@@ -116,7 +116,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn login_401() {
+    async fn test_login_401() {
         let mut server = mockito::Server::new_async().await;
         let data = r#"{ "status": "401" }"#;
         server
@@ -145,7 +145,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn login_500() {
+    async fn test_login_500() {
         let mut server = mockito::Server::new_async().await;
         let data = r#"{ "status": "500" }"#;
         server

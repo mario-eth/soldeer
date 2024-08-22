@@ -122,6 +122,9 @@ impl Dependency {
         let (dependency_name, dependency_version_req) = name_version
             .split_once('~')
             .expect("dependency string should have name and version requirement");
+        if dependency_version_req.is_empty() {
+            return Err(ConfigError::EmptyVersion(dependency_name.to_string()));
+        }
         Ok(match custom_url {
             Some(url) => {
                 let url: String = url.into();
@@ -594,8 +597,8 @@ mod tests {
     use temp_env::with_var;
     use testdir::testdir;
 
-    #[tokio::test]
-    async fn read_foundry_config_deps() {
+    #[test]
+    fn test_read_foundry_config_deps() {
         let config_contents = r#"[profile.default]
 libs = ["dependencies"]
 
@@ -639,7 +642,7 @@ libs = ["dependencies"]
             .into()
         );
         assert_eq!(
-            result[4],
+            result[3],
             GitDependency {
                 name: "lib4".to_string(),
                 version_req: "4.0.0".to_string(),
@@ -651,7 +654,7 @@ libs = ["dependencies"]
         assert_eq!(
             result[4],
             GitDependency {
-                name: "lib4".to_string(),
+                name: "lib5".to_string(),
                 version_req: "5.0.0".to_string(),
                 git: "https://example.com/repo.git".to_string(),
                 rev: Some("123456".to_string())
@@ -660,8 +663,8 @@ libs = ["dependencies"]
         );
     }
 
-    #[tokio::test]
-    async fn read_soldeer_config_deps() {
+    #[test]
+    fn test_read_soldeer_config_deps() {
         let config_contents = r#"[dependencies]
 "lib1" = "1.0.0"
 "lib2" = { version = "2.0.0" }
@@ -702,7 +705,7 @@ libs = ["dependencies"]
             .into()
         );
         assert_eq!(
-            result[4],
+            result[3],
             GitDependency {
                 name: "lib4".to_string(),
                 version_req: "4.0.0".to_string(),
@@ -714,7 +717,7 @@ libs = ["dependencies"]
         assert_eq!(
             result[4],
             GitDependency {
-                name: "lib4".to_string(),
+                name: "lib5".to_string(),
                 version_req: "5.0.0".to_string(),
                 git: "https://example.com/repo.git".to_string(),
                 rev: Some("123456".to_string())
@@ -723,8 +726,8 @@ libs = ["dependencies"]
         );
     }
 
-    #[tokio::test]
-    async fn read_soldeer_config_deps_bad_version() {
+    #[test]
+    fn test_read_soldeer_config_deps_bad_version() {
         for dep in [
             r#""lib1" = """#,
             r#""lib1" = { version = "" }"#,
@@ -753,7 +756,7 @@ libs = ["dependencies"]
     }
 
     #[test]
-    fn config_path_soldeer() {
+    fn test_config_path_soldeer() {
         let config_contents = "[dependencies]\n";
         let config_path = write_to_config(config_contents, "soldeer.toml");
         with_var(
@@ -767,70 +770,184 @@ libs = ["dependencies"]
         );
     }
 
-    /* // #[test] // TODO check how to do this properly
-        #[allow(dead_code)]
-        fn create_new_file_if_not_defined_but_foundry_exists() -> Result<()> {
-            let content = r#"
-    # Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
+    #[test]
+    fn test_config_path_foundry() {
+        let config_contents = r#"[profile.default]
+libs = ["dependencies"]
 
-    [profile.default]
-    script = "script"
-    solc = "0.8.26"
-    src = "src"
-    test = "test"
-    libs = ["dependencies", "libs"]
+[dependencies]
+"#;
+        let config_path = write_to_config(config_contents, "foundry.toml");
+        with_var(
+            "SOLDEER_PROJECT_ROOT",
+            Some(config_path.parent().unwrap().to_string_lossy().to_string()),
+            || {
+                let res = get_config_path();
+                assert!(res.is_ok(), "{res:?}");
+                assert_eq!(res.unwrap(), config_path);
+            },
+        );
+    }
 
-    [dependencies]
-    forge-std = "1.9.1"
-    "#;
+    #[test]
+    fn test_from_name_version_no_url() {
+        let res = Dependency::from_name_version("dependency~1.0.0", None::<&str>, None::<&str>);
+        assert!(res.is_ok(), "{res:?}");
+        assert_eq!(
+            res.unwrap(),
+            HttpDependency {
+                name: "dependency".to_string(),
+                version_req: "1.0.0".to_string(),
+                url: None
+            }
+            .into()
+        );
+    }
 
-            let result = create_example_config(ConfigLocation::Foundry).unwrap();
+    #[test]
+    fn test_from_name_version_with_http_url() {
+        let res = Dependency::from_name_version(
+            "dependency~1.0.0",
+            Some("https://github.com/user/repo/archive/123.zip"),
+            None::<&str>,
+        );
+        assert!(res.is_ok(), "{res:?}");
+        assert_eq!(
+            res.unwrap(),
+            HttpDependency {
+                name: "dependency".to_string(),
+                version_req: "1.0.0".to_string(),
+                url: Some("https://github.com/user/repo/archive/123.zip".to_string())
+            }
+            .into()
+        );
+    }
 
-            assert!(PathBuf::from(&result).file_name().unwrap().to_string_lossy().contains("foundry"));
-            assert_eq!(fs::read_to_string(&result).unwrap(), content);
-            Ok(())
-        }
+    #[test]
+    fn test_from_name_version_with_git_url() {
+        let res = Dependency::from_name_version(
+            "dependency~1.0.0",
+            Some("https://github.com/user/repo.git"),
+            None::<&str>,
+        );
+        assert!(res.is_ok(), "{res:?}");
+        assert_eq!(
+            res.unwrap(),
+            GitDependency {
+                name: "dependency".to_string(),
+                version_req: "1.0.0".to_string(),
+                git: "https://github.com/user/repo.git".to_string(),
+                rev: None
+            }
+            .into()
+        );
 
-        // #[test]// TODO check how to do this properly
-        #[allow(dead_code)]
-        fn create_new_file_if_not_defined_but_foundry_does_not_exists() -> Result<()> {
-            let content = r#"
-    # Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
+        let res = Dependency::from_name_version(
+            "dependency~1.0.0",
+            Some("https://test:test@gitlab.com/user/repo.git"),
+            None::<&str>,
+        );
+        assert!(res.is_ok(), "{res:?}");
+        assert_eq!(
+            res.unwrap(),
+            GitDependency {
+                name: "dependency".to_string(),
+                version_req: "1.0.0".to_string(),
+                git: "https://test:test@gitlab.com/user/repo.git".to_string(),
+                rev: None
+            }
+            .into()
+        );
+    }
 
-    [profile.default]
-    script = "script"
-    solc = "0.8.26"
-    src = "src"
-    test = "test"
-    libs = ["dependencies", "libs"]
+    #[test]
+    fn test_from_name_version_with_git_url_rev() {
+        let res = Dependency::from_name_version(
+            "dependency~1.0.0",
+            Some("https://github.com/user/repo.git"),
+            Some("123456"),
+        );
+        assert!(res.is_ok(), "{res:?}");
+        assert_eq!(
+            res.unwrap(),
+            GitDependency {
+                name: "dependency".to_string(),
+                version_req: "1.0.0".to_string(),
+                git: "https://github.com/user/repo.git".to_string(),
+                rev: Some("123456".to_string())
+            }
+            .into()
+        );
+    }
 
-    [dependencies]
-    forge-std = "1.9.1"
-    "#;
+    #[test]
+    fn test_from_name_version_with_git_ssh() {
+        let res = Dependency::from_name_version(
+            "dependency~1.0.0",
+            Some("git@github.com:user/repo.git"),
+            None::<&str>,
+        );
+        assert!(res.is_ok(), "{res:?}");
+        assert_eq!(
+            res.unwrap(),
+            GitDependency {
+                name: "dependency".to_string(),
+                version_req: "1.0.0".to_string(),
+                git: "git@github.com:user/repo.git".to_string(),
+                rev: None
+            }
+            .into()
+        );
+    }
 
-            let result = create_example_config(ConfigLocation::Foundry).unwrap();
+    #[test]
+    fn test_from_name_version_with_git_ssh_rev() {
+        let res = Dependency::from_name_version(
+            "dependency~1.0.0",
+            Some("git@github.com:user/repo.git"),
+            Some("123456"),
+        );
+        assert!(res.is_ok(), "{res:?}");
+        assert_eq!(
+            res.unwrap(),
+            GitDependency {
+                name: "dependency".to_string(),
+                version_req: "1.0.0".to_string(),
+                git: "git@github.com:user/repo.git".to_string(),
+                rev: Some("123456".to_string())
+            }
+            .into()
+        );
+    }
 
-            assert!(PathBuf::from(&result).file_name().unwrap().to_string_lossy().contains("foundry"));
-            assert_eq!(fs::read_to_string(&result).unwrap(), content);
-            Ok(())
-        }
+    #[test]
+    fn test_from_name_version_empty_version() {
+        let res = Dependency::from_name_version("dependency~", None::<&str>, None::<&str>);
+        assert!(matches!(res, Err(ConfigError::EmptyVersion(_))), "{res:?}");
+    }
 
-        #[test]
-        fn create_new_file_if_not_defined_soldeer() -> Result<()> {
-            let content = "
-    [remappings]
-    enabled = true
+    #[test]
+    fn test_from_name_version_invalid_version() {
+        // for http deps, having the "=" character in the version requirement is ok
+        let res = Dependency::from_name_version("dependency~asdf=", None::<&str>, None::<&str>);
+        assert!(res.is_ok(), "{res:?}");
 
-    [dependencies]
-    ";
+        let res = Dependency::from_name_version(
+            "dependency~asdf=",
+            Some("https://example.com"),
+            None::<&str>,
+        );
+        assert!(matches!(res, Err(ConfigError::InvalidVersionReq(_))), "{res:?}");
 
-            let result = create_example_config(ConfigLocation::Soldeer).unwrap();
+        let res = Dependency::from_name_version(
+            "dependency~asdf=",
+            Some("git@github.com:user/repo.git"),
+            None::<&str>,
+        );
+        assert!(matches!(res, Err(ConfigError::InvalidVersionReq(_))), "{res:?}");
+    }
 
-            assert!(PathBuf::from(&result).file_name().unwrap().to_string_lossy().contains("soldeer"));
-            assert_eq!(fs::read_to_string(&result).unwrap(), content);
-            Ok(())
-        }
-
+    /*
         #[test]
         fn add_to_config_foundry_no_custom_url_first_dependency() -> Result<()> {
             let mut content = r#"

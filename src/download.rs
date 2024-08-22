@@ -77,7 +77,7 @@ pub async fn clone_repo(
     path: impl AsRef<Path>,
 ) -> Result<String> {
     let path = path.as_ref().to_path_buf();
-    run_git_command(&["clone", url, path.to_string_lossy().as_ref()], None).await?;
+    run_git_command(&["clone", "--tags", url, path.to_string_lossy().as_ref()], None).await?;
     if let Some(rev) = rev {
         run_git_command(&["checkout", rev.as_ref()], Some(&path)).await?;
     }
@@ -155,8 +155,79 @@ pub async fn find_install_path(dependency: &Dependency, deps: impl AsRef<Path>) 
 }
 
 #[cfg(test)]
-#[allow(clippy::vec_init_then_push)]
 mod tests {
+    use super::*;
+    use crate::push::zip_file;
+    use std::fs;
+    use testdir::testdir;
+
+    #[tokio::test]
+    async fn test_download_file() {
+        let path = testdir!().join("my-dependency");
+        fs::create_dir(&path).unwrap();
+        let res = download_file(
+            "https://raw.githubusercontent.com/mario-eth/soldeer/main/README.md",
+            &path,
+        )
+        .await;
+        assert!(res.is_ok(), "{res:?}");
+        let zip_path = path.with_file_name("my-dependency.zip");
+        assert!(zip_path.exists());
+    }
+
+    #[tokio::test]
+    async fn test_unzip_file() {
+        let dir = testdir!();
+        // create dummy zip
+        let file_path = dir.join("file.txt");
+        fs::write(&file_path, "foobar").unwrap();
+        let zip_path = dir.join("my-dependency.zip");
+        zip_file(&dir, &[file_path], &zip_path).unwrap();
+
+        let out_dir = dir.join("out");
+        let res = unzip_file(&zip_path, &out_dir).await;
+        assert!(res.is_ok(), "{res:?}");
+        let file_path = out_dir.join("file.txt");
+        assert!(file_path.exists());
+        assert!(!zip_path.exists());
+    }
+
+    #[tokio::test]
+    async fn test_clone_repo() {
+        let dir = testdir!();
+        let res = clone_repo("https://github.com/beeb/test-repo.git", None::<&str>, &dir).await;
+        assert!(res.is_ok(), "{res:?}");
+        assert_eq!(&res.unwrap(), "d5d72fa135d28b2e8307650b3ea79115183f2406");
+    }
+
+    #[tokio::test]
+    async fn test_clone_repo_rev() {
+        let dir = testdir!();
+        let res = clone_repo(
+            "https://github.com/beeb/test-repo.git",
+            Some("d230f5c588c0ed00821a4eb3ef38e300e4a519dc"),
+            &dir,
+        )
+        .await;
+        assert!(res.is_ok(), "{res:?}");
+        assert_eq!(&res.unwrap(), "d230f5c588c0ed00821a4eb3ef38e300e4a519dc");
+    }
+
+    #[tokio::test]
+    async fn test_clone_repo_branch() {
+        let dir = testdir!();
+        let res = clone_repo("https://github.com/beeb/test-repo.git", Some("dev"), &dir).await;
+        assert!(res.is_ok(), "{res:?}");
+        assert_eq!(&res.unwrap(), "8d903e557e8f1b6e62bde768aa456d4ddfca72c4");
+    }
+
+    #[tokio::test]
+    async fn test_clone_repo_tag() {
+        let dir = testdir!();
+        let res = clone_repo("https://github.com/beeb/test-repo.git", Some("v0.1.0"), &dir).await;
+        assert!(res.is_ok(), "{res:?}");
+        assert_eq!(&res.unwrap(), "78c2f6a1a54db26bab6c3f501854a1564eb3707f");
+    }
 
     /* #[tokio::test]
     #[serial]

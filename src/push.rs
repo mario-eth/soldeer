@@ -65,7 +65,7 @@ pub fn validate_name(name: &str) -> Result<()> {
     Ok(())
 }
 
-fn zip_file(
+pub fn zip_file(
     root_directory_path: impl AsRef<Path>,
     files_to_copy: &[PathBuf],
     file_name: impl Into<PathBuf>,

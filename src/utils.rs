@@ -258,6 +258,22 @@ where
     Ok(String::from_utf8(forge.stdout).expect("forge command output should be valid utf-8"))
 }
 
+pub async fn remove_forge_lib() -> Result<(), InstallError> {
+    let gitmodules_path = PROJECT_ROOT.join(".gitmodules");
+    let lib_dir = PROJECT_ROOT.join("lib");
+    let forge_std_dir = lib_dir.join("forge-std");
+    run_git_command(&["rm", &forge_std_dir.to_string_lossy()], None).await?;
+    if lib_dir.exists() {
+        fs::remove_dir_all(&lib_dir)
+            .map_err(|e| InstallError::IOError { path: lib_dir.clone(), source: e })?;
+    }
+    if gitmodules_path.exists() {
+        fs::remove_file(&gitmodules_path)
+            .map_err(|e| InstallError::IOError { path: lib_dir, source: e })?;
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use rand::{distributions::Alphanumeric, Rng as _};

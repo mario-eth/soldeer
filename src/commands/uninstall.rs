@@ -1,6 +1,6 @@
 use super::Result;
 use crate::{
-    config::{delete_config, get_config_path, read_soldeer_config},
+    config::{delete_from_config, get_config_path, read_soldeer_config},
     download::delete_dependency_files_sync,
     lock::remove_lock,
     remappings::remove_from_remappings,
@@ -23,7 +23,7 @@ pub(crate) fn uninstall_command(cmd: &Uninstall) -> Result<()> {
     success("Done reading config")?;
 
     // delete from the config file and return the dependency
-    let dependency = delete_config(&cmd.dependency, &config_path)?;
+    let dependency = delete_from_config(&cmd.dependency, &config_path)?;
     success("Dependency removed from config file")?;
 
     // deleting the files

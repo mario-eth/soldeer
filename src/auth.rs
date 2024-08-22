@@ -79,15 +79,12 @@ mod tests {
 
     #[tokio::test]
     async fn login_success() {
+        let mut server = mockito::Server::new_async().await;
         let data = r#"
         {
             "status": "200",
             "token": "jwt_token_example"
         }"#;
-
-        // Request a new server from the pool
-        let mut server = mockito::Server::new_async().await;
-        // Create a mock
         server
             .mock("POST", "/api/v1/auth/login")
             .with_status(201)

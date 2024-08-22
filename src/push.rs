@@ -2,7 +2,7 @@ use crate::{
     auth::get_token,
     errors::{AuthError, PublishError},
     registry::get_project_id,
-    utils::{get_base_url, read_file},
+    utils::{api_url, read_file},
 };
 use cliclack::log::{info, remark, success};
 use ignore::{WalkBuilder, WalkState};
@@ -147,7 +147,7 @@ async fn push_to_repo(
     let token = get_token()?;
     let client = Client::new();
 
-    let url = format!("{}/api/v1/revision/upload", get_base_url());
+    let url = api_url("revision/upload", &[]);
 
     let mut headers: HeaderMap = HeaderMap::new();
 

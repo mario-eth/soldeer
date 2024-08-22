@@ -1,6 +1,6 @@
 use crate::{
     errors::AuthError,
-    utils::{get_base_url, security_file_path},
+    utils::{api_url, security_file_path},
 };
 use cliclack::log::{info, remark, success};
 use email_address_parser::{EmailAddress, ParsingOptions};
@@ -55,9 +55,9 @@ pub fn get_token() -> Result<String> {
 
 async fn execute_login(login: &Login) -> Result<()> {
     let security_file = security_file_path()?;
-    let url = format!("{}/api/v1/auth/login", get_base_url());
+    let url = api_url("auth/login", &[]);
     let client = Client::new();
-    let res = client.post(&url).json(login).send().await?;
+    let res = client.post(url).json(login).send().await?;
     match res.status() {
         s if s.is_success() => {
             success("Login successful")?;

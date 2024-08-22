@@ -5,9 +5,11 @@ use crate::{
 use ignore::{WalkBuilder, WalkState};
 use once_cell::sync::Lazy;
 use regex::Regex;
+use reqwest::Url;
 use sha2::{Digest, Sha256};
 use simple_home_dir::home_dir;
 use std::{
+    borrow::Cow,
     env,
     ffi::OsStr,
     fs,
@@ -24,6 +26,17 @@ use tokio::{fs as tokio_fs, process::Command};
 static GIT_SSH_REGEX: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"^(?:git@github\.com|git@gitlab)").expect("git ssh regex should compile")
 });
+
+pub static API_BASE_URL: Lazy<Url> = Lazy::new(|| {
+    let url = env::var("SOLDEER_API_URL").unwrap_or("https://api.soldeer.xyz".to_string());
+    Url::parse(&url).expect("SOLDEER_API_URL is invalid")
+});
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum UrlType {
+    Git,
+    Http,
+}
 
 /// Get the current working directory
 pub fn get_current_working_dir() -> PathBuf {
@@ -52,15 +65,9 @@ pub fn read_file(path: impl AsRef<Path>) -> Result<Vec<u8>, std::io::Error> {
 /// setting the `SOLDEER_LOGIN_FILE` environment variable.
 /// For login, the custom path will only be used if the file already exists.
 pub fn security_file_path() -> Result<PathBuf, std::io::Error> {
-    let custom_security_file = if cfg!(test) {
-        return Ok(PathBuf::from("./test_save_jwt"));
-    } else {
-        env::var("SOLDEER_LOGIN_FILE").ok()
-    };
-
-    if let Some(file) = custom_security_file {
-        if !file.is_empty() && Path::new(&file).exists() {
-            return Ok(file.into());
+    if let Ok(file_path) = env::var("SOLDEER_LOGIN_FILE") {
+        if !file_path.is_empty() && Path::new(&file_path).exists() {
+            return Ok(file_path.into());
         }
     }
 
@@ -74,23 +81,16 @@ pub fn security_file_path() -> Result<PathBuf, std::io::Error> {
     Ok(security_file)
 }
 
-pub fn get_base_url() -> String {
-    if cfg!(test) {
-        env::var("base_url").unwrap_or("http://0.0.0.0".to_string())
-    } else {
-        "https://api.soldeer.xyz".to_string()
-    }
+pub fn api_url(path: &str, params: &[(&str, &str)]) -> Url {
+    let mut url = API_BASE_URL.clone();
+    url.set_path(&format!("api/v1/{path}"));
+    url.query_pairs_mut().extend_pairs(params.iter());
+    url
 }
 
 /// Check if any file starts with a period
 pub fn check_dotfiles(files: &[PathBuf]) -> bool {
     files.iter().any(|file| file.file_name().unwrap_or_default().to_string_lossy().starts_with('.'))
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum UrlType {
-    Git,
-    Http,
 }
 
 pub fn get_url_type(dependency_url: &str) -> Result<UrlType, DownloadError> {
@@ -260,6 +260,10 @@ where
         return Err(InstallError::ForgeError(String::from_utf8(forge.stderr).unwrap_or_default()))
     }
     Ok(String::from_utf8(forge.stdout).expect("forge command output should be valid utf-8"))
+}
+
+fn get_api_base_url() -> String {
+    env::var("SOLDEER_API_URL").unwrap_or("https://api.soldeer.xyz".to_string())
 }
 
 #[cfg(test)]

@@ -1,7 +1,7 @@
 use crate::{
     config::{Dependency, HttpDependency},
     errors::RegistryError,
-    utils::get_base_url,
+    utils::api_url,
 };
 use chrono::{DateTime, Utc};
 use semver::{Version, VersionReq};
@@ -49,12 +49,9 @@ pub struct ProjectResponse {
 }
 
 pub async fn get_dependency_url_remote(dependency: &Dependency, version: &str) -> Result<String> {
-    let url = format!(
-        "{}/api/v1/revision-cli?project_name={}&revision={}",
-        get_base_url(),
-        dependency.name(),
-        version
-    );
+    let url =
+        api_url("revision-cli", &[("project_name", dependency.name()), ("revision", version)]);
+
     let res = reqwest::get(url).await?;
     let res = res.error_for_status()?;
     let revision: RevisionResponse = res.json().await?;
@@ -65,7 +62,7 @@ pub async fn get_dependency_url_remote(dependency: &Dependency, version: &str) -
 }
 
 pub async fn get_project_id(dependency_name: &str) -> Result<String> {
-    let url = format!("{}/api/v1/project?project_name={}", get_base_url(), dependency_name);
+    let url = api_url("project", &[("project_name", dependency_name)]);
     let res = reqwest::get(url).await?;
     let res = res.error_for_status()?;
     let project: ProjectResponse = res.json().await?;
@@ -77,11 +74,8 @@ pub async fn get_project_id(dependency_name: &str) -> Result<String> {
 
 pub async fn get_latest_forge_std() -> Result<Dependency> {
     let dependency_name = "forge-std";
-    let url = format!(
-        "{}/api/v1/revision?project_name={}&offset=0&limit=1",
-        get_base_url(),
-        dependency_name
-    );
+    let url =
+        api_url("revision", &[("project_name", dependency_name), ("offset", "0"), ("limit", "1")]);
     let res = reqwest::get(url).await?;
     let res = res.error_for_status()?;
     let revision: RevisionResponse = res.json().await?;
@@ -106,10 +100,9 @@ pub enum Versions {
 pub async fn get_all_versions_descending(dependency_name: &str) -> Result<Versions> {
     // TODO: provide a more efficient endpoint which already sorts by descending semver if possible
     // and only returns the version strings
-    let url = format!(
-        "{}/api/v1/revision?project_name={}&offset=0&limit=10000",
-        get_base_url(),
-        dependency_name
+    let url = api_url(
+        "revision",
+        &[("project_name", dependency_name), ("offset", "0"), ("limit", "10000")],
     );
     let res = reqwest::get(url).await?;
     let res = res.error_for_status()?;

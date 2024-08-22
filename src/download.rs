@@ -77,7 +77,11 @@ pub async fn clone_repo(
     path: impl AsRef<Path>,
 ) -> Result<String> {
     let path = path.as_ref().to_path_buf();
-    run_git_command(&["clone", "--tags", url, path.to_string_lossy().as_ref()], None).await?;
+    run_git_command(
+        &["clone", "--tags", "--filter=tree:0", url, path.to_string_lossy().as_ref()],
+        None,
+    )
+    .await?;
     if let Some(rev) = rev {
         run_git_command(&["checkout", rev.as_ref()], Some(&path)).await?;
     }

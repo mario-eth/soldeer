@@ -9,7 +9,6 @@ use reqwest::Url;
 use sha2::{Digest, Sha256};
 use simple_home_dir::home_dir;
 use std::{
-    borrow::Cow,
     env,
     ffi::OsStr,
     fs,
@@ -61,12 +60,10 @@ pub fn read_file(path: impl AsRef<Path>) -> Result<Vec<u8>, std::io::Error> {
 /// if the home cannot be found, in a hidden folder called `.soldeer`. The token file is called
 /// `.soldeer_login`.
 ///
-/// For reading (e.g. when pushing to the registry), the path can be overridden by
-/// setting the `SOLDEER_LOGIN_FILE` environment variable.
-/// For login, the custom path will only be used if the file already exists.
-pub fn security_file_path() -> Result<PathBuf, std::io::Error> {
+/// The path can be overridden by setting the `SOLDEER_LOGIN_FILE` environment variable.
+pub fn login_file_path() -> Result<PathBuf, std::io::Error> {
     if let Ok(file_path) = env::var("SOLDEER_LOGIN_FILE") {
-        if !file_path.is_empty() && Path::new(&file_path).exists() {
+        if !file_path.is_empty() {
             return Ok(file_path.into());
         }
     }
@@ -84,6 +81,9 @@ pub fn security_file_path() -> Result<PathBuf, std::io::Error> {
 pub fn api_url(path: &str, params: &[(&str, &str)]) -> Url {
     let mut url = API_BASE_URL.clone();
     url.set_path(&format!("api/v1/{path}"));
+    if params.is_empty() {
+        return url;
+    }
     url.query_pairs_mut().extend_pairs(params.iter());
     url
 }
@@ -260,10 +260,6 @@ where
         return Err(InstallError::ForgeError(String::from_utf8(forge.stderr).unwrap_or_default()))
     }
     Ok(String::from_utf8(forge.stdout).expect("forge command output should be valid utf-8"))
-}
-
-fn get_api_base_url() -> String {
-    env::var("SOLDEER_API_URL").unwrap_or("https://api.soldeer.xyz".to_string())
 }
 
 #[cfg(test)]

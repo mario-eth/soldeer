@@ -1,6 +1,6 @@
 use crate::{
     errors::AuthError,
-    utils::{api_url, security_file_path},
+    utils::{api_url, login_file_path},
 };
 use cliclack::log::{info, remark, success};
 use email_address_parser::{EmailAddress, ParsingOptions};
@@ -44,7 +44,7 @@ pub async fn login() -> Result<()> {
 }
 
 pub fn get_token() -> Result<String> {
-    let security_file = security_file_path()?;
+    let security_file = login_file_path()?;
     let jwt =
         fs::read_to_string(&security_file).map_err(|_| AuthError::MissingToken)?.trim().to_string();
     if jwt.is_empty() {
@@ -54,7 +54,7 @@ pub fn get_token() -> Result<String> {
 }
 
 async fn execute_login(login: &Login) -> Result<()> {
-    let security_file = security_file_path()?;
+    let security_file = login_file_path()?;
     let url = api_url("auth/login", &[]);
     let client = Client::new();
     let res = client.post(url).json(login).send().await?;
@@ -74,11 +74,10 @@ async fn execute_login(login: &Login) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serial_test::serial;
-    use std::{env, fs::remove_file};
+    use temp_env::async_with_vars;
+    use testdir::testdir;
 
     #[tokio::test]
-    #[serial]
     async fn login_success() {
         let data = r#"
         {
@@ -88,96 +87,92 @@ mod tests {
 
         // Request a new server from the pool
         let mut server = mockito::Server::new_async().await;
-        unsafe {
-            // became unsafe in Rust 1.80
-            env::set_var("base_url", format!("http://{}", server.host_with_port()));
-        }
-
         // Create a mock
-        let _ = server
+        server
             .mock("POST", "/api/v1/auth/login")
             .with_status(201)
             .with_header("content-type", "application/json")
             .with_body(data)
             .create();
 
-        match execute_login(&Login {
-            email: "test@test.com".to_string(),
-            password: "1234".to_string(),
-        })
-        .await
-        {
-            Ok(()) => {
-                let results = fs::read_to_string("./test_save_jwt").unwrap();
-                assert_eq!(results, "jwt_token_example");
-                let _ = remove_file("./test_save_jwt");
-            }
-            Err(_) => {
-                assert_eq!("Invalid State", "");
-            }
-        };
+        let test_file = testdir!().join("test_save_jwt");
+        async_with_vars(
+            [
+                ("SOLDEER_API_URL", Some(format!("http://{}", server.host_with_port()))),
+                ("SOLDEER_LOGIN_FILE", Some(test_file.to_string_lossy().to_string())),
+            ],
+            async move {
+                println!("env var: {:?}", std::env::var("SOLDEER_LOGIN_FILE"));
+                let res = execute_login(&Login {
+                    email: "test@test.com".to_string(),
+                    password: "1234".to_string(),
+                })
+                .await;
+                if let Err(err) = res {
+                    panic!("Error: {:?}", err);
+                }
+                assert!(res.is_ok());
+                assert_eq!(fs::read_to_string(test_file).unwrap(), "jwt_token_example");
+            },
+        )
+        .await;
     }
 
     #[tokio::test]
-    #[serial]
     async fn login_401() {
         let mut server = mockito::Server::new_async().await;
-        unsafe {
-            // became unsafe in Rust 1.80
-            env::set_var("base_url", format!("http://{}", server.host_with_port()));
-        }
-
-        let data = r#"
-        {
-            "status": "401",
-        }"#;
-
-        let _ = server
+        let data = r#"{ "status": "401" }"#;
+        server
             .mock("POST", "/api/v1/auth/login")
             .with_status(401)
             .with_header("content-type", "application/json")
             .with_body(data)
             .create();
 
-        assert!(matches!(
-            execute_login(&Login {
-                email: "test@test.com".to_string(),
-                password: "1234".to_string(),
-            })
-            .await,
-            Err(AuthError::InvalidCredentials)
-        ));
+        let test_file = testdir!().join("test_save_jwt");
+        async_with_vars(
+            [
+                ("SOLDEER_API_URL", Some(format!("http://{}", server.host_with_port()))),
+                ("SOLDEER_LOGIN_FILE", Some(test_file.to_string_lossy().to_string())),
+            ],
+            async move {
+                let res = execute_login(&Login {
+                    email: "test@test.com".to_string(),
+                    password: "1234".to_string(),
+                })
+                .await;
+                assert!(matches!(res, Err(AuthError::InvalidCredentials)));
+            },
+        )
+        .await;
     }
 
     #[tokio::test]
-    #[serial]
     async fn login_500() {
         let mut server = mockito::Server::new_async().await;
-
-        unsafe {
-            // became unsafe in Rust 1.80
-            env::set_var("base_url", format!("http://{}", server.host_with_port()));
-        }
-
-        let data = r#"
-        {
-            "status": "401",
-        }"#;
-
-        let _ = server
+        let data = r#"{ "status": "500" }"#;
+        server
             .mock("POST", "/api/v1/auth/login")
             .with_status(500)
             .with_header("content-type", "application/json")
             .with_body(data)
             .create();
 
-        assert!(matches!(
-            execute_login(&Login {
-                email: "test@test.com".to_string(),
-                password: "1234".to_string(),
-            })
-            .await,
-            Err(AuthError::HttpError(_))
-        ));
+        let test_file = testdir!().join("test_save_jwt");
+        async_with_vars(
+            [
+                ("SOLDEER_API_URL", Some(format!("http://{}", server.host_with_port()))),
+                ("SOLDEER_LOGIN_FILE", Some(test_file.to_string_lossy().to_string())),
+            ],
+            async move {
+                let res = execute_login(&Login {
+                    email: "test@test.com".to_string(),
+                    password: "1234".to_string(),
+                })
+                .await;
+                assert!(matches!(res, Err(AuthError::HttpError(_))));
+            },
+        )
+        .await;
     }
 }

@@ -1,9 +1,9 @@
 use super::Result;
 use crate::{
-    config::{delete_from_config, get_config_path, read_soldeer_config},
+    config::{delete_from_config, read_soldeer_config, Paths},
     download::delete_dependency_files_sync,
     lock::remove_lock,
-    remappings::remove_from_remappings,
+    remappings::{edit_remappings, RemappingsAction},
     SoldeerError,
 };
 use clap::Parser;
@@ -17,24 +17,23 @@ pub struct Uninstall {
     pub dependency: String,
 }
 
-pub(crate) fn uninstall_command(cmd: &Uninstall) -> Result<()> {
-    let config_path = get_config_path()?;
-    let config = read_soldeer_config(Some(&config_path))?;
+pub(crate) fn uninstall_command(paths: &Paths, cmd: &Uninstall) -> Result<()> {
+    let config = read_soldeer_config(&paths.config)?;
     success("Done reading config")?;
 
     // delete from the config file and return the dependency
-    let dependency = delete_from_config(&cmd.dependency, &config_path)?;
+    let dependency = delete_from_config(&cmd.dependency, &paths.config)?;
     success("Dependency removed from config file")?;
 
     // deleting the files
-    delete_dependency_files_sync(&dependency)
+    delete_dependency_files_sync(&dependency, &paths.dependencies)
         .map_err(|e| SoldeerError::DownloadError { dep: dependency.to_string(), source: e })?;
     success("Dependency removed from disk")?;
 
-    remove_lock(&dependency)?;
+    remove_lock(&dependency, &paths.lock)?;
     success("Dependency removed from lockfile")?;
 
-    remove_from_remappings(dependency, &config, &config_path)?;
+    edit_remappings(&RemappingsAction::Remove(dependency), &config, paths)?;
     success("Dependency removed from remappings")?;
 
     Ok(())

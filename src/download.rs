@@ -2,7 +2,6 @@ use crate::{
     config::Dependency,
     errors::DownloadError,
     utils::{run_git_command, sanitize_filename},
-    DEPENDENCY_DIR,
 };
 use reqwest::IntoUrl;
 use std::{
@@ -87,16 +86,16 @@ pub async fn clone_repo(
     Ok(commit)
 }
 
-pub fn delete_dependency_files_sync(dependency: &Dependency) -> Result<()> {
-    let Some(path) = find_install_path_sync(dependency) else {
+pub fn delete_dependency_files_sync(dependency: &Dependency, deps: impl AsRef<Path>) -> Result<()> {
+    let Some(path) = find_install_path_sync(dependency, deps) else {
         return Err(DownloadError::DependencyNotFound(dependency.to_string()));
     };
     fs::remove_dir_all(&path).map_err(|e| DownloadError::IOError { path, source: e })?;
     Ok(())
 }
 
-pub fn find_install_path_sync(dependency: &Dependency) -> Option<PathBuf> {
-    let Ok(read_dir) = fs::read_dir(DEPENDENCY_DIR.as_path()) else {
+pub fn find_install_path_sync(dependency: &Dependency, deps: impl AsRef<Path>) -> Option<PathBuf> {
+    let Ok(read_dir) = fs::read_dir(deps.as_ref()) else {
         return None;
     };
     for entry in read_dir {
@@ -120,8 +119,11 @@ pub fn find_install_path_sync(dependency: &Dependency) -> Option<PathBuf> {
     None
 }
 
-pub async fn delete_dependency_files(dependency: &Dependency) -> Result<()> {
-    let Some(path) = find_install_path(dependency).await else {
+pub async fn delete_dependency_files(
+    dependency: &Dependency,
+    deps: impl AsRef<Path>,
+) -> Result<()> {
+    let Some(path) = find_install_path(dependency, deps).await else {
         return Err(DownloadError::DependencyNotFound(dependency.to_string()));
     };
     tokio_fs::remove_dir_all(&path)
@@ -130,8 +132,8 @@ pub async fn delete_dependency_files(dependency: &Dependency) -> Result<()> {
     Ok(())
 }
 
-pub async fn find_install_path(dependency: &Dependency) -> Option<PathBuf> {
-    let Ok(mut read_dir) = tokio_fs::read_dir(DEPENDENCY_DIR.as_path()).await else {
+pub async fn find_install_path(dependency: &Dependency, deps: impl AsRef<Path>) -> Option<PathBuf> {
+    let Ok(mut read_dir) = tokio_fs::read_dir(deps.as_ref()).await else {
         return None;
     };
     while let Ok(Some(entry)) = read_dir.next_entry().await {

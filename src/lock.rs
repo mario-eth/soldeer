@@ -1,9 +1,9 @@
-use crate::{
-    config::Dependency, errors::LockError, utils::sanitize_filename, DEPENDENCY_DIR, LOCK_FILE,
-    PROJECT_ROOT,
-};
+use crate::{config::Dependency, errors::LockError, utils::sanitize_filename};
 use serde::{Deserialize, Serialize};
-use std::{fs, path::PathBuf};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
 
 pub type Result<T> = std::result::Result<T, LockError>;
 
@@ -18,8 +18,8 @@ pub struct GitLockEntry {
 }
 
 impl GitLockEntry {
-    pub fn install_path(&self) -> PathBuf {
-        format_install_path(&self.name, &self.version)
+    pub fn install_path(&self, deps: impl AsRef<Path>) -> PathBuf {
+        format_install_path(&self.name, &self.version, deps)
     }
 }
 
@@ -35,8 +35,8 @@ pub struct HttpLockEntry {
 }
 
 impl HttpLockEntry {
-    pub fn install_path(&self) -> PathBuf {
-        format_install_path(&self.name, &self.version)
+    pub fn install_path(&self, deps: impl AsRef<Path>) -> PathBuf {
+        format_install_path(&self.name, &self.version, deps)
     }
 }
 
@@ -137,10 +137,10 @@ impl LockEntry {
         }
     }
 
-    pub fn install_path(&self) -> PathBuf {
+    pub fn install_path(&self, deps: impl AsRef<Path>) -> PathBuf {
         match self {
-            LockEntry::Git(lock) => lock.install_path(),
-            LockEntry::Http(lock) => lock.install_path(),
+            LockEntry::Git(lock) => lock.install_path(deps),
+            LockEntry::Http(lock) => lock.install_path(deps),
         }
     }
 
@@ -179,13 +179,11 @@ struct LockFileParsed {
     dependencies: Vec<TomlLockEntry>,
 }
 
-pub fn read_lockfile() -> Result<(Vec<LockEntry>, String)> {
-    let lock_file: PathBuf =
-        if cfg!(test) { PROJECT_ROOT.join("test").join("soldeer.lock") } else { LOCK_FILE.clone() };
-    if !lock_file.exists() {
+pub fn read_lockfile(path: impl AsRef<Path>) -> Result<(Vec<LockEntry>, String)> {
+    if !path.as_ref().exists() {
         return Ok((vec![], String::new()));
     }
-    let contents = fs::read_to_string(&lock_file)?;
+    let contents = fs::read_to_string(&path)?;
 
     let data: LockFileParsed = toml_edit::de::from_str(&contents).unwrap_or_default();
     Ok((data.dependencies.into_iter().filter_map(|d| d.try_into().ok()).collect(), contents))
@@ -198,8 +196,8 @@ pub fn generate_lockfile_contents(mut entries: Vec<LockEntry>) -> String {
     toml_edit::ser::to_string_pretty(&data).expect("Lock entries should be serializable")
 }
 
-pub fn add_to_lockfile(entry: LockEntry) -> Result<()> {
-    let (mut entries, _) = read_lockfile()?;
+pub fn add_to_lockfile(entry: LockEntry, path: impl AsRef<Path>) -> Result<()> {
+    let (mut entries, _) = read_lockfile(&path)?;
     if let Some(index) =
         entries.iter().position(|e| e.name() == entry.name() && e.version() == entry.version())
     {
@@ -208,15 +206,12 @@ pub fn add_to_lockfile(entry: LockEntry) -> Result<()> {
         entries.push(entry);
     }
     let new_contents = generate_lockfile_contents(entries);
-    fs::write(LOCK_FILE.as_path(), new_contents)?;
+    fs::write(&path, new_contents)?;
     Ok(())
 }
 
-pub fn remove_lock(dependency: &Dependency) -> Result<()> {
-    let lock_file: PathBuf =
-        if cfg!(test) { PROJECT_ROOT.join("test").join("soldeer.lock") } else { LOCK_FILE.clone() };
-
-    let (entries, _) = read_lockfile()?;
+pub fn remove_lock(dependency: &Dependency, path: impl AsRef<Path>) -> Result<()> {
+    let (entries, _) = read_lockfile(&path)?;
 
     let entries: Vec<_> = entries
         .into_iter()
@@ -225,7 +220,7 @@ pub fn remove_lock(dependency: &Dependency) -> Result<()> {
 
     if entries.is_empty() {
         // remove lock file if there are no deps left
-        let _ = fs::remove_file(&lock_file);
+        let _ = fs::remove_file(&path);
         return Ok(());
     }
 
@@ -233,11 +228,11 @@ pub fn remove_lock(dependency: &Dependency) -> Result<()> {
         toml_edit::ser::to_string_pretty(&LockFileParsed { dependencies: entries })?;
 
     // replace contents of lockfile with new contents
-    fs::write(lock_file, file_contents)?;
+    fs::write(&path, file_contents)?;
 
     Ok(())
 }
 
-pub fn format_install_path(name: &str, version: &str) -> PathBuf {
-    DEPENDENCY_DIR.join(sanitize_filename(&format!("{}-{}", name, version)))
+pub fn format_install_path(name: &str, version: &str, deps: impl AsRef<Path>) -> PathBuf {
+    deps.as_ref().join(sanitize_filename(&format!("{}-{}", name, version)))
 }

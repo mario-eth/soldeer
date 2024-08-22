@@ -1,11 +1,10 @@
 use super::{validate_dependency, Result};
 use crate::{
-    config::{add_to_config, get_config_path, read_config_deps, read_soldeer_config, Dependency},
+    config::{add_to_config, read_config_deps, read_soldeer_config, Dependency, Paths},
     errors::{InstallError, LockError},
     install::{ensure_dependencies_dir, install_dependencies, install_dependency, Progress},
     lock::{add_to_lockfile, generate_lockfile_contents, read_lockfile},
-    remappings::{add_to_remappings, update_remappings},
-    DEPENDENCY_DIR, LOCK_FILE,
+    remappings::{edit_remappings, RemappingsAction},
 };
 use clap::Parser;
 use cliclack::{
@@ -62,9 +61,8 @@ pub struct Install {
     pub clean: bool,
 }
 
-pub(crate) async fn install_command(cmd: Install) -> Result<()> {
-    let config_path = get_config_path()?;
-    let mut config = read_soldeer_config(Some(&config_path))?;
+pub(crate) async fn install_command(paths: &Paths, cmd: Install) -> Result<()> {
+    let mut config = read_soldeer_config(&paths.config)?;
     if cmd.regenerate_remappings {
         config.remappings_regenerate = true;
     }
@@ -72,18 +70,19 @@ pub(crate) async fn install_command(cmd: Install) -> Result<()> {
         config.recursive_deps = true;
     }
     success("Done reading config")?;
-    ensure_dependencies_dir()?;
-    let dependencies: Vec<Dependency> = read_config_deps(Some(&config_path))?;
+    ensure_dependencies_dir(&paths.dependencies)?;
+    let dependencies: Vec<Dependency> = read_config_deps(&paths.config)?;
     match cmd.dependency {
         None => {
-            let (locks, lockfile_content) = read_lockfile()?;
+            let (locks, lockfile_content) = read_lockfile(&paths.lock)?;
             success("Done reading lockfile")?;
             if cmd.clean {
                 remark("Flag `--clean` was set, re-installing all dependencies")?;
-                fs::remove_dir_all(DEPENDENCY_DIR.as_path()).map_err(|e| {
-                    InstallError::IOError { path: DEPENDENCY_DIR.to_path_buf(), source: e }
+                fs::remove_dir_all(&paths.dependencies).map_err(|e| InstallError::IOError {
+                    path: paths.dependencies.clone(),
+                    source: e,
                 })?;
-                ensure_dependencies_dir()?;
+                ensure_dependencies_dir(&paths.dependencies)?;
             }
             let multi = multi_progress("Installing dependencies");
             let progress = Progress::new(&multi, dependencies.len() as u64);
@@ -91,6 +90,7 @@ pub(crate) async fn install_command(cmd: Install) -> Result<()> {
             let new_locks = install_dependencies(
                 &dependencies,
                 &locks,
+                &paths.dependencies,
                 config.recursive_deps,
                 progress.clone(),
             )
@@ -101,9 +101,9 @@ pub(crate) async fn install_command(cmd: Install) -> Result<()> {
             if !lockfile_content.is_empty() && new_lockfile_content != lockfile_content {
                 warning("Warning: the lock file is out of sync with the dependencies. Consider running `soldeer update` to re-generate the lockfile.")?;
             } else if lockfile_content.is_empty() {
-                fs::write(LOCK_FILE.as_path(), new_lockfile_content).map_err(LockError::IOError)?;
+                fs::write(&paths.lock, new_lockfile_content).map_err(LockError::IOError)?;
             }
-            update_remappings(&config, &config_path).await?;
+            edit_remappings(&RemappingsAction::None, &config, paths)?;
             success("Updated remappings")?;
         }
         Some(dependency) => {
@@ -118,9 +118,15 @@ pub(crate) async fn install_command(cmd: Install) -> Result<()> {
             let multi = multi_progress(format!("Installing {dep}"));
             let progress = Progress::new(&multi, 1);
             progress.start_all();
-            let lock =
-                install_dependency(&dep, None, None, config.recursive_deps, progress.clone())
-                    .await?;
+            let lock = install_dependency(
+                &dep,
+                None,
+                &paths.dependencies,
+                None,
+                config.recursive_deps,
+                progress.clone(),
+            )
+            .await?;
             progress.stop_all();
             multi.stop();
             // for GIT deps, we need to add the commit hash before adding them to the
@@ -129,11 +135,11 @@ pub(crate) async fn install_command(cmd: Install) -> Result<()> {
                 git_dep.rev =
                     Some(lock.as_git().expect("lock entry should be of type git").rev.clone());
             }
-            add_to_config(&dep, &config_path)?;
+            add_to_config(&dep, &paths.config)?;
             success("Dependency added to config")?;
-            add_to_lockfile(lock)?;
+            add_to_lockfile(lock, &paths.lock)?;
             success("Dependency added to lockfile")?;
-            add_to_remappings(dep, &config, &config_path).await?;
+            edit_remappings(&RemappingsAction::Add(dep), &config, paths)?;
             success("Dependency added to remappings")?;
         }
     }

@@ -1,3 +1,5 @@
+use std::path::Path;
+
 use crate::{
     config::Dependency,
     errors::UpdateError,
@@ -13,6 +15,7 @@ pub type Result<T> = std::result::Result<T, UpdateError>;
 pub async fn update_dependencies(
     dependencies: &[Dependency],
     locks: &[LockEntry],
+    deps_path: impl AsRef<Path>,
     recursive_deps: bool,
     progress: Progress,
 ) -> Result<Vec<LockEntry>> {
@@ -22,7 +25,8 @@ pub async fn update_dependencies(
             let d = dep.clone();
             let p = progress.clone();
             let lock = locks.iter().find(|l| l.name() == dep.name()).cloned();
-            async move { update_dependency(&d, lock.as_ref(), recursive_deps, p).await }
+            let paths = deps_path.as_ref().to_path_buf();
+            async move { update_dependency(&d, lock.as_ref(), &paths, recursive_deps, p).await }
         });
     }
 
@@ -36,6 +40,7 @@ pub async fn update_dependencies(
 pub async fn update_dependency(
     dependency: &Dependency,
     lock: Option<&LockEntry>,
+    deps: impl AsRef<Path>,
     recursive_deps: bool,
     progress: Progress,
 ) -> Result<LockEntry> {
@@ -44,9 +49,9 @@ pub async fn update_dependency(
             // we handle the git case in a special way because we don't need to re-clone the repo
             // update to the latest commit (git pull)
             let path = match lock {
-                Some(lock) => lock.install_path(),
-                None => dependency.install_path().await.unwrap_or_else(|| {
-                    format_install_path(dependency.name(), dependency.version_req())
+                Some(lock) => lock.install_path(&deps),
+                None => dependency.install_path(&deps).await.unwrap_or_else(|| {
+                    format_install_path(dependency.name(), dependency.version_req(), &deps)
                 }),
             };
             run_git_command(&["reset", "--hard", "HEAD"], Some(&path)).await?;
@@ -86,7 +91,8 @@ pub async fn update_dependency(
                     .into(),
             };
             let new_lock =
-                install_dependency(dependency, Some(lock), None, recursive_deps, progress).await?;
+                install_dependency(dependency, Some(lock), &deps, None, recursive_deps, progress)
+                    .await?;
             Ok(new_lock)
         }
         _ => {
@@ -109,9 +115,15 @@ pub async fn update_dependency(
                 }
                 _ => None,
             };
-            let new_lock =
-                install_dependency(dependency, None, force_version, recursive_deps, progress)
-                    .await?;
+            let new_lock = install_dependency(
+                dependency,
+                None,
+                &deps,
+                force_version,
+                recursive_deps,
+                progress,
+            )
+            .await?;
             Ok(new_lock)
         }
     }

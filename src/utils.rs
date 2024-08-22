@@ -1,7 +1,6 @@
 use crate::{
     download::IntegrityChecksum,
     errors::{DownloadError, InstallError},
-    PROJECT_ROOT,
 };
 use ignore::{WalkBuilder, WalkState};
 use once_cell::sync::Lazy;
@@ -52,7 +51,7 @@ pub fn read_file(path: impl AsRef<Path>) -> Result<Vec<u8>, std::io::Error> {
 
 /// Get the location where the token file is stored or read from
 ///
-/// The token file is stored in the home directory of the user, or in the project root directory
+/// The token file is stored in the home directory of the user, or in the current directory
 /// if the home cannot be found, in a hidden folder called `.soldeer`. The token file is called
 /// `.soldeer_login`.
 ///
@@ -64,8 +63,8 @@ pub fn login_file_path() -> Result<PathBuf, std::io::Error> {
         }
     }
 
-    // if home dir cannot be found, use the project root
-    let dir = home_dir().unwrap_or(PROJECT_ROOT.to_path_buf());
+    // if home dir cannot be found, use the current dir
+    let dir = home_dir().unwrap_or(env::current_dir()?);
     let security_directory = dir.join(".soldeer");
     if !security_directory.exists() {
         fs::create_dir(&security_directory)?;
@@ -258,9 +257,9 @@ where
     Ok(String::from_utf8(forge.stdout).expect("forge command output should be valid utf-8"))
 }
 
-pub async fn remove_forge_lib() -> Result<(), InstallError> {
-    let gitmodules_path = PROJECT_ROOT.join(".gitmodules");
-    let lib_dir = PROJECT_ROOT.join("lib");
+pub async fn remove_forge_lib(root: impl AsRef<Path>) -> Result<(), InstallError> {
+    let gitmodules_path = root.as_ref().join(".gitmodules");
+    let lib_dir = root.as_ref().join("lib");
     let forge_std_dir = lib_dir.join("forge-std");
     run_git_command(&["rm", &forge_std_dir.to_string_lossy()], None).await?;
     if lib_dir.exists() {

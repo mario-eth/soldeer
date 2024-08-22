@@ -5,7 +5,6 @@ use crate::{
     lock::{format_install_path, GitLockEntry, HttpLockEntry, LockEntry},
     registry::{get_dependency_url_remote, get_latest_supported_version},
     utils::{hash_file, hash_folder, run_forge_command, run_git_command},
-    DEPENDENCY_DIR,
 };
 use cliclack::{progress_bar, MultiProgress, ProgressBar};
 use std::{fmt::Display, fs as std_fs, path::Path};
@@ -134,6 +133,7 @@ impl From<LockEntry> for InstallInfo {
 pub async fn install_dependencies(
     dependencies: &[Dependency],
     locks: &[LockEntry],
+    deps: impl AsRef<Path>,
     recursive_deps: bool,
     progress: Progress,
 ) -> Result<Vec<LockEntry>> {
@@ -143,7 +143,8 @@ pub async fn install_dependencies(
             let d = dep.clone();
             let p = progress.clone();
             let lock = locks.iter().find(|l| l.name() == dep.name()).cloned();
-            async move { install_dependency(&d, lock.as_ref(), None, recursive_deps, p).await }
+            let deps = deps.as_ref().to_path_buf();
+            async move { install_dependency(&d, lock.as_ref(), deps, None, recursive_deps, p).await }
         });
     }
 
@@ -161,12 +162,13 @@ pub async fn install_dependencies(
 pub async fn install_dependency(
     dependency: &Dependency,
     lock: Option<&LockEntry>,
+    deps: impl AsRef<Path>,
     force_version: Option<String>,
     recursive_deps: bool,
     progress: Progress,
 ) -> Result<LockEntry> {
     if let Some(lock) = lock {
-        match check_dependency_integrity(lock).await? {
+        match check_dependency_integrity(lock, &deps).await? {
             DependencyStatus::Installed => {
                 // no action needed, dependency is already installed and matches the lockfile
                 // entry
@@ -180,7 +182,7 @@ pub async fn install_dependency(
                     progress.log(format!(
                         "Dependency {dependency} failed integrity check, reinstalling"
                     ));
-                    delete_dependency_files(dependency).await?;
+                    delete_dependency_files(dependency, &deps).await?;
                     // we won't need to retrieve the version number so we mark it as done
                     progress.versions.inc(1);
                 }
@@ -189,8 +191,11 @@ pub async fn install_dependency(
                         "Dependency {dependency} failed integrity check, resetting to commit {}",
                         lock.as_git().expect("lock entry should be of type git").rev
                     ));
-                    reset_git_dependency(lock.as_git().expect("lock entry should be of type git"))
-                        .await?;
+                    reset_git_dependency(
+                        lock.as_git().expect("lock entry should be of type git"),
+                        &deps,
+                    )
+                    .await?;
                     // dependency should now be at the correct commit, we can exit
                     progress.increment_all();
                     return Ok(lock.clone());
@@ -198,7 +203,7 @@ pub async fn install_dependency(
             },
             DependencyStatus::Missing => {
                 // make sure there is no existing directory for the dependency
-                if let Some(path) = dependency.install_path().await {
+                if let Some(path) = dependency.install_path(&deps).await {
                     fs::remove_dir_all(&path)
                         .await
                         .map_err(|e| InstallError::IOError { path, source: e })?;
@@ -209,7 +214,7 @@ pub async fn install_dependency(
         }
         install_dependency_inner(
             &lock.clone().into(),
-            lock.install_path(),
+            lock.install_path(&deps),
             recursive_deps,
             progress,
         )
@@ -217,7 +222,7 @@ pub async fn install_dependency(
     } else {
         // no lockfile entry, install from config object
         // make sure there is no existing directory for the dependency
-        if let Some(path) = dependency.install_path().await {
+        if let Some(path) = dependency.install_path(&deps).await {
             fs::remove_dir_all(&path)
                 .await
                 .map_err(|e| InstallError::IOError { path, source: e })?;
@@ -252,7 +257,7 @@ pub async fn install_dependency(
         };
         install_dependency_inner(
             &info,
-            format_install_path(dependency.name(), &version),
+            format_install_path(dependency.name(), &version, &deps),
             recursive_deps,
             progress,
         )
@@ -260,17 +265,21 @@ pub async fn install_dependency(
     }
 }
 
-pub async fn check_dependency_integrity(lock: &LockEntry) -> Result<DependencyStatus> {
+pub async fn check_dependency_integrity(
+    lock: &LockEntry,
+    deps: impl AsRef<Path>,
+) -> Result<DependencyStatus> {
     match lock {
-        LockEntry::Http(lock) => check_http_dependency(lock).await,
-        LockEntry::Git(lock) => check_git_dependency(lock).await,
+        LockEntry::Http(lock) => check_http_dependency(lock, deps).await,
+        LockEntry::Git(lock) => check_git_dependency(lock, deps).await,
     }
 }
 
-pub fn ensure_dependencies_dir() -> Result<()> {
-    let path = DEPENDENCY_DIR.clone();
+pub fn ensure_dependencies_dir(path: impl AsRef<Path>) -> Result<()> {
+    let path = path.as_ref();
     if !path.exists() {
-        std_fs::create_dir(&path).map_err(|e| InstallError::IOError { path, source: e })?;
+        std_fs::create_dir(path)
+            .map_err(|e| InstallError::IOError { path: path.to_path_buf(), source: e })?;
     }
     Ok(())
 }
@@ -365,8 +374,11 @@ async fn install_subdependencies(path: impl AsRef<Path>) -> Result<()> {
     Ok(())
 }
 
-async fn check_http_dependency(lock: &HttpLockEntry) -> Result<DependencyStatus> {
-    let path = lock.install_path();
+async fn check_http_dependency(
+    lock: &HttpLockEntry,
+    deps: impl AsRef<Path>,
+) -> Result<DependencyStatus> {
+    let path = lock.install_path(deps);
     if fs::metadata(&path).await.is_err() {
         return Ok(DependencyStatus::Missing);
     }
@@ -381,8 +393,11 @@ async fn check_http_dependency(lock: &HttpLockEntry) -> Result<DependencyStatus>
     Ok(DependencyStatus::Installed)
 }
 
-async fn check_git_dependency(lock: &GitLockEntry) -> Result<DependencyStatus> {
-    let path = lock.install_path();
+async fn check_git_dependency(
+    lock: &GitLockEntry,
+    deps: impl AsRef<Path>,
+) -> Result<DependencyStatus> {
+    let path = lock.install_path(deps);
     if fs::metadata(&path).await.is_err() {
         return Ok(DependencyStatus::Missing);
     }
@@ -422,8 +437,8 @@ async fn check_git_dependency(lock: &GitLockEntry) -> Result<DependencyStatus> {
 ///
 /// This function runs `git reset --hard <commit>` and `git clean -fd` in the git dependency's
 /// directory
-async fn reset_git_dependency(lock: &GitLockEntry) -> Result<()> {
-    let path = lock.install_path();
+async fn reset_git_dependency(lock: &GitLockEntry, deps: impl AsRef<Path>) -> Result<()> {
+    let path = lock.install_path(deps);
     run_git_command(&["reset", "--hard", &lock.rev], Some(&path)).await?;
     run_git_command(&["clean", "-fd"], Some(&path)).await?;
     Ok(())

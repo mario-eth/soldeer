@@ -26,11 +26,6 @@ static GIT_SSH_REGEX: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"^(?:git@github\.com|git@gitlab)").expect("git ssh regex should compile")
 });
 
-pub static API_BASE_URL: Lazy<Url> = Lazy::new(|| {
-    let url = env::var("SOLDEER_API_URL").unwrap_or("https://api.soldeer.xyz".to_string());
-    Url::parse(&url).expect("SOLDEER_API_URL is invalid")
-});
-
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum UrlType {
     Git,
@@ -74,7 +69,8 @@ pub fn login_file_path() -> Result<PathBuf, std::io::Error> {
 }
 
 pub fn api_url(path: &str, params: &[(&str, &str)]) -> Url {
-    let mut url = API_BASE_URL.clone();
+    let url = env::var("SOLDEER_API_URL").unwrap_or("https://api.soldeer.xyz".to_string());
+    let mut url = Url::parse(&url).expect("SOLDEER_API_URL is invalid");
     url.set_path(&format!("api/v1/{path}"));
     if params.is_empty() {
         return url;

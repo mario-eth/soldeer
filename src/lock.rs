@@ -1,8 +1,6 @@
 use crate::{
-    config::Dependency,
-    errors::LockError,
-    utils::{get_current_working_dir, sanitize_filename},
-    DEPENDENCY_DIR, LOCK_FILE,
+    config::Dependency, errors::LockError, utils::sanitize_filename, DEPENDENCY_DIR, LOCK_FILE,
+    PROJECT_ROOT,
 };
 use serde::{Deserialize, Serialize};
 use std::{fs, path::PathBuf};
@@ -182,11 +180,8 @@ struct LockFileParsed {
 }
 
 pub fn read_lockfile() -> Result<(Vec<LockEntry>, String)> {
-    let lock_file: PathBuf = if cfg!(test) {
-        get_current_working_dir().join("test").join("soldeer.lock")
-    } else {
-        LOCK_FILE.clone()
-    };
+    let lock_file: PathBuf =
+        if cfg!(test) { PROJECT_ROOT.join("test").join("soldeer.lock") } else { LOCK_FILE.clone() };
     if !lock_file.exists() {
         return Ok((vec![], String::new()));
     }
@@ -218,11 +213,8 @@ pub fn add_to_lockfile(entry: LockEntry) -> Result<()> {
 }
 
 pub fn remove_lock(dependency: &Dependency) -> Result<()> {
-    let lock_file: PathBuf = if cfg!(test) {
-        get_current_working_dir().join("test").join("soldeer.lock")
-    } else {
-        LOCK_FILE.clone()
-    };
+    let lock_file: PathBuf =
+        if cfg!(test) { PROJECT_ROOT.join("test").join("soldeer.lock") } else { LOCK_FILE.clone() };
 
     let (entries, _) = read_lockfile()?;
 

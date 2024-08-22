@@ -108,7 +108,7 @@ mod tests {
                 if let Err(err) = res {
                     panic!("Error: {:?}", err);
                 }
-                assert!(res.is_ok());
+                assert!(res.is_ok(), "{res:?}");
                 assert_eq!(fs::read_to_string(test_file).unwrap(), "jwt_token_example");
             },
         )
@@ -138,7 +138,7 @@ mod tests {
                     password: "1234".to_string(),
                 })
                 .await;
-                assert!(matches!(res, Err(AuthError::InvalidCredentials)));
+                assert!(matches!(res, Err(AuthError::InvalidCredentials)), "{res:?}");
             },
         )
         .await;
@@ -167,7 +167,7 @@ mod tests {
                     password: "1234".to_string(),
                 })
                 .await;
-                assert!(matches!(res, Err(AuthError::HttpError(_))));
+                assert!(matches!(res, Err(AuthError::HttpError(_))), "{res:?}");
             },
         )
         .await;

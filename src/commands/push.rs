@@ -1,13 +1,13 @@
 use crate::{
     errors::PublishError,
     push::{filter_files_to_copy, prompt_user_for_confirmation, push_version, validate_name},
-    utils::{check_dotfiles, get_current_working_dir},
+    utils::check_dotfiles,
 };
 
 use super::{validate_dependency, Result};
 use clap::Parser;
 use cliclack::log::{remark, warning};
-use std::path::PathBuf;
+use std::{env, path::PathBuf};
 
 /// Push a dependency to the repository
 #[derive(Debug, Clone, Parser)]
@@ -45,7 +45,7 @@ pub struct Push {
 }
 
 pub(crate) async fn push_command(cmd: Push) -> Result<()> {
-    let path = cmd.path.unwrap_or(get_current_working_dir());
+    let path = cmd.path.unwrap_or(env::current_dir()?);
 
     let files_to_copy: Vec<PathBuf> = filter_files_to_copy(&path);
 

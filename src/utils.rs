@@ -1,6 +1,7 @@
 use crate::{
     download::IntegrityChecksum,
     errors::{DownloadError, InstallError},
+    PROJECT_ROOT,
 };
 use ignore::{WalkBuilder, WalkState};
 use once_cell::sync::Lazy;
@@ -37,11 +38,6 @@ pub enum UrlType {
     Http,
 }
 
-/// Get the current working directory
-pub fn get_current_working_dir() -> PathBuf {
-    env::current_dir().expect("could not get current working directory")
-}
-
 /// Read a file contents into a vector of bytes
 pub fn read_file(path: impl AsRef<Path>) -> Result<Vec<u8>, std::io::Error> {
     let f = fs::File::open(path)?;
@@ -56,7 +52,7 @@ pub fn read_file(path: impl AsRef<Path>) -> Result<Vec<u8>, std::io::Error> {
 
 /// Get the location where the token file is stored or read from
 ///
-/// The token file is stored in the home directory of the user, or in the current working directory
+/// The token file is stored in the home directory of the user, or in the project root directory
 /// if the home cannot be found, in a hidden folder called `.soldeer`. The token file is called
 /// `.soldeer_login`.
 ///
@@ -68,8 +64,8 @@ pub fn login_file_path() -> Result<PathBuf, std::io::Error> {
         }
     }
 
-    // if home dir cannot be found, use the current working directory
-    let dir = home_dir().unwrap_or_else(get_current_working_dir);
+    // if home dir cannot be found, use the project root
+    let dir = home_dir().unwrap_or(PROJECT_ROOT.to_path_buf());
     let security_directory = dir.join(".soldeer");
     if !security_directory.exists() {
         fs::create_dir(&security_directory)?;

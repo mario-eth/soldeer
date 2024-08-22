@@ -1,8 +1,7 @@
 use crate::{
     config::{read_config_deps, Dependency, SoldeerConfig},
     errors::RemappingsError,
-    utils::get_current_working_dir,
-    REMAPPINGS_FILE,
+    PROJECT_ROOT, REMAPPINGS_FILE,
 };
 use serde::{Deserialize, Serialize};
 use std::{
@@ -256,7 +255,7 @@ fn get_install_dir_relative(dependency: &Dependency) -> Result<String> {
         .ok_or(RemappingsError::DependencyNotFound(dependency.to_string()))?
         .canonicalize()?;
     Ok(path
-        .strip_prefix(get_current_working_dir().canonicalize()?)
+        .strip_prefix(PROJECT_ROOT.canonicalize()?)
         .map_err(|_| RemappingsError::DependencyNotFound(dependency.to_string()))?
         .to_string_lossy()
         .to_string())
@@ -270,10 +269,7 @@ mod tests {
     use rand::{distributions::Alphanumeric, Rng as _};
     use serial_test::serial;
 
-    use crate::{
-        config::{read_soldeer_config, HttpDependency},
-        utils::get_current_working_dir,
-    };
+    use crate::config::{read_soldeer_config, HttpDependency};
 
     use super::*;
 
@@ -379,7 +375,7 @@ remappings_version = true
 "#;
 
         let target_config = define_config(true);
-        let txt = get_current_working_dir().join("remappings.txt");
+        let txt = REMAPPINGS_FILE.to_path_buf();
         let _ = remove_file(&txt);
 
         write_to_config(&target_config, content);
@@ -413,7 +409,7 @@ remappings_version = false
 "#;
 
         let target_config = define_config(true);
-        let txt = get_current_working_dir().join("remappings.txt");
+        let txt = REMAPPINGS_FILE.to_path_buf();
         let _ = remove_file(&txt);
 
         write_to_config(&target_config, content);
@@ -667,6 +663,6 @@ remappings_generate = true
             target = format!("soldeer{}.toml", s);
         }
 
-        get_current_working_dir().join("test").join(target)
+        PROJECT_ROOT.join("test").join(target)
     }
 }

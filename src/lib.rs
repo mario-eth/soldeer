@@ -1,5 +1,4 @@
 #![cfg_attr(docsrs, feature(doc_cfg, doc_auto_cfg))]
-use crate::utils::get_current_working_dir;
 pub use crate::{commands::Subcommands, errors::SoldeerError};
 use cliclack::{intro, log::step, outro, outro_cancel};
 use once_cell::sync::Lazy;
@@ -18,16 +17,23 @@ mod remappings;
 mod update;
 mod utils;
 
-// TODO: find the project's root directory and use that as the base path instead of the current dir
-pub static DEPENDENCY_DIR: Lazy<PathBuf> =
-    Lazy::new(|| get_current_working_dir().join("dependencies/"));
-pub static LOCK_FILE: Lazy<PathBuf> = Lazy::new(|| get_current_working_dir().join("soldeer.lock"));
-pub static SOLDEER_CONFIG_FILE: Lazy<PathBuf> =
-    Lazy::new(|| get_current_working_dir().join("soldeer.toml"));
-pub static FOUNDRY_CONFIG_FILE: Lazy<PathBuf> =
-    Lazy::new(|| get_current_working_dir().join("foundry.toml"));
-pub static REMAPPINGS_FILE: Lazy<PathBuf> =
-    Lazy::new(|| get_current_working_dir().join("remappings.txt"));
+pub static PROJECT_ROOT: Lazy<PathBuf> = Lazy::new(|| {
+    // TODO: find the project's root directory and use that as the root instead of the current dir
+    env::var("SOLDEER_PROJECT_ROOT")
+        .map(|p| {
+            if p.is_empty() {
+                env::current_dir().expect("could not get current dir")
+            } else {
+                PathBuf::from(p)
+            }
+        })
+        .unwrap_or(env::current_dir().expect("could not get current dir"))
+});
+pub static DEPENDENCY_DIR: Lazy<PathBuf> = Lazy::new(|| PROJECT_ROOT.join("dependencies"));
+pub static LOCK_FILE: Lazy<PathBuf> = Lazy::new(|| PROJECT_ROOT.join("soldeer.lock"));
+pub static SOLDEER_CONFIG_FILE: Lazy<PathBuf> = Lazy::new(|| PROJECT_ROOT.join("soldeer.toml"));
+pub static FOUNDRY_CONFIG_FILE: Lazy<PathBuf> = Lazy::new(|| PROJECT_ROOT.join("foundry.toml"));
+pub static REMAPPINGS_FILE: Lazy<PathBuf> = Lazy::new(|| PROJECT_ROOT.join("remappings.txt"));
 
 #[tokio::main]
 pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
@@ -396,9 +402,7 @@ mario = { version = "1.0", git = "https://gitlab.com/mario4582928/Mario.git", re
     fn soldeer_update_success_with_soldeer_config() {
         let _ = remove_dir_all(DEPENDENCY_DIR.clone());
         let _ = remove_file(LOCK_FILE.clone());
-        let path_remappings = get_current_working_dir().join("remappings.txt");
-
-        let _ = remove_file(&path_remappings);
+        let _ = remove_file(REMAPPINGS_FILE.as_path());
         let content = r#"
 # Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
 
@@ -461,7 +465,7 @@ recursive_deps = true
 @custom@mario-1.0/=dependencies/mario-1.0/
 @custom@solmate-6.7.0/=dependencies/solmate-6.7.0/
 ";
-        assert_eq!(expected_remappings, fs::read_to_string(path_remappings).unwrap());
+        assert_eq!(expected_remappings, fs::read_to_string(REMAPPINGS_FILE.as_path()).unwrap());
 
         clean_test_env(target_config);
     }

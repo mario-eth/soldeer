@@ -211,8 +211,9 @@ pub fn prompt_user_for_confirmation() -> Result<bool> {
 
 #[cfg(test)]
 mod tests {
+    use crate::PROJECT_ROOT;
+
     use super::*;
-    use crate::utils::get_current_working_dir;
     use io::Cursor;
     use rand::{distributions::Alphanumeric, Rng};
     use serial_test::serial;
@@ -221,7 +222,7 @@ mod tests {
     #[test]
     #[serial]
     fn filter_only_files_success() {
-        let target_dir = get_current_working_dir().join("test").join("test_push");
+        let target_dir = PROJECT_ROOT.join("test").join("test_push");
         let _ = remove_dir_all(&target_dir);
         let _ = create_dir_all(&target_dir);
 
@@ -255,7 +256,7 @@ mod tests {
     #[test]
     #[serial]
     fn filter_files_and_dir_success() {
-        let target_dir = get_current_working_dir().join("test").join("test_push");
+        let target_dir = PROJECT_ROOT.join("test").join("test_push");
         let _ = remove_dir_all(&target_dir);
         let _ = create_dir_all(&target_dir);
 
@@ -268,7 +269,7 @@ mod tests {
         let mut filtered_files = vec![gitignore.clone()];
 
         // initial dir to test the ignore
-        let target_dir = get_current_working_dir().join("test").join("test_push");
+        let target_dir = PROJECT_ROOT.join("test").join("test_push");
 
         // we create various test files structure
         // - test_push/
@@ -336,8 +337,8 @@ mod tests {
     #[test]
     #[serial]
     fn zipping_file_structure_check() {
-        let target_dir = get_current_working_dir().join("test").join("test_zip");
-        let target_dir_unzip = get_current_working_dir().join("test").join("test_unzip");
+        let target_dir = PROJECT_ROOT.join("test").join("test_zip");
+        let target_dir_unzip = PROJECT_ROOT.join("test").join("test_unzip");
         let _ = remove_dir_all(&target_dir);
         let _ = remove_dir_all(&target_dir_unzip);
         let _ = create_dir_all(&target_dir);

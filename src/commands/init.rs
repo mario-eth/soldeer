@@ -7,7 +7,7 @@ use crate::{
     lock::add_to_lockfile,
     registry::get_latest_forge_std,
     remappings::add_to_remappings,
-    utils::get_current_working_dir,
+    PROJECT_ROOT,
 };
 use clap::Parser;
 use cliclack::{
@@ -53,7 +53,7 @@ pub(crate) async fn init_command(cmd: Init) -> Result<()> {
     add_to_remappings(dependency, &config, &config_path).await?;
     success("Dependency added to remappings")?;
 
-    let gitignore_path = get_current_working_dir().join(".gitignore");
+    let gitignore_path = PROJECT_ROOT.join(".gitignore");
     if gitignore_path.exists() {
         let mut gitignore = fs::read_to_string(&gitignore_path)?;
         if !gitignore.contains("dependencies") {

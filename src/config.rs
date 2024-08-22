@@ -598,6 +598,198 @@ mod tests {
     use testdir::testdir;
 
     #[test]
+    fn test_from_name_version_no_url() {
+        let res = Dependency::from_name_version("dependency~1.0.0", None::<&str>, None::<&str>);
+        assert!(res.is_ok(), "{res:?}");
+        assert_eq!(
+            res.unwrap(),
+            HttpDependency {
+                name: "dependency".to_string(),
+                version_req: "1.0.0".to_string(),
+                url: None
+            }
+            .into()
+        );
+    }
+
+    #[test]
+    fn test_from_name_version_with_http_url() {
+        let res = Dependency::from_name_version(
+            "dependency~1.0.0",
+            Some("https://github.com/user/repo/archive/123.zip"),
+            None::<&str>,
+        );
+        assert!(res.is_ok(), "{res:?}");
+        assert_eq!(
+            res.unwrap(),
+            HttpDependency {
+                name: "dependency".to_string(),
+                version_req: "1.0.0".to_string(),
+                url: Some("https://github.com/user/repo/archive/123.zip".to_string())
+            }
+            .into()
+        );
+    }
+
+    #[test]
+    fn test_from_name_version_with_git_url() {
+        let res = Dependency::from_name_version(
+            "dependency~1.0.0",
+            Some("https://github.com/user/repo.git"),
+            None::<&str>,
+        );
+        assert!(res.is_ok(), "{res:?}");
+        assert_eq!(
+            res.unwrap(),
+            GitDependency {
+                name: "dependency".to_string(),
+                version_req: "1.0.0".to_string(),
+                git: "https://github.com/user/repo.git".to_string(),
+                rev: None
+            }
+            .into()
+        );
+
+        let res = Dependency::from_name_version(
+            "dependency~1.0.0",
+            Some("https://test:test@gitlab.com/user/repo.git"),
+            None::<&str>,
+        );
+        assert!(res.is_ok(), "{res:?}");
+        assert_eq!(
+            res.unwrap(),
+            GitDependency {
+                name: "dependency".to_string(),
+                version_req: "1.0.0".to_string(),
+                git: "https://test:test@gitlab.com/user/repo.git".to_string(),
+                rev: None
+            }
+            .into()
+        );
+    }
+
+    #[test]
+    fn test_from_name_version_with_git_url_rev() {
+        let res = Dependency::from_name_version(
+            "dependency~1.0.0",
+            Some("https://github.com/user/repo.git"),
+            Some("123456"),
+        );
+        assert!(res.is_ok(), "{res:?}");
+        assert_eq!(
+            res.unwrap(),
+            GitDependency {
+                name: "dependency".to_string(),
+                version_req: "1.0.0".to_string(),
+                git: "https://github.com/user/repo.git".to_string(),
+                rev: Some("123456".to_string())
+            }
+            .into()
+        );
+    }
+
+    #[test]
+    fn test_from_name_version_with_git_ssh() {
+        let res = Dependency::from_name_version(
+            "dependency~1.0.0",
+            Some("git@github.com:user/repo.git"),
+            None::<&str>,
+        );
+        assert!(res.is_ok(), "{res:?}");
+        assert_eq!(
+            res.unwrap(),
+            GitDependency {
+                name: "dependency".to_string(),
+                version_req: "1.0.0".to_string(),
+                git: "git@github.com:user/repo.git".to_string(),
+                rev: None
+            }
+            .into()
+        );
+    }
+
+    #[test]
+    fn test_from_name_version_with_git_ssh_rev() {
+        let res = Dependency::from_name_version(
+            "dependency~1.0.0",
+            Some("git@github.com:user/repo.git"),
+            Some("123456"),
+        );
+        assert!(res.is_ok(), "{res:?}");
+        assert_eq!(
+            res.unwrap(),
+            GitDependency {
+                name: "dependency".to_string(),
+                version_req: "1.0.0".to_string(),
+                git: "git@github.com:user/repo.git".to_string(),
+                rev: Some("123456".to_string())
+            }
+            .into()
+        );
+    }
+
+    #[test]
+    fn test_from_name_version_empty_version() {
+        let res = Dependency::from_name_version("dependency~", None::<&str>, None::<&str>);
+        assert!(matches!(res, Err(ConfigError::EmptyVersion(_))), "{res:?}");
+    }
+
+    #[test]
+    fn test_from_name_version_invalid_version() {
+        // for http deps, having the "=" character in the version requirement is ok
+        let res = Dependency::from_name_version("dependency~asdf=", None::<&str>, None::<&str>);
+        assert!(res.is_ok(), "{res:?}");
+
+        let res = Dependency::from_name_version(
+            "dependency~asdf=",
+            Some("https://example.com"),
+            None::<&str>,
+        );
+        assert!(matches!(res, Err(ConfigError::InvalidVersionReq(_))), "{res:?}");
+
+        let res = Dependency::from_name_version(
+            "dependency~asdf=",
+            Some("git@github.com:user/repo.git"),
+            None::<&str>,
+        );
+        assert!(matches!(res, Err(ConfigError::InvalidVersionReq(_))), "{res:?}");
+    }
+
+    #[test]
+    fn test_config_path_soldeer() {
+        let config_contents = "[dependencies]\n";
+        let config_path = write_to_config(config_contents, "soldeer.toml");
+        with_var(
+            "SOLDEER_PROJECT_ROOT",
+            Some(config_path.parent().unwrap().to_string_lossy().to_string()),
+            || {
+                let res = get_config_path();
+                assert!(res.is_ok(), "{res:?}");
+                assert_eq!(res.unwrap(), config_path);
+            },
+        );
+    }
+
+    #[test]
+    fn test_config_path_foundry() {
+        let config_contents = r#"[profile.default]
+libs = ["dependencies"]
+
+[dependencies]
+"#;
+        let config_path = write_to_config(config_contents, "foundry.toml");
+        with_var(
+            "SOLDEER_PROJECT_ROOT",
+            Some(config_path.parent().unwrap().to_string_lossy().to_string()),
+            || {
+                let res = get_config_path();
+                assert!(res.is_ok(), "{res:?}");
+                assert_eq!(res.unwrap(), config_path);
+            },
+        );
+    }
+
+    #[test]
     fn test_read_foundry_config_deps() {
         let config_contents = r#"[profile.default]
 libs = ["dependencies"]
@@ -756,195 +948,44 @@ libs = ["dependencies"]
     }
 
     #[test]
-    fn test_config_path_soldeer() {
-        let config_contents = "[dependencies]\n";
-        let config_path = write_to_config(config_contents, "soldeer.toml");
-        with_var(
-            "SOLDEER_PROJECT_ROOT",
-            Some(config_path.parent().unwrap().to_string_lossy().to_string()),
-            || {
-                let res = get_config_path();
-                assert!(res.is_ok(), "{res:?}");
-                assert_eq!(res.unwrap(), config_path);
-            },
-        );
-    }
-
-    #[test]
-    fn test_config_path_foundry() {
+    fn test_read_soldeer_config_default() {
         let config_contents = r#"[profile.default]
 libs = ["dependencies"]
-
-[dependencies]
 "#;
         let config_path = write_to_config(config_contents, "foundry.toml");
-        with_var(
-            "SOLDEER_PROJECT_ROOT",
-            Some(config_path.parent().unwrap().to_string_lossy().to_string()),
-            || {
-                let res = get_config_path();
-                assert!(res.is_ok(), "{res:?}");
-                assert_eq!(res.unwrap(), config_path);
-            },
-        );
+        let res = read_soldeer_config(Some(config_path));
+        assert!(res.is_ok(), "{res:?}");
+        assert_eq!(res.unwrap(), SoldeerConfig::default());
     }
 
     #[test]
-    fn test_from_name_version_no_url() {
-        let res = Dependency::from_name_version("dependency~1.0.0", None::<&str>, None::<&str>);
+    fn test_read_soldeer_config() {
+        let config_contents = r#"[soldeer]
+remappings_generate = false
+remappings_regenerate = true
+remappings_version = false
+remappings_prefix = "@"
+remappings_location = "config"
+recursive_deps = true
+"#;
+        let expected = SoldeerConfig {
+            remappings_generate: false,
+            remappings_regenerate: true,
+            remappings_version: false,
+            remappings_prefix: "@".to_string(),
+            remappings_location: RemappingsLocation::Config,
+            recursive_deps: true,
+        };
+
+        let config_path = write_to_config(config_contents, "soldeer.toml");
+        let res = read_soldeer_config(Some(config_path));
         assert!(res.is_ok(), "{res:?}");
-        assert_eq!(
-            res.unwrap(),
-            HttpDependency {
-                name: "dependency".to_string(),
-                version_req: "1.0.0".to_string(),
-                url: None
-            }
-            .into()
-        );
-    }
+        assert_eq!(res.unwrap(), expected);
 
-    #[test]
-    fn test_from_name_version_with_http_url() {
-        let res = Dependency::from_name_version(
-            "dependency~1.0.0",
-            Some("https://github.com/user/repo/archive/123.zip"),
-            None::<&str>,
-        );
+        let config_path = write_to_config(config_contents, "foundry.toml");
+        let res = read_soldeer_config(Some(config_path));
         assert!(res.is_ok(), "{res:?}");
-        assert_eq!(
-            res.unwrap(),
-            HttpDependency {
-                name: "dependency".to_string(),
-                version_req: "1.0.0".to_string(),
-                url: Some("https://github.com/user/repo/archive/123.zip".to_string())
-            }
-            .into()
-        );
-    }
-
-    #[test]
-    fn test_from_name_version_with_git_url() {
-        let res = Dependency::from_name_version(
-            "dependency~1.0.0",
-            Some("https://github.com/user/repo.git"),
-            None::<&str>,
-        );
-        assert!(res.is_ok(), "{res:?}");
-        assert_eq!(
-            res.unwrap(),
-            GitDependency {
-                name: "dependency".to_string(),
-                version_req: "1.0.0".to_string(),
-                git: "https://github.com/user/repo.git".to_string(),
-                rev: None
-            }
-            .into()
-        );
-
-        let res = Dependency::from_name_version(
-            "dependency~1.0.0",
-            Some("https://test:test@gitlab.com/user/repo.git"),
-            None::<&str>,
-        );
-        assert!(res.is_ok(), "{res:?}");
-        assert_eq!(
-            res.unwrap(),
-            GitDependency {
-                name: "dependency".to_string(),
-                version_req: "1.0.0".to_string(),
-                git: "https://test:test@gitlab.com/user/repo.git".to_string(),
-                rev: None
-            }
-            .into()
-        );
-    }
-
-    #[test]
-    fn test_from_name_version_with_git_url_rev() {
-        let res = Dependency::from_name_version(
-            "dependency~1.0.0",
-            Some("https://github.com/user/repo.git"),
-            Some("123456"),
-        );
-        assert!(res.is_ok(), "{res:?}");
-        assert_eq!(
-            res.unwrap(),
-            GitDependency {
-                name: "dependency".to_string(),
-                version_req: "1.0.0".to_string(),
-                git: "https://github.com/user/repo.git".to_string(),
-                rev: Some("123456".to_string())
-            }
-            .into()
-        );
-    }
-
-    #[test]
-    fn test_from_name_version_with_git_ssh() {
-        let res = Dependency::from_name_version(
-            "dependency~1.0.0",
-            Some("git@github.com:user/repo.git"),
-            None::<&str>,
-        );
-        assert!(res.is_ok(), "{res:?}");
-        assert_eq!(
-            res.unwrap(),
-            GitDependency {
-                name: "dependency".to_string(),
-                version_req: "1.0.0".to_string(),
-                git: "git@github.com:user/repo.git".to_string(),
-                rev: None
-            }
-            .into()
-        );
-    }
-
-    #[test]
-    fn test_from_name_version_with_git_ssh_rev() {
-        let res = Dependency::from_name_version(
-            "dependency~1.0.0",
-            Some("git@github.com:user/repo.git"),
-            Some("123456"),
-        );
-        assert!(res.is_ok(), "{res:?}");
-        assert_eq!(
-            res.unwrap(),
-            GitDependency {
-                name: "dependency".to_string(),
-                version_req: "1.0.0".to_string(),
-                git: "git@github.com:user/repo.git".to_string(),
-                rev: Some("123456".to_string())
-            }
-            .into()
-        );
-    }
-
-    #[test]
-    fn test_from_name_version_empty_version() {
-        let res = Dependency::from_name_version("dependency~", None::<&str>, None::<&str>);
-        assert!(matches!(res, Err(ConfigError::EmptyVersion(_))), "{res:?}");
-    }
-
-    #[test]
-    fn test_from_name_version_invalid_version() {
-        // for http deps, having the "=" character in the version requirement is ok
-        let res = Dependency::from_name_version("dependency~asdf=", None::<&str>, None::<&str>);
-        assert!(res.is_ok(), "{res:?}");
-
-        let res = Dependency::from_name_version(
-            "dependency~asdf=",
-            Some("https://example.com"),
-            None::<&str>,
-        );
-        assert!(matches!(res, Err(ConfigError::InvalidVersionReq(_))), "{res:?}");
-
-        let res = Dependency::from_name_version(
-            "dependency~asdf=",
-            Some("git@github.com:user/repo.git"),
-            None::<&str>,
-        );
-        assert!(matches!(res, Err(ConfigError::InvalidVersionReq(_))), "{res:?}");
+        assert_eq!(res.unwrap(), expected);
     }
 
     /*

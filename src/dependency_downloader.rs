@@ -199,34 +199,28 @@ async fn download_via_git(
         Some(rev) => Some(rev),
         None => match dependency.tag.clone() {
             Some(tag) => Some(tag),
-            None => match dependency.branch.clone() {
-                Some(branch) => Some(branch),
-                None => None,
-            },
+            None => dependency.branch.clone(),
         },
     };
 
-    match checkout_target.clone() {
-        Some(target) => {
-            let mut git_checkout = Command::new("git");
-            let result = git_checkout
-                .args(["checkout".to_string(), target.to_string()])
-                .env("GIT_TERMINAL_PROMPT", "0")
-                .current_dir(&path)
-                .stdout(Stdio::piped())
-                .stderr(Stdio::piped());
+    if let Some(target) = checkout_target.clone() {
+        let mut git_checkout = Command::new("git");
+        let result = git_checkout
+            .args(["checkout".to_string(), target.to_string()])
+            .env("GIT_TERMINAL_PROMPT", "0")
+            .current_dir(&path)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
 
-            let out = result.output().expect("Checkout status failed");
-            let status = result.status().expect("Checkout getting output failed");
+        let out = result.output().expect("Checkout status failed");
+        let status = result.status().expect("Checkout getting output failed");
 
-            if !status.success() {
-                let _ = fs::remove_dir_all(&path);
-                return Err(DownloadError::GitError(
-                    str::from_utf8(&out.stderr).unwrap().trim().to_string(),
-                ));
-            }
+        if !status.success() {
+            let _ = fs::remove_dir_all(&path);
+            return Err(DownloadError::GitError(
+                str::from_utf8(&out.stderr).unwrap().trim().to_string(),
+            ));
         }
-        None => {}
     };
 
     let mut git_checkout = Command::new("git");

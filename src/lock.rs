@@ -139,6 +139,10 @@ pub fn remove_lock(dependency: &Dependency) -> Result<()> {
     } else {
         LOCK_FILE.clone()
     };
+    // check if the lock exists, if does not we don't have what to delete
+    if !lock_file.exists() {
+        return Ok(());
+    }
 
     let entries: Vec<_> = read_lock()?
         .into_iter()

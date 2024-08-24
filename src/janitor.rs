@@ -33,13 +33,15 @@ pub fn cleanup_dependency(dependency: &Dependency, full: bool) -> Result<()> {
         sanitize_dependency_name(&format!("{}-{}", dependency.name(), dependency.version()));
 
     let new_path = DEPENDENCY_DIR.clone().join(format!("{sanitized_name}.zip"));
-    if let Dependency::Http(_) = dependency {
+    if new_path.exists() {
         fs::remove_file(&new_path)
             .map_err(|e| JanitorError::IOError { path: new_path, source: e })?;
     }
     if full {
         let dir = DEPENDENCY_DIR.join(sanitized_name);
-        fs::remove_dir_all(&dir).map_err(|e| JanitorError::IOError { path: dir, source: e })?;
+        if dir.exists() {
+            fs::remove_dir_all(&dir).map_err(|e| JanitorError::IOError { path: dir, source: e })?;
+        }
         remove_lock(dependency).map_err(JanitorError::LockError)?;
     }
     Ok(())

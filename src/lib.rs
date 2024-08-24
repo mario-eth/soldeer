@@ -64,11 +64,12 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
         Subcommands::Install(install) => {
             let regenerate_remappings = install.regenerate_remappings;
             let Some(dependency) = install.dependency else {
-                return update(regenerate_remappings, install.recursive_deps).await; // TODO: instead, check which
-                                                                                    // dependencies
-                                                                                    // do
-                                                                                    // not match the
-                                                                                    // integrity checksum and install those
+                return update(regenerate_remappings, install.recursive_deps).await;
+                // TODO: instead, check which
+                // dependencies
+                // do
+                // not match the
+                // integrity checksum and install those
             };
 
             println!("{}", "🦌 Running Soldeer install 🦌".green());

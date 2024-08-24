@@ -362,7 +362,7 @@ integrity = "deadbeef"
             url: Some( "https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@openzeppelin-contracts~2.5.0.zip".to_string()),
             checksum: Some("5019418b1e9128185398870f77a42e51d624c44315bb1572e7545be51d707016".to_string())
         });
-        let dependencies = vec![dependency.clone(), dependency2.clone()];
+        let dependencies = vec![dependency.clone(), dependency2];
         write_lock(
             &dependencies,
             &[Some("deadbeef".into()), Some("deadbeef".into())],

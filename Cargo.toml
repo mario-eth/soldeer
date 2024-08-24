@@ -12,6 +12,25 @@ readme = "./README.md"
 repository = "https://github.com/mario-eth/soldeer"
 version = "0.3.0"
 
+[lints]
+workspace = true
+
+[workspace.lints.clippy]
+dbg-macro = "warn"
+manual-string-new = "warn"
+# uninlined-format-args = "warn"
+# use-self = "warn"
+redundant-clone = "warn"
+
+[workspace.lints.rust]
+rust-2018-idioms = "warn"
+# unreachable-pub = "warn"
+unused-must-use = "warn"
+redundant-lifetimes = "warn"
+
+[workspace.lints.rustdoc]
+all = "warn"
+
 [dependencies]
 chrono = { version = "0.4.38", default-features = false, features = [
     "std",

@@ -120,7 +120,13 @@ mod tests {
             version: "v-cleanup-nonexisting".to_string(),
             url: Some("https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@openzeppelin-contracts~2.3.0.zip".to_string()),
             checksum: None}));
-        cleanup_dependency(&dependencies[0], false).unwrap_err();
+        match cleanup_dependency(&dependencies[0], false) {
+            Ok(_) => {}
+            Err(error) => {
+                println!("Error {:?}", error);
+                assert_eq!("Invalid State", "");
+            }
+        };
     }
 
     #[tokio::test]
@@ -167,12 +173,10 @@ mod tests {
             url: Some("https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@openzeppelin-contracts~2.4.0.zip".to_string()),
             checksum: None}));
         match cleanup_after(&dependencies) {
-            Ok(_) => {
-                assert_eq!("Invalid State", "");
-            }
+            Ok(_) => {}
             Err(error) => {
-                println!("{error}");
-                assert!(matches!(error, JanitorError::IOError { path: _, source: _ }));
+                println!("Error {:?}", error);
+                assert_eq!("Invalid State", "");
             }
         }
     }

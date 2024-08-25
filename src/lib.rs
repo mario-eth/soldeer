@@ -1,3 +1,4 @@
+//! Soldeer is a package manager for Solidity projects
 #![cfg_attr(docsrs, feature(doc_cfg, doc_auto_cfg))]
 pub use crate::{commands::Subcommands, errors::SoldeerError};
 use cliclack::{intro, log::step, outro, outro_cancel};

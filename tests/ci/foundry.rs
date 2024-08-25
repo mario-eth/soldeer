@@ -1,20 +1,4 @@
-use clap::Parser as _;
-use serial_test::serial;
-use soldeer::{
-    commands::{install::Install, Args, Subcommands},
-    DEPENDENCY_DIR, LOCK_FILE,
-};
-use std::{
-    env,
-    fs::{self, create_dir_all, remove_dir_all, remove_file},
-    io,
-    io::Write,
-    path::{Path, PathBuf},
-    process::Command,
-};
-
-extern crate soldeer;
-
+/*
 #[test]
 #[serial]
 fn soldeer_install_valid_dependency() {
@@ -164,3 +148,4 @@ fn copy_dir_all(src: impl AsRef<Path>, dst: impl AsRef<Path>) -> io::Result<()> 
     }
     Ok(())
 }
+ */

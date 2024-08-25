@@ -7,7 +7,7 @@ use crate::{
 use cliclack::{log::warning, select};
 use serde::{Deserialize, Serialize};
 use std::{
-    env, fs,
+    env, fmt, fs,
     path::{Path, PathBuf},
 };
 use toml_edit::{value, DocumentMut, InlineTable, Item, Table};
@@ -152,8 +152,8 @@ impl GitDependency {
     }
 }
 
-impl core::fmt::Display for GitDependency {
-    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+impl fmt::Display for GitDependency {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "{}~{}", self.name, self.version_req)
     }
 }
@@ -177,8 +177,8 @@ impl HttpDependency {
     }
 }
 
-impl core::fmt::Display for HttpDependency {
-    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+impl fmt::Display for HttpDependency {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "{}~{}", self.name, self.version_req)
     }
 }
@@ -385,8 +385,8 @@ impl Dependency {
     }
 }
 
-impl core::fmt::Display for Dependency {
-    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+impl fmt::Display for Dependency {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             Dependency::Http(dep) => write!(f, "{dep}"),
             Dependency::Git(dep) => write!(f, "{dep}"),
@@ -561,13 +561,7 @@ fn parse_dependency(name: impl Into<String>, value: &Item) -> Result<Dependency>
                 }
                 None => None,
             };
-            return Ok(GitDependency {
-                name: name.to_string(),
-                git: git.to_string(),
-                version_req,
-                rev,
-            }
-            .into());
+            return Ok(GitDependency { name, git: git.to_string(), version_req, rev }.into());
         }
         None => {}
     }
@@ -575,10 +569,9 @@ fn parse_dependency(name: impl Into<String>, value: &Item) -> Result<Dependency>
     // we should have a HTTP dependency
     match table.get("url").map(|v| v.as_str()) {
         Some(None) => Err(ConfigError::InvalidField { field: "url".to_string(), dep: name }),
-        None => Ok(HttpDependency { name: name.to_string(), version_req, url: None }.into()),
+        None => Ok(HttpDependency { name, version_req, url: None }.into()),
         Some(Some(url)) => {
-            Ok(HttpDependency { name: name.to_string(), version_req, url: Some(url.to_string()) }
-                .into())
+            Ok(HttpDependency { name, version_req, url: Some(url.to_string()) }.into())
         }
     }
 }

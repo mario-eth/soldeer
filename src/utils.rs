@@ -3,11 +3,9 @@ use crate::{
     errors::{DownloadError, InstallError},
 };
 use ignore::{WalkBuilder, WalkState};
-use once_cell::sync::Lazy;
 use regex::Regex;
 use reqwest::Url;
 use sha2::{Digest, Sha256};
-use simple_home_dir::home_dir;
 use std::{
     env,
     ffi::OsStr,
@@ -17,12 +15,12 @@ use std::{
     path::{Path, PathBuf},
     sync::{
         atomic::{AtomicBool, Ordering},
-        Arc, Mutex,
+        Arc, LazyLock, Mutex,
     },
 };
 use tokio::{fs as tokio_fs, process::Command};
 
-static GIT_SSH_REGEX: Lazy<Regex> = Lazy::new(|| {
+static GIT_SSH_REGEX: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"^(?:git@github\.com|git@gitlab)").expect("git ssh regex should compile")
 });
 
@@ -59,7 +57,7 @@ pub fn login_file_path() -> Result<PathBuf, std::io::Error> {
     }
 
     // if home dir cannot be found, use the current dir
-    let dir = home_dir().unwrap_or(env::current_dir()?);
+    let dir = home::home_dir().unwrap_or(env::current_dir()?);
     let security_directory = dir.join(".soldeer");
     if !security_directory.exists() {
         fs::create_dir(&security_directory)?;

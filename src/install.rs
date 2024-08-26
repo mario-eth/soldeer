@@ -581,4 +581,24 @@ mod tests {
         let hash = hash_folder(&dir);
         assert_eq!(lock.integrity, hash.to_string());
     }
+
+    #[tokio::test]
+    async fn test_install_dependency_inner_git() {
+        let dir = testdir!();
+        let install: InstallInfo = GitInstallInfo::builder()
+            .name("test")
+            .version("1.0.0")
+            .git("https://github.com/beeb/test-repo.git")
+            .build()
+            .into();
+        let multi = multi_progress("Installing dependencies");
+        let res = install_dependency_inner(&install, &dir, false, Progress::new(&multi, 1)).await;
+        assert!(res.is_ok(), "{res:?}");
+        let lock = res.unwrap();
+        assert_eq!(lock.name(), "test");
+        assert_eq!(lock.version(), "1.0.0");
+        let lock = lock.as_git().unwrap();
+        assert_eq!(lock.git, "https://github.com/beeb/test-repo.git");
+        assert_eq!(lock.rev, "d5d72fa135d28b2e8307650b3ea79115183f2406");
+    }
 }

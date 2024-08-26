@@ -51,9 +51,9 @@ You can install a dependency from the Soldeer repository, a custom URL pointing 
   soldeer install @openzeppelin-contracts~2.3.0 git@github.com:OpenZeppelin/openzeppelin-contracts.git
 - **Example from Git with a specified commit:**
   soldeer install @openzeppelin-contracts~2.3.0 git@github.com:OpenZeppelin/openzeppelin-contracts.git --rev 05f218fb6617932e56bf5388c3b389c3028a7b73
-  - **Example from Git with a specified tag:**
+- **Example from Git with a specified tag:**
   soldeer install @openzeppelin-contracts~2.3.0 git@github.com:OpenZeppelin/openzeppelin-contracts.git --tag my-tag
-  - **Example from Git with a specified branch:**
+- **Example from Git with a specified branch:**
   soldeer install @openzeppelin-contracts~2.3.0 git@github.com:OpenZeppelin/openzeppelin-contracts.git --branch my-branch",
     after_help = "For more information, read the README.md"
 )]

@@ -13,10 +13,7 @@ use std::{
     io::{self as std_io, Read},
     os::unix::ffi::OsStrExt as _,
     path::{Path, PathBuf},
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc, LazyLock, Mutex,
-    },
+    sync::{Arc, LazyLock, Mutex},
 };
 use tokio::{fs as tokio_fs, process::Command};
 
@@ -127,13 +124,7 @@ pub fn hash_content<R: Read>(content: &mut R) -> [u8; 32] {
 ///
 /// Since the folder contains the zip file still, we need to skip it. TODO: can we remove the zip
 /// file right after unzipping so this is not necessary?
-pub fn hash_folder(
-    folder_path: impl AsRef<Path>,
-    ignore_path: Option<&PathBuf>,
-) -> IntegrityChecksum {
-    // perf: it's easier to check a boolean than to compare paths, so when we find the zip we skip
-    // the check afterwards
-    let seen_ignore_path = Arc::new(AtomicBool::new(ignore_path.is_none()));
+pub fn hash_folder(folder_path: impl AsRef<Path>) -> IntegrityChecksum {
     // a list of hashes, one for each DirEntry
     let all_hashes = Arc::new(Mutex::new(Vec::with_capacity(100)));
     // we use a parallel walker to speed things up
@@ -144,8 +135,6 @@ pub fn hash_folder(
         .hidden(false)
         .build_parallel();
     walker.run(|| {
-        let ignore_path = ignore_path.cloned();
-        let seen_ignore_path = Arc::clone(&seen_ignore_path);
         let all_hashes = Arc::clone(&all_hashes);
         // function executed for each DirEntry
         Box::new(move |result| {
@@ -153,17 +142,6 @@ pub fn hash_folder(
                 return WalkState::Continue;
             };
             let path = entry.path();
-            // check if that file is `ignore_path`, unless we've seen it already
-            if !seen_ignore_path.load(Ordering::SeqCst) {
-                let ignore_path = ignore_path
-                    .as_ref()
-                    .expect("ignore_path should always be Some when seen_ignore_path is false");
-                if path == ignore_path {
-                    // record that we've seen the zip file
-                    seen_ignore_path.swap(true, Ordering::SeqCst);
-                    return WalkState::Continue;
-                }
-            }
             // first hash the filename/dirname to make sure it can't be renamed or removed
             let mut hasher = <Sha256 as Digest>::new();
             hasher.update(path.as_os_str().as_bytes());
@@ -325,7 +303,7 @@ mod tests {
     #[test]
     fn test_hash_folder() {
         let folder = create_test_folder("test", "test_hash_folder");
-        let hash = hash_folder(&folder, None);
+        let hash = hash_folder(&folder);
         fs::remove_dir_all(&folder).unwrap();
         assert_eq!(hash, "b0bbe5dbf490a7120cce269564ed7a1f1f016ff50ccbb38eb288849f0ce7ab49".into());
     }
@@ -334,19 +312,10 @@ mod tests {
     fn test_hash_folder_path_sensitive() {
         let folder1 = create_test_folder("test", "test_hash_folder_path_sensitive");
         let folder2 = create_test_folder("test", "test_hash_folder_path_sensitive2");
-        let hash1 = hash_folder(&folder1, None);
-        let hash2 = hash_folder(&folder2, None);
+        let hash1 = hash_folder(&folder1);
+        let hash2 = hash_folder(&folder2);
         fs::remove_dir_all(&folder1).unwrap();
         fs::remove_dir_all(&folder2).unwrap();
-        assert_ne!(hash1, hash2);
-    }
-
-    #[test]
-    fn test_hash_folder_ignore_path() {
-        let folder = create_test_folder("test", "test_hash_folder_ignore_path");
-        let hash1 = hash_folder(&folder, None);
-        let hash2 = hash_folder(&folder, Some(&folder.join("a.txt")));
-        fs::remove_dir_all(&folder).unwrap();
         assert_ne!(hash1, hash2);
     }
 

@@ -78,7 +78,6 @@ struct HttpInstallInfo {
     version: String,
     url: String,
     checksum: Option<String>,
-    integrity: Option<String>,
 }
 
 #[bon::builder]
@@ -116,7 +115,6 @@ impl From<LockEntry> for InstallInfo {
                 version: lock.version,
                 url: lock.url,
                 checksum: Some(lock.checksum),
-                integrity: Some(lock.integrity),
             }
             .into(),
             LockEntry::Git(lock) => GitInstallInfo {
@@ -315,7 +313,7 @@ async fn install_dependency_inner(
                 install_subdependencies(&path).await?;
             }
             progress.subdependencies.inc(1);
-            let integrity = hash_folder(&path, None);
+            let integrity = hash_folder(&path);
             progress.integrity.inc(1);
             Ok(HttpLockEntry::builder()
                 .name(&dep.name)
@@ -384,7 +382,7 @@ async fn check_http_dependency(
     }
     let current_hash = tokio::task::spawn_blocking({
         let path = path.clone();
-        move || hash_folder(path, None)
+        move || hash_folder(path)
     })
     .await?;
     println!("current_hash: {current_hash}");
@@ -448,6 +446,7 @@ async fn reset_git_dependency(lock: &GitLockEntry, deps: impl AsRef<Path>) -> Re
 #[cfg(test)]
 mod tests {
     use super::*;
+    use cliclack::multi_progress;
     use testdir::testdir;
 
     #[tokio::test]
@@ -478,7 +477,7 @@ mod tests {
         assert!(res.is_ok(), "{res:?}");
         assert_eq!(res.unwrap(), DependencyStatus::Missing);
 
-        let hash = hash_folder(&path, None);
+        let hash = hash_folder(&path);
         let lock = HttpLockEntry::builder()
             .name("lib1")
             .version("1.0.0")
@@ -561,5 +560,25 @@ mod tests {
             .trim()
             .to_string();
         assert_eq!(commit, "78c2f6a1a54db26bab6c3f501854a1564eb3707f");
+    }
+
+    #[tokio::test]
+    async fn test_install_dependency_inner_http() {
+        let dir = testdir!();
+        let install: InstallInfo = HttpInstallInfo::builder().name("test").version("1.0.0").url("https://github.com/mario-eth/soldeer/archive/8585a7ec85a29889cec8d08f4770e15ec4795943.zip").checksum("94a73dbe106f48179ea39b00d42e5d4dd96fdc6252caa3a89ce7efdaec0b9468").build().into();
+        let multi = multi_progress("Installing dependencies");
+        let res = install_dependency_inner(&install, &dir, false, Progress::new(&multi, 1)).await;
+        assert!(res.is_ok(), "{res:?}");
+        let lock = res.unwrap();
+        assert_eq!(lock.name(), "test");
+        assert_eq!(lock.version(), "1.0.0");
+        let lock = lock.as_http().unwrap();
+        assert_eq!(lock.url, "https://github.com/mario-eth/soldeer/archive/8585a7ec85a29889cec8d08f4770e15ec4795943.zip");
+        assert_eq!(
+            lock.checksum,
+            "94a73dbe106f48179ea39b00d42e5d4dd96fdc6252caa3a89ce7efdaec0b9468"
+        );
+        let hash = hash_folder(&dir);
+        assert_eq!(lock.integrity, hash.to_string());
     }
 }

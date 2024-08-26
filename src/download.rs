@@ -5,7 +5,7 @@ use crate::{
 };
 use reqwest::IntoUrl;
 use std::{
-    fs,
+    fmt, fs,
     io::Cursor,
     path::{Path, PathBuf},
     str,
@@ -27,8 +27,8 @@ where
     }
 }
 
-impl core::fmt::Display for IntegrityChecksum {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for IntegrityChecksum {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(&self.0)
     }
 }

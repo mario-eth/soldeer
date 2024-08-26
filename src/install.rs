@@ -7,7 +7,7 @@ use crate::{
     utils::{hash_file, hash_folder, run_forge_command, run_git_command},
 };
 use cliclack::{progress_bar, MultiProgress, ProgressBar};
-use std::{fmt::Display, fs as std_fs, path::Path};
+use std::{fmt, fs as std_fs, path::Path};
 use tokio::{fs, task::JoinSet};
 use toml_edit::DocumentMut;
 
@@ -66,7 +66,7 @@ impl Progress {
         self.integrity.stop("Done checking integrity");
     }
 
-    pub fn log(&self, msg: impl Display) {
+    pub fn log(&self, msg: impl fmt::Display) {
         self.multi.println(msg);
     }
 }
@@ -387,6 +387,7 @@ async fn check_http_dependency(
         move || hash_folder(path, None)
     })
     .await?;
+    println!("current_hash: {current_hash}");
     if current_hash.to_string() != lock.integrity {
         return Ok(DependencyStatus::FailedIntegrity);
     }
@@ -426,7 +427,7 @@ async fn check_git_dependency(
         // repository
         return Ok(DependencyStatus::Missing);
     }
-    // for git dependencies, the `checksum` field holds the commit hash
+    // for git dependencies, the `rev` field holds the commit hash
     match run_git_command(&["diff", "--exit-code", &lock.rev], Some(&path)).await {
         Ok(_) => Ok(DependencyStatus::Installed),
         Err(_) => Ok(DependencyStatus::FailedIntegrity),
@@ -442,4 +443,96 @@ async fn reset_git_dependency(lock: &GitLockEntry, deps: impl AsRef<Path>) -> Re
     run_git_command(&["reset", "--hard", &lock.rev], Some(&path)).await?;
     run_git_command(&["clean", "-fd"], Some(&path)).await?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use testdir::testdir;
+
+    #[tokio::test]
+    async fn test_check_http_dependency() {
+        let lock = HttpLockEntry::builder()
+            .name("lib1")
+            .version("1.0.0")
+            .url("https://example.com/zip.zip")
+            .checksum("")
+            .integrity("beef")
+            .build();
+        let dir = testdir!();
+        let path = dir.join("lib1-1.0.0");
+        fs::create_dir(&path).await.unwrap();
+        fs::write(path.join("test.txt"), "foobar").await.unwrap();
+        let res = check_http_dependency(&lock, &dir).await;
+        assert!(res.is_ok(), "{res:?}");
+        assert_eq!(res.unwrap(), DependencyStatus::FailedIntegrity);
+
+        let lock = HttpLockEntry::builder()
+            .name("lib2")
+            .version("1.0.0")
+            .url("https://example.com/zip.zip")
+            .checksum("")
+            .integrity("")
+            .build();
+        let res = check_http_dependency(&lock, &dir).await;
+        assert!(res.is_ok(), "{res:?}");
+        assert_eq!(res.unwrap(), DependencyStatus::Missing);
+
+        let hash = hash_folder(&path, None);
+        let lock = HttpLockEntry::builder()
+            .name("lib1")
+            .version("1.0.0")
+            .url("https://example.com/zip.zip")
+            .checksum("")
+            .integrity(hash.to_string())
+            .build();
+        let res = check_http_dependency(&lock, &dir).await;
+        assert!(res.is_ok(), "{res:?}");
+        assert_eq!(res.unwrap(), DependencyStatus::Installed);
+    }
+
+    #[tokio::test]
+    async fn test_check_git_dependency() {
+        // happy path
+        let dir = testdir!();
+        let path = &dir.join("test-repo-1.0.0");
+        let rev =
+            clone_repo("https://github.com/beeb/test-repo.git", None::<&str>, &path).await.unwrap();
+        let lock =
+            GitLockEntry::builder().name("test-repo").version("1.0.0").git("").rev(rev).build();
+        let res = check_git_dependency(&lock, &dir).await;
+        assert!(res.is_ok(), "{res:?}");
+        assert_eq!(res.unwrap(), DependencyStatus::Installed);
+
+        // replace contents of existing file, diff is not empty
+        fs::write(path.join("foo.txt"), "foo").await.unwrap();
+        let res = check_git_dependency(&lock, &dir).await;
+        assert!(res.is_ok(), "{res:?}");
+        assert_eq!(res.unwrap(), DependencyStatus::FailedIntegrity);
+
+        // wrong commit is checked out
+        let lock = GitLockEntry::builder()
+            .name("test-repo")
+            .version("1.0.0")
+            .git("")
+            .rev("78c2f6a1a54db26bab6c3f501854a1564eb3707f")
+            .build();
+        let res = check_git_dependency(&lock, &dir).await;
+        assert!(res.is_ok(), "{res:?}");
+        assert_eq!(res.unwrap(), DependencyStatus::FailedIntegrity);
+
+        // missing folder
+        let lock = GitLockEntry::builder().name("lib1").version("1.0.0").git("").rev("").build();
+        let res = check_git_dependency(&lock, &dir).await;
+        assert!(res.is_ok(), "{res:?}");
+        assert_eq!(res.unwrap(), DependencyStatus::Missing);
+
+        // remove .git folder -> not a git repo
+        let lock =
+            GitLockEntry::builder().name("test-repo").version("1.0.0").git("").rev("").build();
+        fs::remove_dir_all(path.join(".git")).await.unwrap();
+        let res = check_git_dependency(&lock, &dir).await;
+        assert!(res.is_ok(), "{res:?}");
+        assert_eq!(res.unwrap(), DependencyStatus::Missing);
+    }
 }

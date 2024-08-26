@@ -445,8 +445,11 @@ async fn reset_git_dependency(lock: &GitLockEntry, deps: impl AsRef<Path>) -> Re
 
 #[cfg(test)]
 mod tests {
+    use crate::config::{GitDependency, HttpDependency};
+
     use super::*;
     use cliclack::multi_progress;
+    use semver::Version;
     use testdir::testdir;
 
     #[tokio::test]
@@ -662,5 +665,81 @@ mod tests {
         let lock = lock.as_git().unwrap();
         assert_eq!(lock.git, "https://github.com/beeb/test-repo.git");
         assert_eq!(lock.rev, "78c2f6a1a54db26bab6c3f501854a1564eb3707f");
+    }
+
+    #[tokio::test]
+    async fn test_install_dependency_registry() {
+        let dir = testdir!();
+        let dep = HttpDependency::builder().name("forge-std").version_req("1.9.2").build().into();
+        let multi = multi_progress("Installing dependencies");
+        let res = install_dependency(&dep, None, &dir, None, false, Progress::new(&multi, 1)).await;
+        assert!(res.is_ok(), "{res:?}");
+        let lock = res.unwrap();
+        assert_eq!(lock.name(), dep.name());
+        assert_eq!(lock.version(), dep.version_req());
+        let lock = lock.as_http().unwrap();
+        assert!(&lock.url.starts_with("https://soldeer-revisions.s3.amazonaws.com/forge-std"));
+        assert_eq!(
+            lock.checksum,
+            "20fd008c7c69b6c737cc0284469d1c76497107bc3e004d8381f6d8781cb27980"
+        );
+        let hash = hash_folder(lock.install_path(&dir));
+        assert_eq!(lock.integrity, hash.to_string());
+    }
+
+    #[tokio::test]
+    async fn test_install_dependency_registry_compatible() {
+        let dir = testdir!();
+        let dep = HttpDependency::builder().name("forge-std").version_req("^1.9.0").build().into();
+        let multi = multi_progress("Installing dependencies");
+        let res = install_dependency(&dep, None, &dir, None, false, Progress::new(&multi, 1)).await;
+        assert!(res.is_ok(), "{res:?}");
+        let lock = res.unwrap();
+        assert_eq!(lock.name(), dep.name());
+        assert!(lock.version().parse::<Version>().unwrap() > Version::parse("1.9.0").unwrap());
+        let lock = lock.as_http().unwrap();
+        assert!(&lock.url.starts_with("https://soldeer-revisions.s3.amazonaws.com/forge-std"));
+        let hash = hash_folder(lock.install_path(&dir));
+        assert_eq!(lock.integrity, hash.to_string());
+    }
+
+    #[tokio::test]
+    async fn test_install_dependency_http() {
+        let dir = testdir!();
+        let dep = HttpDependency::builder().name("test").version_req("1.0.0").url("https://github.com/mario-eth/soldeer/archive/8585a7ec85a29889cec8d08f4770e15ec4795943.zip").build().into();
+        let multi = multi_progress("Installing dependencies");
+        let res = install_dependency(&dep, None, &dir, None, false, Progress::new(&multi, 1)).await;
+        assert!(res.is_ok(), "{res:?}");
+        let lock = res.unwrap();
+        assert_eq!(lock.name(), dep.name());
+        assert_eq!(lock.version(), dep.version_req());
+        let lock = lock.as_http().unwrap();
+        assert_eq!(&lock.url, dep.url().unwrap());
+        assert_eq!(
+            lock.checksum,
+            "94a73dbe106f48179ea39b00d42e5d4dd96fdc6252caa3a89ce7efdaec0b9468"
+        );
+        let hash = hash_folder(lock.install_path(&dir));
+        assert_eq!(lock.integrity, hash.to_string());
+    }
+
+    #[tokio::test]
+    async fn test_install_dependency_git() {
+        let dir = testdir!();
+        let dep = GitDependency::builder()
+            .name("test")
+            .version_req("1.0.0")
+            .git("https://github.com/beeb/test-repo.git")
+            .build()
+            .into();
+        let multi = multi_progress("Installing dependencies");
+        let res = install_dependency(&dep, None, &dir, None, false, Progress::new(&multi, 1)).await;
+        assert!(res.is_ok(), "{res:?}");
+        let lock = res.unwrap();
+        assert_eq!(lock.name(), dep.name());
+        assert_eq!(lock.version(), dep.version_req());
+        let lock = lock.as_git().unwrap();
+        assert_eq!(&lock.git, dep.url().unwrap());
+        assert_eq!(lock.rev, "d5d72fa135d28b2e8307650b3ea79115183f2406");
     }
 }

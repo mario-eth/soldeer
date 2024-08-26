@@ -24,9 +24,8 @@ use config::{
 use dependency_downloader::download_dependency;
 use janitor::cleanup_dependency;
 use lock::LockWriteMode;
-use once_cell::sync::Lazy;
 use remote::get_latest_forge_std_dependency;
-use std::{env, path::PathBuf};
+use std::{env, path::PathBuf, sync::LazyLock};
 use utils::{get_url_type, UrlType};
 use versioning::validate_name;
 use yansi::Paint as _;
@@ -42,13 +41,14 @@ mod remote;
 mod utils;
 mod versioning;
 
-pub static DEPENDENCY_DIR: Lazy<PathBuf> =
-    Lazy::new(|| get_current_working_dir().join("dependencies/"));
-pub static LOCK_FILE: Lazy<PathBuf> = Lazy::new(|| get_current_working_dir().join("soldeer.lock"));
-pub static SOLDEER_CONFIG_FILE: Lazy<PathBuf> =
-    Lazy::new(|| get_current_working_dir().join("soldeer.toml"));
-pub static FOUNDRY_CONFIG_FILE: Lazy<PathBuf> =
-    Lazy::new(|| get_current_working_dir().join("foundry.toml"));
+pub static DEPENDENCY_DIR: LazyLock<PathBuf> =
+    LazyLock::new(|| get_current_working_dir().join("dependencies/"));
+pub static LOCK_FILE: LazyLock<PathBuf> =
+    LazyLock::new(|| get_current_working_dir().join("soldeer.lock"));
+pub static SOLDEER_CONFIG_FILE: LazyLock<PathBuf> =
+    LazyLock::new(|| get_current_working_dir().join("soldeer.toml"));
+pub static FOUNDRY_CONFIG_FILE: LazyLock<PathBuf> =
+    LazyLock::new(|| get_current_working_dir().join("foundry.toml"));
 
 #[tokio::main]
 pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {

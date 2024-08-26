@@ -2,7 +2,6 @@ use crate::{
     config::HttpDependency, dependency_downloader::IntegrityChecksum, errors::DownloadError,
 };
 use ignore::{WalkBuilder, WalkState};
-use once_cell::sync::Lazy;
 use regex::Regex;
 use sha2::{Digest, Sha256};
 use std::{
@@ -13,15 +12,15 @@ use std::{
     path::{Path, PathBuf},
     sync::{
         atomic::{AtomicBool, Ordering},
-        Arc, Mutex,
+        Arc, LazyLock, Mutex,
     },
 };
 use yansi::Paint as _;
 
-static GIT_SSH_REGEX: Lazy<Regex> = Lazy::new(|| {
+static GIT_SSH_REGEX: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"^(?:git@github\.com|git@gitlab)").expect("git ssh regex should compile")
 });
-static GIT_HTTPS_REGEX: Lazy<Regex> = Lazy::new(|| {
+static GIT_HTTPS_REGEX: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"^(?:https://github\.com|https://gitlab\.com).*\.git$")
         .expect("git https regex should compile")
 });

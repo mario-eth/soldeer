@@ -49,7 +49,7 @@ pub struct Install {
     #[arg(value_name = "URL", requires = "dependency")]
     pub remote_url: Option<String>,
 
-    /// A Git revision
+    /// A Git commit hash
     #[arg(long, group = "identifier", requires = "remote_url")]
     pub rev: Option<String>,
 

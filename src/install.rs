@@ -535,4 +535,31 @@ mod tests {
         assert!(res.is_ok(), "{res:?}");
         assert_eq!(res.unwrap(), DependencyStatus::Missing);
     }
+
+    #[tokio::test]
+    async fn test_reset_git_dependency() {
+        let dir = testdir!();
+        let path = &dir.join("test-repo-1.0.0");
+        clone_repo("https://github.com/beeb/test-repo.git", None::<&str>, &path).await.unwrap();
+        let lock = GitLockEntry::builder()
+            .name("test-repo")
+            .version("1.0.0")
+            .git("")
+            .rev("78c2f6a1a54db26bab6c3f501854a1564eb3707f")
+            .build();
+        let test = path.join("test.txt");
+        fs::write(&test, "foobar").await.unwrap();
+        let res = reset_git_dependency(&lock, &dir).await;
+        assert!(res.is_ok(), "{res:?}");
+        // non checked-out file
+        assert!(fs::metadata(test).await.is_err());
+        // file that is in `main` but not in `78c2f6a`
+        assert!(fs::metadata(path.join("foo.txt")).await.is_err());
+        let commit = run_git_command(&["rev-parse", "--verify", "HEAD"], Some(&path))
+            .await
+            .unwrap()
+            .trim()
+            .to_string();
+        assert_eq!(commit, "78c2f6a1a54db26bab6c3f501854a1564eb3707f");
+    }
 }

@@ -600,4 +600,67 @@ mod tests {
         assert_eq!(lock.git, "https://github.com/beeb/test-repo.git");
         assert_eq!(lock.rev, "d5d72fa135d28b2e8307650b3ea79115183f2406");
     }
+
+    #[tokio::test]
+    async fn test_install_dependency_inner_git_rev() {
+        let dir = testdir!();
+        let install: InstallInfo = GitInstallInfo::builder()
+            .name("test")
+            .version("1.0.0")
+            .git("https://github.com/beeb/test-repo.git")
+            .identifier(GitIdentifier::from_rev("78c2f6a1a54db26bab6c3f501854a1564eb3707f"))
+            .build()
+            .into();
+        let multi = multi_progress("Installing dependencies");
+        let res = install_dependency_inner(&install, &dir, false, Progress::new(&multi, 1)).await;
+        assert!(res.is_ok(), "{res:?}");
+        let lock = res.unwrap();
+        assert_eq!(lock.name(), "test");
+        assert_eq!(lock.version(), "1.0.0");
+        let lock = lock.as_git().unwrap();
+        assert_eq!(lock.git, "https://github.com/beeb/test-repo.git");
+        assert_eq!(lock.rev, "78c2f6a1a54db26bab6c3f501854a1564eb3707f");
+    }
+
+    #[tokio::test]
+    async fn test_install_dependency_inner_git_branch() {
+        let dir = testdir!();
+        let install: InstallInfo = GitInstallInfo::builder()
+            .name("test")
+            .version("1.0.0")
+            .git("https://github.com/beeb/test-repo.git")
+            .identifier(GitIdentifier::from_branch("dev"))
+            .build()
+            .into();
+        let multi = multi_progress("Installing dependencies");
+        let res = install_dependency_inner(&install, &dir, false, Progress::new(&multi, 1)).await;
+        assert!(res.is_ok(), "{res:?}");
+        let lock = res.unwrap();
+        assert_eq!(lock.name(), "test");
+        assert_eq!(lock.version(), "1.0.0");
+        let lock = lock.as_git().unwrap();
+        assert_eq!(lock.git, "https://github.com/beeb/test-repo.git");
+        assert_eq!(lock.rev, "8d903e557e8f1b6e62bde768aa456d4ddfca72c4");
+    }
+
+    #[tokio::test]
+    async fn test_install_dependency_inner_git_tag() {
+        let dir = testdir!();
+        let install: InstallInfo = GitInstallInfo::builder()
+            .name("test")
+            .version("1.0.0")
+            .git("https://github.com/beeb/test-repo.git")
+            .identifier(GitIdentifier::from_tag("v0.1.0"))
+            .build()
+            .into();
+        let multi = multi_progress("Installing dependencies");
+        let res = install_dependency_inner(&install, &dir, false, Progress::new(&multi, 1)).await;
+        assert!(res.is_ok(), "{res:?}");
+        let lock = res.unwrap();
+        assert_eq!(lock.name(), "test");
+        assert_eq!(lock.version(), "1.0.0");
+        let lock = lock.as_git().unwrap();
+        assert_eq!(lock.git, "https://github.com/beeb/test-repo.git");
+        assert_eq!(lock.rev, "78c2f6a1a54db26bab6c3f501854a1564eb3707f");
+    }
 }

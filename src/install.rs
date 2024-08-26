@@ -551,7 +551,7 @@ mod tests {
         fs::write(&test, "foobar").await.unwrap();
         let res = reset_git_dependency(&lock, &dir).await;
         assert!(res.is_ok(), "{res:?}");
-        // non checked-out file
+        // non checked-in file
         assert!(fs::metadata(test).await.is_err());
         // file that is in `main` but not in `78c2f6a`
         assert!(fs::metadata(path.join("foo.txt")).await.is_err());

@@ -5,7 +5,6 @@ use ignore::{WalkBuilder, WalkState};
 use once_cell::sync::Lazy;
 use regex::Regex;
 use sha2::{Digest, Sha256};
-use simple_home_dir::home_dir;
 use std::{
     env,
     fs::{self, File},
@@ -29,7 +28,7 @@ static GIT_HTTPS_REGEX: Lazy<Regex> = Lazy::new(|| {
 
 // get the current working directory
 pub fn get_current_working_dir() -> PathBuf {
-    env::current_dir().unwrap()
+    env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
 }
 
 /// Read contents of file at path into a string, or panic
@@ -44,14 +43,7 @@ pub fn read_file_to_string(path: impl AsRef<Path>) -> String {
 
 // read a file contents into a vector of bytes so we can unzip it
 pub fn read_file(path: impl AsRef<Path>) -> Result<Vec<u8>, std::io::Error> {
-    let f = File::open(path)?;
-    let mut reader = BufReader::new(f);
-    let mut buffer = Vec::new();
-
-    // Read file into vector.
-    reader.read_to_end(&mut buffer)?;
-
-    Ok(buffer)
+    fs::read(path)
 }
 
 /// Get the location where the token file is stored or read from
@@ -64,20 +56,18 @@ pub fn read_file(path: impl AsRef<Path>) -> Result<Vec<u8>, std::io::Error> {
 /// setting the `SOLDEER_LOGIN_FILE` environment variable.
 /// For login, the custom path will only be used if the file already exists.
 pub fn define_security_file_location() -> Result<PathBuf, std::io::Error> {
-    let custom_security_file = if cfg!(test) {
+    if cfg!(test) {
         return Ok(PathBuf::from("./test_save_jwt"));
-    } else {
-        env::var("SOLDEER_LOGIN_FILE").ok()
-    };
+    }
 
-    if let Some(file) = custom_security_file {
-        if !file.is_empty() && Path::new(&file).exists() {
-            return Ok(file.into());
+    if let Some(path) = env::var_os("SOLDEER_LOGIN_FILE") {
+        if !path.is_empty() && Path::new(&path).exists() {
+            return Ok(path.into());
         }
     }
 
     // if home dir cannot be found, use the current working directory
-    let dir = home_dir().unwrap_or_else(get_current_working_dir);
+    let dir = home::home_dir().unwrap_or_else(get_current_working_dir);
     let security_directory = dir.join(".soldeer");
     if !security_directory.exists() {
         fs::create_dir(&security_directory)?;
@@ -88,7 +78,7 @@ pub fn define_security_file_location() -> Result<PathBuf, std::io::Error> {
 
 pub fn get_base_url() -> String {
     if cfg!(test) {
-        env::var("base_url").unwrap_or("http://0.0.0.0".to_string())
+        env::var("base_url").unwrap_or_else(|_| "http://0.0.0.0".to_string())
     } else {
         "https://api.soldeer.xyz".to_string()
     }

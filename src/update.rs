@@ -45,7 +45,7 @@ pub async fn update_dependency(
     progress: Progress,
 ) -> Result<LockEntry> {
     match dependency {
-        Dependency::Git(ref dep) if dep.rev.is_none() => {
+        Dependency::Git(ref dep) if dep.identifier.is_none() => {
             // we handle the git case in a special way because we don't need to re-clone the repo
             // update to the latest commit (git pull)
             let path = match lock {
@@ -78,7 +78,7 @@ pub async fn update_dependency(
             progress.increment_all();
             Ok(new_lock)
         }
-        Dependency::Git(ref dep) if dep.rev.is_some() => {
+        Dependency::Git(ref dep) if dep.identifier.is_some() => {
             // check integrity against the existing version since we can't update to a new rev
             let lock = match lock {
                 Some(lock) => lock,
@@ -86,7 +86,7 @@ pub async fn update_dependency(
                     .name(&dep.name)
                     .version(&dep.version_req)
                     .git(&dep.git)
-                    .rev(dep.rev.clone().expect("rev field should be present"))
+                    .rev(dep.identifier.as_ref().expect("identifier should be present").to_string())
                     .build()
                     .into(),
             };

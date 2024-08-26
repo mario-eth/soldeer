@@ -1,5 +1,5 @@
 use crate::{
-    config::Dependency,
+    config::{Dependency, GitIdentifier},
     errors::DownloadError,
     utils::{run_git_command, sanitize_filename},
 };
@@ -73,7 +73,7 @@ pub async fn unzip_file(path: impl AsRef<Path>, into: impl AsRef<Path>) -> Resul
 
 pub async fn clone_repo(
     url: &str,
-    rev: Option<impl AsRef<str>>,
+    identifier: Option<&GitIdentifier>,
     path: impl AsRef<Path>,
 ) -> Result<String> {
     let path = path.as_ref().to_path_buf();
@@ -82,8 +82,8 @@ pub async fn clone_repo(
         None,
     )
     .await?;
-    if let Some(rev) = rev {
-        run_git_command(&["checkout", rev.as_ref()], Some(&path)).await?;
+    if let Some(identifier) = identifier {
+        run_git_command(&["checkout", &identifier.to_string()], Some(&path)).await?;
     }
     let commit =
         run_git_command(&["rev-parse", "--verify", "HEAD"], Some(&path)).await?.trim().to_string();
@@ -199,7 +199,7 @@ mod tests {
     #[tokio::test]
     async fn test_clone_repo() {
         let dir = testdir!();
-        let res = clone_repo("https://github.com/beeb/test-repo.git", None::<&str>, &dir).await;
+        let res = clone_repo("https://github.com/beeb/test-repo.git", None, &dir).await;
         assert!(res.is_ok(), "{res:?}");
         assert_eq!(&res.unwrap(), "d5d72fa135d28b2e8307650b3ea79115183f2406");
     }
@@ -209,7 +209,7 @@ mod tests {
         let dir = testdir!();
         let res = clone_repo(
             "https://github.com/beeb/test-repo.git",
-            Some("d230f5c588c0ed00821a4eb3ef38e300e4a519dc"),
+            Some(&GitIdentifier::from_rev("d230f5c588c0ed00821a4eb3ef38e300e4a519dc")),
             &dir,
         )
         .await;
@@ -220,7 +220,12 @@ mod tests {
     #[tokio::test]
     async fn test_clone_repo_branch() {
         let dir = testdir!();
-        let res = clone_repo("https://github.com/beeb/test-repo.git", Some("dev"), &dir).await;
+        let res = clone_repo(
+            "https://github.com/beeb/test-repo.git",
+            Some(&GitIdentifier::from_branch("dev")),
+            &dir,
+        )
+        .await;
         assert!(res.is_ok(), "{res:?}");
         assert_eq!(&res.unwrap(), "8d903e557e8f1b6e62bde768aa456d4ddfca72c4");
     }
@@ -228,7 +233,12 @@ mod tests {
     #[tokio::test]
     async fn test_clone_repo_tag() {
         let dir = testdir!();
-        let res = clone_repo("https://github.com/beeb/test-repo.git", Some("v0.1.0"), &dir).await;
+        let res = clone_repo(
+            "https://github.com/beeb/test-repo.git",
+            Some(&GitIdentifier::from_tag("v0.1.0")),
+            &dir,
+        )
+        .await;
         assert!(res.is_ok(), "{res:?}");
         assert_eq!(&res.unwrap(), "78c2f6a1a54db26bab6c3f501854a1564eb3707f");
     }

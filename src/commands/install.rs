@@ -1,6 +1,8 @@
 use super::{validate_dependency, Result};
 use crate::{
-    config::{add_to_config, read_config_deps, read_soldeer_config, Dependency, Paths},
+    config::{
+        add_to_config, read_config_deps, read_soldeer_config, Dependency, GitIdentifier, Paths,
+    },
     errors::{InstallError, LockError},
     install::{ensure_dependencies_dir, install_dependencies, install_dependency, Progress},
     lock::{add_to_lockfile, generate_lockfile_contents, read_lockfile},
@@ -27,7 +29,11 @@ You can install a dependency from the Soldeer repository, a custom URL pointing 
 - **Example from Git:**
   soldeer install @openzeppelin-contracts~2.3.0 git@github.com:OpenZeppelin/openzeppelin-contracts.git
 - **Example from Git with a specified commit:**
-  soldeer install @openzeppelin-contracts~2.3.0 git@github.com:OpenZeppelin/openzeppelin-contracts.git --rev 05f218fb6617932e56bf5388c3b389c3028a7b73",
+  soldeer install @openzeppelin-contracts~2.3.0 git@github.com:OpenZeppelin/openzeppelin-contracts.git --rev 05f218fb6617932e56bf5388c3b389c3028a7b73
+- **Example from Git with a specified tag:**
+  soldeer install @openzeppelin-contracts~2.3.0 git@github.com:OpenZeppelin/openzeppelin-contracts.git --tag my-tag
+- **Example from Git with a specified branch:**
+  soldeer install @openzeppelin-contracts~2.3.0 git@github.com:OpenZeppelin/openzeppelin-contracts.git --branch my-branch",
     after_help = "For more information, read the README.md"
 )]
 pub struct Install {
@@ -40,12 +46,20 @@ pub struct Install {
     /// The URL to the dependency zip file, if not from the Soldeer repository
     ///
     /// Example: https://my-domain/dep.zip
-    #[arg(value_name = "URL")]
+    #[arg(value_name = "URL", requires = "dependency")]
     pub remote_url: Option<String>,
 
-    /// The revision of the dependency, if from Git
-    #[arg(long)]
+    /// A Git revision
+    #[arg(long, group = "identifier", requires = "remote_url")]
     pub rev: Option<String>,
+
+    /// A Git tag
+    #[arg(long, group = "identifier", requires = "remote_url")]
+    pub tag: Option<String>,
+
+    /// A Git branch
+    #[arg(long, group = "identifier", requires = "remote_url")]
+    pub branch: Option<String>,
 
     /// If set, this command will delete the existing remappings and re-create them
     #[arg(short = 'g', long, default_value_t = false)]
@@ -107,7 +121,14 @@ pub(crate) async fn install_command(paths: &Paths, cmd: Install) -> Result<()> {
             success("Updated remappings")?;
         }
         Some(dependency) => {
-            let mut dep = Dependency::from_name_version(&dependency, cmd.remote_url, cmd.rev)?;
+            let identifier = match (cmd.rev, cmd.branch, cmd.tag) {
+                (Some(rev), None, None) => Some(GitIdentifier::from_rev(&rev)),
+                (None, Some(branch), None) => Some(GitIdentifier::from_branch(&branch)),
+                (None, None, Some(tag)) => Some(GitIdentifier::from_tag(&tag)),
+                (None, None, None) => None,
+                _ => unreachable!("clap should prevent this"),
+            };
+            let mut dep = Dependency::from_name_version(&dependency, cmd.remote_url, identifier)?;
             if dependencies
                 .iter()
                 .any(|d| d.name() == dep.name() && d.version_req() == dep.version_req())
@@ -129,11 +150,14 @@ pub(crate) async fn install_command(paths: &Paths, cmd: Install) -> Result<()> {
             .await?;
             progress.stop_all();
             multi.stop();
-            // for GIT deps, we need to add the commit hash before adding them to the
-            // config.
+            // for git deps, we need to add the commit hash before adding them to the
+            // config, unless a branch/tag was specified
             if let Some(git_dep) = dep.as_git_mut() {
-                git_dep.rev =
-                    Some(lock.as_git().expect("lock entry should be of type git").rev.clone());
+                if git_dep.identifier.is_none() {
+                    git_dep.identifier = Some(GitIdentifier::from_rev(
+                        &lock.as_git().expect("lock entry should be of type git").rev,
+                    ));
+                }
             }
             add_to_config(&dep, &paths.config)?;
             success("Dependency added to config")?;

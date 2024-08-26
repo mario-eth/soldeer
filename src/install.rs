@@ -1,5 +1,5 @@
 use crate::{
-    config::Dependency,
+    config::{Dependency, GitIdentifier},
     download::{clone_repo, delete_dependency_files, download_file, unzip_file},
     errors::InstallError,
     lock::{format_install_path, GitLockEntry, HttpLockEntry, LockEntry},
@@ -86,7 +86,7 @@ struct GitInstallInfo {
     name: String,
     version: String,
     git: String,
-    rev: Option<String>,
+    identifier: Option<GitIdentifier>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -121,7 +121,7 @@ impl From<LockEntry> for InstallInfo {
                 name: lock.name,
                 version: lock.version,
                 git: lock.git,
-                rev: Some(lock.rev),
+                identifier: Some(GitIdentifier::from_rev(lock.rev)),
             }
             .into(),
         }
@@ -249,7 +249,7 @@ pub async fn install_dependency(
                 .name(&dep.name)
                 .version(&version)
                 .git(url)
-                .maybe_rev(dep.rev.clone())
+                .maybe_identifier(dep.identifier.clone())
                 .build()
                 .into(),
         };
@@ -327,7 +327,7 @@ async fn install_dependency_inner(
         InstallInfo::Git(dep) => {
             // if the dependency was specified without a commit hash and we didn't have a lockfile,
             // clone the default branch
-            let commit = clone_repo(&dep.git, dep.rev.as_ref(), &path).await?;
+            let commit = clone_repo(&dep.git, dep.identifier.as_ref(), &path).await?;
             progress.downloads.inc(1);
             if subdependencies {
                 install_subdependencies(&path).await?;
@@ -495,8 +495,7 @@ mod tests {
         // happy path
         let dir = testdir!();
         let path = &dir.join("test-repo-1.0.0");
-        let rev =
-            clone_repo("https://github.com/beeb/test-repo.git", None::<&str>, &path).await.unwrap();
+        let rev = clone_repo("https://github.com/beeb/test-repo.git", None, &path).await.unwrap();
         let lock =
             GitLockEntry::builder().name("test-repo").version("1.0.0").git("").rev(rev).build();
         let res = check_git_dependency(&lock, &dir).await;
@@ -539,7 +538,7 @@ mod tests {
     async fn test_reset_git_dependency() {
         let dir = testdir!();
         let path = &dir.join("test-repo-1.0.0");
-        clone_repo("https://github.com/beeb/test-repo.git", None::<&str>, &path).await.unwrap();
+        clone_repo("https://github.com/beeb/test-repo.git", None, &path).await.unwrap();
         let lock = GitLockEntry::builder()
             .name("test-repo")
             .version("1.0.0")
@@ -554,7 +553,7 @@ mod tests {
         assert!(fs::metadata(test).await.is_err());
         // file that is in `main` but not in `78c2f6a`
         assert!(fs::metadata(path.join("foo.txt")).await.is_err());
-        let commit = run_git_command(&["rev-parse", "--verify", "HEAD"], Some(&path))
+        let commit = run_git_command(&["rev-parse", "--verify", "HEAD"], Some(path))
             .await
             .unwrap()
             .trim()

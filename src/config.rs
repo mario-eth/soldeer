@@ -132,6 +132,41 @@ impl Default for SoldeerConfig {
     }
 }
 
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, Hash)]
+pub enum GitIdentifier {
+    Rev(String),
+    Branch(String),
+    Tag(String),
+}
+
+impl GitIdentifier {
+    pub fn from_rev(rev: impl Into<String>) -> Self {
+        let rev: String = rev.into();
+        GitIdentifier::Rev(rev)
+    }
+
+    pub fn from_branch(branch: impl Into<String>) -> Self {
+        let branch: String = branch.into();
+        GitIdentifier::Branch(branch)
+    }
+
+    pub fn from_tag(tag: impl Into<String>) -> Self {
+        let tag: String = tag.into();
+        GitIdentifier::Tag(tag)
+    }
+}
+
+impl fmt::Display for GitIdentifier {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let val = match self {
+            GitIdentifier::Rev(rev) => rev,
+            GitIdentifier::Branch(branch) => branch,
+            GitIdentifier::Tag(tag) => tag,
+        };
+        write!(f, "{val}")
+    }
+}
+
 #[bon::builder]
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct GitDependency {
@@ -139,7 +174,7 @@ pub struct GitDependency {
     #[serde(rename = "version")]
     pub version_req: String,
     pub git: String,
-    pub rev: Option<String>,
+    pub identifier: Option<GitIdentifier>,
 }
 
 impl GitDependency {
@@ -194,7 +229,7 @@ impl Dependency {
     pub fn from_name_version(
         name_version: &str,
         custom_url: Option<impl Into<String>>,
-        rev: Option<impl Into<String>>,
+        identifier: Option<GitIdentifier>,
     ) -> Result<Self> {
         let (dependency_name, dependency_version_req) = name_version
             .split_once('~')
@@ -217,7 +252,7 @@ impl Dependency {
                         name: dependency_name.to_string(),
                         version_req: dependency_version_req.to_string(),
                         git: url,
-                        rev: rev.map(Into::into),
+                        identifier,
                     }
                     .into(),
                     UrlType::Http => HttpDependency {
@@ -294,48 +329,43 @@ impl Dependency {
                     None => value(&dep.version_req),
                 },
             ),
-            Dependency::Git(dep) => (
-                dep.name.clone(),
-                match &dep.rev {
-                    Some(rev) => {
-                        let mut table = InlineTable::new();
-                        table.insert(
-                            "version",
-                            value(&dep.version_req)
-                                .into_value()
-                                .expect("version should be a valid toml value"),
-                        );
-                        table.insert(
-                            "git",
-                            value(&dep.git)
-                                .into_value()
-                                .expect("git URL should be a valid toml value"),
-                        );
+            Dependency::Git(dep) => {
+                let mut table = InlineTable::new();
+                table.insert(
+                    "version",
+                    value(&dep.version_req)
+                        .into_value()
+                        .expect("version should be a valid toml value"),
+                );
+                table.insert(
+                    "git",
+                    value(&dep.git).into_value().expect("git URL should be a valid toml value"),
+                );
+                match &dep.identifier {
+                    Some(GitIdentifier::Rev(rev)) => {
                         table.insert(
                             "rev",
                             value(rev).into_value().expect("rev should be a valid toml value"),
                         );
-                        value(table)
                     }
-                    None => {
-                        let mut table = InlineTable::new();
+                    Some(GitIdentifier::Branch(branch)) => {
                         table.insert(
-                            "version",
-                            value(&dep.version_req)
+                            "branch",
+                            value(branch)
                                 .into_value()
-                                .expect("version should be a valid toml value"),
+                                .expect("branch should be a valid toml value"),
                         );
-                        table.insert(
-                            "git",
-                            value(&dep.git)
-                                .into_value()
-                                .expect("git URL should be a valid toml value"),
-                        );
-
-                        value(table)
                     }
-                },
-            ),
+                    Some(GitIdentifier::Tag(tag)) => {
+                        table.insert(
+                            "tag",
+                            value(tag).into_value().expect("tag should be a valid toml value"),
+                        );
+                    }
+                    None => {}
+                }
+                (dep.name.clone(), value(table))
+            }
         }
     }
 
@@ -553,7 +583,7 @@ fn parse_dependency(name: impl Into<String>, value: &Item) -> Result<Dependency>
             return Err(ConfigError::InvalidField { field: "git".to_string(), dep: name });
         }
         Some(Some(git)) => {
-            // rev field is optional but needs to be a string if present
+            // rev/branch/tag fields are optional but need to be a string if present
             let rev = match table.get("rev").map(|v| v.as_str()) {
                 Some(Some(rev)) => Some(rev.to_string()),
                 Some(None) => {
@@ -561,7 +591,38 @@ fn parse_dependency(name: impl Into<String>, value: &Item) -> Result<Dependency>
                 }
                 None => None,
             };
-            return Ok(GitDependency { name, git: git.to_string(), version_req, rev }.into());
+            let branch = match table.get("branch").map(|v| v.as_str()) {
+                Some(Some(tag)) => Some(tag.to_string()),
+                Some(None) => {
+                    return Err(ConfigError::InvalidField {
+                        field: "branch".to_string(),
+                        dep: name,
+                    });
+                }
+                None => None,
+            };
+            let tag = match table.get("tag").map(|v| v.as_str()) {
+                Some(Some(tag)) => Some(tag.to_string()),
+                Some(None) => {
+                    return Err(ConfigError::InvalidField { field: "tag".to_string(), dep: name });
+                }
+                None => None,
+            };
+            let identifier = match (rev, branch, tag) {
+                (Some(rev), None, None) => Some(GitIdentifier::from_rev(rev)),
+                (None, Some(branch), None) => Some(GitIdentifier::from_branch(branch)),
+                (None, None, Some(tag)) => Some(GitIdentifier::from_tag(tag)),
+                (None, None, None) => None,
+                _ => {
+                    return Err(ConfigError::GitIdentifierConflict(name));
+                }
+            };
+            return Ok(Dependency::Git(GitDependency {
+                name,
+                git: git.to_string(),
+                version_req,
+                identifier,
+            }));
         }
         None => {}
     }
@@ -670,7 +731,7 @@ libs = ["dependencies"]
 
     #[test]
     fn test_from_name_version_no_url() {
-        let res = Dependency::from_name_version("dependency~1.0.0", None::<&str>, None::<&str>);
+        let res = Dependency::from_name_version("dependency~1.0.0", None::<&str>, None);
         assert!(res.is_ok(), "{res:?}");
         assert_eq!(
             res.unwrap(),
@@ -683,7 +744,7 @@ libs = ["dependencies"]
         let res = Dependency::from_name_version(
             "dependency~1.0.0",
             Some("https://github.com/user/repo/archive/123.zip"),
-            None::<&str>,
+            None,
         );
         assert!(res.is_ok(), "{res:?}");
         assert_eq!(
@@ -702,7 +763,7 @@ libs = ["dependencies"]
         let res = Dependency::from_name_version(
             "dependency~1.0.0",
             Some("https://github.com/user/repo.git"),
-            None::<&str>,
+            None,
         );
         assert!(res.is_ok(), "{res:?}");
         assert_eq!(
@@ -718,7 +779,7 @@ libs = ["dependencies"]
         let res = Dependency::from_name_version(
             "dependency~1.0.0",
             Some("https://test:test@gitlab.com/user/repo.git"),
-            None::<&str>,
+            None,
         );
         assert!(res.is_ok(), "{res:?}");
         assert_eq!(
@@ -737,7 +798,7 @@ libs = ["dependencies"]
         let res = Dependency::from_name_version(
             "dependency~1.0.0",
             Some("https://github.com/user/repo.git"),
-            Some("123456"),
+            Some(GitIdentifier::from_rev("123456")),
         );
         assert!(res.is_ok(), "{res:?}");
         assert_eq!(
@@ -746,7 +807,7 @@ libs = ["dependencies"]
                 .name("dependency")
                 .version_req("1.0.0")
                 .git("https://github.com/user/repo.git")
-                .rev("123456")
+                .identifier(GitIdentifier::from_rev("123456"))
                 .build()
                 .into()
         );
@@ -757,7 +818,7 @@ libs = ["dependencies"]
         let res = Dependency::from_name_version(
             "dependency~1.0.0",
             Some("git@github.com:user/repo.git"),
-            None::<&str>,
+            None,
         );
         assert!(res.is_ok(), "{res:?}");
         assert_eq!(
@@ -776,7 +837,7 @@ libs = ["dependencies"]
         let res = Dependency::from_name_version(
             "dependency~1.0.0",
             Some("git@github.com:user/repo.git"),
-            Some("123456"),
+            Some(GitIdentifier::from_rev("123456")),
         );
         assert!(res.is_ok(), "{res:?}");
         assert_eq!(
@@ -785,7 +846,7 @@ libs = ["dependencies"]
                 .name("dependency")
                 .version_req("1.0.0")
                 .git("git@github.com:user/repo.git")
-                .rev("123456")
+                .identifier(GitIdentifier::from_rev("123456"))
                 .build()
                 .into()
         );
@@ -793,27 +854,24 @@ libs = ["dependencies"]
 
     #[test]
     fn test_from_name_version_empty_version() {
-        let res = Dependency::from_name_version("dependency~", None::<&str>, None::<&str>);
+        let res = Dependency::from_name_version("dependency~", None::<&str>, None);
         assert!(matches!(res, Err(ConfigError::EmptyVersion(_))), "{res:?}");
     }
 
     #[test]
     fn test_from_name_version_invalid_version() {
         // for http deps, having the "=" character in the version requirement is ok
-        let res = Dependency::from_name_version("dependency~asdf=", None::<&str>, None::<&str>);
+        let res = Dependency::from_name_version("dependency~asdf=", None::<&str>, None);
         assert!(res.is_ok(), "{res:?}");
 
-        let res = Dependency::from_name_version(
-            "dependency~asdf=",
-            Some("https://example.com"),
-            None::<&str>,
-        );
+        let res =
+            Dependency::from_name_version("dependency~asdf=", Some("https://example.com"), None);
         assert!(matches!(res, Err(ConfigError::InvalidVersionReq(_))), "{res:?}");
 
         let res = Dependency::from_name_version(
             "dependency~asdf=",
             Some("git@github.com:user/repo.git"),
-            None::<&str>,
+            None,
         );
         assert!(matches!(res, Err(ConfigError::InvalidVersionReq(_))), "{res:?}");
     }
@@ -908,7 +966,7 @@ libs = ["dependencies"]
                 .name("lib5")
                 .version_req("5.0.0")
                 .git("https://example.com/repo.git")
-                .rev("123456")
+                .identifier(GitIdentifier::from_rev("123456"))
                 .build()
                 .into()
         );
@@ -960,7 +1018,7 @@ libs = ["dependencies"]
                 .name("lib5")
                 .version_req("5.0.0")
                 .git("https://example.com/repo.git")
-                .rev("123456")
+                .identifier(GitIdentifier::from_rev("123456"))
                 .build()
                 .into()
         );
@@ -1017,7 +1075,7 @@ libs = ["dependencies"]
                 .name("lib4")
                 .version_req("1.0.0")
                 .git("https://example.com/repo.git")
-                .rev("123456")
+                .identifier(GitIdentifier::from_rev("123456"))
                 .build()
                 .into(),
         ];
@@ -1035,7 +1093,7 @@ libs = ["dependencies"]
     #[test]
     fn test_add_to_config_no_section() {
         let config_path = write_to_config("", "soldeer.toml");
-        let dep = Dependency::from_name_version("lib1~1.0.0", None::<&str>, None::<&str>).unwrap();
+        let dep = Dependency::from_name_version("lib1~1.0.0", None::<&str>, None).unwrap();
         let res = add_to_config(&dep, &config_path);
         assert!(res.is_ok(), "{res:?}");
         let parsed = read_config_deps(&config_path).unwrap();

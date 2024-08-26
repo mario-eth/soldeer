@@ -97,9 +97,13 @@ pub fn write_lock(
                 dep.checksum.as_ref().unwrap(),
                 integrity.clone().map(|c| c.to_string()),
             ),
-            Dependency::Git(dep) => {
-                LockEntry::new(&dep.name, &dep.version, &dep.git, dep.rev.as_ref().unwrap(), None)
-            }
+            Dependency::Git(dep) => LockEntry::new(
+                &dep.name,
+                &dep.version,
+                &dep.git,
+                dep.identifier.as_ref().unwrap().to_string(),
+                None,
+            ),
         };
         // check for entry already existing
         match entries.iter().position(|e| e.name == entry.name && e.version == entry.version) {

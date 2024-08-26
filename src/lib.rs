@@ -14,7 +14,7 @@ use crate::{
 pub use crate::{commands::Subcommands, errors::SoldeerError};
 use config::{
     add_to_config, get_config_path, read_soldeer_config, remappings_foundry, GitDependency,
-    HttpDependency, RemappingsAction, RemappingsLocation,
+    GitIdentifier, HttpDependency, RemappingsAction, RemappingsLocation,
 };
 use dependency_downloader::download_dependency;
 use janitor::cleanup_dependency;
@@ -78,14 +78,23 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
 
             let dep = match install.remote_url {
                 Some(url) => match get_url_type(&url) {
-                    UrlType::Git => Dependency::Git(GitDependency {
-                        name: dependency_name.to_string(),
-                        version: dependency_version.to_string(),
-                        git: url,
-                        rev: install.rev,
-                        tag: install.tag,
-                        branch: install.branch,
-                    }),
+                    UrlType::Git => {
+                        let identifier = match (install.rev, install.branch, install.tag) {
+                            (Some(rev), None, None) => Some(GitIdentifier::from_rev(rev)),
+                            (None, Some(branch), None) => Some(GitIdentifier::from_branch(branch)),
+                            (None, None, Some(tag)) => Some(GitIdentifier::from_tag(tag)),
+                            (None, None, None) => None,
+                            _ => {
+                                unreachable!("clap validation should prevent this from happening")
+                            }
+                        };
+                        Dependency::Git(GitDependency {
+                            name: dependency_name.to_string(),
+                            version: dependency_version.to_string(),
+                            git: url,
+                            identifier,
+                        })
+                    }
                     UrlType::Http => Dependency::Http(HttpDependency {
                         name: dependency_name.to_string(),
                         version: dependency_version.to_string(),
@@ -235,7 +244,7 @@ async fn install_dependency(
             dep.url = Some(result.url);
         }
         Dependency::Git(ref mut dep) => {
-            dep.rev = Some(result.hash);
+            dep.identifier = Some(GitIdentifier::from_rev(result.hash));
             add_to_config(&dependency, &config_path)?;
         }
     }
@@ -308,7 +317,9 @@ async fn update(regenerate_remappings: bool, recursive_deps: bool) -> Result<(),
                 dep.checksum = Some(result.hash);
                 dep.url = Some(result.url);
             }
-            Dependency::Git(ref mut dep) => dep.rev = Some(result.hash),
+            Dependency::Git(ref mut dep) => {
+                dep.identifier = Some(GitIdentifier::from_rev(result.hash))
+            }
         }
     });
 

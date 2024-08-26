@@ -70,16 +70,16 @@ pub struct Install {
     #[arg(value_name = "URL")]
     pub remote_url: Option<String>,
 
-    /// The revision of the dependency, if from Git
-    #[arg(long)]
+    /// A Git revision
+    #[arg(long, group = "identifier")]
     pub rev: Option<String>,
 
-    /// The tag of the dependency, if from Git
-    #[arg(long)]
+    /// A Git tag
+    #[arg(long, group = "identifier")]
     pub tag: Option<String>,
 
-    /// The branch of the dependency, if from Git
-    #[arg(long)]
+    /// A Git branch
+    #[arg(long, group = "identifier")]
     pub branch: Option<String>,
 
     /// If set, this command will delete the existing remappings and re-create them

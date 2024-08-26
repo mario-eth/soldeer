@@ -814,6 +814,46 @@ libs = ["dependencies"]
     }
 
     #[test]
+    fn test_from_name_version_with_git_url_branch() {
+        let res = Dependency::from_name_version(
+            "dependency~1.0.0",
+            Some("https://github.com/user/repo.git"),
+            Some(GitIdentifier::from_branch("dev")),
+        );
+        assert!(res.is_ok(), "{res:?}");
+        assert_eq!(
+            res.unwrap(),
+            GitDependency::builder()
+                .name("dependency")
+                .version_req("1.0.0")
+                .git("https://github.com/user/repo.git")
+                .identifier(GitIdentifier::from_branch("dev"))
+                .build()
+                .into()
+        );
+    }
+
+    #[test]
+    fn test_from_name_version_with_git_url_tag() {
+        let res = Dependency::from_name_version(
+            "dependency~1.0.0",
+            Some("https://github.com/user/repo.git"),
+            Some(GitIdentifier::from_tag("v1.0.0")),
+        );
+        assert!(res.is_ok(), "{res:?}");
+        assert_eq!(
+            res.unwrap(),
+            GitDependency::builder()
+                .name("dependency")
+                .version_req("1.0.0")
+                .git("https://github.com/user/repo.git")
+                .identifier(GitIdentifier::from_tag("v1.0.0"))
+                .build()
+                .into()
+        );
+    }
+
+    #[test]
     fn test_from_name_version_with_git_ssh() {
         let res = Dependency::from_name_version(
             "dependency~1.0.0",
@@ -928,6 +968,8 @@ libs = ["dependencies"]
 "lib3" = { version = "3.0.0", url = "https://example.com" }
 "lib4" = { version = "4.0.0", git = "https://example.com/repo.git" }
 "lib5" = { version = "5.0.0", git = "https://example.com/repo.git", rev = "123456" }
+"lib6" = { version = "6.0.0", git = "https://example.com/repo.git", branch = "dev" }
+"lib7" = { version = "7.0.0", git = "https://example.com/repo.git", tag = "v7.0.0" }
 "#;
         let config_path = write_to_config(config_contents, "foundry.toml");
         let res = read_config_deps(config_path);
@@ -970,6 +1012,26 @@ libs = ["dependencies"]
                 .build()
                 .into()
         );
+        assert_eq!(
+            result[5],
+            GitDependency::builder()
+                .name("lib6")
+                .version_req("6.0.0")
+                .git("https://example.com/repo.git")
+                .identifier(GitIdentifier::from_branch("dev"))
+                .build()
+                .into()
+        );
+        assert_eq!(
+            result[6],
+            GitDependency::builder()
+                .name("lib7")
+                .version_req("7.0.0")
+                .git("https://example.com/repo.git")
+                .identifier(GitIdentifier::from_tag("v7.0.0"))
+                .build()
+                .into()
+        );
     }
 
     #[test]
@@ -980,6 +1042,8 @@ libs = ["dependencies"]
 "lib3" = { version = "3.0.0", url = "https://example.com" }
 "lib4" = { version = "4.0.0", git = "https://example.com/repo.git" }
 "lib5" = { version = "5.0.0", git = "https://example.com/repo.git", rev = "123456" }
+"lib6" = { version = "6.0.0", git = "https://example.com/repo.git", branch = "dev" }
+"lib7" = { version = "7.0.0", git = "https://example.com/repo.git", tag = "v7.0.0" }
 "#;
         let config_path = write_to_config(config_contents, "soldeer.toml");
         let res = read_config_deps(config_path);
@@ -1022,6 +1086,26 @@ libs = ["dependencies"]
                 .build()
                 .into()
         );
+        assert_eq!(
+            result[5],
+            GitDependency::builder()
+                .name("lib6")
+                .version_req("6.0.0")
+                .git("https://example.com/repo.git")
+                .identifier(GitIdentifier::from_branch("dev"))
+                .build()
+                .into()
+        );
+        assert_eq!(
+            result[6],
+            GitDependency::builder()
+                .name("lib7")
+                .version_req("7.0.0")
+                .git("https://example.com/repo.git")
+                .identifier(GitIdentifier::from_tag("v7.0.0"))
+                .build()
+                .into()
+        );
     }
 
     #[test]
@@ -1054,6 +1138,21 @@ libs = ["dependencies"]
     }
 
     #[test]
+    fn test_read_soldeer_config_deps_bad_git() {
+        for dep in [
+            r#""lib1" = { version = "1.0.0", git = "https://example.com/repo.git", rev = "123456", branch = "dev" }"#,
+            r#""lib1" = { version = "1.0.0", git = "https://example.com/repo.git", rev = "123456", tag = "v1.0.0" }"#,
+            r#""lib1" = { version = "1.0.0", git = "https://example.com/repo.git", branch = "dev", tag = "v1.0.0" }"#,
+            r#""lib1" = { version = "1.0.0", git = "https://example.com/repo.git", rev = "123456", branch = "dev", tag = "v1.0.0" }"#,
+        ] {
+            let config_contents = format!("[dependencies]\n{}", dep);
+            let config_path = write_to_config(&config_contents, "soldeer.toml");
+            let res = read_config_deps(config_path);
+            assert!(matches!(res, Err(ConfigError::GitIdentifierConflict(_))), "{res:?}");
+        }
+    }
+
+    #[test]
     fn test_add_to_config() {
         let config_path = write_to_config("[dependencies]\n", "soldeer.toml");
 
@@ -1076,6 +1175,20 @@ libs = ["dependencies"]
                 .version_req("1.0.0")
                 .git("https://example.com/repo.git")
                 .identifier(GitIdentifier::from_rev("123456"))
+                .build()
+                .into(),
+            GitDependency::builder()
+                .name("lib5")
+                .version_req("1.0.0")
+                .git("https://example.com/repo.git")
+                .identifier(GitIdentifier::from_branch("dev"))
+                .build()
+                .into(),
+            GitDependency::builder()
+                .name("lib6")
+                .version_req("1.0.0")
+                .git("https://example.com/repo.git")
+                .identifier(GitIdentifier::from_tag("v1.0.0"))
                 .build()
                 .into(),
         ];
@@ -1108,31 +1221,43 @@ libs = ["dependencies"]
 "lib3" = { version = "3.0.0", url = "https://example.com" }
 "lib4" = { version = "4.0.0", git = "https://example.com/repo.git" }
 "lib5" = { version = "5.0.0", git = "https://example.com/repo.git", rev = "123456" }
+"lib6" = { version = "6.0.0", git = "https://example.com/repo.git", branch = "dev" }
+"lib7" = { version = "7.0.0", git = "https://example.com/repo.git", tag = "v7.0.0" }
         "#;
         let config_path = write_to_config(config_contents, "soldeer.toml");
         let res = delete_from_config("lib1", &config_path);
         assert!(res.is_ok(), "{res:?}");
         assert_eq!(res.unwrap().name(), "lib1");
-        assert_eq!(read_config_deps(&config_path).unwrap().len(), 4);
+        assert_eq!(read_config_deps(&config_path).unwrap().len(), 6);
 
         let res = delete_from_config("lib2", &config_path);
         assert!(res.is_ok(), "{res:?}");
         assert_eq!(res.unwrap().name(), "lib2");
-        assert_eq!(read_config_deps(&config_path).unwrap().len(), 3);
+        assert_eq!(read_config_deps(&config_path).unwrap().len(), 5);
 
         let res = delete_from_config("lib3", &config_path);
         assert!(res.is_ok(), "{res:?}");
         assert_eq!(res.unwrap().name(), "lib3");
-        assert_eq!(read_config_deps(&config_path).unwrap().len(), 2);
+        assert_eq!(read_config_deps(&config_path).unwrap().len(), 4);
 
         let res = delete_from_config("lib4", &config_path);
         assert!(res.is_ok(), "{res:?}");
         assert_eq!(res.unwrap().name(), "lib4");
-        assert_eq!(read_config_deps(&config_path).unwrap().len(), 1);
+        assert_eq!(read_config_deps(&config_path).unwrap().len(), 3);
 
         let res = delete_from_config("lib5", &config_path);
         assert!(res.is_ok(), "{res:?}");
         assert_eq!(res.unwrap().name(), "lib5");
+        assert_eq!(read_config_deps(&config_path).unwrap().len(), 2);
+
+        let res = delete_from_config("lib6", &config_path);
+        assert!(res.is_ok(), "{res:?}");
+        assert_eq!(res.unwrap().name(), "lib6");
+        assert_eq!(read_config_deps(&config_path).unwrap().len(), 1);
+
+        let res = delete_from_config("lib7", &config_path);
+        assert!(res.is_ok(), "{res:?}");
+        assert_eq!(res.unwrap().name(), "lib7");
         assert!(read_config_deps(&config_path).unwrap().is_empty());
     }
 

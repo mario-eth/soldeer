@@ -13,8 +13,6 @@ use std::{
     process::Command,
 };
 
-extern crate soldeer;
-
 #[test]
 #[serial]
 fn soldeer_install_valid_dependency() {

@@ -1,4 +1,9 @@
+//! # soldeer
+//!
+//! Solidity package manager.
+
 #![cfg_attr(docsrs, feature(doc_cfg, doc_auto_cfg))]
+
 use crate::{
     auth::login,
     config::{delete_config, read_config_deps, remappings_txt, Dependency},

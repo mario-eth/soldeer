@@ -67,19 +67,19 @@ pub struct Install {
     /// The URL to the dependency zip file, if not from the Soldeer repository
     ///
     /// Example: https://my-domain/dep.zip
-    #[arg(value_name = "URL")]
+    #[arg(value_name = "URL", requires = "dependency")]
     pub remote_url: Option<String>,
 
     /// A Git revision
-    #[arg(long, group = "identifier")]
+    #[arg(long, group = "identifier", requires = "remote_url")]
     pub rev: Option<String>,
 
     /// A Git tag
-    #[arg(long, group = "identifier")]
+    #[arg(long, group = "identifier", requires = "remote_url")]
     pub tag: Option<String>,
 
     /// A Git branch
-    #[arg(long, group = "identifier")]
+    #[arg(long, group = "identifier", requires = "remote_url")]
     pub branch: Option<String>,
 
     /// If set, this command will delete the existing remappings and re-create them

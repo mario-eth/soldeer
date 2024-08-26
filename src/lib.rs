@@ -237,15 +237,14 @@ async fn install_dependency(
     let result = download_dependency(&dependency, false)
         .await
         .map_err(|e| SoldeerError::DownloadError { dep: dependency.to_string(), source: e })?;
+    add_to_config(&dependency, &config_path)?;
     match dependency {
         Dependency::Http(ref mut dep) => {
-            add_to_config(&dep.clone().into(), &config_path)?;
             dep.checksum = Some(result.hash);
             dep.url = Some(result.url);
         }
         Dependency::Git(ref mut dep) => {
             dep.identifier = Some(GitIdentifier::from_rev(result.hash));
-            add_to_config(&dependency, &config_path)?;
         }
     }
 

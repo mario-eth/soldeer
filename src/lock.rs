@@ -199,19 +199,14 @@ pub fn read_lockfile(path: impl AsRef<Path>) -> Result<LockFile> {
 }
 
 pub fn generate_lockfile_contents(mut entries: Vec<LockEntry>) -> String {
-    entries
-        .sort_unstable_by(|a, b| a.name().cmp(b.name()).then_with(|| a.version().cmp(b.version())));
+    entries.sort_unstable_by(|a, b| a.name().cmp(b.name()));
     let data = LockFileParsed { dependencies: entries.into_iter().map(Into::into).collect() };
     toml_edit::ser::to_string_pretty(&data).expect("Lock entries should be serializable")
 }
 
 pub fn add_to_lockfile(entry: LockEntry, path: impl AsRef<Path>) -> Result<()> {
     let mut lockfile = read_lockfile(&path)?;
-    if let Some(index) = lockfile
-        .entries
-        .iter()
-        .position(|e| e.name() == entry.name() && e.version() == entry.version())
-    {
+    if let Some(index) = lockfile.entries.iter().position(|e| e.name() == entry.name()) {
         let _ = std::mem::replace(&mut lockfile.entries[index], entry);
     } else {
         lockfile.entries.push(entry);
@@ -252,6 +247,7 @@ pub fn format_install_path(name: &str, version: &str, deps: impl AsRef<Path>) ->
 #[cfg(test)]
 mod tests {
     use super::*;
+    use testdir::testdir;
 
     #[test]
     fn test_toml_to_lock_entry_conversion_http() {
@@ -360,5 +356,164 @@ mod tests {
             matches!(entry, Err(LockError::MissingField { ref field, dep: _ }) if field == "rev"),
             "{entry:?}"
         );
+    }
+
+    #[test]
+    fn test_read_lockfile() {
+        let dir = testdir!();
+        let file_path = dir.join("soldeer.lock");
+        // last entry is invalid and should be skipped
+        let content = r#"[[dependencies]]
+name = "test"
+version = "1.0.0"
+git = "git@github.com:test/test.git"
+rev = "123456"
+
+[[dependencies]]
+name = "test2"
+version = "1.0.0"
+url = "https://example.com/zip.zip"
+checksum = "123456"
+integrity = "beef"
+
+[[dependencies]]
+name = "test3"
+version = "1.0.0"
+"#;
+        fs::write(&file_path, content).unwrap();
+        let res = read_lockfile(&file_path);
+        assert!(res.is_ok(), "{res:?}");
+        let lockfile = res.unwrap();
+        assert_eq!(lockfile.entries.len(), 2);
+        assert_eq!(lockfile.entries[0].name(), "test");
+        assert_eq!(lockfile.entries[0].version(), "1.0.0");
+        let git = lockfile.entries[0].as_git().unwrap();
+        assert_eq!(git.git, "git@github.com:test/test.git");
+        assert_eq!(git.rev, "123456");
+        assert_eq!(lockfile.entries[1].name(), "test2");
+        assert_eq!(lockfile.entries[1].version(), "1.0.0");
+        let http = lockfile.entries[1].as_http().unwrap();
+        assert_eq!(http.url, "https://example.com/zip.zip");
+        assert_eq!(http.checksum, "123456");
+        assert_eq!(http.integrity, "beef");
+        assert_eq!(lockfile.raw, content);
+    }
+
+    #[test]
+    fn test_generate_lockfile_content() {
+        let dir = testdir!();
+        let file_path = dir.join("soldeer.lock");
+        let content = r#"[[dependencies]]
+name = "test"
+version = "1.0.0"
+git = "git@github.com:test/test.git"
+rev = "123456"
+
+[[dependencies]]
+name = "test2"
+version = "1.0.0"
+url = "https://example.com/zip.zip"
+checksum = "123456"
+integrity = "beef"
+"#;
+        fs::write(&file_path, content).unwrap();
+        let lockfile = read_lockfile(&file_path).unwrap();
+        let new_content = generate_lockfile_contents(lockfile.entries);
+        assert_eq!(new_content, content);
+    }
+
+    #[test]
+    fn test_add_to_lockfile() {
+        let dir = testdir!();
+        let file_path = dir.join("soldeer.lock");
+        let content = r#"[[dependencies]]
+name = "test"
+version = "1.0.0"
+git = "git@github.com:test/test.git"
+rev = "123456"
+"#;
+        fs::write(&file_path, content).unwrap();
+        let entry: LockEntry = HttpLockEntry::builder()
+            .name("test2")
+            .version("1.0.0")
+            .url("https://example.com/zip.zip")
+            .checksum("123456")
+            .integrity("beef")
+            .build()
+            .into();
+        let res = add_to_lockfile(entry.clone(), &file_path);
+        assert!(res.is_ok(), "{res:?}");
+        let lockfile = read_lockfile(&file_path).unwrap();
+        assert_eq!(lockfile.entries.len(), 2);
+        assert_eq!(lockfile.entries[1], entry);
+    }
+
+    #[test]
+    fn test_replace_in_lockfile() {
+        let dir = testdir!();
+        let file_path = dir.join("soldeer.lock");
+        let content = r#"[[dependencies]]
+name = "test"
+version = "1.0.0"
+git = "git@github.com:test/test.git"
+rev = "123456"
+"#;
+        fs::write(&file_path, content).unwrap();
+        let entry: LockEntry = HttpLockEntry::builder()
+            .name("test")
+            .version("2.0.0")
+            .url("https://example.com/zip.zip")
+            .checksum("123456")
+            .integrity("beef")
+            .build()
+            .into();
+        let res = add_to_lockfile(entry.clone(), &file_path);
+        assert!(res.is_ok(), "{res:?}");
+        let lockfile = read_lockfile(&file_path).unwrap();
+        assert_eq!(lockfile.entries.len(), 1);
+        assert_eq!(lockfile.entries[0], entry);
+    }
+
+    #[test]
+    fn test_remove_lock() {
+        let dir = testdir!();
+        let file_path = dir.join("soldeer.lock");
+        let content = r#"[[dependencies]]
+name = "test"
+version = "1.0.0"
+git = "git@github.com:test/test.git"
+rev = "123456"
+
+[[dependencies]]
+name = "test2"
+version = "1.0.0"
+url = "https://example.com/zip.zip"
+checksum = "123456"
+integrity = "beef"
+"#;
+        fs::write(&file_path, content).unwrap();
+        let dep = Dependency::from_name_version("test2~2.0.0", None::<&str>, None).unwrap();
+        let res = remove_lock(&dep, &file_path);
+        assert!(res.is_ok(), "{res:?}");
+        let lockfile = read_lockfile(&file_path).unwrap();
+        assert_eq!(lockfile.entries.len(), 1);
+        assert_eq!(lockfile.entries[0].name(), "test");
+    }
+
+    #[test]
+    fn test_remove_lock_empty() {
+        let dir = testdir!();
+        let file_path = dir.join("soldeer.lock");
+        let content = r#"[[dependencies]]
+name = "test"
+version = "1.0.0"
+git = "git@github.com:test/test.git"
+rev = "123456"
+"#;
+        fs::write(&file_path, content).unwrap();
+        let dep = Dependency::from_name_version("test~1.0.0", None::<&str>, None).unwrap();
+        let res = remove_lock(&dep, &file_path);
+        assert!(res.is_ok(), "{res:?}");
+        assert!(!file_path.exists());
     }
 }

@@ -11,7 +11,7 @@ use toml_edit::{value, Array, DocumentMut};
 
 pub type Result<T> = std::result::Result<T, RemappingsError>;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
 pub enum RemappingsAction {
     Add(Dependency),
     Remove(Dependency),
@@ -20,7 +20,7 @@ pub enum RemappingsAction {
 
 /// Location where to store the remappings, either in `remappings.txt` or the config file
 /// (foundry/soldeer)
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Default)]
+#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq, Hash)]
 #[serde(rename_all = "lowercase")]
 pub enum RemappingsLocation {
     #[default]

@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 pub type Result<T> = std::result::Result<T, RegistryError>;
 
 #[allow(non_snake_case)]
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Revision {
     pub id: uuid::Uuid,
     pub version: String,
@@ -22,7 +22,7 @@ pub struct Revision {
 }
 
 #[allow(non_snake_case)]
-#[derive(Debug, Deserialize, Serialize, Clone, Default)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Project {
     pub id: uuid::Uuid,
     pub name: String,
@@ -35,14 +35,14 @@ pub struct Project {
 }
 
 #[allow(non_snake_case)]
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
 pub struct RevisionResponse {
     data: Vec<Revision>,
     status: String,
 }
 
 #[allow(non_snake_case)]
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ProjectResponse {
     data: Vec<Project>,
     status: String,
@@ -90,7 +90,7 @@ pub async fn get_latest_forge_std() -> Result<Dependency> {
     .into())
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Versions {
     Semver(Vec<Version>),
     NonSemver(Vec<String>),

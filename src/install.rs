@@ -7,6 +7,7 @@ use crate::{
     utils::{hash_file, hash_folder, run_forge_command, run_git_command},
 };
 use cliclack::{progress_bar, MultiProgress, ProgressBar};
+use serde::{Deserialize, Serialize};
 use std::{fmt, fs as std_fs, path::Path};
 use tokio::{fs, task::JoinSet};
 use toml_edit::DocumentMut;
@@ -15,7 +16,7 @@ pub const PROGRESS_TEMPLATE: &str = "[{elapsed_precise}] {bar:30.magenta} ({pos}
 
 pub type Result<T> = std::result::Result<T, InstallError>;
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum DependencyStatus {
     Missing,
     FailedIntegrity,
@@ -72,7 +73,7 @@ impl Progress {
 }
 
 #[bon::builder(on(String, into))]
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
 struct HttpInstallInfo {
     name: String,
     version: String,
@@ -81,7 +82,7 @@ struct HttpInstallInfo {
 }
 
 #[bon::builder(on(String, into))]
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
 struct GitInstallInfo {
     name: String,
     version: String,
@@ -89,7 +90,7 @@ struct GitInstallInfo {
     identifier: Option<GitIdentifier>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
 enum InstallInfo {
     Http(HttpInstallInfo),
     Git(GitInstallInfo),

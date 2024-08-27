@@ -5,6 +5,7 @@ use crate::{
 use ignore::{WalkBuilder, WalkState};
 use regex::Regex;
 use reqwest::Url;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
     env,
@@ -20,7 +21,7 @@ static GIT_SSH_REGEX: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"^(?:git@github\.com|git@gitlab)").expect("git ssh regex should compile")
 });
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum UrlType {
     Git,
     Http,

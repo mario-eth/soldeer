@@ -14,7 +14,7 @@ use toml_edit::{value, DocumentMut, InlineTable, Item, Table};
 
 pub type Result<T> = std::result::Result<T, ConfigError>;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Paths {
     pub root: PathBuf,
     pub config: PathBuf,
@@ -98,7 +98,7 @@ fn default_true() -> bool {
 }
 
 /// The Soldeer config options
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
 pub struct SoldeerConfig {
     #[serde(default = "default_true")]
     pub remappings_generate: bool,
@@ -132,7 +132,7 @@ impl Default for SoldeerConfig {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
 pub enum GitIdentifier {
     Rev(String),
     Branch(String),
@@ -168,7 +168,7 @@ impl fmt::Display for GitIdentifier {
 }
 
 #[bon::builder(on(String, into))]
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
 pub struct GitDependency {
     pub name: String,
     #[serde(rename = "version")]
@@ -194,7 +194,7 @@ impl fmt::Display for GitDependency {
 }
 
 #[bon::builder(on(String, into))]
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
 pub struct HttpDependency {
     pub name: String,
     #[serde(rename = "version")]
@@ -219,7 +219,7 @@ impl fmt::Display for HttpDependency {
 }
 
 // Dependency object used to store a dependency data
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Dependency {
     Http(HttpDependency),
     Git(GitDependency),
@@ -448,7 +448,7 @@ impl From<&GitDependency> for Dependency {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ConfigLocation {
     Foundry,
     Soldeer,

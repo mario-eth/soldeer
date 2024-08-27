@@ -10,13 +10,13 @@ use std::fs;
 
 pub type Result<T> = std::result::Result<T, AuthError>;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Login {
     pub email: String,
     pub password: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
 pub struct LoginResponse {
     pub status: String,
     pub token: String,

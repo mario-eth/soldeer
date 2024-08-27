@@ -90,7 +90,7 @@ pub async fn get_latest_forge_std() -> Result<Dependency> {
     .into())
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Versions {
     Semver(Vec<Version>),
     NonSemver(Vec<String>),

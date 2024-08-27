@@ -5,7 +5,7 @@ use crate::{
     utils::{get_url_type, UrlType},
 };
 use cliclack::{log::warning, select};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use std::{
     env, fmt, fs,
     path::{Path, PathBuf},
@@ -14,7 +14,8 @@ use toml_edit::{value, DocumentMut, InlineTable, Item, Table};
 
 pub type Result<T> = std::result::Result<T, ConfigError>;
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, Deserialize))]
 pub struct Paths {
     pub root: PathBuf,
     pub config: PathBuf,
@@ -98,7 +99,8 @@ fn default_true() -> bool {
 }
 
 /// The Soldeer config options
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct SoldeerConfig {
     #[serde(default = "default_true")]
     pub remappings_generate: bool,
@@ -132,7 +134,8 @@ impl Default for SoldeerConfig {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, Deserialize))]
 pub enum GitIdentifier {
     Rev(String),
     Branch(String),
@@ -168,10 +171,11 @@ impl fmt::Display for GitIdentifier {
 }
 
 #[bon::builder(on(String, into))]
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, Deserialize))]
 pub struct GitDependency {
     pub name: String,
-    #[serde(rename = "version")]
+    #[cfg_attr(feature = "serde", serde(rename = "version"))]
     pub version_req: String,
     pub git: String,
     pub identifier: Option<GitIdentifier>,
@@ -194,10 +198,11 @@ impl fmt::Display for GitDependency {
 }
 
 #[bon::builder(on(String, into))]
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, Deserialize))]
 pub struct HttpDependency {
     pub name: String,
-    #[serde(rename = "version")]
+    #[cfg_attr(feature = "serde", serde(rename = "version"))]
     pub version_req: String,
     pub url: Option<String>,
 }
@@ -219,7 +224,8 @@ impl fmt::Display for HttpDependency {
 }
 
 // Dependency object used to store a dependency data
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, Deserialize))]
 pub enum Dependency {
     Http(HttpDependency),
     Git(GitDependency),
@@ -448,7 +454,8 @@ impl From<&GitDependency> for Dependency {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, Deserialize))]
 pub enum ConfigLocation {
     Foundry,
     Soldeer,

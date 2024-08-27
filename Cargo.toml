@@ -90,3 +90,4 @@ path = "src/main.rs"
 [features]
 default = ["rustls"]
 rustls = ["reqwest/rustls-tls"]
+serde = []

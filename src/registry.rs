@@ -5,12 +5,12 @@ use crate::{
 };
 use chrono::{DateTime, Utc};
 use semver::{Version, VersionReq};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 pub type Result<T> = std::result::Result<T, RegistryError>;
 
-#[allow(non_snake_case)]
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct Revision {
     pub id: uuid::Uuid,
     pub version: String,
@@ -21,8 +21,8 @@ pub struct Revision {
     pub created_at: Option<DateTime<Utc>>,
 }
 
-#[allow(non_snake_case)]
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct Project {
     pub id: uuid::Uuid,
     pub name: String,
@@ -34,15 +34,15 @@ pub struct Project {
     pub updated_at: Option<DateTime<Utc>>,
 }
 
-#[allow(non_snake_case)]
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct RevisionResponse {
     data: Vec<Revision>,
     status: String,
 }
 
-#[allow(non_snake_case)]
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct ProjectResponse {
     data: Vec<Project>,
     status: String,

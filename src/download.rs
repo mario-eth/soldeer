@@ -4,7 +4,6 @@ use crate::{
     utils::{run_git_command, sanitize_filename},
 };
 use reqwest::IntoUrl;
-use serde::{Deserialize, Serialize};
 use std::{
     fmt, fs,
     io::Cursor,
@@ -15,7 +14,8 @@ use tokio::{fs as tokio_fs, io::AsyncWriteExt};
 
 pub type Result<T> = std::result::Result<T, DownloadError>;
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct IntegrityChecksum(pub String);
 
 impl<T> From<T> for IntegrityChecksum

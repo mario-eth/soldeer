@@ -8,7 +8,8 @@ use std::{
 pub type Result<T> = std::result::Result<T, LockError>;
 
 #[bon::builder(on(String, into))]
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[non_exhaustive]
 pub struct GitLockEntry {
     pub name: String,
@@ -24,7 +25,8 @@ impl GitLockEntry {
 }
 
 #[bon::builder(on(String, into))]
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[non_exhaustive]
 pub struct HttpLockEntry {
     pub name: String,
@@ -40,8 +42,9 @@ impl HttpLockEntry {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
-#[serde(rename_all = "lowercase")]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "lowercase"))]
 #[non_exhaustive]
 pub enum LockEntry {
     Http(HttpLockEntry),
@@ -179,7 +182,8 @@ struct LockFileParsed {
     dependencies: Vec<TomlLockEntry>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct LockFile {
     pub entries: Vec<LockEntry>,
     pub raw: String,

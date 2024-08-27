@@ -449,7 +449,6 @@ mod tests {
     use crate::config::{GitDependency, HttpDependency};
     use cliclack::multi_progress;
     use mockito::{Matcher, Server, ServerGuard};
-    use semver::Version;
     use temp_env::async_with_vars;
     use testdir::testdir;
 

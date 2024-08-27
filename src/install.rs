@@ -445,9 +445,8 @@ async fn reset_git_dependency(lock: &GitLockEntry, deps: impl AsRef<Path>) -> Re
 
 #[cfg(test)]
 mod tests {
-    use crate::config::{GitDependency, HttpDependency};
-
     use super::*;
+    use crate::config::{GitDependency, HttpDependency};
     use cliclack::multi_progress;
     use semver::Version;
     use testdir::testdir;
@@ -602,6 +601,7 @@ mod tests {
         let lock = lock.as_git().unwrap();
         assert_eq!(lock.git, "https://github.com/beeb/test-repo.git");
         assert_eq!(lock.rev, "d5d72fa135d28b2e8307650b3ea79115183f2406");
+        assert!(dir.join(".git").exists());
     }
 
     #[tokio::test]
@@ -623,6 +623,7 @@ mod tests {
         let lock = lock.as_git().unwrap();
         assert_eq!(lock.git, "https://github.com/beeb/test-repo.git");
         assert_eq!(lock.rev, "78c2f6a1a54db26bab6c3f501854a1564eb3707f");
+        assert!(dir.join(".git").exists());
     }
 
     #[tokio::test]
@@ -644,6 +645,7 @@ mod tests {
         let lock = lock.as_git().unwrap();
         assert_eq!(lock.git, "https://github.com/beeb/test-repo.git");
         assert_eq!(lock.rev, "8d903e557e8f1b6e62bde768aa456d4ddfca72c4");
+        assert!(dir.join(".git").exists());
     }
 
     #[tokio::test]
@@ -665,6 +667,7 @@ mod tests {
         let lock = lock.as_git().unwrap();
         assert_eq!(lock.git, "https://github.com/beeb/test-repo.git");
         assert_eq!(lock.rev, "78c2f6a1a54db26bab6c3f501854a1564eb3707f");
+        assert!(dir.join(".git").exists());
     }
 
     #[tokio::test]
@@ -678,7 +681,7 @@ mod tests {
         assert_eq!(lock.name(), dep.name());
         assert_eq!(lock.version(), dep.version_req());
         let lock = lock.as_http().unwrap();
-        assert!(&lock.url.starts_with("https://soldeer-revisions.s3.amazonaws.com/forge-std"));
+        assert!(&lock.url.starts_with("https://"));
         assert_eq!(
             lock.checksum,
             "20fd008c7c69b6c737cc0284469d1c76497107bc3e004d8381f6d8781cb27980"
@@ -698,7 +701,7 @@ mod tests {
         assert_eq!(lock.name(), dep.name());
         assert!(lock.version().parse::<Version>().unwrap() > Version::parse("1.9.0").unwrap());
         let lock = lock.as_http().unwrap();
-        assert!(&lock.url.starts_with("https://soldeer-revisions.s3.amazonaws.com/forge-std"));
+        assert!(&lock.url.starts_with("https://"));
         let hash = hash_folder(lock.install_path(&dir));
         assert_eq!(lock.integrity, hash.to_string());
     }

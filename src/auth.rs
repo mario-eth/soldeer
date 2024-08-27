@@ -89,25 +89,19 @@ mod tests {
             .await;
 
         let test_file = testdir!().join("test_save_jwt");
-        async_with_vars(
+        let res = async_with_vars(
             [
                 ("SOLDEER_API_URL", Some(server.url())),
                 ("SOLDEER_LOGIN_FILE", Some(test_file.to_string_lossy().to_string())),
             ],
-            async move {
-                let res = execute_login(&Login {
-                    email: "test@test.com".to_string(),
-                    password: "1234".to_string(),
-                })
-                .await;
-                if let Err(err) = res {
-                    panic!("Error: {:?}", err);
-                }
-                assert!(res.is_ok(), "{res:?}");
-                assert_eq!(fs::read_to_string(test_file).unwrap(), "jwt_token_example");
-            },
+            execute_login(&Login {
+                email: "test@test.com".to_string(),
+                password: "1234".to_string(),
+            }),
         )
         .await;
+        assert!(res.is_ok(), "{res:?}");
+        assert_eq!(fs::read_to_string(test_file).unwrap(), "jwt_token_example");
     }
 
     #[tokio::test]
@@ -122,21 +116,18 @@ mod tests {
             .await;
 
         let test_file = testdir!().join("test_save_jwt");
-        async_with_vars(
+        let res = async_with_vars(
             [
                 ("SOLDEER_API_URL", Some(server.url())),
                 ("SOLDEER_LOGIN_FILE", Some(test_file.to_string_lossy().to_string())),
             ],
-            async move {
-                let res = execute_login(&Login {
-                    email: "test@test.com".to_string(),
-                    password: "1234".to_string(),
-                })
-                .await;
-                assert!(matches!(res, Err(AuthError::InvalidCredentials)), "{res:?}");
-            },
+            execute_login(&Login {
+                email: "test@test.com".to_string(),
+                password: "1234".to_string(),
+            }),
         )
         .await;
+        assert!(matches!(res, Err(AuthError::InvalidCredentials)), "{res:?}");
     }
 
     #[tokio::test]
@@ -151,20 +142,17 @@ mod tests {
             .await;
 
         let test_file = testdir!().join("test_save_jwt");
-        async_with_vars(
+        let res = async_with_vars(
             [
                 ("SOLDEER_API_URL", Some(server.url())),
                 ("SOLDEER_LOGIN_FILE", Some(test_file.to_string_lossy().to_string())),
             ],
-            async move {
-                let res = execute_login(&Login {
-                    email: "test@test.com".to_string(),
-                    password: "1234".to_string(),
-                })
-                .await;
-                assert!(matches!(res, Err(AuthError::HttpError(_))), "{res:?}");
-            },
+            execute_login(&Login {
+                email: "test@test.com".to_string(),
+                password: "1234".to_string(),
+            }),
         )
         .await;
+        assert!(matches!(res, Err(AuthError::HttpError(_))), "{res:?}");
     }
 }

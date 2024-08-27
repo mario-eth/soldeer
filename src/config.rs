@@ -167,7 +167,7 @@ impl fmt::Display for GitIdentifier {
     }
 }
 
-#[bon::builder]
+#[bon::builder(on(String, into))]
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct GitDependency {
     pub name: String,
@@ -193,7 +193,7 @@ impl fmt::Display for GitDependency {
     }
 }
 
-#[bon::builder]
+#[bon::builder(on(String, into))]
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct HttpDependency {
     pub name: String,

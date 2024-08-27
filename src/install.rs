@@ -71,7 +71,7 @@ impl Progress {
     }
 }
 
-#[bon::builder]
+#[bon::builder(on(String, into))]
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct HttpInstallInfo {
     name: String,
@@ -80,7 +80,7 @@ struct HttpInstallInfo {
     checksum: Option<String>,
 }
 
-#[bon::builder]
+#[bon::builder(on(String, into))]
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct GitInstallInfo {
     name: String,

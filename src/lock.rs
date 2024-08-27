@@ -7,7 +7,7 @@ use std::{
 
 pub type Result<T> = std::result::Result<T, LockError>;
 
-#[bon::builder]
+#[bon::builder(on(String, into))]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Hash)]
 #[non_exhaustive]
 pub struct GitLockEntry {
@@ -23,7 +23,7 @@ impl GitLockEntry {
     }
 }
 
-#[bon::builder]
+#[bon::builder(on(String, into))]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Hash)]
 #[non_exhaustive]
 pub struct HttpLockEntry {

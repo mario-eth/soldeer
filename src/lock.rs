@@ -97,9 +97,13 @@ pub fn write_lock(
                 dep.checksum.as_ref().unwrap(),
                 integrity.clone().map(|c| c.to_string()),
             ),
-            Dependency::Git(dep) => {
-                LockEntry::new(&dep.name, &dep.version, &dep.git, dep.rev.as_ref().unwrap(), None)
-            }
+            Dependency::Git(dep) => LockEntry::new(
+                &dep.name,
+                &dep.version,
+                &dep.git,
+                dep.identifier.as_ref().unwrap().to_string(),
+                None,
+            ),
         };
         // check for entry already existing
         match entries.iter().position(|e| e.name == entry.name && e.version == entry.version) {
@@ -139,6 +143,10 @@ pub fn remove_lock(dependency: &Dependency) -> Result<()> {
     } else {
         LOCK_FILE.clone()
     };
+    // check if the lock exists, if does not we don't have what to delete
+    if !lock_file.exists() {
+        return Ok(());
+    }
 
     let entries: Vec<_> = read_lock()?
         .into_iter()

@@ -33,13 +33,15 @@ pub fn cleanup_dependency(dependency: &Dependency, full: bool) -> Result<()> {
         sanitize_dependency_name(&format!("{}-{}", dependency.name(), dependency.version()));
 
     let new_path = DEPENDENCY_DIR.clone().join(format!("{sanitized_name}.zip"));
-    if let Dependency::Http(_) = dependency {
+    if new_path.exists() {
         fs::remove_file(&new_path)
             .map_err(|e| JanitorError::IOError { path: new_path, source: e })?;
     }
     if full {
         let dir = DEPENDENCY_DIR.join(sanitized_name);
-        fs::remove_dir_all(&dir).map_err(|e| JanitorError::IOError { path: dir, source: e })?;
+        if dir.exists() {
+            fs::remove_dir_all(&dir).map_err(|e| JanitorError::IOError { path: dir, source: e })?;
+        }
         remove_lock(dependency).map_err(JanitorError::LockError)?;
     }
     Ok(())
@@ -118,7 +120,13 @@ mod tests {
             version: "v-cleanup-nonexisting".to_string(),
             url: Some("https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@openzeppelin-contracts~2.3.0.zip".to_string()),
             checksum: None}));
-        cleanup_dependency(&dependencies[0], false).unwrap_err();
+        match cleanup_dependency(&dependencies[0], false) {
+            Ok(_) => {}
+            Err(error) => {
+                println!("Error {:?}", error);
+                assert_eq!("Invalid State", "");
+            }
+        };
     }
 
     #[tokio::test]
@@ -165,12 +173,10 @@ mod tests {
             url: Some("https://github.com/mario-eth/soldeer-versions/raw/main/all_versions/@openzeppelin-contracts~2.4.0.zip".to_string()),
             checksum: None}));
         match cleanup_after(&dependencies) {
-            Ok(_) => {
-                assert_eq!("Invalid State", "");
-            }
+            Ok(_) => {}
             Err(error) => {
-                println!("{error}");
-                assert!(matches!(error, JanitorError::IOError { path: _, source: _ }));
+                println!("Error {:?}", error);
+                assert_eq!("Invalid State", "");
             }
         }
     }

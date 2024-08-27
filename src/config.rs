@@ -107,8 +107,8 @@ pub struct GitDependency {
     pub identifier: Option<GitIdentifier>,
 }
 
-impl core::fmt::Display for GitDependency {
-    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+impl fmt::Display for GitDependency {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}~{}", self.name, self.version)
     }
 }
@@ -121,8 +121,8 @@ pub struct HttpDependency {
     pub checksum: Option<String>,
 }
 
-impl core::fmt::Display for HttpDependency {
-    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+impl fmt::Display for HttpDependency {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}~{}", self.name, self.version)
     }
 }
@@ -238,8 +238,8 @@ impl Dependency {
     }
 }
 
-impl core::fmt::Display for Dependency {
-    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+impl fmt::Display for Dependency {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Dependency::Http(dep) => write!(f, "{}", dep),
             Dependency::Git(dep) => write!(f, "{}", dep),
@@ -382,7 +382,7 @@ pub async fn remappings_txt(
     }
     let contents = match remappings_path.exists() {
         true => read_file_to_string(&remappings_path),
-        false => "".to_string(),
+        false => String::new(),
     };
     let existing_remappings = contents.lines().filter_map(|r| r.split_once('=')).collect();
 
@@ -562,14 +562,9 @@ fn parse_dependency(name: impl Into<String>, value: &Item) -> Result<Dependency>
     // we should have a HTTP dependency
     match table.get("url").map(|v| v.as_str()) {
         Some(None) => Err(ConfigError::InvalidField { field: "url".to_string(), dep: name }),
-        None => Ok(Dependency::Http(HttpDependency {
-            name: name.to_string(),
-            version,
-            url: None,
-            checksum: None,
-        })),
+        None => Ok(Dependency::Http(HttpDependency { name, version, url: None, checksum: None })),
         Some(Some(url)) => Ok(Dependency::Http(HttpDependency {
-            name: name.to_string(),
+            name,
             version,
             url: Some(url.to_string()),
             checksum: None,

@@ -5,7 +5,7 @@
 [license-badge]: https://img.shields.io/badge/License-MIT-blue.svg
 
 <p align="center">
-  <img src="./soldeer.jpeg" />
+  <img src="./logo/soldeer_logo_outline_512.png" />
 </p>
 
 Soldeer is a package manager for Solidity built in Rust.
@@ -19,10 +19,10 @@ This project was started to solve the following issues:
 
 ## Version 0.3.0
 
-
-
 ### Version 0.3.0 introduces the following breaking changes
+
 ### Config file
+
 The config file (whichever has a `[dependencies]` table between `foundry.toml` and `soldeer.toml`) now has a `[soldeer]` section with the following format and defaults:
 
 ```toml
@@ -50,7 +50,6 @@ recursive_deps = false
 ### Remappings
 
 Fully configurable Remappings, check [Remappings](#remappings-1).
-
 
 #### WARNING BETA VERSION - USE AT YOUR OWN RISK
 
@@ -179,7 +178,8 @@ If you want to ignore certain files from the push you need to create a `.soldeer
 If you want to dry run a push to inspect what files will be pushed to the central repository, use `soldeer push my-project~v1.0 [PATH_TO_DEPENDENCY] --dry-run true`. This will create a zip file that you can unzip and inspect what was pushed. We recommend everyone to run a dry-run before pushing a new dependency to avoid pushing unwanted files.
 
 #### Remappings
-The remappings are now fully configurable, the foundry/soldeer TOML files accept a 
+
+The remappings are now fully configurable, the foundry/soldeer TOML files accept a
 `[soldeer]` field with the following options
 
 ```toml
@@ -205,30 +205,37 @@ recursive_deps = false
 ```
 
 #### Installing dependencies of dependencies
+
 Whenever you install a dependency, that dependency might have other dependencies it needs to install as well. Currently, you can either specify the `recursive_deps` field as `true` inside the `[soldeer]` section or pass the `--recursive-deps` argument when calling `install` or `update`. This will trigger the installation process to go inside the dependency after installation and run `git submodule update` and `soldeer install`. By executing these commands, the dependency will pull in all the necessary dependencies for it to function properly.
 
 ##### Current issues with this
+
 The current issue with dependencies of dependencies is that, due to improper remappings, some dependencies might not function correctly. For example:
 
 We have a project called `my-project` with the following dependencies:
+
 - `dependency-1`
 - `openzeppelin-5.0.2`
 
 A contract inside `my-project` has the following import:
+
 ```solidity
 @openzeppelin/contracts/token/ERC20/ERC20.sol
 ```
 
 However, `dependency-1` also requires `openzeppelin`, but it uses version 4.9.2. The contract inside `dependency-1` has the same import:
+
 ```solidity
 @openzeppelin/contracts/token/ERC20/ERC20.sol
 ```
 
 Due to improper remappings in the contract files, this situation creates ambiguity, as described above. To resolve this, we should start using versioning within imports, for example:
+
 ```solidity
 import from 'openzeppelin-4.9.2/token/ERC20/ERC20.sol';
 ```
-This approach will allow us to handle multiple versions of various dependencies effectively. 
+
+This approach will allow us to handle multiple versions of various dependencies effectively.
 
 ### Full list of commands
 
@@ -292,4 +299,3 @@ Save the dependency key as the dependency name to respect the Cargo.toml format.
 ### Breaking Changes introduced in 0.2.6
 
 In 0.2.6 the `sdependencies` has been renamed to `dependencies`. Furthermore a dependency now stored in the toml respects Cargo toml format with `version` and `url` included.
-

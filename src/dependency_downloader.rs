@@ -195,15 +195,7 @@ async fn download_via_git(
         ));
     }
 
-    let checkout_target = match dependency.rev.clone() {
-        Some(rev) => Some(rev),
-        None => match dependency.tag.clone() {
-            Some(tag) => Some(tag),
-            None => dependency.branch.clone(),
-        },
-    };
-
-    if let Some(target) = checkout_target.clone() {
+    if let Some(target) = &dependency.identifier {
         let mut git_checkout = Command::new("git");
         let result = git_checkout
             .args(["checkout".to_string(), target.to_string()])
@@ -340,6 +332,7 @@ pub fn install_subdependencies(dependency: &Dependency) -> Result<()> {
 mod tests {
     use super::*;
     use crate::{
+        config::GitIdentifier,
         janitor::healthcheck_dependency,
         utils::{get_url_type, UrlType},
     };
@@ -375,9 +368,7 @@ mod tests {
             name: "@openzeppelin-contracts".to_string(),
             version: "2.3.0".to_string(),
             git: "https://gitlab.com/mario4582928/Mario.git".to_string(),
-            rev: Some("7a0663eaf7488732f39550be655bad6694974cb3".to_string()),
-            tag: None,
-            branch: None,
+            identifier: Some(GitIdentifier::from_rev("7a0663eaf7488732f39550be655bad6694974cb3")),
         });
         dependencies.push(dependency.clone());
         let results = download_dependencies(&dependencies, false).await.unwrap();
@@ -406,9 +397,7 @@ mod tests {
             name: "@openzeppelin-contracts".to_string(),
             version: "2.3.0".to_string(),
             git: "https://gitlab.com/mario4582928/Mario.git".to_string(),
-            rev: None,
-            tag: None,
-            branch: None,
+            identifier: None,
         });
         dependencies.push(dependency.clone());
         let results = download_dependencies(&dependencies, false).await.unwrap();
@@ -469,9 +458,7 @@ mod tests {
             name: "@openzeppelin-contracts".to_string(),
             version: "2.3.0".to_string(),
             git: "https://github.com/transmissions11/solmate.git".to_string(),
-            rev: None,
-            tag: None,
-            branch: None,
+            identifier: None,
         });
         dependencies.push(dependency_one.clone());
 
@@ -479,9 +466,7 @@ mod tests {
             name: "@uniswap-v2-core".to_string(),
             version: "1.0.0-beta.4".to_string(),
             git: "https://gitlab.com/mario4582928/Mario.git".to_string(),
-            rev: None,
-            tag: None,
-            branch: None,
+            identifier: None,
         });
 
         dependencies.push(dependency_two.clone());
@@ -630,9 +615,7 @@ mod tests {
             name: "@openzeppelin-contracts".to_string(),
             version: "2.3.0".to_string(),
             git: "git@github.com:transmissions11/solmate-wrong.git".to_string(),
-            rev: None,
-            tag: None,
-            branch: None,
+            identifier: None,
         });
         dependencies.push(dependency.clone());
 
@@ -751,9 +734,7 @@ mod tests {
             name: "@openzeppelin-contracts".to_string(),
             version: "2.3.0".to_string(),
             git: "https://github.com/transmissions11/solmate.git".to_string(),
-            rev: None,
-            tag: None,
-            branch: None,
+            identifier: None,
         });
         dependencies.push(dependency.clone());
 

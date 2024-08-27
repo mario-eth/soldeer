@@ -51,9 +51,9 @@ You can install a dependency from the Soldeer repository, a custom URL pointing 
   soldeer install @openzeppelin-contracts~2.3.0 git@github.com:OpenZeppelin/openzeppelin-contracts.git
 - **Example from Git with a specified commit:**
   soldeer install @openzeppelin-contracts~2.3.0 git@github.com:OpenZeppelin/openzeppelin-contracts.git --rev 05f218fb6617932e56bf5388c3b389c3028a7b73
-  - **Example from Git with a specified tag:**
+- **Example from Git with a specified tag:**
   soldeer install @openzeppelin-contracts~2.3.0 git@github.com:OpenZeppelin/openzeppelin-contracts.git --tag my-tag
-  - **Example from Git with a specified branch:**
+- **Example from Git with a specified branch:**
   soldeer install @openzeppelin-contracts~2.3.0 git@github.com:OpenZeppelin/openzeppelin-contracts.git --branch my-branch",
     after_help = "For more information, read the README.md"
 )]
@@ -67,19 +67,19 @@ pub struct Install {
     /// The URL to the dependency zip file, if not from the Soldeer repository
     ///
     /// Example: https://my-domain/dep.zip
-    #[arg(value_name = "URL")]
+    #[arg(value_name = "URL", requires = "dependency")]
     pub remote_url: Option<String>,
 
-    /// The revision of the dependency, if from Git
-    #[arg(long)]
+    /// A Git revision
+    #[arg(long, group = "identifier", requires = "remote_url")]
     pub rev: Option<String>,
 
-    /// The tag of the dependency, if from Git
-    #[arg(long)]
+    /// A Git tag
+    #[arg(long, group = "identifier", requires = "remote_url")]
     pub tag: Option<String>,
 
-    /// The branch of the dependency, if from Git
-    #[arg(long)]
+    /// A Git branch
+    #[arg(long, group = "identifier", requires = "remote_url")]
     pub branch: Option<String>,
 
     /// If set, this command will delete the existing remappings and re-create them

@@ -550,7 +550,7 @@ fn parse_dependency(name: impl Into<String>, value: &Item) -> Result<Dependency>
                 }
             };
             return Ok(Dependency::Git(GitDependency {
-                name: name.to_string(),
+                name,
                 git: git.to_string(),
                 version,
                 identifier,

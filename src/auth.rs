@@ -80,16 +80,11 @@ mod tests {
     #[tokio::test]
     async fn test_login_success() {
         let mut server = mockito::Server::new_async().await;
-        let data = r#"
-        {
-            "status": "200",
-            "token": "jwt_token_example"
-        }"#;
         server
             .mock("POST", "/api/v1/auth/login")
             .with_status(201)
             .with_header("content-type", "application/json")
-            .with_body(data)
+            .with_body(r#"{"status":"200","token":"jwt_token_example"}"#)
             .create_async()
             .await;
 
@@ -118,12 +113,11 @@ mod tests {
     #[tokio::test]
     async fn test_login_401() {
         let mut server = mockito::Server::new_async().await;
-        let data = r#"{ "status": "401" }"#;
         server
             .mock("POST", "/api/v1/auth/login")
             .with_status(401)
             .with_header("content-type", "application/json")
-            .with_body(data)
+            .with_body(r#"{"status":"401"}"#)
             .create_async()
             .await;
 
@@ -148,12 +142,11 @@ mod tests {
     #[tokio::test]
     async fn test_login_500() {
         let mut server = mockito::Server::new_async().await;
-        let data = r#"{ "status": "500" }"#;
         server
             .mock("POST", "/api/v1/auth/login")
             .with_status(500)
             .with_header("content-type", "application/json")
-            .with_body(data)
+            .with_body(r#"{"status":"500"}"#)
             .create_async()
             .await;
 

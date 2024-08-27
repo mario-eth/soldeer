@@ -386,7 +386,6 @@ async fn check_http_dependency(
         move || hash_folder(path)
     })
     .await?;
-    println!("current_hash: {current_hash}");
     if current_hash.to_string() != lock.integrity {
         return Ok(DependencyStatus::FailedIntegrity);
     }
@@ -449,8 +448,31 @@ mod tests {
     use super::*;
     use crate::config::{GitDependency, HttpDependency};
     use cliclack::multi_progress;
+    use mockito::{Matcher, Server, ServerGuard};
     use semver::Version;
+    use temp_env::async_with_vars;
     use testdir::testdir;
+
+    async fn mock_api_server() -> ServerGuard {
+        let mut server = Server::new_async().await;
+        let data = r#"{"data":[{"created_at":"2024-08-06T17:31:25.751079Z","deleted":false,"downloads":3389,"id":"660132e6-4902-4804-8c4b-7cae0a648054","internal_name":"forge-std/1_9_2_06-08-2024_17:31:25_forge-std-1.9.2.zip","project_id":"37adefe5-9bc6-4777-aaf2-e56277d1f30b","url":"https://soldeer-revisions.s3.amazonaws.com/forge-std/1_9_2_06-08-2024_17:31:25_forge-std-1.9.2.zip","version":"1.9.2"},{"created_at":"2024-07-03T14:44:59.729623Z","deleted":false,"downloads":5290,"id":"fa5160fc-ba7b-40fd-8e99-8becd6dadbe4","internal_name":"forge-std/v1_9_1_03-07-2024_14:44:59_forge-std-v1.9.1.zip","project_id":"37adefe5-9bc6-4777-aaf2-e56277d1f30b","url":"https://soldeer-revisions.s3.amazonaws.com/forge-std/v1_9_1_03-07-2024_14:44:59_forge-std-v1.9.1.zip","version":"1.9.1"},{"created_at":"2024-07-03T14:44:58.148723Z","deleted":false,"downloads":21,"id":"b463683a-c4b4-40bf-b707-1c4eb343c4d2","internal_name":"forge-std/v1_9_0_03-07-2024_14:44:57_forge-std-v1.9.0.zip","project_id":"37adefe5-9bc6-4777-aaf2-e56277d1f30b","url":"https://soldeer-revisions.s3.amazonaws.com/forge-std/v1_9_0_03-07-2024_14:44:57_forge-std-v1.9.0.zip","version":"1.9.0"}],"status":"success"}"#;
+        server
+            .mock("GET", "/api/v1/revision")
+            .match_query(Matcher::Regex("project_name=.+&offset=.+&limit=.+".into()))
+            .with_header("content-type", "application/json")
+            .with_body(data)
+            .create_async()
+            .await;
+        let data2 = r#"{"data":[{"created_at":"2024-08-06T17:31:25.751079Z","deleted":false,"downloads":3391,"id":"660132e6-4902-4804-8c4b-7cae0a648054","internal_name":"forge-std/1_9_2_06-08-2024_17:31:25_forge-std-1.9.2.zip","project_id":"37adefe5-9bc6-4777-aaf2-e56277d1f30b","url":"https://soldeer-revisions.s3.amazonaws.com/forge-std/1_9_2_06-08-2024_17:31:25_forge-std-1.9.2.zip","version":"1.9.2"}],"status":"success"}"#;
+        server
+            .mock("GET", "/api/v1/revision-cli")
+            .match_query(Matcher::Regex("project_name=.+&revision=.+".into()))
+            .with_header("content-type", "application/json")
+            .with_body(data2)
+            .create_async()
+            .await;
+        server
+    }
 
     #[tokio::test]
     async fn test_check_http_dependency() {
@@ -673,10 +695,15 @@ mod tests {
 
     #[tokio::test]
     async fn test_install_dependency_registry() {
+        let server = mock_api_server().await;
         let dir = testdir!();
         let dep = HttpDependency::builder().name("forge-std").version_req("1.9.2").build().into();
         let multi = multi_progress("Installing dependencies");
-        let res = install_dependency(&dep, None, &dir, None, false, Progress::new(&multi, 1)).await;
+        let res = async_with_vars(
+            [("SOLDEER_API_URL", Some(server.url()))],
+            install_dependency(&dep, None, &dir, None, false, Progress::new(&multi, 1)),
+        )
+        .await;
         assert!(res.is_ok(), "{res:?}");
         let lock = res.unwrap();
         assert_eq!(lock.name(), dep.name());
@@ -693,10 +720,15 @@ mod tests {
 
     #[tokio::test]
     async fn test_install_dependency_registry_compatible() {
+        let server = mock_api_server().await;
         let dir = testdir!();
         let dep = HttpDependency::builder().name("forge-std").version_req("^1.9.0").build().into();
         let multi = multi_progress("Installing dependencies");
-        let res = install_dependency(&dep, None, &dir, None, false, Progress::new(&multi, 1)).await;
+        let res = async_with_vars(
+            [("SOLDEER_API_URL", Some(server.url()))],
+            install_dependency(&dep, None, &dir, None, false, Progress::new(&multi, 1)),
+        )
+        .await;
         assert!(res.is_ok(), "{res:?}");
         let lock = res.unwrap();
         assert_eq!(lock.name(), dep.name());

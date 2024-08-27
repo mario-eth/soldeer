@@ -90,7 +90,8 @@ mod tests {
             .with_status(201)
             .with_header("content-type", "application/json")
             .with_body(data)
-            .create();
+            .create_async()
+            .await;
 
         let test_file = testdir!().join("test_save_jwt");
         async_with_vars(
@@ -99,7 +100,6 @@ mod tests {
                 ("SOLDEER_LOGIN_FILE", Some(test_file.to_string_lossy().to_string())),
             ],
             async move {
-                println!("env var: {:?}", std::env::var("SOLDEER_LOGIN_FILE"));
                 let res = execute_login(&Login {
                     email: "test@test.com".to_string(),
                     password: "1234".to_string(),
@@ -124,7 +124,8 @@ mod tests {
             .with_status(401)
             .with_header("content-type", "application/json")
             .with_body(data)
-            .create();
+            .create_async()
+            .await;
 
         let test_file = testdir!().join("test_save_jwt");
         async_with_vars(
@@ -153,7 +154,8 @@ mod tests {
             .with_status(500)
             .with_header("content-type", "application/json")
             .with_body(data)
-            .create();
+            .create_async()
+            .await;
 
         let test_file = testdir!().join("test_save_jwt");
         async_with_vars(

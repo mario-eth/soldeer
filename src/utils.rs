@@ -11,7 +11,6 @@ use std::{
     ffi::OsStr,
     fs,
     io::{self as std_io, Read},
-    os::unix::ffi::OsStrExt as _,
     path::{Path, PathBuf},
     sync::{Arc, LazyLock, Mutex},
 };
@@ -144,7 +143,7 @@ pub fn hash_folder(folder_path: impl AsRef<Path>) -> IntegrityChecksum {
             let path = entry.path();
             // first hash the filename/dirname to make sure it can't be renamed or removed
             let mut hasher = <Sha256 as Digest>::new();
-            hasher.update(path.as_os_str().as_bytes());
+            hasher.update(path.to_string_lossy().as_bytes());
             // for files, also hash the contents
             if let Some(true) = entry.file_type().map(|t| t.is_file()) {
                 if let Ok(file) = fs::File::open(path) {

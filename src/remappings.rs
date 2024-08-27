@@ -139,9 +139,14 @@ fn generate_remappings(
         match &dependency {
             RemappingsAction::Remove(remove_dep) => {
                 // only keep items not matching the dependency to remove
-                let remove_remapped = format_remap_name(soldeer_config, remove_dep);
-                for (remapped, orig) in existing_remappings {
-                    if remapped != remove_remapped {
+                if let Ok(remove_orig) = get_install_dir_relative(remove_dep, paths) {
+                    for (remapped, orig) in existing_remappings {
+                        if orig != remove_orig {
+                            new_remappings.push(format!("{remapped}={orig}"));
+                        }
+                    }
+                } else {
+                    for (remapped, orig) in existing_remappings {
                         new_remappings.push(format!("{remapped}={orig}"));
                     }
                 }
@@ -175,6 +180,7 @@ fn generate_remappings(
                         if let Some((remapped, orig)) =
                             existing_remappings.iter().find(|(r, _)| item_remapped == *r)
                         {
+                            // if found, we replace it (it was not a custom remapping)
                             *item = format!("{remapped}={orig}");
                         }
                     }

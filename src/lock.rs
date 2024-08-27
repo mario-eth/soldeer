@@ -248,3 +248,117 @@ pub fn remove_lock(dependency: &Dependency, path: impl AsRef<Path>) -> Result<()
 pub fn format_install_path(name: &str, version: &str, deps: impl AsRef<Path>) -> PathBuf {
     deps.as_ref().join(sanitize_filename(&format!("{}-{}", name, version)))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_toml_to_lock_entry_conversion_http() {
+        let toml_entry = TomlLockEntry {
+            name: "test".to_string(),
+            version: "1.0.0".to_string(),
+            git: None,
+            url: Some("https://example.com/zip.zip".to_string()),
+            rev: None,
+            checksum: Some("123456".to_string()),
+            integrity: Some("beef".to_string()),
+        };
+        let entry: Result<LockEntry> = toml_entry.try_into();
+        assert!(entry.is_ok(), "{entry:?}");
+        let entry = entry.unwrap();
+        assert_eq!(entry.name(), "test");
+        assert_eq!(entry.version(), "1.0.0");
+        let http = entry.as_http().unwrap();
+        assert_eq!(http.url, "https://example.com/zip.zip");
+        assert_eq!(http.checksum, "123456");
+        assert_eq!(http.integrity, "beef");
+    }
+
+    #[test]
+    fn test_toml_to_lock_entry_conversion_git() {
+        let toml_entry = TomlLockEntry {
+            name: "test".to_string(),
+            version: "1.0.0".to_string(),
+            git: Some("git@github.com:test/test.git".to_string()),
+            url: None,
+            rev: Some("123456".to_string()),
+            checksum: None,
+            integrity: None,
+        };
+        let entry: Result<LockEntry> = toml_entry.try_into();
+        assert!(entry.is_ok(), "{entry:?}");
+        let entry = entry.unwrap();
+        assert_eq!(entry.name(), "test");
+        assert_eq!(entry.version(), "1.0.0");
+        let git = entry.as_git().unwrap();
+        assert_eq!(git.git, "git@github.com:test/test.git");
+        assert_eq!(git.rev, "123456");
+    }
+
+    #[test]
+    fn test_toml_lock_entry_bad_http() {
+        let toml_entry = TomlLockEntry {
+            name: "test".to_string(),
+            version: "1.0.0".to_string(),
+            git: None,
+            url: Some("https://example.com/zip.zip".to_string()),
+            rev: None,
+            checksum: None,
+            integrity: None,
+        };
+        let entry: Result<LockEntry> = toml_entry.try_into();
+        assert!(
+            matches!(entry, Err(LockError::MissingField { ref field, dep: _ }) if field == "checksum"),
+            "{entry:?}"
+        );
+
+        let toml_entry = TomlLockEntry {
+            name: "test".to_string(),
+            version: "1.0.0".to_string(),
+            git: None,
+            url: Some("https://example.com/zip.zip".to_string()),
+            rev: None,
+            checksum: Some("123456".to_string()),
+            integrity: None,
+        };
+        let entry: Result<LockEntry> = toml_entry.try_into();
+        assert!(
+            matches!(entry, Err(LockError::MissingField { ref field, dep: _ }) if field == "integrity"),
+            "{entry:?}"
+        );
+    }
+
+    #[test]
+    fn test_toml_lock_entry_bad_git() {
+        let toml_entry = TomlLockEntry {
+            name: "test".to_string(),
+            version: "1.0.0".to_string(),
+            git: None,
+            url: None,
+            rev: None,
+            checksum: None,
+            integrity: None,
+        };
+        let entry: Result<LockEntry> = toml_entry.try_into();
+        assert!(
+            matches!(entry, Err(LockError::MissingField { ref field, dep: _ }) if field == "git"),
+            "{entry:?}"
+        );
+
+        let toml_entry = TomlLockEntry {
+            name: "test".to_string(),
+            version: "1.0.0".to_string(),
+            git: Some("git@github.com:test/test.git".to_string()),
+            url: None,
+            rev: None,
+            checksum: None,
+            integrity: None,
+        };
+        let entry: Result<LockEntry> = toml_entry.try_into();
+        assert!(
+            matches!(entry, Err(LockError::MissingField { ref field, dep: _ }) if field == "rev"),
+            "{entry:?}"
+        );
+    }
+}

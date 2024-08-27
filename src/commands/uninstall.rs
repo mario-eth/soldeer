@@ -25,6 +25,9 @@ pub(crate) fn uninstall_command(paths: &Paths, cmd: &Uninstall) -> Result<()> {
     let dependency = delete_from_config(&cmd.dependency, &paths.config)?;
     success("Dependency removed from config file")?;
 
+    edit_remappings(&RemappingsAction::Remove(dependency.clone()), &config, paths)?;
+    success("Dependency removed from remappings")?;
+
     // deleting the files
     delete_dependency_files_sync(&dependency, &paths.dependencies)
         .map_err(|e| SoldeerError::DownloadError { dep: dependency.to_string(), source: e })?;
@@ -32,9 +35,5 @@ pub(crate) fn uninstall_command(paths: &Paths, cmd: &Uninstall) -> Result<()> {
 
     remove_lock(&dependency, &paths.lock)?;
     success("Dependency removed from lockfile")?;
-
-    edit_remappings(&RemappingsAction::Remove(dependency), &config, paths)?;
-    success("Dependency removed from remappings")?;
-
     Ok(())
 }

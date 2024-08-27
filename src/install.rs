@@ -709,7 +709,7 @@ mod tests {
         assert_eq!(lock.name(), dep.name());
         assert_eq!(lock.version(), dep.version_req());
         let lock = lock.as_http().unwrap();
-        assert!(&lock.url.starts_with("https://"));
+        assert_eq!(&lock.url, "https://soldeer-revisions.s3.amazonaws.com/forge-std/1_9_2_06-08-2024_17:31:25_forge-std-1.9.2.zip");
         assert_eq!(
             lock.checksum,
             "20fd008c7c69b6c737cc0284469d1c76497107bc3e004d8381f6d8781cb27980"
@@ -732,9 +732,9 @@ mod tests {
         assert!(res.is_ok(), "{res:?}");
         let lock = res.unwrap();
         assert_eq!(lock.name(), dep.name());
-        assert!(lock.version().parse::<Version>().unwrap() > Version::parse("1.9.0").unwrap());
+        assert_eq!(lock.version(), "1.9.2");
         let lock = lock.as_http().unwrap();
-        assert!(&lock.url.starts_with("https://"));
+        assert_eq!(&lock.url, "https://soldeer-revisions.s3.amazonaws.com/forge-std/1_9_2_06-08-2024_17:31:25_forge-std-1.9.2.zip");
         let hash = hash_folder(lock.install_path(&dir));
         assert_eq!(lock.integrity, hash.to_string());
     }

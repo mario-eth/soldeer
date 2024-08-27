@@ -88,7 +88,7 @@ pub(crate) async fn install_command(paths: &Paths, cmd: Install) -> Result<()> {
     let dependencies: Vec<Dependency> = read_config_deps(&paths.config)?;
     match cmd.dependency {
         None => {
-            let (locks, lockfile_content) = read_lockfile(&paths.lock)?;
+            let lockfile = read_lockfile(&paths.lock)?;
             success("Done reading lockfile")?;
             if cmd.clean {
                 remark("Flag `--clean` was set, re-installing all dependencies")?;
@@ -103,7 +103,7 @@ pub(crate) async fn install_command(paths: &Paths, cmd: Install) -> Result<()> {
             progress.start_all();
             let new_locks = install_dependencies(
                 &dependencies,
-                &locks,
+                &lockfile.entries,
                 &paths.dependencies,
                 config.recursive_deps,
                 progress.clone(),
@@ -112,9 +112,9 @@ pub(crate) async fn install_command(paths: &Paths, cmd: Install) -> Result<()> {
             progress.stop_all();
             multi.stop();
             let new_lockfile_content = generate_lockfile_contents(new_locks);
-            if !lockfile_content.is_empty() && new_lockfile_content != lockfile_content {
+            if !lockfile.raw.is_empty() && new_lockfile_content != lockfile.raw {
                 warning("Warning: the lock file is out of sync with the dependencies. Consider running `soldeer update` to re-generate the lockfile.")?;
-            } else if lockfile_content.is_empty() {
+            } else if lockfile.raw.is_empty() {
                 fs::write(&paths.lock, new_lockfile_content).map_err(LockError::IOError)?;
             }
             edit_remappings(&RemappingsAction::None, &config, paths)?;

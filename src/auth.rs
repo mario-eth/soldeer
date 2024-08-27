@@ -95,7 +95,7 @@ mod tests {
         let test_file = testdir!().join("test_save_jwt");
         async_with_vars(
             [
-                ("SOLDEER_API_URL", Some(format!("http://{}", server.host_with_port()))),
+                ("SOLDEER_API_URL", Some(server.url())),
                 ("SOLDEER_LOGIN_FILE", Some(test_file.to_string_lossy().to_string())),
             ],
             async move {
@@ -129,7 +129,7 @@ mod tests {
         let test_file = testdir!().join("test_save_jwt");
         async_with_vars(
             [
-                ("SOLDEER_API_URL", Some(format!("http://{}", server.host_with_port()))),
+                ("SOLDEER_API_URL", Some(server.url())),
                 ("SOLDEER_LOGIN_FILE", Some(test_file.to_string_lossy().to_string())),
             ],
             async move {
@@ -158,7 +158,7 @@ mod tests {
         let test_file = testdir!().join("test_save_jwt");
         async_with_vars(
             [
-                ("SOLDEER_API_URL", Some(format!("http://{}", server.host_with_port()))),
+                ("SOLDEER_API_URL", Some(server.url())),
                 ("SOLDEER_LOGIN_FILE", Some(test_file.to_string_lossy().to_string())),
             ],
             async move {

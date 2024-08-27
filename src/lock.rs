@@ -179,14 +179,23 @@ struct LockFileParsed {
     dependencies: Vec<TomlLockEntry>,
 }
 
-pub fn read_lockfile(path: impl AsRef<Path>) -> Result<(Vec<LockEntry>, String)> {
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+pub struct LockFile {
+    pub entries: Vec<LockEntry>,
+    pub raw: String,
+}
+
+pub fn read_lockfile(path: impl AsRef<Path>) -> Result<LockFile> {
     if !path.as_ref().exists() {
-        return Ok((vec![], String::new()));
+        return Ok(LockFile::default());
     }
     let contents = fs::read_to_string(&path)?;
 
     let data: LockFileParsed = toml_edit::de::from_str(&contents).unwrap_or_default();
-    Ok((data.dependencies.into_iter().filter_map(|d| d.try_into().ok()).collect(), contents))
+    Ok(LockFile {
+        entries: data.dependencies.into_iter().filter_map(|d| d.try_into().ok()).collect(),
+        raw: contents,
+    })
 }
 
 pub fn generate_lockfile_contents(mut entries: Vec<LockEntry>) -> String {
@@ -197,23 +206,26 @@ pub fn generate_lockfile_contents(mut entries: Vec<LockEntry>) -> String {
 }
 
 pub fn add_to_lockfile(entry: LockEntry, path: impl AsRef<Path>) -> Result<()> {
-    let (mut entries, _) = read_lockfile(&path)?;
-    if let Some(index) =
-        entries.iter().position(|e| e.name() == entry.name() && e.version() == entry.version())
+    let mut lockfile = read_lockfile(&path)?;
+    if let Some(index) = lockfile
+        .entries
+        .iter()
+        .position(|e| e.name() == entry.name() && e.version() == entry.version())
     {
-        let _ = std::mem::replace(&mut entries[index], entry);
+        let _ = std::mem::replace(&mut lockfile.entries[index], entry);
     } else {
-        entries.push(entry);
+        lockfile.entries.push(entry);
     }
-    let new_contents = generate_lockfile_contents(entries);
+    let new_contents = generate_lockfile_contents(lockfile.entries);
     fs::write(&path, new_contents)?;
     Ok(())
 }
 
 pub fn remove_lock(dependency: &Dependency, path: impl AsRef<Path>) -> Result<()> {
-    let (entries, _) = read_lockfile(&path)?;
+    let lockfile = read_lockfile(&path)?;
 
-    let entries: Vec<_> = entries
+    let entries: Vec<_> = lockfile
+        .entries
         .into_iter()
         .filter_map(|e| if e.name() != dependency.name() { Some(e.into()) } else { None })
         .collect();

@@ -40,14 +40,14 @@ pub(crate) async fn update_command(paths: &Paths, cmd: Update) -> Result<()> {
     success("Done reading config")?;
     ensure_dependencies_dir(&paths.dependencies)?;
     let dependencies: Vec<Dependency> = read_config_deps(&paths.config)?;
-    let (locks, _) = read_lockfile(&paths.lock)?;
+    let lockfile = read_lockfile(&paths.lock)?;
     success("Done reading lockfile")?;
     let multi = multi_progress("Updating dependencies");
     let progress = Progress::new(&multi, dependencies.len() as u64);
     progress.start_all();
     let new_locks = update_dependencies(
         &dependencies,
-        &locks,
+        &lockfile.entries,
         &paths.dependencies,
         config.recursive_deps,
         progress.clone(),

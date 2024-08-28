@@ -28,7 +28,7 @@ The config file (whichever has a `[dependencies]` table between `foundry.toml` a
 ```toml
 [soldeer]
 # whether soldeer manages remappings
-remappings_generated = true
+remappings_generate = true
 
 # whether soldeer re-generates all remappings when installing, updating or uninstalling deps
 remappings_regenerate = false

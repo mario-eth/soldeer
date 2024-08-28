@@ -14,7 +14,7 @@ use reqwest::{
 };
 use std::{
     fs::{remove_file, File},
-    io::{self, Read, Write},
+    io::{Read, Write},
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
 };

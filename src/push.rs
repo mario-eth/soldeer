@@ -80,27 +80,36 @@ pub fn zip_file(
     if files_to_copy.is_empty() {
         return Err(PublishError::NoFiles);
     }
+    let mut added_dirs = Vec::new();
 
     for file_path in files_to_copy {
         let path = file_path.as_path();
-        // Write file or directory explicitly
-        // Some unzip tools unzip files with directory paths correctly, some do not!
-        if path.is_file() {
-            let mut f = File::open(file_path.clone())
-                .map_err(|e| PublishError::IOError { path: file_path.clone(), source: e })?;
-            let mut buffer = Vec::new();
-            // This is the relative path, we basically get the relative path to the target folder
-            // that we want to push and zip that as a name so we won't screw up the
-            // file/dir hierarchy in the zip file.
-            let relative_file_path = file_path.strip_prefix(root_directory_path.as_ref())?;
-            zip.start_file(relative_file_path.to_string_lossy(), options)?;
-            f.read_to_end(&mut buffer)
-                .map_err(|e| PublishError::IOError { path: file_path.clone(), source: e })?;
-            zip.write_all(&buffer)
-                .map_err(|e| PublishError::IOError { path: zip_file_path.clone(), source: e })?;
-        } else if path.is_dir() {
-            let _ = zip.add_directory(file_path.to_string_lossy(), options);
+        if !path.is_file() {
+            continue;
         }
+
+        // This is the relative path, we basically get the relative path to the target folder
+        // that we want to push and zip that as a name so we won't screw up the
+        // file/dir hierarchy in the zip file.
+        let relative_file_path = file_path.strip_prefix(root_directory_path.as_ref())?;
+
+        // we add folders explicitly to the zip file, some tools might not handle this properly
+        // otherwise
+        if let Some(parent) = relative_file_path.parent() {
+            if !added_dirs.contains(&parent) {
+                zip.add_directory(parent.to_string_lossy(), options)?;
+                added_dirs.push(parent);
+            }
+        }
+
+        let mut f = File::open(file_path.clone())
+            .map_err(|e| PublishError::IOError { path: file_path.clone(), source: e })?;
+        let mut buffer = Vec::new();
+        zip.start_file(relative_file_path.to_string_lossy(), options)?;
+        f.read_to_end(&mut buffer)
+            .map_err(|e| PublishError::IOError { path: file_path.clone(), source: e })?;
+        zip.write_all(&buffer)
+            .map_err(|e| PublishError::IOError { path: zip_file_path.clone(), source: e })?;
     }
     zip.finish()?;
     Ok(zip_file_path)
@@ -209,6 +218,8 @@ pub fn prompt_user_for_confirmation() -> Result<bool> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
+    use testdir::testdir;
 
     #[test]
     fn test_validate_name() {
@@ -225,6 +236,75 @@ mod tests {
         assert!(validate_name("foo.bar").is_err());
         assert!(validate_name("mypäckage").is_err());
         assert!(validate_name(&"a".repeat(101)).is_err());
+    }
+
+    #[test]
+    fn test_filter_files_to_copy() {
+        let dir = testdir!();
+        // ignore file
+        // *.toml
+        // !/broadcast
+        // /broadcast/31337/
+        // /broadcast/*/dry_run/
+        fs::write(
+            dir.join(".soldeerignore"),
+            "*.toml\n!/broadcast\n/broadcast/31337/\n/broadcast/*/dry_run/\n",
+        )
+        .unwrap();
+
+        let mut ignored = Vec::new();
+        let mut included = vec![dir.join(".soldeerignore")];
+
+        // test structure
+        // - testdir/
+        // --- .soldeerignore <= not ignored
+        // --- random_dir/
+        // --- --- random.toml <= ignored
+        // --- --- random.zip <= not ignored
+        // --- broadcast/
+        // --- --- random.toml <= ignored
+        // --- --- random.zip <= not ignored
+        // --- --- 31337/
+        // --- --- --- random.toml <= ignored
+        // --- --- --- random.zip <= ignored
+        // --- --- random_dir_in_broadcast/
+        // --- --- --- random.zip <= not ignored
+        // --- --- --- random.toml <= ignored
+        // --- --- --- dry_run/
+        // --- --- --- --- zip <= ignored
+        // --- --- --- --- toml <= ignored
+        fs::create_dir(dir.join("random_dir")).unwrap();
+        fs::create_dir(dir.join("broadcast")).unwrap();
+        fs::create_dir(dir.join("broadcast/31337")).unwrap();
+        fs::create_dir(dir.join("broadcast/random_dir_in_broadcast")).unwrap();
+        fs::create_dir(dir.join("broadcast/random_dir_in_broadcast/dry_run")).unwrap();
+
+        ignored.push(dir.join("random_dir/random.toml"));
+        fs::write(ignored.last().unwrap(), "ignored").unwrap();
+        included.push(dir.join("random_dir/random.zip"));
+        fs::write(included.last().unwrap(), "included").unwrap();
+        ignored.push(dir.join("broadcast/random.toml"));
+        fs::write(ignored.last().unwrap(), "ignored").unwrap();
+        included.push(dir.join("broadcast/random.zip"));
+        fs::write(included.last().unwrap(), "included").unwrap();
+        ignored.push(dir.join("broadcast/31337/random.toml"));
+        fs::write(ignored.last().unwrap(), "ignored").unwrap();
+        ignored.push(dir.join("broadcast/31337/random.zip"));
+        fs::write(ignored.last().unwrap(), "ignored").unwrap();
+        included.push(dir.join("broadcast/random_dir_in_broadcast/random.zip"));
+        fs::write(included.last().unwrap(), "included").unwrap();
+        ignored.push(dir.join("broadcast/random_dir_in_broadcast/random.toml"));
+        fs::write(ignored.last().unwrap(), "ignored").unwrap();
+        ignored.push(dir.join("broadcast/random_dir_in_broadcast/dry_run/zip"));
+        fs::write(ignored.last().unwrap(), "ignored").unwrap();
+        ignored.push(dir.join("broadcast/random_dir_in_broadcast/dry_run/toml"));
+        fs::write(ignored.last().unwrap(), "ignored").unwrap();
+
+        let res = filter_files_to_copy(&dir);
+        assert_eq!(res.len(), included.len());
+        for r in res {
+            assert!(included.contains(&r));
+        }
     }
 
     /* #[test]

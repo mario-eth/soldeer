@@ -96,7 +96,7 @@ pub fn zip_file(
         // we add folders explicitly to the zip file, some tools might not handle this properly
         // otherwise
         if let Some(parent) = relative_file_path.parent() {
-            if !added_dirs.contains(&parent) {
+            if !parent.as_os_str().is_empty() && !added_dirs.contains(&parent) {
                 zip.add_directory(parent.to_string_lossy(), options)?;
                 added_dirs.push(parent);
             }
@@ -218,6 +218,7 @@ pub fn prompt_user_for_confirmation() -> Result<bool> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::download::unzip_file;
     use std::fs;
     use testdir::testdir;
 
@@ -304,6 +305,35 @@ mod tests {
         assert_eq!(res.len(), included.len());
         for r in res {
             assert!(included.contains(&r));
+        }
+    }
+
+    #[tokio::test]
+    async fn test_zip_file() {
+        let dir = testdir!().join("test_zip");
+        fs::create_dir(&dir).unwrap();
+        let mut files = Vec::new();
+        files.push(dir.join("a.txt"));
+        fs::write(files.last().unwrap(), "test").unwrap();
+        files.push(dir.join("b.txt"));
+        fs::write(files.last().unwrap(), "test").unwrap();
+        fs::create_dir(dir.join("sub")).unwrap();
+        files.push(dir.join("sub/c.txt"));
+        fs::write(files.last().unwrap(), "test").unwrap();
+        fs::create_dir(dir.join("sub/sub")).unwrap();
+        files.push(dir.join("sub/sub/d.txt"));
+        fs::write(files.last().unwrap(), "test").unwrap();
+        fs::create_dir(dir.join("empty")).unwrap();
+
+        let res = zip_file(&dir, &files, "test");
+        assert!(res.is_ok(), "{res:?}");
+
+        fs::copy(dir.join("test.zip"), testdir!().join("test.zip")).unwrap();
+        fs::remove_dir_all(&dir).unwrap();
+        fs::create_dir(&dir).unwrap();
+        unzip_file(testdir!().join("test.zip"), &dir).await.unwrap();
+        for f in files {
+            assert!(f.exists());
         }
     }
 

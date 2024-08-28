@@ -213,7 +213,7 @@ pub enum PublishError {
     #[error("http error during publishing: {0}")]
     HttpError(#[from] reqwest::Error),
 
-    #[error("invalid package name, only alphanumeric characters, `-` and `@` are allowed")]
+    #[error("invalid package name, only alphanumeric characters, `-` and `@` are allowed. Length must be between 3 and 100 characters")]
     InvalidName,
 
     #[error("user cancelled operation")]

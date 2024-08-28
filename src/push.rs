@@ -44,13 +44,11 @@ pub async fn push_version(
         return Ok(());
     }
 
-    match push_to_repo(&zip_archive, dependency_name, dependency_version).await {
-        Ok(()) => {}
-        Err(error) => {
-            remove_file(zip_archive.to_str().unwrap()).unwrap();
-            return Err(error);
-        }
+    if let Err(error) = push_to_repo(&zip_archive, dependency_name, dependency_version).await {
+        remove_file(zip_archive.to_str().unwrap()).unwrap();
+        return Err(error);
     }
+
     // deleting zip archive
     let _ = remove_file(zip_archive);
 
@@ -58,8 +56,11 @@ pub async fn push_version(
 }
 
 pub fn validate_name(name: &str) -> Result<()> {
-    let regex = Regex::new(r"^[@|a-z0-9][a-z0-9-]*[a-z0-9]$").unwrap();
+    let regex = Regex::new(r"^[@|a-z0-9][a-z0-9-]*[a-z0-9]$").expect("regex should compile");
     if !regex.is_match(name) {
+        return Err(PublishError::InvalidName);
+    }
+    if !(3..=100).contains(&name.len()) {
         return Err(PublishError::InvalidName);
     }
     Ok(())
@@ -75,27 +76,25 @@ pub fn zip_file(
     let zip_file_path = root_directory_path.as_ref().join(file_name);
     let file = File::create(&zip_file_path).unwrap();
     let mut zip = ZipWriter::new(file);
-    let options = SimpleFileOptions::default().compression_method(CompressionMethod::DEFLATE);
+    let options = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
     if files_to_copy.is_empty() {
         return Err(PublishError::NoFiles);
     }
 
     for file_path in files_to_copy {
-        let f = File::open(file_path.clone())
-            .map_err(|e| PublishError::IOError { path: file_path.clone(), source: e })?;
-        let path = Path::new(&file_path);
-        let mut buffer = Vec::new();
-
-        // This is the relative path, we basically get the relative path to the target folder that
-        // we want to push and zip that as a name so we won't screw up the file/dir
-        // hierarchy in the zip file.
-        let relative_file_path = file_path.strip_prefix(root_directory_path.as_ref())?;
-
+        let path = file_path.as_path();
         // Write file or directory explicitly
         // Some unzip tools unzip files with directory paths correctly, some do not!
         if path.is_file() {
+            let mut f = File::open(file_path.clone())
+                .map_err(|e| PublishError::IOError { path: file_path.clone(), source: e })?;
+            let mut buffer = Vec::new();
+            // This is the relative path, we basically get the relative path to the target folder
+            // that we want to push and zip that as a name so we won't screw up the
+            // file/dir hierarchy in the zip file.
+            let relative_file_path = file_path.strip_prefix(root_directory_path.as_ref())?;
             zip.start_file(relative_file_path.to_string_lossy(), options)?;
-            io::copy(&mut f.take(u64::MAX), &mut buffer)
+            f.read_to_end(&mut buffer)
                 .map_err(|e| PublishError::IOError { path: file_path.clone(), source: e })?;
             zip.write_all(&buffer)
                 .map_err(|e| PublishError::IOError { path: zip_file_path.clone(), source: e })?;
@@ -103,7 +102,7 @@ pub fn zip_file(
             let _ = zip.add_directory(file_path.to_string_lossy(), options);
         }
     }
-    let _ = zip.finish();
+    zip.finish()?;
     Ok(zip_file_path)
 }
 
@@ -180,9 +179,7 @@ async fn push_to_repo(
         HeaderValue::from_str(&("multipart/form-data; boundary=".to_owned() + form.boundary()))
             .expect("Could not set content type"),
     );
-    let res = client.post(url).headers(headers.clone()).multipart(form).send();
-
-    let response = res.await.unwrap();
+    let response = client.post(url).headers(headers.clone()).multipart(form).send().await?;
     match response.status() {
         StatusCode::OK => {
             success("Pushed to repository!").ok();
@@ -211,6 +208,25 @@ pub fn prompt_user_for_confirmation() -> Result<bool> {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
+    #[test]
+    fn test_validate_name() {
+        assert!(validate_name("foo").is_ok());
+        assert!(validate_name("test").is_ok());
+        assert!(validate_name("test-123").is_ok());
+        assert!(validate_name("@test-123").is_ok());
+
+        assert!(validate_name("t").is_err());
+        assert!(validate_name("te").is_err());
+        assert!(validate_name("@t").is_err());
+        assert!(validate_name("test@123").is_err());
+        assert!(validate_name("test-123-").is_err());
+        assert!(validate_name("foo.bar").is_err());
+        assert!(validate_name("mypäckage").is_err());
+        assert!(validate_name(&"a".repeat(101)).is_err());
+    }
+
     /* #[test]
         #[serial]
         fn filter_only_files_success() {

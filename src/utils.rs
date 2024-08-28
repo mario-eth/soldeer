@@ -247,30 +247,23 @@ pub async fn remove_forge_lib(root: impl AsRef<Path>) -> Result<(), InstallError
 
 #[cfg(test)]
 mod tests {
-    use rand::{distributions::Alphanumeric, Rng as _};
-
     use super::*;
     use std::fs;
+    use testdir::testdir;
 
-    #[test]
-    fn filename_sanitization() {
-        let filenames = vec![
-            "valid|filename.txt",
-            "valid:filename.txt",
-            "valid\"filename.txt",
-            "valid\\filename.txt",
-            "valid<filename.txt",
-            "valid>filename.txt",
-            "valid*filename.txt",
-            "valid?filename.txt",
-            "valid/filename.txt",
-        ];
-
-        for filename in filenames {
-            assert_eq!(sanitize_filename(filename), "valid-filename.txt");
-        }
-        assert_eq!(sanitize_filename("valid~1.0.0"), "valid~1.0.0");
-        assert_eq!(sanitize_filename("valid~1*0.0"), "valid~1-0.0");
+    fn create_test_folder(name: Option<&str>) -> PathBuf {
+        let dir = testdir!();
+        let named_dir = match name {
+            None => dir,
+            Some(name) => {
+                let d = dir.join(name);
+                fs::create_dir(&d).unwrap();
+                d
+            }
+        };
+        fs::write(named_dir.join("a.txt"), "this is a test file").unwrap();
+        fs::write(named_dir.join("b.txt"), "this is a second test file").unwrap();
+        named_dir
     }
 
     #[test]
@@ -294,33 +287,36 @@ mod tests {
 
     #[test]
     fn test_hash_file() {
-        let file = create_random_file("test", "txt");
-        let hash = hash_file(&file).unwrap();
-        fs::remove_file(&file).unwrap();
+        let path = testdir!().join("test.txt");
+        fs::write(&path, "this is a test file").unwrap();
+        let hash = hash_file(&path).unwrap();
         assert_eq!(hash, "5881707e54b0112f901bc83a1ffbacac8fab74ea46a6f706a3efc5f7d4c1c625".into());
     }
 
     #[test]
-    fn test_hash_folder() {
-        let folder = create_test_folder("test", "test_hash_folder");
-        let hash = hash_folder(&folder);
-        fs::remove_dir_all(&folder).unwrap();
-        assert_eq!(hash, "b0bbe5dbf490a7120cce269564ed7a1f1f016ff50ccbb38eb288849f0ce7ab49".into());
-    }
-
-    #[test]
     fn test_hash_folder_path_sensitive() {
-        let folder1 = create_test_folder("test", "test_hash_folder_path_sensitive");
-        let folder2 = create_test_folder("test", "test_hash_folder_path_sensitive2");
+        let folder1 = create_test_folder(Some("dir1"));
+        let folder2 = create_test_folder(Some("dir2"));
         let hash1 = hash_folder(&folder1);
         let hash2 = hash_folder(&folder2);
-        fs::remove_dir_all(&folder1).unwrap();
-        fs::remove_dir_all(&folder2).unwrap();
         assert_ne!(hash1, hash2);
     }
 
     #[test]
-    fn get_download_tunnel_http() {
+    fn test_hash_folder_content_sensitive() {
+        let folder = create_test_folder(Some("dir"));
+        let hash1 = hash_folder(&folder);
+        fs::create_dir(folder.join("test")).unwrap();
+        let hash2 = hash_folder(&folder);
+        assert_ne!(hash1, hash2);
+        fs::write(folder.join("test/c.txt"), "this is a third test file").unwrap();
+        let hash3 = hash_folder(&folder);
+        assert_ne!(hash2, hash3);
+        assert_ne!(hash1, hash3);
+    }
+
+    #[test]
+    fn test_url_type_http() {
         assert_eq!(
             get_url_type("https://github.com/foundry-rs/forge-std/archive/refs/tags/v1.9.1.zip")
                 .unwrap(),
@@ -329,33 +325,21 @@ mod tests {
     }
 
     #[test]
-    fn get_download_tunnel_git_giturl() {
+    fn test_get_url_git_ssh() {
         assert_eq!(get_url_type("git@github.com:foundry-rs/forge-std.git").unwrap(), UrlType::Git);
+        assert_eq!(get_url_type("git@gitlab.com:foo/bar.git").unwrap(), UrlType::Git);
     }
 
     #[test]
-    fn get_download_tunnel_git_githttp() {
+    fn test_get_url_git_https() {
         assert_eq!(
             get_url_type("https://github.com/foundry-rs/forge-std.git").unwrap(),
             UrlType::Git
         );
-    }
-
-    fn create_random_file(target_dir: impl AsRef<Path>, extension: &str) -> PathBuf {
-        let s: String =
-            rand::thread_rng().sample_iter(&Alphanumeric).take(7).map(char::from).collect();
-        let random_file = target_dir.as_ref().join(format!("random{}.{}", s, extension));
-        fs::write(&random_file, "this is a test file").expect("could not write to test file");
-        random_file
-    }
-
-    fn create_test_folder(target_dir: impl AsRef<Path>, dirname: &str) -> PathBuf {
-        let test_folder = target_dir.as_ref().join(dirname);
-        fs::create_dir(&test_folder).expect("could not create test folder");
-        fs::write(test_folder.join("a.txt"), "this is a test file")
-            .expect("could not write to test file a");
-        fs::write(test_folder.join("b.txt"), "this is a second test file")
-            .expect("could not write to test file b");
-        test_folder
+        assert_eq!(
+            get_url_type("https://user:pass@github.com/foundry-rs/forge-std.git").unwrap(),
+            UrlType::Git
+        );
+        assert_eq!(get_url_type("https://gitlab.com/foo/bar.git").unwrap(), UrlType::Git);
     }
 }

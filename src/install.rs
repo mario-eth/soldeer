@@ -314,7 +314,10 @@ async fn install_dependency_inner(
                 install_subdependencies(&path).await?;
             }
             progress.subdependencies.inc(1);
-            let integrity = hash_folder(&path);
+            let integrity = hash_folder(&path).map_err(|e| InstallError::IOError {
+                path: path.as_ref().to_path_buf(),
+                source: e,
+            })?;
             progress.integrity.inc(1);
             Ok(HttpLockEntry::builder()
                 .name(&dep.name)
@@ -385,7 +388,8 @@ async fn check_http_dependency(
         let path = path.clone();
         move || hash_folder(path)
     })
-    .await?;
+    .await?
+    .map_err(|e| InstallError::IOError { path, source: e })?;
     if current_hash.to_string() != lock.integrity {
         return Ok(DependencyStatus::FailedIntegrity);
     }
@@ -501,7 +505,7 @@ mod tests {
         assert!(res.is_ok(), "{res:?}");
         assert_eq!(res.unwrap(), DependencyStatus::Missing);
 
-        let hash = hash_folder(&path);
+        let hash = hash_folder(&path).unwrap();
         let lock = HttpLockEntry::builder()
             .name("lib1")
             .version("1.0.0")
@@ -601,7 +605,7 @@ mod tests {
             lock.checksum,
             "94a73dbe106f48179ea39b00d42e5d4dd96fdc6252caa3a89ce7efdaec0b9468"
         );
-        let hash = hash_folder(&dir);
+        let hash = hash_folder(&dir).unwrap();
         assert_eq!(lock.integrity, hash.to_string());
     }
 
@@ -713,7 +717,7 @@ mod tests {
             lock.checksum,
             "20fd008c7c69b6c737cc0284469d1c76497107bc3e004d8381f6d8781cb27980"
         );
-        let hash = hash_folder(lock.install_path(&dir));
+        let hash = hash_folder(lock.install_path(&dir)).unwrap();
         assert_eq!(lock.integrity, hash.to_string());
     }
 
@@ -734,7 +738,7 @@ mod tests {
         assert_eq!(lock.version(), "1.9.2");
         let lock = lock.as_http().unwrap();
         assert_eq!(&lock.url, "https://soldeer-revisions.s3.amazonaws.com/forge-std/1_9_2_06-08-2024_17:31:25_forge-std-1.9.2.zip");
-        let hash = hash_folder(lock.install_path(&dir));
+        let hash = hash_folder(lock.install_path(&dir)).unwrap();
         assert_eq!(lock.integrity, hash.to_string());
     }
 
@@ -754,7 +758,7 @@ mod tests {
             lock.checksum,
             "94a73dbe106f48179ea39b00d42e5d4dd96fdc6252caa3a89ce7efdaec0b9468"
         );
-        let hash = hash_folder(lock.install_path(&dir));
+        let hash = hash_folder(lock.install_path(&dir)).unwrap();
         assert_eq!(lock.integrity, hash.to_string());
     }
 

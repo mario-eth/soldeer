@@ -124,9 +124,10 @@ pub fn hash_content<R: Read>(content: &mut R) -> [u8; 32] {
 ///
 /// Since the folder contains the zip file still, we need to skip it. TODO: can we remove the zip
 /// file right after unzipping so this is not necessary?
-pub fn hash_folder(folder_path: impl AsRef<Path>) -> IntegrityChecksum {
+pub fn hash_folder(folder_path: impl AsRef<Path>) -> Result<IntegrityChecksum, std::io::Error> {
     // a list of hashes, one for each DirEntry
     let all_hashes = Arc::new(Mutex::new(Vec::with_capacity(100)));
+    let root_path = Arc::new(folder_path.as_ref().canonicalize()?);
     // we use a parallel walker to speed things up
     let walker = WalkBuilder::new(folder_path)
         .filter_entry(|entry| {
@@ -136,6 +137,7 @@ pub fn hash_folder(folder_path: impl AsRef<Path>) -> IntegrityChecksum {
         .build_parallel();
     walker.run(|| {
         let all_hashes = Arc::clone(&all_hashes);
+        let root_path = Arc::clone(&root_path);
         // function executed for each DirEntry
         Box::new(move |result| {
             let Ok(entry) = result else {
@@ -144,7 +146,12 @@ pub fn hash_folder(folder_path: impl AsRef<Path>) -> IntegrityChecksum {
             let path = entry.path();
             // first hash the filename/dirname to make sure it can't be renamed or removed
             let mut hasher = <Sha256 as Digest>::new();
-            hasher.update(path.to_string_lossy().as_bytes());
+            hasher.update(
+                path.strip_prefix(root_path.as_ref())
+                    .expect("path should be a child of root")
+                    .to_string_lossy()
+                    .as_bytes(),
+            );
             // for files, also hash the contents
             if let Some(true) = entry.file_type().map(|t| t.is_file()) {
                 if let Ok(file) = fs::File::open(path) {
@@ -170,7 +177,7 @@ pub fn hash_folder(folder_path: impl AsRef<Path>) -> IntegrityChecksum {
         hasher.update(hash);
     }
     let hash: [u8; 32] = hasher.finalize().into();
-    const_hex::encode(hash).into()
+    Ok(const_hex::encode(hash).into())
 }
 
 /// Compute the SHA256 hash of the contents of a file
@@ -294,23 +301,32 @@ mod tests {
     }
 
     #[test]
-    fn test_hash_folder_path_sensitive() {
+    fn test_hash_folder_abs_path_insensitive() {
         let folder1 = create_test_folder(Some("dir1"));
         let folder2 = create_test_folder(Some("dir2"));
-        let hash1 = hash_folder(&folder1);
-        let hash2 = hash_folder(&folder2);
+        let hash1 = hash_folder(&folder1).unwrap();
+        let hash2 = hash_folder(&folder2).unwrap();
+        assert_eq!(hash1, hash2);
+    }
+
+    #[test]
+    fn test_hash_folder_rel_path_sensitive() {
+        let folder = create_test_folder(Some("dir"));
+        let hash1 = hash_folder(&folder).unwrap();
+        fs::rename(folder.join("a.txt"), folder.join("c.txt")).unwrap();
+        let hash2 = hash_folder(&folder).unwrap();
         assert_ne!(hash1, hash2);
     }
 
     #[test]
     fn test_hash_folder_content_sensitive() {
         let folder = create_test_folder(Some("dir"));
-        let hash1 = hash_folder(&folder);
+        let hash1 = hash_folder(&folder).unwrap();
         fs::create_dir(folder.join("test")).unwrap();
-        let hash2 = hash_folder(&folder);
+        let hash2 = hash_folder(&folder).unwrap();
         assert_ne!(hash1, hash2);
         fs::write(folder.join("test/c.txt"), "this is a third test file").unwrap();
-        let hash3 = hash_folder(&folder);
+        let hash3 = hash_folder(&folder).unwrap();
         assert_ne!(hash2, hash3);
         assert_ne!(hash1, hash3);
     }

@@ -185,3 +185,112 @@ pub fn parse_version_req(version_req: &str) -> Option<VersionReq> {
     }
     Some(req)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use mockito::{Matcher, Server};
+    use temp_env::async_with_vars;
+
+    #[tokio::test]
+    async fn test_get_dependency_url() {
+        let mut server = Server::new_async().await;
+        let data = r#"{"data":[{"created_at":"2024-08-06T17:31:25.751079Z","deleted":false,"downloads":3391,"id":"660132e6-4902-4804-8c4b-7cae0a648054","internal_name":"forge-std/1_9_2_06-08-2024_17:31:25_forge-std-1.9.2.zip","project_id":"37adefe5-9bc6-4777-aaf2-e56277d1f30b","url":"https://soldeer-revisions.s3.amazonaws.com/forge-std/1_9_2_06-08-2024_17:31:25_forge-std-1.9.2.zip","version":"1.9.2"}],"status":"success"}"#;
+        server
+            .mock("GET", "/api/v1/revision-cli")
+            .match_query(Matcher::Any)
+            .with_header("content-type", "application/json")
+            .with_body(data)
+            .create_async()
+            .await;
+
+        let dependency =
+            HttpDependency::builder().name("forge-std").version_req("^1.9.0").build().into();
+        let res = async_with_vars(
+            [("SOLDEER_API_URL", Some(server.url()))],
+            get_dependency_url_remote(&dependency, "1.9.2"),
+        )
+        .await;
+        assert!(res.is_ok(), "{res:?}");
+        assert_eq!(res.unwrap(), "https://soldeer-revisions.s3.amazonaws.com/forge-std/1_9_2_06-08-2024_17:31:25_forge-std-1.9.2.zip");
+    }
+
+    #[tokio::test]
+    async fn test_get_dependency_url_nomatch() {
+        let mut server = Server::new_async().await;
+        let data = r#"{"data":[],"status":"success"}"#;
+        server
+            .mock("GET", "/api/v1/revision-cli")
+            .match_query(Matcher::Any)
+            .with_header("content-type", "application/json")
+            .with_body(data)
+            .create_async()
+            .await;
+
+        let dependency =
+            HttpDependency::builder().name("forge-std").version_req("^1.9.0").build().into();
+        let res = async_with_vars(
+            [("SOLDEER_API_URL", Some(server.url()))],
+            get_dependency_url_remote(&dependency, "1.9.2"),
+        )
+        .await;
+        assert!(matches!(res, Err(RegistryError::URLNotFound(_))));
+    }
+
+    #[tokio::test]
+    async fn test_get_project_id() {
+        let mut server = Server::new_async().await;
+        let data = r#"{"data":[{"created_at":"2024-02-27T19:19:23.938837Z","deleted":false,"description":"Forge Standard Library is a collection of helpful contracts and libraries for use with Forge and Foundry.","downloads":67634,"github_url":"https://github.com/foundry-rs/forge-std","id":"37adefe5-9bc6-4777-aaf2-e56277d1f30b","image":"https://soldeer-resources.s3.amazonaws.com/default_icon.png","long_description":"Forge Standard Library is a collection of helpful contracts and libraries for use with Forge and Foundry. It leverages Forge's cheatcodes to make writing tests easier and faster, while improving the UX of cheatcodes.","name":"forge-std","updated_at":"2024-02-27T19:19:23.938837Z","user_id":"96228bb5-f777-4c19-ba72-363d14b8beed"}],"status":"success"}"#;
+        server
+            .mock("GET", "/api/v1/project")
+            .match_query(Matcher::Any)
+            .with_header("content-type", "application/json")
+            .with_body(data)
+            .create_async()
+            .await;
+        let res =
+            async_with_vars([("SOLDEER_API_URL", Some(server.url()))], get_project_id("forge-std"))
+                .await;
+        assert!(res.is_ok(), "{res:?}");
+        assert_eq!(res.unwrap(), "37adefe5-9bc6-4777-aaf2-e56277d1f30b");
+    }
+
+    #[tokio::test]
+    async fn test_get_project_id_nomatch() {
+        let mut server = Server::new_async().await;
+        let data = r#"{"data":[],"status":"success"}"#;
+        server
+            .mock("GET", "/api/v1/project")
+            .match_query(Matcher::Any)
+            .with_header("content-type", "application/json")
+            .with_body(data)
+            .create_async()
+            .await;
+
+        let res =
+            async_with_vars([("SOLDEER_API_URL", Some(server.url()))], get_project_id("forge-std"))
+                .await;
+        assert!(matches!(res, Err(RegistryError::ProjectNotFound(_))));
+    }
+
+    #[tokio::test]
+    async fn test_get_latest_forge_std() {
+        let mut server = Server::new_async().await;
+        let data = r#"{"data":[{"created_at":"2024-08-06T17:31:25.751079Z","deleted":false,"downloads":3391,"id":"660132e6-4902-4804-8c4b-7cae0a648054","internal_name":"forge-std/1_9_2_06-08-2024_17:31:25_forge-std-1.9.2.zip","project_id":"37adefe5-9bc6-4777-aaf2-e56277d1f30b","url":"https://soldeer-revisions.s3.amazonaws.com/forge-std/1_9_2_06-08-2024_17:31:25_forge-std-1.9.2.zip","version":"1.9.2"}],"status":"success"}"#;
+        server
+            .mock("GET", "/api/v1/revision")
+            .match_query(Matcher::Any)
+            .with_header("content-type", "application/json")
+            .with_body(data)
+            .create_async()
+            .await;
+
+        let dependency =
+            HttpDependency::builder().name("forge-std").version_req("1.9.2").build().into();
+        let res =
+            async_with_vars([("SOLDEER_API_URL", Some(server.url()))], get_latest_forge_std())
+                .await;
+        assert!(res.is_ok(), "{res:?}");
+        assert_eq!(res.unwrap(), dependency);
+    }
+}

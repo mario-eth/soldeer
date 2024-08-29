@@ -270,7 +270,7 @@ mod tests {
         };
         fs::write(named_dir.join("a.txt"), "this is a test file").unwrap();
         fs::write(named_dir.join("b.txt"), "this is a second test file").unwrap();
-        named_dir
+        named_dir.canonicalize().unwrap()
     }
 
     #[test]

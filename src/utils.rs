@@ -187,8 +187,10 @@ pub fn hash_folder(
     // a list of hashes, one for each DirEntry
     let hashes = Arc::new(Mutex::new(Vec::with_capacity(100)));
     // we use a parallel walker to speed things up
-    let walker = WalkBuilder::new(folder_path).hidden(false).build_parallel();
+    let walker = WalkBuilder::new(&folder_path).hidden(false).build_parallel();
+    let root_path = Arc::new(folder_path.as_ref().canonicalize()?);
     walker.run(|| {
+        let root_path = Arc::clone(&root_path);
         let ignore_path = ignore_path.clone();
         let seen_ignore_path = Arc::clone(&seen_ignore_path);
         let hashes = Arc::clone(&hashes);
@@ -211,7 +213,14 @@ pub fn hash_folder(
             }
             // first hash the filename/dirname to make sure it can't be renamed or removed
             let mut hasher = <Sha256 as Digest>::new();
-            hasher.update(path.to_string_lossy().as_bytes());
+            hasher.update(
+                path.canonicalize()
+                    .expect("path should be canonicalizable")
+                    .strip_prefix(root_path.as_ref())
+                    .expect("path should be a child of root")
+                    .to_string_lossy()
+                    .as_bytes(),
+            );
             // for files, also hash the contents
             if let Some(true) = entry.file_type().map(|t| t.is_file()) {
                 if let Ok(file) = File::open(path) {
@@ -308,17 +317,27 @@ mod tests {
         let folder = create_test_folder("test", "test_hash_folder");
         let hash = hash_folder(&folder, None).unwrap();
         fs::remove_dir_all(&folder).unwrap();
-        assert_eq!(hash, "b0bbe5dbf490a7120cce269564ed7a1f1f016ff50ccbb38eb288849f0ce7ab49".into());
+        assert_eq!(hash, "4671014a36f223796de8760df8125ca6e5a749e162dd5690e815132621dd8bfb".into());
     }
 
     #[test]
-    fn test_hash_folder_path_sensitive() {
-        let folder1 = create_test_folder("test", "test_hash_folder_path_sensitive");
-        let folder2 = create_test_folder("test", "test_hash_folder_path_sensitive2");
+    fn test_hash_folder_abs_path_unsensitive() {
+        let folder1 = create_test_folder("test", "test_hash_folder1");
+        let folder2 = create_test_folder("test", "test_hash_folder2");
         let hash1 = hash_folder(&folder1, None).unwrap();
         let hash2 = hash_folder(&folder2, None).unwrap();
         fs::remove_dir_all(&folder1).unwrap();
         fs::remove_dir_all(&folder2).unwrap();
+        assert_eq!(hash1, hash2);
+    }
+
+    #[test]
+    fn test_hash_folder_rel_path_sensitive() {
+        let folder = create_test_folder("test", "test_hash_folder_rel_path_sensitive");
+        let hash1 = hash_folder(&folder, None).unwrap();
+        fs::rename(folder.join("a.txt"), folder.join("c.txt")).unwrap();
+        let hash2 = hash_folder(&folder, None).unwrap();
+        fs::remove_dir_all(&folder).unwrap();
         assert_ne!(hash1, hash2);
     }
 
@@ -340,7 +359,7 @@ mod tests {
     }
 
     fn create_test_folder(target_dir: impl AsRef<Path>, dirname: &str) -> PathBuf {
-        let test_folder = target_dir.as_ref().join(dirname);
+        let test_folder = target_dir.as_ref().canonicalize().unwrap().join(dirname);
         fs::create_dir(&test_folder).expect("could not create test folder");
         fs::write(test_folder.join("a.txt"), "this is a test file")
             .expect("could not write to test file a");

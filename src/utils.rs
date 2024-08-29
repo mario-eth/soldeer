@@ -214,9 +214,7 @@ pub fn hash_folder(
             // first hash the filename/dirname to make sure it can't be renamed or removed
             let mut hasher = <Sha256 as Digest>::new();
             hasher.update(
-                path.canonicalize()
-                    .expect("path should be canonicalizable")
-                    .strip_prefix(root_path.as_ref())
+                path.strip_prefix(root_path.as_ref())
                     .expect("path should be a child of root")
                     .to_string_lossy()
                     .as_bytes(),

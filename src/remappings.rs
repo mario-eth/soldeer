@@ -138,32 +138,38 @@ fn generate_remappings(
         match &action {
             RemappingsAction::Remove(remove_dep) => {
                 // only keep items not matching the dependency to remove
-                if let Ok(remove_orig) = get_install_dir_relative(remove_dep, paths) {
-                    for (remapped, orig) in existing_remappings {
-                        if orig != remove_orig {
-                            new_remappings.push(format!("{remapped}={orig}"));
+                if let Ok(remove_og) = get_install_dir_relative(remove_dep, paths) {
+                    for (existing_remapped, existing_og) in existing_remappings {
+                        if !existing_og
+                            .trim_end_matches('/')
+                            .starts_with(remove_og.trim_end_matches('/'))
+                        {
+                            new_remappings.push(format!("{existing_remapped}={existing_og}"));
                         }
                     }
                 } else {
-                    for (remapped, orig) in existing_remappings {
-                        new_remappings.push(format!("{remapped}={orig}"));
+                    for (remapped, og) in existing_remappings {
+                        new_remappings.push(format!("{remapped}={og}"));
                     }
                 }
             }
             RemappingsAction::Add(add_dep) => {
                 // we only add the remapping if it's not already existing, otherwise we keep the old
                 // remapping
-                let new_dep_remapped = format_remap_name(soldeer_config, add_dep);
-                let new_dep_path = get_install_dir_relative(add_dep, paths)?;
+                let add_dep_remapped = format_remap_name(soldeer_config, add_dep);
+                let add_dep_og = get_install_dir_relative(add_dep, paths)?;
                 let mut found = false; // whether a remapping existed for that dep already
-                for (remapped, orig) in existing_remappings {
-                    new_remappings.push(format!("{remapped}={orig}"));
-                    if remapped == new_dep_remapped {
+                for (existing_remapped, existing_og) in existing_remappings {
+                    new_remappings.push(format!("{existing_remapped}={existing_og}"));
+                    if existing_og
+                        .trim_end_matches('/')
+                        .starts_with(add_dep_og.trim_end_matches('/'))
+                    {
                         found = true;
                     }
                 }
                 if !found {
-                    new_remappings.push(format!("{new_dep_remapped}={new_dep_path}"));
+                    new_remappings.push(format!("{add_dep_remapped}={add_dep_og}"));
                 }
             }
             RemappingsAction::None => {
@@ -173,14 +179,18 @@ fn generate_remappings(
                 new_remappings = remappings_from_deps(paths, soldeer_config)?;
                 if !existing_remappings.is_empty() {
                     for item in &mut new_remappings {
-                        let (item_remapped, _) =
+                        let (_, item_og) =
                             item.split_once('=').expect("remappings should have two parts");
-                        // try to find an existing item with the same name
-                        if let Some((remapped, orig)) =
-                            existing_remappings.iter().find(|(r, _)| item_remapped == *r)
+                        // try to find an existing item with the same path
+                        if let Some((existing_remapped, existing_og)) =
+                            existing_remappings.iter().find(|(_, og)| {
+                                // if the existing remapping path starts with the dependency folder,
+                                // we found a match
+                                item_og.trim_end_matches('/').starts_with(og.trim_end_matches('/'))
+                            })
                         {
-                            // if found, we replace it (it was not a custom remapping)
-                            *item = format!("{remapped}={orig}");
+                            // if found, we restore it
+                            *item = format!("{existing_remapped}={existing_og}");
                         }
                     }
                 }

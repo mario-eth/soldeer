@@ -208,7 +208,7 @@ fn remappings_from_deps(paths: &Paths, soldeer_config: &SoldeerConfig) -> Result
 /// Find the install path (relative to project root) for a dependency that was already installed
 ///
 /// # Errors
-/// If the there is no folder in the dependencies folder with the name of the dependency
+/// If the there is no folder in the dependencies folder corresponding to the dependency
 fn get_install_dir_relative(dependency: &Dependency, paths: &Paths) -> Result<String> {
     let path = dependency
         .install_path_sync(&paths.dependencies)
@@ -256,6 +256,86 @@ mod tests {
         let dependency = HttpDependency::builder().name("dep3").version_req("3.0.0").build().into();
         let res = get_install_dir_relative(&dependency, &paths);
         assert!(res.is_err(), "{res:?}");
+    }
+
+    #[test]
+    fn test_format_remap_name() {
+        let dependency =
+            HttpDependency::builder().name("dep1").version_req("^1.0.0").build().into();
+        let res = format_remap_name(
+            &SoldeerConfig {
+                remappings_version: false,
+                remappings_prefix: String::new(),
+                ..Default::default()
+            },
+            &dependency,
+        );
+        assert_eq!(res, "dep1/");
+        let res = format_remap_name(
+            &SoldeerConfig {
+                remappings_version: true,
+                remappings_prefix: String::new(),
+                ..Default::default()
+            },
+            &dependency,
+        );
+        assert_eq!(res, "dep1-^1.0.0/");
+        let res = format_remap_name(
+            &SoldeerConfig {
+                remappings_version: false,
+                remappings_prefix: "@".to_string(),
+                ..Default::default()
+            },
+            &dependency,
+        );
+        assert_eq!(res, "@dep1/");
+        let res = format_remap_name(
+            &SoldeerConfig {
+                remappings_version: true,
+                remappings_prefix: "@".to_string(),
+                ..Default::default()
+            },
+            &dependency,
+        );
+        assert_eq!(res, "@dep1-^1.0.0/");
+
+        let dependency =
+            HttpDependency::builder().name("dep1").version_req("=1.0.0").build().into();
+        let res = format_remap_name(
+            &SoldeerConfig {
+                remappings_version: true,
+                remappings_prefix: String::new(),
+                ..Default::default()
+            },
+            &dependency,
+        );
+        assert_eq!(res, "dep1-1.0.0/");
+    }
+
+    #[test]
+    fn test_remappings_from_deps() {
+        let dir = testdir!();
+        let config = r#"[dependencies]
+dep1 = "^1.0.0"
+dep2 = "2.0.0"
+dep3 = { version = "foobar", git = "git@github.com:test/test.git", branch = "foobar" }
+"#;
+        fs::write(dir.join("soldeer.toml"), config).unwrap();
+        let dependencies_dir = dir.join("dependencies");
+        fs::create_dir_all(&dependencies_dir).unwrap();
+        let paths = Paths::from_root(&dir).unwrap();
+
+        fs::create_dir_all(dependencies_dir.join("dep1-1.1.1")).unwrap();
+        fs::create_dir_all(dependencies_dir.join("dep2-2.0.0")).unwrap();
+        fs::create_dir_all(dependencies_dir.join("dep3-foobar")).unwrap();
+
+        let res = remappings_from_deps(&paths, &SoldeerConfig::default());
+        assert!(res.is_ok(), "{res:?}");
+        let res = res.unwrap();
+        assert_eq!(res.len(), 3);
+        assert_eq!(res[0], "dep1-^1.0.0/=dependencies/dep1-1.1.1/");
+        assert_eq!(res[1], "dep2-2.0.0/=dependencies/dep2-2.0.0/");
+        assert_eq!(res[2], "dep3-foobar/=dependencies/dep3-foobar/");
     }
 
     /* use std::path::PathBuf;

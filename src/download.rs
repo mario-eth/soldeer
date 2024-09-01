@@ -1,9 +1,11 @@
 use crate::{
     config::{Dependency, GitIdentifier},
     errors::DownloadError,
+    registry::parse_version_req,
     utils::{run_git_command, sanitize_filename},
 };
 use reqwest::IntoUrl;
+use semver::Version;
 use std::{
     fmt, fs,
     io::Cursor,
@@ -108,16 +110,23 @@ pub fn find_install_path_sync(dependency: &Dependency, deps: impl AsRef<Path>) -
             continue;
         };
         let path = entry.path();
+        if install_path_matches(dependency, &path) {
+            return Some(path);
+        }
+    }
+    None
+}
+
+pub async fn find_install_path(dependency: &Dependency, deps: impl AsRef<Path>) -> Option<PathBuf> {
+    let Ok(mut read_dir) = tokio_fs::read_dir(deps.as_ref()).await else {
+        return None;
+    };
+    while let Ok(Some(entry)) = read_dir.next_entry().await {
+        let path = entry.path();
         if !path.is_dir() {
             continue;
         }
-        let Some(dir_name) = path.file_name() else {
-            continue;
-        };
-        if dir_name
-            .to_string_lossy()
-            .starts_with(&format!("{}-", sanitize_filename(dependency.name())))
-        {
+        if install_path_matches(dependency, &path) {
             return Some(path);
         }
     }
@@ -137,26 +146,33 @@ pub async fn delete_dependency_files(
     Ok(())
 }
 
-pub async fn find_install_path(dependency: &Dependency, deps: impl AsRef<Path>) -> Option<PathBuf> {
-    let Ok(mut read_dir) = tokio_fs::read_dir(deps.as_ref()).await else {
-        return None;
+fn install_path_matches(dependency: &Dependency, path: &Path) -> bool {
+    if !path.is_dir() {
+        return false;
+    }
+    let Some(dir_name) = path.file_name() else {
+        return false;
     };
-    while let Ok(Some(entry)) = read_dir.next_entry().await {
-        let path = entry.path();
-        if !path.is_dir() {
-            continue;
+    let dir_name = dir_name.to_string_lossy();
+    let dep_name = sanitize_filename(dependency.name());
+    if !dir_name.starts_with(&format!("{dep_name}-")) {
+        return false;
+    }
+    if let Some(version_req) = parse_version_req(dependency.version_req()) {
+        if let Ok(version) = Version::parse(
+            dir_name.strip_prefix(&format!("{dep_name}-")).expect("prefix should be present"),
+        ) {
+            if version_req.matches(&version) {
+                return true;
+            }
         }
-        let Some(dir_name) = path.file_name() else {
-            continue;
-        };
-        if dir_name
-            .to_string_lossy()
-            .starts_with(&format!("{}-", sanitize_filename(dependency.name())))
-        {
-            return Some(path);
+    } else {
+        // not semver compliant
+        if dir_name == format!("{dep_name}-{}", dependency.version_req()) {
+            return true;
         }
     }
-    None
+    false
 }
 
 #[cfg(test)]
@@ -245,11 +261,43 @@ mod tests {
     }
 
     #[test]
+    fn test_install_path_matches() {
+        let dependency: Dependency =
+            HttpDependency::builder().name("lib1").version_req("^1.0.0").build().into();
+        let dir = testdir!();
+        let path = dir.join("lib1-1.1.1");
+        fs::create_dir(&path).unwrap();
+        assert!(install_path_matches(&dependency, &path));
+
+        let path = dir.join("lib1-2.0.0");
+        fs::create_dir(&path).unwrap();
+        assert!(!install_path_matches(&dependency, &path));
+
+        let path = dir.join("lib2-1.0.0");
+        fs::create_dir(&path).unwrap();
+        assert!(!install_path_matches(&dependency, &path));
+    }
+
+    #[test]
+    fn test_install_path_matches_nosemver() {
+        let dependency: Dependency =
+            HttpDependency::builder().name("lib1").version_req("foobar").build().into();
+        let dir = testdir!();
+        let path = dir.join("lib1-foobar");
+        fs::create_dir(&path).unwrap();
+        assert!(install_path_matches(&dependency, &path));
+
+        let path = dir.join("lib1-somethingelse");
+        fs::create_dir(&path).unwrap();
+        assert!(!install_path_matches(&dependency, &path));
+    }
+
+    #[test]
     fn test_find_install_path_sync() {
         let dependency: Dependency =
-            HttpDependency::builder().name("lib1").version_req("1.0.0").build().into();
+            HttpDependency::builder().name("lib1").version_req("^1.0.0").build().into();
         let dir = testdir!();
-        let path = dir.join("lib1-1.0.0");
+        let path = dir.join("lib1-1.1.1");
         fs::create_dir(&path).unwrap();
         let res = find_install_path_sync(&dependency, &dir);
         assert!(res.is_some());
@@ -259,9 +307,9 @@ mod tests {
     #[tokio::test]
     async fn test_find_install_path() {
         let dependency: Dependency =
-            HttpDependency::builder().name("lib1").version_req("1.0.0").build().into();
+            HttpDependency::builder().name("lib1").version_req("^1.0.0").build().into();
         let dir = testdir!();
-        let path = dir.join("lib1-1.0.0");
+        let path = dir.join("lib1-1.2.5");
         fs::create_dir(&path).unwrap();
         let res = find_install_path(&dependency, &dir).await;
         assert!(res.is_some());

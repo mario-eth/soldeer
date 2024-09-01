@@ -30,7 +30,7 @@ pub enum RemappingsLocation {
 }
 
 pub fn remappings_txt(
-    dependency: &RemappingsAction,
+    action: &RemappingsAction,
     paths: &Paths,
     soldeer_config: &SoldeerConfig,
 ) -> Result<()> {
@@ -44,8 +44,7 @@ pub fn remappings_txt(
     };
     let existing_remappings = contents.lines().filter_map(|r| r.split_once('=')).collect();
 
-    let new_remappings =
-        generate_remappings(dependency, paths, soldeer_config, existing_remappings)?;
+    let new_remappings = generate_remappings(action, paths, soldeer_config, existing_remappings)?;
 
     let mut file = File::create(&paths.remappings)?;
     for remapping in new_remappings {
@@ -55,7 +54,7 @@ pub fn remappings_txt(
 }
 
 pub fn remappings_foundry(
-    dependency: &RemappingsAction,
+    action: &RemappingsAction,
     paths: &Paths,
     soldeer_config: &SoldeerConfig,
 ) -> Result<()> {
@@ -72,8 +71,7 @@ pub fn remappings_foundry(
         let Some(Some(remappings)) = profile.get_mut("remappings").map(|v| v.as_array_mut()) else {
             // except the default profile, where we always add the remappings
             if name == "default" {
-                let new_remappings =
-                    generate_remappings(dependency, paths, soldeer_config, vec![])?;
+                let new_remappings = generate_remappings(action, paths, soldeer_config, vec![])?;
                 let array = new_remappings.into_iter().collect::<Array>();
                 profile["remappings"] = value(array);
             }
@@ -85,7 +83,7 @@ pub fn remappings_foundry(
             .filter_map(|r| r.split_once('='))
             .collect();
         let new_remappings =
-            generate_remappings(dependency, paths, soldeer_config, existing_remappings)?;
+            generate_remappings(action, paths, soldeer_config, existing_remappings)?;
         remappings.clear();
         for remapping in new_remappings {
             remappings.push(remapping);
@@ -97,7 +95,7 @@ pub fn remappings_foundry(
 }
 
 pub fn edit_remappings(
-    dep: &RemappingsAction,
+    action: &RemappingsAction,
     config: &SoldeerConfig,
     paths: &Paths,
 ) -> Result<()> {
@@ -105,14 +103,14 @@ pub fn edit_remappings(
         if paths.config.to_string_lossy().contains("foundry.toml") {
             match config.remappings_location {
                 RemappingsLocation::Txt => {
-                    remappings_txt(dep, paths, config)?;
+                    remappings_txt(action, paths, config)?;
                 }
                 RemappingsLocation::Config => {
-                    remappings_foundry(dep, paths, config)?;
+                    remappings_foundry(action, paths, config)?;
                 }
             }
         } else {
-            remappings_txt(dep, paths, config)?;
+            remappings_txt(action, paths, config)?;
         }
     }
     Ok(())
@@ -128,7 +126,7 @@ pub fn format_remap_name(soldeer_config: &SoldeerConfig, dependency: &Dependency
 }
 
 fn generate_remappings(
-    dependency: &RemappingsAction,
+    action: &RemappingsAction,
     paths: &Paths,
     soldeer_config: &SoldeerConfig,
     existing_remappings: Vec<(&str, &str)>,
@@ -137,7 +135,7 @@ fn generate_remappings(
     if soldeer_config.remappings_regenerate {
         new_remappings = remappings_from_deps(paths, soldeer_config)?;
     } else {
-        match &dependency {
+        match &action {
             RemappingsAction::Remove(remove_dep) => {
                 // only keep items not matching the dependency to remove
                 if let Ok(remove_orig) = get_install_dir_relative(remove_dep, paths) {
@@ -207,6 +205,10 @@ fn remappings_from_deps(paths: &Paths, soldeer_config: &SoldeerConfig) -> Result
         .collect::<Result<Vec<_>>>()
 }
 
+/// Find the install path (relative to project root) for a dependency that was already installed
+///
+/// # Errors
+/// If the there is no folder in the dependencies folder with the name of the dependency
 fn get_install_dir_relative(dependency: &Dependency, paths: &Paths) -> Result<String> {
     let path = dependency
         .install_path_sync(&paths.dependencies)
@@ -221,6 +223,37 @@ fn get_install_dir_relative(dependency: &Dependency, paths: &Paths) -> Result<St
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use crate::config::{GitDependency, HttpDependency};
+    use testdir::testdir;
+
+    #[test]
+    fn test_get_install_dir_relative() {
+        let dir = testdir!();
+        fs::write(dir.join("soldeer.toml"), "[dependencies]\n").unwrap();
+        let dependencies_dir = dir.join("dependencies");
+        fs::create_dir_all(&dependencies_dir).unwrap();
+        let paths = Paths::from_root(&dir).unwrap();
+
+        fs::create_dir_all(dependencies_dir.join("dep1-1.1.1")).unwrap();
+        let dependency =
+            HttpDependency::builder().name("dep1").version_req("^1.0.0").build().into();
+        let res = get_install_dir_relative(&dependency, &paths);
+        assert!(res.is_ok(), "{res:?}");
+        assert_eq!(res.unwrap(), "dependencies/dep1-1.1.1");
+
+        fs::create_dir_all(dependencies_dir.join("dep2-2.0.0")).unwrap();
+        let dependency = GitDependency::builder()
+            .name("dep2")
+            .version_req("2.0.0")
+            .git("git@github.com:test/test.git")
+            .build()
+            .into();
+        let res = get_install_dir_relative(&dependency, &paths);
+        assert!(res.is_ok(), "{res:?}");
+        assert_eq!(res.unwrap(), "dependencies/dep2-2.0.0");
+    }
+
     /* use std::path::PathBuf;
 
         use fs::remove_file;

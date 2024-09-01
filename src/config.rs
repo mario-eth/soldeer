@@ -30,7 +30,7 @@ impl Paths {
     /// The root path defaults to the current directory but can be overridden with the
     /// `SOLDEER_PROJECT_ROOT` environment variable.
     pub fn new() -> Result<Self> {
-        let root = Self::get_root_path();
+        let root = Self::get_root_path().canonicalize()?;
         let config = Self::get_config_path(&root)?;
         let dependencies = root.join("dependencies");
         let lock = root.join("soldeer.lock");
@@ -44,7 +44,7 @@ impl Paths {
     /// The `SOLDEER_PROJECT_ROOT` environment variable is ignored.
     #[allow(unused)]
     pub fn from_root(root: impl AsRef<Path>) -> Result<Self> {
-        let root = root.as_ref().to_path_buf();
+        let root = root.as_ref().canonicalize()?;
         let config = Self::get_config_path(&root)?;
         let dependencies = root.join("dependencies");
         let lock = root.join("soldeer.lock");

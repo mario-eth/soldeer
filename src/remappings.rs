@@ -215,7 +215,7 @@ fn get_install_dir_relative(dependency: &Dependency, paths: &Paths) -> Result<St
         .ok_or(RemappingsError::DependencyNotFound(dependency.to_string()))?
         .canonicalize()?;
     Ok(path
-        .strip_prefix(&paths.root.canonicalize()?)
+        .strip_prefix(&paths.root)
         .map_err(|_| RemappingsError::DependencyNotFound(dependency.to_string()))?
         .to_string_lossy()
         .to_string())

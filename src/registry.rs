@@ -1,11 +1,12 @@
 use crate::{
     config::{Dependency, HttpDependency},
     errors::RegistryError,
-    utils::api_url,
 };
 use chrono::{DateTime, Utc};
+use reqwest::Url;
 use semver::{Version, VersionReq};
 use serde::Deserialize;
+use std::env;
 
 pub type Result<T> = std::result::Result<T, RegistryError>;
 
@@ -46,6 +47,17 @@ pub struct RevisionResponse {
 pub struct ProjectResponse {
     data: Vec<Project>,
     status: String,
+}
+
+pub fn api_url(path: &str, params: &[(&str, &str)]) -> Url {
+    let url = env::var("SOLDEER_API_URL").unwrap_or("https://api.soldeer.xyz".to_string());
+    let mut url = Url::parse(&url).expect("SOLDEER_API_URL is invalid");
+    url.set_path(&format!("api/v1/{path}"));
+    if params.is_empty() {
+        return url;
+    }
+    url.query_pairs_mut().extend_pairs(params.iter());
+    url
 }
 
 pub async fn get_dependency_url_remote(dependency: &Dependency, version: &str) -> Result<String> {

@@ -1,8 +1,8 @@
 use crate::{
     auth::get_token,
     errors::{AuthError, PublishError},
-    registry::get_project_id,
-    utils::{api_url, read_file},
+    registry::{api_url, get_project_id},
+    utils::read_file,
 };
 use cliclack::log::{info, remark, success};
 use ignore::{WalkBuilder, WalkState};

@@ -1,7 +1,4 @@
-use crate::{
-    errors::AuthError,
-    utils::{api_url, login_file_path},
-};
+use crate::{errors::AuthError, registry::api_url, utils::login_file_path};
 use cliclack::log::{info, remark, success};
 use email_address_parser::{EmailAddress, ParsingOptions};
 use reqwest::{Client, StatusCode};

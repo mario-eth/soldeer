@@ -4,7 +4,6 @@ use crate::{
 };
 use ignore::{WalkBuilder, WalkState};
 use regex::Regex;
-use reqwest::Url;
 use sha2::{Digest, Sha256};
 use std::{
     env,
@@ -61,17 +60,6 @@ pub fn login_file_path() -> Result<PathBuf, std::io::Error> {
     }
     let security_file = security_directory.join(".soldeer_login");
     Ok(security_file)
-}
-
-pub fn api_url(path: &str, params: &[(&str, &str)]) -> Url {
-    let url = env::var("SOLDEER_API_URL").unwrap_or("https://api.soldeer.xyz".to_string());
-    let mut url = Url::parse(&url).expect("SOLDEER_API_URL is invalid");
-    url.set_path(&format!("api/v1/{path}"));
-    if params.is_empty() {
-        return url;
-    }
-    url.query_pairs_mut().extend_pairs(params.iter());
-    url
 }
 
 /// Check if any file starts with a period

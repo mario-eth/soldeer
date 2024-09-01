@@ -16,6 +16,8 @@ pub type Result<T> = std::result::Result<T, ConfigError>;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, Deserialize))]
+// make sure the struct is not constructible from the outside without using the new/from methods
+#[non_exhaustive]
 pub struct Paths {
     pub root: PathBuf,
     pub config: PathBuf,
@@ -29,6 +31,8 @@ impl Paths {
     ///
     /// The root path defaults to the current directory but can be overridden with the
     /// `SOLDEER_PROJECT_ROOT` environment variable.
+    ///
+    /// The paths are canonicalized.
     pub fn new() -> Result<Self> {
         let root = Self::get_root_path().canonicalize()?;
         let config = Self::get_config_path(&root)?;
@@ -42,6 +46,8 @@ impl Paths {
     /// Generate the paths object from a known root directory
     ///
     /// The `SOLDEER_PROJECT_ROOT` environment variable is ignored.
+    ///
+    /// The paths are canonicalized.
     #[allow(unused)]
     pub fn from_root(root: impl AsRef<Path>) -> Result<Self> {
         let root = root.as_ref().canonicalize()?;

@@ -664,7 +664,7 @@ fn create_example_config(
             let contents = r#"[profile.default]
 src = "src"
 out = "out"
-libs = ["lib"]
+libs = ["dependencies"]
 
 [dependencies]
 

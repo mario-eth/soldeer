@@ -186,7 +186,7 @@ fn generate_remappings(
                             existing_remappings.iter().find(|(_, og)| {
                                 // if the existing remapping path starts with the dependency folder,
                                 // we found a match
-                                item_og.trim_end_matches('/').starts_with(og.trim_end_matches('/'))
+                                og.trim_end_matches('/').starts_with(item_og.trim_end_matches('/'))
                             })
                         {
                             // if found, we restore it

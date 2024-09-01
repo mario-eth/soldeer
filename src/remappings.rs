@@ -181,7 +181,12 @@ fn generate_remappings(
                     for item in &mut new_remappings {
                         let (_, item_og) =
                             item.split_once('=').expect("remappings should have two parts");
-                        // try to find an existing item with the same path
+                        // Try to find an existing item with the same path.
+                        // TODO: make the detection smarter, and match on any path where the version
+                        // is semver-compatible too.
+                        // If found, then we do a search and replace in
+                        // the right-side (og) part to update the path to point
+                        // to the new version folder.
                         if let Some((existing_remapped, existing_og)) =
                             existing_remappings.iter().find(|(_, og)| {
                                 // if the existing remapping path starts with the dependency folder,

@@ -16,7 +16,7 @@ pub type Result<T> = std::result::Result<T, RemappingsError>;
 pub enum RemappingsAction {
     Add(Dependency),
     Remove(Dependency),
-    None,
+    Update,
 }
 
 /// Location where to store the remappings, either in `remappings.txt` or the config file
@@ -42,9 +42,9 @@ pub fn remappings_txt(
     } else {
         String::new()
     };
-    let existing_remappings = contents.lines().filter_map(|r| r.split_once('=')).collect();
+    let existing_remappings: Vec<_> = contents.lines().filter_map(|r| r.split_once('=')).collect();
 
-    let new_remappings = generate_remappings(action, paths, soldeer_config, existing_remappings)?;
+    let new_remappings = generate_remappings(action, paths, soldeer_config, &existing_remappings)?;
 
     let mut file = File::create(&paths.remappings)?;
     for remapping in new_remappings {
@@ -71,7 +71,7 @@ pub fn remappings_foundry(
         let Some(Some(remappings)) = profile.get_mut("remappings").map(|v| v.as_array_mut()) else {
             // except the default profile, where we always add the remappings
             if name == "default" {
-                let new_remappings = generate_remappings(action, paths, soldeer_config, vec![])?;
+                let new_remappings = generate_remappings(action, paths, soldeer_config, &[])?;
                 let array = new_remappings.into_iter().collect::<Array>();
                 profile["remappings"] = value(array);
             }
@@ -83,7 +83,7 @@ pub fn remappings_foundry(
             .filter_map(|r| r.split_once('='))
             .collect();
         let new_remappings =
-            generate_remappings(action, paths, soldeer_config, existing_remappings)?;
+            generate_remappings(action, paths, soldeer_config, &existing_remappings)?;
         remappings.clear();
         for remapping in new_remappings {
             remappings.push(remapping);
@@ -129,7 +129,7 @@ fn generate_remappings(
     action: &RemappingsAction,
     paths: &Paths,
     soldeer_config: &SoldeerConfig,
-    existing_remappings: Vec<(&str, &str)>,
+    existing_remappings: &[(&str, &str)],
 ) -> Result<Vec<String>> {
     let mut new_remappings = Vec::new();
     if soldeer_config.remappings_regenerate {
@@ -140,6 +140,8 @@ fn generate_remappings(
                 // only keep items not matching the dependency to remove
                 if let Ok(remove_og) = get_install_dir_relative(remove_dep, paths) {
                     for (existing_remapped, existing_og) in existing_remappings {
+                        // TODO: make the detection smarter, and match on any path where the version
+                        // is semver-compatible too.
                         if !existing_og.trim_end_matches('/').starts_with(&remove_og) {
                             new_remappings.push(format!("{existing_remapped}={existing_og}"));
                         }
@@ -166,7 +168,7 @@ fn generate_remappings(
                     new_remappings.push(format!("{add_dep_remapped}={add_dep_og}/"));
                 }
             }
-            RemappingsAction::None => {
+            RemappingsAction::Update => {
                 // This is where we end up in the `update` command if we don't want to re-generate
                 // all remappings. We need to merge existing remappings with the full list of deps.
                 // We generate all remappings from the dependencies, then replace existing items.
@@ -361,7 +363,7 @@ dep3 = { version = "foobar", git = "git@github.com:test/test.git", branch = "foo
         // empty existing remappings
         let existing_deps = vec![];
         let dep = HttpDependency::builder().name("lib1").version_req("1.0.0").build().into();
-        let res = generate_remappings(&RemappingsAction::Add(dep), &paths, &config, existing_deps);
+        let res = generate_remappings(&RemappingsAction::Add(dep), &paths, &config, &existing_deps);
         assert!(res.is_ok(), "{res:?}");
         assert_eq!(res.unwrap(), vec!["lib1-1.0.0/=dependencies/lib1-1.0.0/"]);
 
@@ -369,7 +371,7 @@ dep3 = { version = "foobar", git = "git@github.com:test/test.git", branch = "foo
         let existing_deps = vec![("lib1-1.0.0/", "dependencies/lib1-1.0.0/")];
         fs::create_dir_all(paths.dependencies.join("lib2-1.1.1")).unwrap();
         let dep = HttpDependency::builder().name("lib2").version_req("^1.0.0").build().into();
-        let res = generate_remappings(&RemappingsAction::Add(dep), &paths, &config, existing_deps);
+        let res = generate_remappings(&RemappingsAction::Add(dep), &paths, &config, &existing_deps);
         assert!(res.is_ok(), "{res:?}");
         assert_eq!(
             res.unwrap(),
@@ -379,411 +381,83 @@ dep3 = { version = "foobar", git = "git@github.com:test/test.git", branch = "foo
         // existing remappings matching the new one
         let existing_deps = vec![("@lib1-1.0.0/foo", "dependencies/lib1-1.0.0/src")];
         let dep = HttpDependency::builder().name("lib1").version_req("1.0.0").build().into();
-        let res = generate_remappings(&RemappingsAction::Add(dep), &paths, &config, existing_deps);
+        let res = generate_remappings(&RemappingsAction::Add(dep), &paths, &config, &existing_deps);
         assert!(res.is_ok(), "{res:?}");
         assert_eq!(res.unwrap(), vec!["@lib1-1.0.0/foo=dependencies/lib1-1.0.0/src"]);
     }
 
-    /* use std::path::PathBuf;
+    #[test]
+    fn test_generate_remappings_remove() {
+        let dir = testdir!();
+        fs::write(dir.join("soldeer.toml"), "[dependencies]\n").unwrap();
+        let paths = Paths::from_root(&dir).unwrap();
+        fs::create_dir_all(paths.dependencies.join("lib1-1.0.0")).unwrap();
+        fs::create_dir_all(paths.dependencies.join("lib2-2.0.0")).unwrap();
+        let config = SoldeerConfig::default();
+        let existing_deps = vec![
+            ("lib1-1.0.0/", "dependencies/lib1-1.0.0/"),
+            ("lib2-2.0.0/", "dependencies/lib2-2.0.0/"),
+        ];
+        let dep = HttpDependency::builder().name("lib1").version_req("1.0.0").build().into();
+        let res =
+            generate_remappings(&RemappingsAction::Remove(dep), &paths, &config, &existing_deps);
+        assert!(res.is_ok(), "{res:?}");
+        assert_eq!(res.unwrap(), vec!["lib2-2.0.0/=dependencies/lib2-2.0.0/"]);
 
-        use fs::remove_file;
-        use rand::{distributions::Alphanumeric, Rng as _};
-        use serial_test::serial;
+        // dep does not exist, no error
+        let dep = HttpDependency::builder().name("lib3").version_req("1.0.0").build().into();
+        let res =
+            generate_remappings(&RemappingsAction::Remove(dep), &paths, &config, &existing_deps);
+        assert!(res.is_ok(), "{res:?}");
+        assert_eq!(
+            res.unwrap(),
+            vec!["lib1-1.0.0/=dependencies/lib1-1.0.0/", "lib2-2.0.0/=dependencies/lib2-2.0.0/"]
+        );
+    }
 
-        use crate::config::{read_soldeer_config, HttpDependency};
+    #[test]
+    fn test_generate_remappings_update() {
+        let dir = testdir!();
+        let config = r#"[dependencies]
+lib1 = "1.0.0"
+lib2 = "2.0.0""#;
+        fs::write(dir.join("soldeer.toml"), config).unwrap();
+        let paths = Paths::from_root(&dir).unwrap();
+        fs::create_dir_all(paths.dependencies.join("lib1-1.0.0")).unwrap();
+        fs::create_dir_all(paths.dependencies.join("lib2-2.0.0")).unwrap();
+        let config = SoldeerConfig::default();
+        // all entries are customized
+        let existing_deps = vec![
+            ("lib1-1.0.0/", "dependencies/lib1-1.0.0/src/"),
+            ("lib2/", "dependencies/lib2-2.0.0/"),
+        ];
+        let res = generate_remappings(&RemappingsAction::Update, &paths, &config, &existing_deps);
+        assert!(res.is_ok(), "{res:?}");
+        assert_eq!(
+            res.unwrap(),
+            vec!["lib1-1.0.0/=dependencies/lib1-1.0.0/src/", "lib2/=dependencies/lib2-2.0.0/"]
+        );
 
-        use super::*;
+        // one entry is missing
+        let existing_deps = vec![("lib1-1.0.0/", "dependencies/lib1-1.0.0/")];
+        let res = generate_remappings(&RemappingsAction::Update, &paths, &config, &existing_deps);
+        assert!(res.is_ok(), "{res:?}");
+        assert_eq!(
+            res.unwrap(),
+            vec!["lib1-1.0.0/=dependencies/lib1-1.0.0/", "lib2-2.0.0/=dependencies/lib2-2.0.0/"]
+        );
 
-        #[tokio::test]
-        async fn generate_remappings_with_prefix_and_version_in_config() -> Result<()> {
-            let mut content = r#"
-    [profile.default]
-    solc = "0.8.26"
-    libs = ["dependencies"]
-    [dependencies]
-    [soldeer]
-    remappings_prefix = "@"
-    remappings_version = true
-    remappings_location = "config"
-    "#;
-
-            let target_config = define_config(true);
-
-            write_to_config(&target_config, content);
-            let dependency = Dependency::Http(HttpDependency {
-                name: "dep1".to_string(),
-                version_req: "1.0.0".to_string(),
-                url: None,
-            });
-            let soldeer_config = read_soldeer_config(Some(target_config.clone())).unwrap();
-            let _ =
-                remappings_foundry(&RemappingsAction::Add(dependency), &target_config, &soldeer_config);
-
-            content = r#"
-    [profile.default]
-    solc = "0.8.26"
-    libs = ["dependencies"]
-    remappings = ["@dep1-1.0.0/=dependencies/dep1-1.0.0/"]
-    [dependencies]
-    [soldeer]
-    remappings_prefix = "@"
-    remappings_version = true
-    remappings_location = "config"
-    "#;
-
-            assert_eq!(fs::read_to_string(&target_config).unwrap(), content);
-
-            let _ = remove_file(target_config);
-            Ok(())
-        }
-
-        #[tokio::test]
-        async fn generate_remappings_no_prefix_and_no_version_in_config() -> Result<()> {
-            let mut content = r#"
-    [profile.default]
-    solc = "0.8.26"
-    libs = ["dependencies"]
-    [dependencies]
-    [soldeer]
-    remappings_generate = true
-    remappings_version = false
-    "#;
-
-            let target_config = define_config(true);
-
-            write_to_config(&target_config, content);
-            let dependency = Dependency::Http(HttpDependency {
-                name: "dep1".to_string(),
-                version_req: "1.0.0".to_string(),
-                url: None,
-            });
-            let soldeer_config = read_soldeer_config(Some(target_config.clone())).unwrap();
-            let _ = remappings_foundry(
-                &RemappingsAction::Add(dependency),
-                target_config.to_str().unwrap(),
-                &soldeer_config,
-            );
-
-            content = r#"
-    [profile.default]
-    solc = "0.8.26"
-    libs = ["dependencies"]
-    remappings = ["dep1/=dependencies/dep1-1.0.0/"]
-    [dependencies]
-    [soldeer]
-    remappings_generate = true
-    remappings_version = false
-    "#;
-
-            assert_eq!(fs::read_to_string(&target_config).unwrap(), content);
-
-            let _ = remove_file(target_config);
-            Ok(())
-        }
-
-        #[tokio::test]
-        #[serial]
-        async fn generate_remappings_prefix_and_version_in_txt() -> Result<()> {
-            let mut content = r#"
-    [profile.default]
-    solc = "0.8.26"
-    libs = ["dependencies"]
-    [dependencies]
-    [soldeer]
-    remappings_generate = true
-    remappings_prefix = "@"
-    remappings_version = true
-    "#;
-
-            let target_config = define_config(true);
-            let txt = REMAPPINGS_FILE.to_path_buf();
-            let _ = remove_file(&txt);
-
-            write_to_config(&target_config, content);
-            let dependency = Dependency::Http(HttpDependency {
-                name: "dep1".to_string(),
-                version_req: "1.0.0".to_string(),
-                url: None,
-            });
-            let soldeer_config = read_soldeer_config(Some(target_config.clone())).unwrap();
-            let _ = remappings_txt(&RemappingsAction::Add(dependency), &target_config, &soldeer_config);
-
-            content = "@dep1-1.0.0/=dependencies/dep1-1.0.0/\n";
-
-            assert_eq!(fs::read_to_string(&txt).unwrap(), content);
-
-            let _ = remove_file(target_config);
-            Ok(())
-        }
-
-        #[tokio::test]
-        #[serial]
-        async fn generate_remappings_no_prefix_and_no_version_in_txt() -> Result<()> {
-            let mut content = r#"
-    [profile.default]
-    solc = "0.8.26"
-    libs = ["dependencies"]
-    [dependencies]
-    [soldeer]
-    remappings_generate = true
-    remappings_version = false
-    "#;
-
-            let target_config = define_config(true);
-            let txt = REMAPPINGS_FILE.to_path_buf();
-            let _ = remove_file(&txt);
-
-            write_to_config(&target_config, content);
-            let dependency = Dependency::Http(HttpDependency {
-                name: "dep1".to_string(),
-                version_req: "1.0.0".to_string(),
-                url: None,
-            });
-            let soldeer_config = read_soldeer_config(Some(target_config.clone())).unwrap();
-            let _ = remappings_txt(&RemappingsAction::Add(dependency), &target_config, &soldeer_config);
-
-            content = "dep1/=dependencies/dep1-1.0.0/\n";
-
-            assert_eq!(fs::read_to_string(&txt).unwrap(), content);
-
-            let _ = remove_file(target_config);
-            Ok(())
-        }
-
-        #[tokio::test]
-        async fn generate_remappings_in_config_only_default_profile() -> Result<()> {
-            let mut content = r#"
-    [profile.default]
-    solc = "0.8.26"
-    libs = ["dependencies"]
-    [profile.local.testing]
-    ffi = true
-    [dependencies]
-    [soldeer]
-    remappings_generate = true
-    "#;
-
-            let target_config = define_config(true);
-
-            write_to_config(&target_config, content);
-            let dependency = Dependency::Http(HttpDependency {
-                name: "dep1".to_string(),
-                version_req: "1.0.0".to_string(),
-                url: None,
-            });
-            let soldeer_config = read_soldeer_config(Some(target_config.clone())).unwrap();
-            let _ = remappings_foundry(
-                &RemappingsAction::Add(dependency),
-                target_config.to_str().unwrap(),
-                &soldeer_config,
-            );
-
-            content = r#"
-    [profile.default]
-    solc = "0.8.26"
-    libs = ["dependencies"]
-    remappings = ["dep1-1.0.0/=dependencies/dep1-1.0.0/"]
-    [profile.local.testing]
-    ffi = true
-    [dependencies]
-    [soldeer]
-    remappings_generate = true
-    "#;
-
-            assert_eq!(fs::read_to_string(&target_config).unwrap(), content);
-
-            let _ = remove_file(target_config);
-            Ok(())
-        }
-
-        #[tokio::test]
-        async fn generate_remappings_in_config_all_profiles() -> Result<()> {
-            let mut content = r#"
-    [profile.default]
-    solc = "0.8.26"
-    libs = ["dependencies"]
-    [profile.local]
-    remappings = []
-    [profile.local.testing]
-    ffi = true
-    [dependencies]
-    [soldeer]
-    remappings_generate = true
-    "#;
-
-            let target_config = define_config(true);
-
-            write_to_config(&target_config, content);
-            let dependency = Dependency::Http(HttpDependency {
-                name: "dep1".to_string(),
-                version_req: "1.0.0".to_string(),
-                url: None,
-            });
-            let soldeer_config = read_soldeer_config(Some(target_config.clone())).unwrap();
-            let _ = remappings_foundry(
-                &RemappingsAction::Add(dependency),
-                target_config.to_str().unwrap(),
-                &soldeer_config,
-            );
-
-            content = r#"
-    [profile.default]
-    solc = "0.8.26"
-    libs = ["dependencies"]
-    remappings = ["dep1-1.0.0/=dependencies/dep1-1.0.0/"]
-    [profile.local]
-    remappings = ["dep1-1.0.0/=dependencies/dep1-1.0.0/"]
-    [profile.local.testing]
-    ffi = true
-    [dependencies]
-    [soldeer]
-    remappings_generate = true
-    "#;
-
-            assert_eq!(fs::read_to_string(&target_config).unwrap(), content);
-
-            let _ = remove_file(target_config);
-            Ok(())
-        }
-
-        #[tokio::test]
-        async fn generate_remappings_in_config_existing() -> Result<()> {
-            let mut content = r#"
-    [profile.default]
-    solc = "0.8.26"
-    libs = ["dependencies"]
-    remappings = ["dep2-1.0.0/=dependencies/dep2-1.0.0/"]
-    [dependencies]
-    [soldeer]
-    remappings_generate = true
-    "#;
-
-            let target_config = define_config(true);
-
-            write_to_config(&target_config, content);
-            let dependency = Dependency::Http(HttpDependency {
-                name: "dep1".to_string(),
-                version_req: "1.0.0".to_string(),
-                url: None,
-            });
-            let soldeer_config = read_soldeer_config(Some(target_config.clone())).unwrap();
-            let _ = remappings_foundry(
-                &RemappingsAction::Add(dependency),
-                target_config.to_str().unwrap(),
-                &soldeer_config,
-            );
-
-            content = r#"
-    [profile.default]
-    solc = "0.8.26"
-    libs = ["dependencies"]
-    remappings = ["dep1-1.0.0/=dependencies/dep1-1.0.0/", "dep2-1.0.0/=dependencies/dep2-1.0.0/"]
-    [dependencies]
-    [soldeer]
-    remappings_generate = true
-    "#;
-
-            assert_eq!(fs::read_to_string(&target_config).unwrap(), content);
-
-            let _ = remove_file(target_config);
-            Ok(())
-        }
-
-        #[tokio::test]
-        #[serial]
-        async fn generate_remappings_regenerate() -> Result<()> {
-            let mut content = r#"
-    [profile.default]
-    solc = "0.8.26"
-    libs = ["dependencies"]
-    remappings = ["@dep2-custom/=dependencies/dep2-1.0.0/"]
-    [dependencies]
-    dep2 = "1.0.0"
-    [soldeer]
-    remappings_generate = true
-    remappings_regenerate = true
-    "#;
-
-            let target_config = define_config(true);
-
-            write_to_config(&target_config, content);
-
-            let soldeer_config = read_soldeer_config(Some(target_config.clone())).unwrap();
-            let _ = remappings_foundry(
-                &RemappingsAction::None,
-                target_config.to_str().unwrap(),
-                &soldeer_config,
-            );
-
-            content = r#"
-    [profile.default]
-    solc = "0.8.26"
-    libs = ["dependencies"]
-    remappings = ["dep2-1.0.0/=dependencies/dep2-1.0.0/"]
-    [dependencies]
-    dep2 = "1.0.0"
-    [soldeer]
-    remappings_generate = true
-    remappings_regenerate = true
-    "#;
-
-            assert_eq!(fs::read_to_string(&target_config).unwrap(), content);
-
-            let _ = remove_file(target_config);
-            Ok(())
-        }
-
-        #[tokio::test]
-        async fn generate_remappings_keep_custom() -> Result<()> {
-            let content = r#"
-    [profile.default]
-    solc = "0.8.26"
-    libs = ["dependencies"]
-    remappings = ["@dep2-custom/=dependencies/dep2-1.0.0/"]
-    [dependencies]
-    dep2 = "1.0.0"
-    [soldeer]
-    remappings_generate = true
-    "#;
-
-            let target_config = define_config(true);
-
-            write_to_config(&target_config, content);
-
-            let soldeer_config = read_soldeer_config(Some(target_config.clone())).unwrap();
-            let _ = remappings_foundry(
-                &RemappingsAction::None,
-                target_config.to_str().unwrap(),
-                &soldeer_config,
-            );
-
-            assert_eq!(fs::read_to_string(&target_config).unwrap(), content);
-
-            let _ = remove_file(target_config);
-            Ok(())
-        }
-
-        ////////////// UTILS //////////////
-
-        fn write_to_config(target_file: &PathBuf, content: &str) {
-            if target_file.exists() {
-                let _ = remove_file(target_file);
-            }
-            let mut file: std::fs::File =
-                fs::OpenOptions::new().create_new(true).write(true).open(target_file).unwrap();
-            if let Err(e) = write!(file, "{}", content) {
-                eprintln!("Couldn't write to the config file: {}", e);
-            }
-        }
-
-        fn define_config(foundry: bool) -> PathBuf {
-            let s: String =
-                rand::thread_rng().sample_iter(&Alphanumeric).take(7).map(char::from).collect();
-            let mut target = format!("foundry{}.toml", s);
-            if !foundry {
-                target = format!("soldeer{}.toml", s);
-            }
-
-            PROJECT_ROOT.join("test").join(target)
-        } */
+        // extra entries are removed
+        let existing_deps = vec![
+            ("lib1-1.0.0/", "dependencies/lib1-1.0.0/"),
+            ("lib2-2.0.0/", "dependencies/lib2-2.0.0/"),
+            ("lib3/", "dependencies/lib3/"),
+        ];
+        let res = generate_remappings(&RemappingsAction::Update, &paths, &config, &existing_deps);
+        assert!(res.is_ok(), "{res:?}");
+        assert_eq!(
+            res.unwrap(),
+            vec!["lib1-1.0.0/=dependencies/lib1-1.0.0/", "lib2-2.0.0/=dependencies/lib2-2.0.0/"]
+        );
+    }
 }

@@ -60,7 +60,7 @@ pub(crate) async fn update_command(paths: &Paths, cmd: Update) -> Result<()> {
     fs::write(&paths.lock, new_lockfile_content).map_err(LockError::IOError)?;
     success("Updated lockfile")?;
 
-    edit_remappings(&RemappingsAction::None, &config, paths)?;
+    edit_remappings(&RemappingsAction::Update, &config, paths)?;
     success("Updated remappings")?;
     Ok(())
 }

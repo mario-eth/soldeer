@@ -117,7 +117,7 @@ pub(crate) async fn install_command(paths: &Paths, cmd: Install) -> Result<()> {
             } else if lockfile.raw.is_empty() {
                 fs::write(&paths.lock, new_lockfile_content).map_err(LockError::IOError)?;
             }
-            edit_remappings(&RemappingsAction::None, &config, paths)?;
+            edit_remappings(&RemappingsAction::Update, &config, paths)?;
             success("Updated remappings")?;
         }
         Some(dependency) => {

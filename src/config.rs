@@ -34,7 +34,7 @@ impl Paths {
     ///
     /// The paths are canonicalized.
     pub fn new() -> Result<Self> {
-        let root = Self::get_root_path().canonicalize()?;
+        let root = dunce::canonicalize(Self::get_root_path())?;
         let config = Self::get_config_path(&root)?;
         let dependencies = root.join("dependencies");
         let lock = root.join("soldeer.lock");
@@ -50,7 +50,7 @@ impl Paths {
     /// The paths are canonicalized.
     #[allow(unused)]
     pub fn from_root(root: impl AsRef<Path>) -> Result<Self> {
-        let root = root.as_ref().canonicalize()?;
+        let root = dunce::canonicalize(root.as_ref())?;
         let config = Self::get_config_path(&root)?;
         let dependencies = root.join("dependencies");
         let lock = root.join("soldeer.lock");
@@ -690,6 +690,7 @@ libs = ["dependencies"]
 mod tests {
     use super::*;
     use crate::errors::ConfigError;
+    use path_slash::PathBufExt;
     use std::{fs, path::PathBuf};
     use temp_env::with_var;
     use testdir::testdir;
@@ -709,7 +710,7 @@ mod tests {
             || {
                 let res = Paths::new();
                 assert!(res.is_ok(), "{res:?}");
-                assert_eq!(res.unwrap().config, config_path);
+                assert_eq!(res.unwrap().config.to_slash_lossy(), config_path.to_slash_lossy());
             },
         );
     }

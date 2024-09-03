@@ -2,6 +2,7 @@ use crate::{
     config::{read_config_deps, Dependency, Paths, SoldeerConfig},
     errors::RemappingsError,
 };
+use path_slash::PathExt;
 use serde::{Deserialize, Serialize};
 use std::{
     fs::{self, File},
@@ -225,14 +226,15 @@ fn remappings_from_deps(paths: &Paths, soldeer_config: &SoldeerConfig) -> Result
 /// # Errors
 /// If the there is no folder in the dependencies folder corresponding to the dependency
 fn get_install_dir_relative(dependency: &Dependency, paths: &Paths) -> Result<String> {
-    let path = dependency
-        .install_path_sync(&paths.dependencies)
-        .ok_or(RemappingsError::DependencyNotFound(dependency.to_string()))?
-        .canonicalize()?;
+    let path = dunce::canonicalize(
+        dependency
+            .install_path_sync(&paths.dependencies)
+            .ok_or(RemappingsError::DependencyNotFound(dependency.to_string()))?,
+    )?;
     Ok(path
         .strip_prefix(&paths.root) // already canonicalized
         .map_err(|_| RemappingsError::DependencyNotFound(dependency.to_string()))?
-        .to_string_lossy()
+        .to_slash_lossy()
         .to_string())
 }
 

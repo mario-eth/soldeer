@@ -4,10 +4,14 @@ use crate::{
     errors::InstallError,
     lock::{format_install_path, GitLockEntry, HttpLockEntry, LockEntry},
     registry::{get_dependency_url_remote, get_latest_supported_version},
-    utils::{hash_file, hash_folder, run_forge_command, run_git_command},
+    utils::{canonicalize, hash_file, hash_folder, run_forge_command, run_git_command},
 };
 use cliclack::{progress_bar, MultiProgress, ProgressBar};
-use std::{fmt, fs as std_fs, path::Path};
+use path_slash::PathBufExt;
+use std::{
+    fmt, fs as std_fs,
+    path::{Path, PathBuf},
+};
 use tokio::{fs, task::JoinSet};
 use toml_edit::DocumentMut;
 
@@ -413,18 +417,20 @@ async fn check_git_dependency(
     {
         Ok(top_level) => {
             // stdout contains the path twice, we only keep the first item
-            top_level.split_whitespace().next().unwrap_or_default().to_string()
+            PathBuf::from(top_level.split_whitespace().next().unwrap_or_default())
         }
         Err(_) => {
             // error getting the top level directory, assume the directory is not a git repository
             return Ok(DependencyStatus::Missing);
         }
     };
+    let top_level = top_level.to_slash_lossy();
     // compare the top level directory to the install path
-    let absolute_path = fs::canonicalize(&path)
+
+    let absolute_path = canonicalize(&path)
         .await
         .map_err(|e| InstallError::IOError { path: path.clone(), source: e })?;
-    if top_level.trim() != absolute_path.to_string_lossy() {
+    if top_level.trim() != absolute_path.to_slash_lossy() {
         // the top level directory is not the install path, assume the directory is not a git
         // repository
         return Ok(DependencyStatus::Missing);

@@ -6,6 +6,7 @@ use crate::{
 };
 use cliclack::log::{info, remark, success};
 use ignore::{WalkBuilder, WalkState};
+use path_slash::PathExt;
 use regex::Regex;
 use reqwest::{
     header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE},
@@ -97,7 +98,7 @@ pub fn zip_file(
         // otherwise
         if let Some(parent) = relative_file_path.parent() {
             if !parent.as_os_str().is_empty() && !added_dirs.contains(&parent) {
-                zip.add_directory(parent.to_string_lossy(), options)?;
+                zip.add_directory(parent.to_slash_lossy(), options)?;
                 added_dirs.push(parent);
             }
         }
@@ -105,7 +106,7 @@ pub fn zip_file(
         let mut f = File::open(file_path.clone())
             .map_err(|e| PublishError::IOError { path: file_path.clone(), source: e })?;
         let mut buffer = Vec::new();
-        zip.start_file(relative_file_path.to_string_lossy(), options)?;
+        zip.start_file(relative_file_path.to_slash_lossy(), options)?;
         f.read_to_end(&mut buffer)
             .map_err(|e| PublishError::IOError { path: file_path.clone(), source: e })?;
         zip.write_all(&buffer)

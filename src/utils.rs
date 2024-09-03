@@ -3,6 +3,7 @@ use crate::{
     errors::{DownloadError, InstallError},
 };
 use ignore::{WalkBuilder, WalkState};
+use path_slash::PathExt;
 use regex::Regex;
 use sha2::{Digest, Sha256};
 use std::{
@@ -13,7 +14,7 @@ use std::{
     path::{Path, PathBuf},
     sync::{Arc, LazyLock, Mutex},
 };
-use tokio::{fs as tokio_fs, process::Command};
+use tokio::process::Command;
 
 static GIT_SSH_REGEX: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"^(?:git@github\.com|git@gitlab)").expect("git ssh regex should compile")
@@ -115,7 +116,7 @@ pub fn hash_content<R: Read>(content: &mut R) -> [u8; 32] {
 pub fn hash_folder(folder_path: impl AsRef<Path>) -> Result<IntegrityChecksum, std::io::Error> {
     // a list of hashes, one for each DirEntry
     let all_hashes = Arc::new(Mutex::new(Vec::with_capacity(100)));
-    let root_path = Arc::new(folder_path.as_ref().canonicalize()?);
+    let root_path = Arc::new(dunce::canonicalize(folder_path.as_ref())?);
     // we use a parallel walker to speed things up
     let walker = WalkBuilder::new(folder_path)
         .filter_entry(|entry| {
@@ -137,7 +138,7 @@ pub fn hash_folder(folder_path: impl AsRef<Path>) -> Result<IntegrityChecksum, s
             hasher.update(
                 path.strip_prefix(root_path.as_ref())
                     .expect("path should be a child of root")
-                    .to_string_lossy()
+                    .to_slash_lossy()
                     .as_bytes(),
             );
             // for files, also hash the contents
@@ -188,7 +189,7 @@ where
     git.args(args).env("GIT_TERMINAL_PROMPT", "0");
     if let Some(current_dir) = current_dir {
         git.current_dir(
-            tokio_fs::canonicalize(current_dir)
+            canonicalize(current_dir)
                 .await
                 .map_err(|e| DownloadError::IOError { path: current_dir.clone(), source: e })?,
         );
@@ -212,7 +213,7 @@ where
     forge.args(args);
     if let Some(current_dir) = current_dir {
         forge.current_dir(
-            tokio_fs::canonicalize(current_dir)
+            canonicalize(current_dir)
                 .await
                 .map_err(|e| InstallError::IOError { path: current_dir.clone(), source: e })?,
         );
@@ -240,6 +241,11 @@ pub async fn remove_forge_lib(root: impl AsRef<Path>) -> Result<(), InstallError
     Ok(())
 }
 
+pub async fn canonicalize(path: impl AsRef<Path>) -> Result<PathBuf, std_io::Error> {
+    let path = path.as_ref().to_path_buf();
+    tokio::task::spawn_blocking(move || dunce::canonicalize(&path)).await?
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -258,7 +264,7 @@ mod tests {
         };
         fs::write(named_dir.join("a.txt"), "this is a test file").unwrap();
         fs::write(named_dir.join("b.txt"), "this is a second test file").unwrap();
-        named_dir.canonicalize().unwrap()
+        dunce::canonicalize(named_dir).unwrap()
     }
 
     #[test]

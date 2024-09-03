@@ -140,10 +140,7 @@ fn generate_remappings(
                 // only keep items not matching the dependency to remove
                 if let Ok(remove_og) = get_install_dir_relative(remove_dep, paths) {
                     for (existing_remapped, existing_og) in existing_remappings {
-                        if !existing_og
-                            .trim_end_matches('/')
-                            .starts_with(remove_og.trim_end_matches('/'))
-                        {
+                        if !existing_og.trim_end_matches('/').starts_with(&remove_og) {
                             new_remappings.push(format!("{existing_remapped}={existing_og}"));
                         }
                     }
@@ -161,15 +158,12 @@ fn generate_remappings(
                 let mut found = false; // whether a remapping existed for that dep already
                 for (existing_remapped, existing_og) in existing_remappings {
                     new_remappings.push(format!("{existing_remapped}={existing_og}"));
-                    if existing_og
-                        .trim_end_matches('/')
-                        .starts_with(add_dep_og.trim_end_matches('/'))
-                    {
+                    if existing_og.trim_end_matches('/').starts_with(&add_dep_og) {
                         found = true;
                     }
                 }
                 if !found {
-                    new_remappings.push(format!("{add_dep_remapped}={add_dep_og}"));
+                    new_remappings.push(format!("{add_dep_remapped}={add_dep_og}/"));
                 }
             }
             RemappingsAction::None => {
@@ -355,6 +349,39 @@ dep3 = { version = "foobar", git = "git@github.com:test/test.git", branch = "foo
         assert_eq!(res[0], "dep1-^1.0.0/=dependencies/dep1-1.1.1/");
         assert_eq!(res[1], "dep2-2.0.0/=dependencies/dep2-2.0.0/");
         assert_eq!(res[2], "dep3-foobar/=dependencies/dep3-foobar/");
+    }
+
+    #[test]
+    fn test_generate_remappings_add() {
+        let dir = testdir!();
+        fs::write(dir.join("soldeer.toml"), "[dependencies]\n").unwrap();
+        let paths = Paths::from_root(&dir).unwrap();
+        fs::create_dir_all(paths.dependencies.join("lib1-1.0.0")).unwrap();
+        let config = SoldeerConfig::default();
+        // empty existing remappings
+        let existing_deps = vec![];
+        let dep = HttpDependency::builder().name("lib1").version_req("1.0.0").build().into();
+        let res = generate_remappings(&RemappingsAction::Add(dep), &paths, &config, existing_deps);
+        assert!(res.is_ok(), "{res:?}");
+        assert_eq!(res.unwrap(), vec!["lib1-1.0.0/=dependencies/lib1-1.0.0/"]);
+
+        // existing remappings not matching new one
+        let existing_deps = vec![("lib1-1.0.0/", "dependencies/lib1-1.0.0/")];
+        fs::create_dir_all(paths.dependencies.join("lib2-1.1.1")).unwrap();
+        let dep = HttpDependency::builder().name("lib2").version_req("^1.0.0").build().into();
+        let res = generate_remappings(&RemappingsAction::Add(dep), &paths, &config, existing_deps);
+        assert!(res.is_ok(), "{res:?}");
+        assert_eq!(
+            res.unwrap(),
+            vec!["lib1-1.0.0/=dependencies/lib1-1.0.0/", "lib2-^1.0.0/=dependencies/lib2-1.1.1/"]
+        );
+
+        // existing remappings matching the new one
+        let existing_deps = vec![("@lib1-1.0.0/foo", "dependencies/lib1-1.0.0/src")];
+        let dep = HttpDependency::builder().name("lib1").version_req("1.0.0").build().into();
+        let res = generate_remappings(&RemappingsAction::Add(dep), &paths, &config, existing_deps);
+        assert!(res.is_ok(), "{res:?}");
+        assert_eq!(res.unwrap(), vec!["@lib1-1.0.0/foo=dependencies/lib1-1.0.0/src"]);
     }
 
     /* use std::path::PathBuf;

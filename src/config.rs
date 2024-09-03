@@ -372,7 +372,7 @@ pub enum RemappingsAction {
 }
 
 pub async fn remappings_txt(
-    dependency: &RemappingsAction,
+    action: &RemappingsAction,
     config_path: impl AsRef<Path>,
     soldeer_config: &SoldeerConfig,
 ) -> Result<()> {
@@ -391,7 +391,7 @@ pub async fn remappings_txt(
     }
 
     let new_remappings =
-        generate_remappings(dependency, config_path, soldeer_config, existing_remappings)?;
+        generate_remappings(action, config_path, soldeer_config, existing_remappings)?;
 
     let mut file = File::create(remappings_path)?;
     for remapping in new_remappings {
@@ -401,7 +401,7 @@ pub async fn remappings_txt(
 }
 
 pub async fn remappings_foundry(
-    dependency: &RemappingsAction,
+    action: &RemappingsAction,
     config_path: impl AsRef<Path>,
     soldeer_config: &SoldeerConfig,
 ) -> Result<()> {
@@ -419,7 +419,7 @@ pub async fn remappings_foundry(
             // except the default profile, where we always add the remappings
             if name == "default" {
                 let new_remappings =
-                    generate_remappings(dependency, &config_path, soldeer_config, vec![])?;
+                    generate_remappings(action, &config_path, soldeer_config, vec![])?;
                 let array = Array::from_iter(new_remappings.into_iter());
                 profile["remappings"] = value(array);
             }
@@ -431,7 +431,7 @@ pub async fn remappings_foundry(
             .filter_map(|r| r.split_once('='))
             .collect();
         let new_remappings =
-            generate_remappings(dependency, &config_path, soldeer_config, existing_remappings)?;
+            generate_remappings(action, &config_path, soldeer_config, existing_remappings)?;
         remappings.clear();
         for remapping in new_remappings {
             remappings.push(remapping);
@@ -592,7 +592,7 @@ fn remappings_from_deps(
 }
 
 fn generate_remappings(
-    dependency: &RemappingsAction,
+    action: &RemappingsAction,
     config_path: impl AsRef<Path>,
     soldeer_config: &SoldeerConfig,
     existing_remappings: Vec<(&str, &str)>,
@@ -602,7 +602,7 @@ fn generate_remappings(
         new_remappings = remappings_from_deps(config_path, soldeer_config)?;
         println!("{}", "Added all dependencies to remapppings".green());
     } else {
-        match &dependency {
+        match &action {
             RemappingsAction::Remove(remove_dep) => {
                 // only keep items not matching the dependency to remove
                 let sanitized_name = sanitize_dependency_name(&format!(
@@ -611,9 +611,12 @@ fn generate_remappings(
                     remove_dep.version()
                 ));
                 let remove_dep_orig = format!("dependencies/{sanitized_name}/");
-                for (remapped, orig) in existing_remappings {
-                    if orig != remove_dep_orig {
-                        new_remappings.push(format!("{}={}", remapped, orig));
+                for (existing_remapped, existing_og) in existing_remappings {
+                    if !existing_og
+                        .trim_end_matches('/')
+                        .starts_with(remove_dep_orig.trim_end_matches('/'))
+                    {
+                        new_remappings.push(format!("{existing_remapped}={existing_og}"));
                     } else {
                         println!("{}", format!("Removed {remove_dep} from remappings").green());
                     }
@@ -622,19 +625,22 @@ fn generate_remappings(
             RemappingsAction::Add(add_dep) => {
                 // we only add the remapping if it's not already existing, otherwise we keep the old
                 // remapping
-                let new_dep_remapped = format_remap_name(soldeer_config, add_dep);
+                let add_dep_remapped = format_remap_name(soldeer_config, add_dep);
                 let sanitized_name =
                     sanitize_dependency_name(&format!("{}-{}", add_dep.name(), add_dep.version()));
-                let new_dep_orig = format!("dependencies/{}/", sanitized_name);
+                let add_dep_og = format!("dependencies/{}/", sanitized_name);
                 let mut found = false; // whether a remapping existed for that dep already
-                for (remapped, orig) in existing_remappings {
-                    new_remappings.push(format!("{}={}", remapped, orig));
-                    if orig == new_dep_orig {
+                for (existing_remapped, existing_og) in existing_remappings {
+                    new_remappings.push(format!("{existing_remapped}={existing_og}"));
+                    if existing_og
+                        .trim_end_matches('/')
+                        .starts_with(add_dep_og.trim_end_matches('/'))
+                    {
                         found = true;
                     }
                 }
                 if !found {
-                    new_remappings.push(format!("{}={}", new_dep_remapped, new_dep_orig));
+                    new_remappings.push(format!("{add_dep_remapped}={add_dep_og}"));
                     println!("{}", format!("Added {add_dep} to remappings").green());
                 }
             }
@@ -645,18 +651,25 @@ fn generate_remappings(
                 new_remappings = remappings_from_deps(config_path, soldeer_config)?;
                 if !existing_remappings.is_empty() {
                     for item in new_remappings.iter_mut() {
-                        let (item_remap, item_orig) =
+                        let (item_remapped, item_og) =
                             item.split_once('=').expect("remappings should have two parts");
                         // try to find an existing item with the same path
-                        if let Some((remapped, orig)) =
-                            existing_remappings.iter().find(|(_, o)| item_orig == *o)
+                        if let Some((existing_remapped, existing_og)) =
+                            existing_remappings.iter().find(|(_, og)| {
+                                // if the existing remapping path starts with the dependency folder,
+                                // we found a match
+                                og.trim_end_matches('/').starts_with(item_og.trim_end_matches('/'))
+                            })
                         {
-                            *item = format!("{}={}", remapped, orig);
+                            *item = format!("{existing_remapped}={existing_og}");
                         } else {
                             println!(
                                 "{}",
-                                format!("Added {} to remappings", item_remap.trim_end_matches('/'))
-                                    .green()
+                                format!(
+                                    "Added {} to remappings",
+                                    item_remapped.trim_end_matches('/')
+                                )
+                                .green()
                             );
                         }
                     }
@@ -2357,6 +2370,37 @@ remappings_regenerate = true
 solc = "0.8.26"
 libs = ["dependencies"]
 remappings = ["@dep2-custom/=dependencies/dep2-1.0.0/"]
+[dependencies]
+dep2 = "1.0.0"
+[soldeer]
+remappings_generate = true
+"#;
+
+        let target_config = define_config(true);
+
+        write_to_config(&target_config, content);
+
+        let soldeer_config = read_soldeer_config(Some(target_config.clone())).unwrap();
+        let _ = remappings_foundry(
+            &RemappingsAction::None,
+            target_config.to_str().unwrap(),
+            &soldeer_config,
+        )
+        .await;
+
+        assert_eq!(read_file_to_string(&target_config), content);
+
+        let _ = remove_file(target_config);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn generate_remappings_keep_custom_path() -> Result<()> {
+        let content = r#"
+[profile.default]
+solc = "0.8.26"
+libs = ["dependencies"]
+remappings = ["dep2-1.0.0/=dependencies/dep2-1.0.0/src/"]
 [dependencies]
 dep2 = "1.0.0"
 [soldeer]

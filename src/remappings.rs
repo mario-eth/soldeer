@@ -418,10 +418,11 @@ dep3 = { version = "foobar", git = "git@github.com:test/test.git", branch = "foo
     #[test]
     fn test_generate_remappings_update() {
         let dir = testdir!();
-        let config = r#"[dependencies]
+        let contents = r#"[dependencies]
 lib1 = "1.0.0"
-lib2 = "2.0.0""#;
-        fs::write(dir.join("soldeer.toml"), config).unwrap();
+lib2 = "2.0.0"
+"#;
+        fs::write(dir.join("soldeer.toml"), contents).unwrap();
         let paths = Paths::from_root(&dir).unwrap();
         fs::create_dir_all(paths.dependencies.join("lib1-1.0.0")).unwrap();
         fs::create_dir_all(paths.dependencies.join("lib2-2.0.0")).unwrap();
@@ -458,6 +459,147 @@ lib2 = "2.0.0""#;
         assert_eq!(
             res.unwrap(),
             vec!["lib1-1.0.0/=dependencies/lib1-1.0.0/", "lib2-2.0.0/=dependencies/lib2-2.0.0/"]
+        );
+    }
+
+    #[test]
+    fn test_remappings_foundry_noprofile() {
+        let dir = testdir!();
+        let contents = r#"[dependencies]
+lib1 = "1.0.0"
+"#;
+        fs::write(dir.join("foundry.toml"), contents).unwrap();
+        let paths = Paths::from_root(&dir).unwrap();
+        let config = SoldeerConfig::default();
+        // no profile: no remappings are added
+        let res = remappings_foundry(&RemappingsAction::Update, &paths, &config);
+        assert!(res.is_ok(), "{res:?}");
+        assert_eq!(fs::read_to_string(&paths.config).unwrap(), contents);
+    }
+
+    #[test]
+    fn test_remappings_foundry_default_profile_empty() {
+        let dir = testdir!();
+        let contents = r#"[profile.default]
+
+[dependencies]
+lib1 = "1.0.0"
+"#;
+        fs::write(dir.join("foundry.toml"), contents).unwrap();
+        let paths = Paths::from_root(&dir).unwrap();
+        fs::create_dir_all(paths.dependencies.join("lib1-1.0.0")).unwrap();
+        let config = SoldeerConfig::default();
+        let res = remappings_foundry(&RemappingsAction::Update, &paths, &config);
+        assert!(res.is_ok(), "{res:?}");
+        let contents = fs::read_to_string(&paths.config).unwrap();
+        let doc: DocumentMut = contents.parse::<DocumentMut>().unwrap();
+        assert_eq!(
+            doc["profile"]["default"]["remappings"]
+                .as_array()
+                .unwrap()
+                .into_iter()
+                .map(|i| i.as_str().unwrap())
+                .collect::<Vec<_>>(),
+            vec!["lib1-1.0.0/=dependencies/lib1-1.0.0/"]
+        );
+    }
+
+    #[test]
+    fn test_remappings_foundry_second_profile_empty() {
+        let dir = testdir!();
+        let contents = r#"[profile.default]
+
+[profile.local]
+
+[dependencies]
+lib1 = "1.0.0"
+"#;
+        fs::write(dir.join("foundry.toml"), contents).unwrap();
+        let paths = Paths::from_root(&dir).unwrap();
+        fs::create_dir_all(paths.dependencies.join("lib1-1.0.0")).unwrap();
+        let config = SoldeerConfig::default();
+        // should only add remappings to the default profile
+        let res = remappings_foundry(&RemappingsAction::Update, &paths, &config);
+        assert!(res.is_ok(), "{res:?}");
+        let contents = fs::read_to_string(&paths.config).unwrap();
+        let doc: DocumentMut = contents.parse::<DocumentMut>().unwrap();
+        assert_eq!(
+            doc["profile"]["default"]["remappings"]
+                .as_array()
+                .unwrap()
+                .into_iter()
+                .map(|i| i.as_str().unwrap())
+                .collect::<Vec<_>>(),
+            vec!["lib1-1.0.0/=dependencies/lib1-1.0.0/"]
+        );
+        assert!(!doc["profile"]["local"].as_table().unwrap().contains_key("remappings"));
+    }
+
+    #[test]
+    fn test_remappings_foundry_two_profiles() {
+        let dir = testdir!();
+        let contents = r#"[profile.default]
+remappings = []
+
+[profile.local]
+remappings = []
+
+[dependencies]
+lib1 = "1.0.0"
+"#;
+        fs::write(dir.join("foundry.toml"), contents).unwrap();
+        let paths = Paths::from_root(&dir).unwrap();
+        fs::create_dir_all(paths.dependencies.join("lib1-1.0.0")).unwrap();
+        let config = SoldeerConfig::default();
+        let res = remappings_foundry(&RemappingsAction::Update, &paths, &config);
+        assert!(res.is_ok(), "{res:?}");
+        let contents = fs::read_to_string(&paths.config).unwrap();
+        let doc: DocumentMut = contents.parse::<DocumentMut>().unwrap();
+        assert_eq!(
+            doc["profile"]["default"]["remappings"]
+                .as_array()
+                .unwrap()
+                .into_iter()
+                .map(|i| i.as_str().unwrap())
+                .collect::<Vec<_>>(),
+            vec!["lib1-1.0.0/=dependencies/lib1-1.0.0/"]
+        );
+        assert_eq!(
+            doc["profile"]["local"]["remappings"]
+                .as_array()
+                .unwrap()
+                .into_iter()
+                .map(|i| i.as_str().unwrap())
+                .collect::<Vec<_>>(),
+            vec!["lib1-1.0.0/=dependencies/lib1-1.0.0/"]
+        );
+    }
+
+    #[test]
+    fn test_remappings_foundry_keep_existing() {
+        let dir = testdir!();
+        let contents = r#"[profile.default]
+remappings = ["lib1/=dependencies/lib1-1.0.0/src/"]
+
+[dependencies]
+lib1 = "1.0.0"
+"#;
+        fs::write(dir.join("foundry.toml"), contents).unwrap();
+        let paths = Paths::from_root(&dir).unwrap();
+        fs::create_dir_all(paths.dependencies.join("lib1-1.0.0")).unwrap();
+        let config = SoldeerConfig::default();
+        let res = remappings_foundry(&RemappingsAction::Update, &paths, &config);
+        assert!(res.is_ok(), "{res:?}");
+        let contents = fs::read_to_string(&paths.config).unwrap();
+        let doc: DocumentMut = contents.parse::<DocumentMut>().unwrap();
+        assert_eq!(
+            doc["profile"]["default"]["remappings"]
+                .as_array()
+                .unwrap()
+                .into_iter()
+                .map(|i| i.as_str().unwrap())
+                .collect::<Vec<_>>(),
+            vec!["lib1/=dependencies/lib1-1.0.0/src/"]
         );
     }
 }

@@ -10,7 +10,7 @@ license = "MIT"
 name = "soldeer"
 readme = "./README.md"
 repository = "https://github.com/mario-eth/soldeer"
-version = "0.3.2"
+version = "0.3.3"
 rust-version = "1.80"
 
 [lints]

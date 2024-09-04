@@ -663,4 +663,22 @@ lib2 = "2.0.0"
             "lib1/=dependencies/lib1-1.0.0/src/\nlib2-2.0.0/=dependencies/lib2-2.0.0/\n"
         );
     }
+
+    #[test]
+    fn test_edit_remappings_soldeer_config() {
+        let dir = testdir!();
+        let contents = r#"[dependencies]
+lib1 = "1.0.0"
+"#;
+        fs::write(dir.join("soldeer.toml"), contents).unwrap();
+        let paths = Paths::from_root(&dir).unwrap();
+        fs::create_dir_all(paths.dependencies.join("lib1-1.0.0")).unwrap();
+        // the config gets ignored in this case
+        let config =
+            SoldeerConfig { remappings_location: RemappingsLocation::Config, ..Default::default() };
+        let res = edit_remappings(&RemappingsAction::Update, &config, &paths);
+        assert!(res.is_ok(), "{res:?}");
+        let contents = fs::read_to_string(&paths.remappings).unwrap();
+        assert_eq!(contents, "lib1-1.0.0/=dependencies/lib1-1.0.0/\n");
+    }
 }

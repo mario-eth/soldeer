@@ -604,4 +604,63 @@ lib1 = "1.0.0"
             vec!["lib1/=dependencies/lib1-1.0.0/src/"]
         );
     }
+
+    #[test]
+    fn test_remappings_txt_keep() {
+        let dir = testdir!();
+        let contents = r#"[dependencies]
+lib1 = "1.0.0"
+"#;
+        fs::write(dir.join("soldeer.toml"), contents).unwrap();
+        let paths = Paths::from_root(&dir).unwrap();
+        fs::create_dir_all(paths.dependencies.join("lib1-1.0.0")).unwrap();
+        let remappings = "lib1/=dependencies/lib1-1.0.0/src/\n";
+        fs::write(dir.join("remappings.txt"), remappings).unwrap();
+        let config = SoldeerConfig::default();
+        let res = remappings_txt(&RemappingsAction::Update, &paths, &config);
+        assert!(res.is_ok(), "{res:?}");
+        let contents = fs::read_to_string(&paths.remappings).unwrap();
+        assert_eq!(contents, remappings);
+    }
+
+    #[test]
+    fn test_remappings_txt_regenerate() {
+        let dir = testdir!();
+        let contents = r#"[dependencies]
+lib1 = "1.0.0"
+"#;
+        fs::write(dir.join("soldeer.toml"), contents).unwrap();
+        let paths = Paths::from_root(&dir).unwrap();
+        fs::create_dir_all(paths.dependencies.join("lib1-1.0.0")).unwrap();
+        let remappings = "lib1/=dependencies/lib1-1.0.0/src/\n";
+        fs::write(dir.join("remappings.txt"), remappings).unwrap();
+        let config = SoldeerConfig { remappings_regenerate: true, ..Default::default() };
+        let res = remappings_txt(&RemappingsAction::Update, &paths, &config);
+        assert!(res.is_ok(), "{res:?}");
+        let contents = fs::read_to_string(&paths.remappings).unwrap();
+        assert_eq!(contents, "lib1-1.0.0/=dependencies/lib1-1.0.0/\n");
+    }
+
+    #[test]
+    fn test_remappings_txt_missing() {
+        let dir = testdir!();
+        let contents = r#"[dependencies]
+lib1 = "1.0.0"
+lib2 = "2.0.0"
+"#;
+        fs::write(dir.join("soldeer.toml"), contents).unwrap();
+        let paths = Paths::from_root(&dir).unwrap();
+        fs::create_dir_all(paths.dependencies.join("lib1-1.0.0")).unwrap();
+        fs::create_dir_all(paths.dependencies.join("lib2-2.0.0")).unwrap();
+        let remappings = "lib1/=dependencies/lib1-1.0.0/src/\n";
+        fs::write(dir.join("remappings.txt"), remappings).unwrap();
+        let config = SoldeerConfig::default();
+        let res = remappings_txt(&RemappingsAction::Update, &paths, &config);
+        assert!(res.is_ok(), "{res:?}");
+        let contents = fs::read_to_string(&paths.remappings).unwrap();
+        assert_eq!(
+            contents,
+            "lib1/=dependencies/lib1-1.0.0/src/\nlib2-2.0.0/=dependencies/lib2-2.0.0/\n"
+        );
+    }
 }

@@ -1,9 +1,10 @@
 use crate::{errors::AuthError, registry::api_url, utils::login_file_path};
 use cliclack::log::{info, remark, success};
 use email_address_parser::{EmailAddress, ParsingOptions};
+use path_slash::PathBufExt;
 use reqwest::{Client, StatusCode};
 use serde::{Deserialize, Serialize};
-use std::fs;
+use std::{fs, path::PathBuf};
 
 pub type Result<T> = std::result::Result<T, AuthError>;
 
@@ -60,7 +61,10 @@ async fn execute_login(login: &Login) -> Result<()> {
             success("Login successful")?;
             let response: LoginResponse = res.json().await?;
             fs::write(&security_file, response.token)?;
-            info(format!("Login details saved in: {:?}", &security_file))?;
+            info(format!(
+                "Login details saved in: {}",
+                PathBuf::from_slash_lossy(&security_file).to_string_lossy() // normalize separators
+            ))?;
             Ok(())
         }
         StatusCode::UNAUTHORIZED => Err(AuthError::InvalidCredentials),

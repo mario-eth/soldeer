@@ -128,22 +128,22 @@ impl TryFrom<TomlLockEntry> for LockEntry {
 impl LockEntry {
     pub fn name(&self) -> &str {
         match self {
-            LockEntry::Git(lock) => &lock.name,
-            LockEntry::Http(lock) => &lock.name,
+            Self::Git(lock) => &lock.name,
+            Self::Http(lock) => &lock.name,
         }
     }
 
     pub fn version(&self) -> &str {
         match self {
-            LockEntry::Git(lock) => &lock.version,
-            LockEntry::Http(lock) => &lock.version,
+            Self::Git(lock) => &lock.version,
+            Self::Http(lock) => &lock.version,
         }
     }
 
     pub fn install_path(&self, deps: impl AsRef<Path>) -> PathBuf {
         match self {
-            LockEntry::Git(lock) => lock.install_path(deps),
-            LockEntry::Http(lock) => lock.install_path(deps),
+            Self::Git(lock) => lock.install_path(deps),
+            Self::Http(lock) => lock.install_path(deps),
         }
     }
 
@@ -167,13 +167,13 @@ impl LockEntry {
 
 impl From<HttpLockEntry> for LockEntry {
     fn from(value: HttpLockEntry) -> Self {
-        LockEntry::Http(value)
+        Self::Http(value)
     }
 }
 
 impl From<GitLockEntry> for LockEntry {
     fn from(value: GitLockEntry) -> Self {
-        LockEntry::Git(value)
+        Self::Git(value)
     }
 }
 

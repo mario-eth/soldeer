@@ -26,7 +26,7 @@ where
 {
     fn from(value: T) -> Self {
         let v: String = value.into();
-        IntegrityChecksum(v)
+        Self(v)
     }
 }
 

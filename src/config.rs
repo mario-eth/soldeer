@@ -129,7 +129,7 @@ pub struct SoldeerConfig {
 
 impl Default for SoldeerConfig {
     fn default() -> Self {
-        SoldeerConfig {
+        Self {
             remappings_generate: true,
             remappings_regenerate: false,
             remappings_version: true,
@@ -151,26 +151,26 @@ pub enum GitIdentifier {
 impl GitIdentifier {
     pub fn from_rev(rev: impl Into<String>) -> Self {
         let rev: String = rev.into();
-        GitIdentifier::Rev(rev)
+        Self::Rev(rev)
     }
 
     pub fn from_branch(branch: impl Into<String>) -> Self {
         let branch: String = branch.into();
-        GitIdentifier::Branch(branch)
+        Self::Branch(branch)
     }
 
     pub fn from_tag(tag: impl Into<String>) -> Self {
         let tag: String = tag.into();
-        GitIdentifier::Tag(tag)
+        Self::Tag(tag)
     }
 }
 
 impl fmt::Display for GitIdentifier {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let val = match self {
-            GitIdentifier::Rev(rev) => rev,
-            GitIdentifier::Branch(branch) => branch,
-            GitIdentifier::Tag(tag) => tag,
+            Self::Rev(rev) => rev,
+            Self::Branch(branch) => branch,
+            Self::Tag(tag) => tag,
         };
         write!(f, "{val}")
     }
@@ -286,42 +286,42 @@ impl Dependency {
 
     pub fn name(&self) -> &str {
         match self {
-            Dependency::Http(dep) => &dep.name,
-            Dependency::Git(dep) => &dep.name,
+            Self::Http(dep) => &dep.name,
+            Self::Git(dep) => &dep.name,
         }
     }
 
     pub fn version_req(&self) -> &str {
         match self {
-            Dependency::Http(dep) => &dep.version_req,
-            Dependency::Git(dep) => &dep.version_req,
+            Self::Http(dep) => &dep.version_req,
+            Self::Git(dep) => &dep.version_req,
         }
     }
 
     pub fn url(&self) -> Option<&String> {
         match self {
-            Dependency::Http(dep) => dep.url.as_ref(),
-            Dependency::Git(dep) => Some(&dep.git),
+            Self::Http(dep) => dep.url.as_ref(),
+            Self::Git(dep) => Some(&dep.git),
         }
     }
 
     pub fn install_path_sync(&self, deps: impl AsRef<Path>) -> Option<PathBuf> {
         match self {
-            Dependency::Http(dep) => dep.install_path_sync(deps),
-            Dependency::Git(dep) => dep.install_path_sync(deps),
+            Self::Http(dep) => dep.install_path_sync(deps),
+            Self::Git(dep) => dep.install_path_sync(deps),
         }
     }
 
     pub async fn install_path(&self, deps: impl AsRef<Path>) -> Option<PathBuf> {
         match self {
-            Dependency::Http(dep) => dep.install_path(deps).await,
-            Dependency::Git(dep) => dep.install_path(deps).await,
+            Self::Http(dep) => dep.install_path(deps).await,
+            Self::Git(dep) => dep.install_path(deps).await,
         }
     }
 
     pub fn to_toml_value(&self) -> (String, Item) {
         match self {
-            Dependency::Http(dep) => (
+            Self::Http(dep) => (
                 dep.name.clone(),
                 match &dep.url {
                     Some(url) => {
@@ -341,7 +341,7 @@ impl Dependency {
                     None => value(&dep.version_req),
                 },
             ),
-            Dependency::Git(dep) => {
+            Self::Git(dep) => {
                 let mut table = InlineTable::new();
                 table.insert(
                     "version",
@@ -430,33 +430,33 @@ impl Dependency {
 impl fmt::Display for Dependency {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
-            Dependency::Http(dep) => write!(f, "{dep}"),
-            Dependency::Git(dep) => write!(f, "{dep}"),
+            Self::Http(dep) => write!(f, "{dep}"),
+            Self::Git(dep) => write!(f, "{dep}"),
         }
     }
 }
 
 impl From<HttpDependency> for Dependency {
     fn from(dep: HttpDependency) -> Self {
-        Dependency::Http(dep)
+        Self::Http(dep)
     }
 }
 
 impl From<&HttpDependency> for Dependency {
     fn from(dep: &HttpDependency) -> Self {
-        Dependency::Http(dep.clone())
+        Self::Http(dep.clone())
     }
 }
 
 impl From<GitDependency> for Dependency {
     fn from(dep: GitDependency) -> Self {
-        Dependency::Git(dep)
+        Self::Git(dep)
     }
 }
 
 impl From<&GitDependency> for Dependency {
     fn from(dep: &GitDependency) -> Self {
-        Dependency::Git(dep.clone())
+        Self::Git(dep.clone())
     }
 }
 
@@ -472,8 +472,8 @@ impl TryFrom<&str> for ConfigLocation {
 
     fn try_from(value: &str) -> Result<Self> {
         match value {
-            "foundry" => Ok(ConfigLocation::Foundry),
-            "soldeer" => Ok(ConfigLocation::Soldeer),
+            "foundry" => Ok(Self::Foundry),
+            "soldeer" => Ok(Self::Soldeer),
             _ => Err(ConfigError::InvalidPromptOption),
         }
     }

@@ -20,7 +20,7 @@ workspace = true
 dbg-macro = "warn"
 manual-string-new = "warn"
 # uninlined-format-args = "warn"
-# use-self = "warn"
+use-self = "warn"
 redundant-clone = "warn"
 
 [workspace.lints.rust]

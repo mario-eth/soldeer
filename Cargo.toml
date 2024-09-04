@@ -41,9 +41,12 @@ chrono = { version = "0.4.38", default-features = false, features = [
 clap = { version = "4.5.9", features = ["derive"] }
 cliclack = "0.3.4"
 const-hex = "1.12.0"
+dunce = "1.0.5"
 email-address-parser = "2.0.0"
 futures = "0.3.30"
+home = "0.5.9"
 ignore = { version = "0.4.22", features = ["simd-accel"] }
+path-slash = "0.2.1"
 regex = "1.10.5"
 reqwest = { version = "0.12.5", features = [
     "blocking",
@@ -56,7 +59,6 @@ semver = "1.0.23"
 serde = { version = "1.0.204", features = ["derive"] }
 serde_json = "1.0.120"
 sha2 = "0.10.8"
-home = "0.5.9"
 thiserror = "1.0.63"
 tokio = { version = "1.38.0", features = [
     "rt-multi-thread",
@@ -71,8 +73,6 @@ zip-extract = { version = "0.2.0", default-features = false, features = [
     "deflate",
     "bzip2",
 ] }
-path-slash = "0.2.1"
-dunce = "1.0.5"
 
 [dev-dependencies]
 mockito = "1.5.0"

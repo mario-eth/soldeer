@@ -1,11 +1,11 @@
 [package]
 authors = ["m4rio"]
-categories = ["development-tools", "development-tools"]
-description = "A solidity package manager written in rust. It's minimal and easy within your solidity project. Works best with foundry."
+categories = ["development-tools"]
+description = "A minimal solidity package manager written in Rust, best used with Foundry."
 edition = "2021"
 exclude = [".github/*", ".vscode/*"]
 homepage = "https://github.com/mario-eth/soldeer"
-keywords = ["solidity", "package-manager"]
+keywords = ["solidity", "package-manager", "foundry"]
 license = "MIT"
 name = "soldeer"
 readme = "./README.md"

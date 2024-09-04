@@ -6,7 +6,7 @@ use crate::{
 };
 use cliclack::log::{info, remark, success};
 use ignore::{WalkBuilder, WalkState};
-use path_slash::PathExt;
+use path_slash::{PathBufExt, PathExt};
 use regex::Regex;
 use reqwest::{
     header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE},
@@ -41,7 +41,11 @@ pub async fn push_version(
     };
 
     if dry_run {
-        info(format!("Zip file created at path {zip_archive:?}")).ok();
+        info(format!(
+            "Zip file created at {}",
+            PathBuf::from_slash_lossy(&zip_archive).to_string_lossy()
+        ))
+        .ok();
         return Ok(());
     }
 

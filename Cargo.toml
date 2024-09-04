@@ -69,6 +69,8 @@ zip-extract = { version = "0.2.1", default-features = false, features = [
     "deflate",
     "bzip2",
 ] }
+dunce = "1.0.5"
+path-slash = "0.2.1"
 
 [dev-dependencies]
 mockito = "1.4.0"

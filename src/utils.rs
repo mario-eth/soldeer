@@ -2,6 +2,7 @@ use crate::{
     config::HttpDependency, dependency_downloader::IntegrityChecksum, errors::DownloadError,
 };
 use ignore::{WalkBuilder, WalkState};
+use path_slash::PathExt;
 use regex::Regex;
 use sha2::{Digest, Sha256};
 use std::{
@@ -188,7 +189,7 @@ pub fn hash_folder(
     let hashes = Arc::new(Mutex::new(Vec::with_capacity(100)));
     // we use a parallel walker to speed things up
     let walker = WalkBuilder::new(&folder_path).hidden(false).build_parallel();
-    let root_path = Arc::new(folder_path.as_ref().canonicalize()?);
+    let root_path = Arc::new(dunce::canonicalize(folder_path.as_ref())?);
     walker.run(|| {
         let root_path = Arc::clone(&root_path);
         let ignore_path = ignore_path.clone();
@@ -216,7 +217,7 @@ pub fn hash_folder(
             hasher.update(
                 path.strip_prefix(root_path.as_ref())
                     .expect("path should be a child of root")
-                    .to_string_lossy()
+                    .to_slash_lossy()
                     .as_bytes(),
             );
             // for files, also hash the contents

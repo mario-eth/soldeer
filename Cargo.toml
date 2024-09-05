@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/soldeer", "crates/soldeer-core", "crates/soldeer-commands"]
+members = ["crates/cli", "crates/core", "crates/commands"]
 resolver = "2"
 
 [workspace.package]

@@ -21,6 +21,6 @@ name = "soldeer"
 path = "src/main.rs"
 
 [dependencies]
-soldeer-commands = { path = "../soldeer-commands" }
+soldeer-commands = { path = "../commands" }
 tokio.workspace = true
 yansi = { version = "1.0.1", features = ["detect-tty", "detect-env"] }

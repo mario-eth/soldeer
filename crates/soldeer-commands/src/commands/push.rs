@@ -29,13 +29,12 @@ pub struct Push {
     #[arg(value_parser = validate_dependency, value_name = "DEPENDENCY>~<VERSION")]
     pub dependency: String,
 
-    /// Use this if the dependency you want to push is not in the current directory.
+    /// Use this if the package you want to push is not in the current directory.
     ///
     /// Example: `soldeer push mypkg~0.1.0 /path/to/dep`.
     pub path: Option<PathBuf>,
 
-    /// Use this if you want to run a dry run. If set, this will generate a zip file that you can
-    /// inspect to see what will be pushed.
+    /// If set, does not publish the package but generates a zip file that can be inspected.
     #[arg(short, long, default_value_t = false)]
     pub dry_run: bool,
 

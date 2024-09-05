@@ -19,7 +19,7 @@ pub struct Update {
     #[arg(short = 'g', long, default_value_t = false)]
     pub regenerate_remappings: bool,
 
-    /// If set, this command will install the recursive dependencies (via submodules or via
+    /// If set, this command will install the dependencies recursively (via submodules or via
     /// soldeer)
     #[arg(short = 'd', long, default_value_t = false)]
     pub recursive_deps: bool,

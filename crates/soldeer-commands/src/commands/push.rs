@@ -1,12 +1,12 @@
-use crate::{
+use super::validate_dependency;
+use clap::Parser;
+use cliclack::log::{remark, warning};
+use soldeer_core::{
     errors::PublishError,
     push::{filter_files_to_copy, prompt_user_for_confirmation, push_version, validate_name},
     utils::check_dotfiles,
+    Result,
 };
-
-use super::{validate_dependency, Result};
-use clap::Parser;
-use cliclack::log::{remark, warning};
 use std::{env, path::PathBuf};
 
 /// Push a dependency to the repository

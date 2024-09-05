@@ -1,5 +1,4 @@
-use crate::SoldeerError;
-use clap::{Parser, Subcommand};
+pub use clap::{Parser, Subcommand};
 
 pub mod init;
 pub mod install;
@@ -7,8 +6,6 @@ pub mod login;
 pub mod push;
 pub mod uninstall;
 pub mod update;
-
-pub type Result<T> = std::result::Result<T, SoldeerError>;
 
 /// A minimal solidity dependency manager.
 #[derive(Parser, Debug)]

@@ -1,13 +1,12 @@
-use super::Result;
-use crate::{
+use clap::Parser;
+use cliclack::log::success;
+use soldeer_core::{
     config::{delete_from_config, read_soldeer_config, Paths},
     download::delete_dependency_files_sync,
     lock::remove_lock,
     remappings::{edit_remappings, RemappingsAction},
-    SoldeerError,
+    Result, SoldeerError,
 };
-use clap::Parser;
-use cliclack::log::success;
 
 /// Uninstall a dependency
 #[derive(Debug, Clone, Parser)]

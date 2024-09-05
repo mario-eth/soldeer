@@ -1,16 +1,15 @@
-use std::fs;
-
-use super::Result;
-use crate::{
+use clap::Parser;
+use cliclack::{log::success, multi_progress};
+use soldeer_core::{
     config::{read_config_deps, read_soldeer_config, Dependency, Paths},
     errors::LockError,
     install::{ensure_dependencies_dir, Progress},
     lock::{generate_lockfile_contents, read_lockfile},
     remappings::{edit_remappings, RemappingsAction},
     update::update_dependencies,
+    Result,
 };
-use clap::Parser;
-use cliclack::{log::success, multi_progress};
+use std::fs;
 
 /// Update dependencies by reading the config file
 #[derive(Debug, Clone, Default, Parser)]

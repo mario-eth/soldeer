@@ -1,5 +1,10 @@
-use super::{validate_dependency, Result};
-use crate::{
+use super::validate_dependency;
+use clap::Parser;
+use cliclack::{
+    log::{remark, success, warning},
+    multi_progress, outro,
+};
+use soldeer_core::{
     config::{
         add_to_config, read_config_deps, read_soldeer_config, Dependency, GitIdentifier, Paths,
     },
@@ -7,11 +12,7 @@ use crate::{
     install::{ensure_dependencies_dir, install_dependencies, install_dependency, Progress},
     lock::{add_to_lockfile, generate_lockfile_contents, read_lockfile},
     remappings::{edit_remappings, RemappingsAction},
-};
-use clap::Parser;
-use cliclack::{
-    log::{remark, success, warning},
-    multi_progress, outro,
+    Result,
 };
 use std::fs;
 

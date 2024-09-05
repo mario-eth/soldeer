@@ -245,7 +245,7 @@ pub fn remove_lock(dependency: &Dependency, path: impl AsRef<Path>) -> Result<()
 }
 
 pub fn format_install_path(name: &str, version: &str, deps: impl AsRef<Path>) -> PathBuf {
-    deps.as_ref().join(sanitize_filename(&format!("{}-{}", name, version)))
+    deps.as_ref().join(sanitize_filename(&format!("{name}-{version}")))
 }
 
 #[cfg(test)]

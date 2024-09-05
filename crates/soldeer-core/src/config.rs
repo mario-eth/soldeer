@@ -1131,7 +1131,7 @@ libs = ["dependencies"]
             r#""lib1" = { version = "", git = "https://example.com/repo.git" }"#,
             r#""lib1" = { version = "", git = "https://example.com/repo.git", rev = "123456" }"#,
         ] {
-            let config_contents = format!("[dependencies]\n{}", dep);
+            let config_contents = format!("[dependencies]\n{dep}");
             let config_path = write_to_config(&config_contents, "soldeer.toml");
             let res = read_config_deps(config_path);
             assert!(matches!(res, Err(ConfigError::EmptyVersion(_))), "{res:?}");
@@ -1144,7 +1144,7 @@ libs = ["dependencies"]
             r#""lib1" = { version = "asdf=", git = "https://example.com/repo.git" }"#,
             r#""lib1" = { version = "asdf=", git = "https://example.com/repo.git", rev = "123456" }"#,
         ] {
-            let config_contents = format!("[dependencies]\n{}", dep);
+            let config_contents = format!("[dependencies]\n{dep}");
             let config_path = write_to_config(&config_contents, "soldeer.toml");
             let res = read_config_deps(config_path);
             assert!(matches!(res, Err(ConfigError::InvalidVersionReq(_))), "{res:?}");
@@ -1159,7 +1159,7 @@ libs = ["dependencies"]
             r#""lib1" = { version = "1.0.0", git = "https://example.com/repo.git", branch = "dev", tag = "v1.0.0" }"#,
             r#""lib1" = { version = "1.0.0", git = "https://example.com/repo.git", rev = "123456", branch = "dev", tag = "v1.0.0" }"#,
         ] {
-            let config_contents = format!("[dependencies]\n{}", dep);
+            let config_contents = format!("[dependencies]\n{dep}");
             let config_path = write_to_config(&config_contents, "soldeer.toml");
             let res = read_config_deps(config_path);
             assert!(matches!(res, Err(ConfigError::GitIdentifierConflict(_))), "{res:?}");

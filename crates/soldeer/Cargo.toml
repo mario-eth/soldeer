@@ -1,0 +1,26 @@
+[package]
+name = "soldeer"
+description.workspace = true
+authors.workspace = true
+categories.workspace = true
+edition.workspace = true
+exclude.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+license.workspace = true
+readme.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "soldeer"
+path = "src/main.rs"
+
+[dependencies]
+soldeer-commands = { path = "../soldeer-commands" }
+tokio.workspace = true
+yansi = { version = "1.0.1", features = ["detect-tty", "detect-env"] }

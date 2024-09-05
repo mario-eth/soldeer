@@ -1,25 +1,13 @@
 //! Soldeer is a package manager for Solidity projects
 #![cfg_attr(docsrs, feature(doc_cfg, doc_auto_cfg))]
-pub use crate::{commands::Subcommands, errors::SoldeerError};
+pub use crate::commands::{Args, Subcommands};
 use cliclack::{intro, log::step, outro, outro_cancel};
-use config::Paths;
+use soldeer_core::{config::Paths, Result};
 use std::env;
 
-mod auth;
 pub mod commands;
-mod config;
-mod download;
-pub mod errors;
-mod install;
-mod lock;
-mod push;
-mod registry;
-mod remappings;
-mod update;
-mod utils;
 
-#[tokio::main]
-pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
+pub async fn run(command: Subcommands) -> Result<()> {
     let paths = Paths::new()?;
     match command {
         Subcommands::Init(init) => {

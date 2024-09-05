@@ -1,19 +1,18 @@
-use std::fs;
-
-use super::Result;
-use crate::{
+use clap::Parser;
+use cliclack::{
+    log::{remark, success},
+    multi_progress,
+};
+use soldeer_core::{
     config::{add_to_config, read_soldeer_config, Paths},
     install::{ensure_dependencies_dir, install_dependency, Progress},
     lock::add_to_lockfile,
     registry::get_latest_forge_std,
     remappings::{edit_remappings, RemappingsAction},
     utils::remove_forge_lib,
+    Result,
 };
-use clap::Parser;
-use cliclack::{
-    log::{remark, success},
-    multi_progress,
-};
+use std::fs;
 
 /// Initialize a new Soldeer project for use with Foundry
 #[derive(Debug, Clone, Default, Parser)]

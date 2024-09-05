@@ -1,6 +1,5 @@
-use super::Result;
-use crate::auth::login;
 use clap::Parser;
+use soldeer_core::{auth::login, Result};
 
 /// Log into the central repository to push the dependencies
 #[derive(Debug, Clone, Default, Parser)]

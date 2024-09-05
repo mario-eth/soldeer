@@ -21,7 +21,7 @@ use std::{
 use zip::{write::SimpleFileOptions, CompressionMethod, ZipWriter};
 
 #[cfg(feature = "cli")]
-use cliclack::log::{info, remark, success};
+use cliclack::log::{info, success};
 #[cfg(feature = "cli")]
 use path_slash::PathBufExt as _;
 
@@ -216,22 +216,6 @@ async fn push_to_repo(
         }
         _ => Err(PublishError::UnknownError),
     }
-}
-
-// Function to prompt the user for confirmation
-pub fn prompt_user_for_confirmation() -> Result<bool> {
-    #[cfg(feature = "cli")]
-    {
-        remark("You are about to include some sensitive files in this version").ok();
-        info("If you are not sure which files will be included, you can run the command with `--dry-run`and inspect the generated zip file.").ok();
-
-        cliclack::confirm("Do you want to continue?")
-            .interact()
-            .map_err(|e| PublishError::IOError { path: PathBuf::new(), source: e })
-    }
-
-    #[cfg(not(feature = "cli"))]
-    Ok(true)
 }
 
 #[cfg(test)]

@@ -1,7 +1,7 @@
 use crate::{errors::AuthError, registry::api_url, utils::login_file_path};
 use cliclack::log::{info, remark, success};
 use email_address_parser::{EmailAddress, ParsingOptions};
-use path_slash::PathBufExt;
+use path_slash::PathBufExt as _;
 use reqwest::{Client, StatusCode};
 use serde::{Deserialize, Serialize};
 use std::{fs, path::PathBuf};

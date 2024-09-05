@@ -2,7 +2,7 @@ use crate::{
     config::{read_config_deps, Dependency, Paths, SoldeerConfig},
     errors::RemappingsError,
 };
-use path_slash::PathExt;
+use path_slash::PathExt as _;
 use serde::{Deserialize, Serialize};
 use std::{
     fs::{self, File},

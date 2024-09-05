@@ -12,7 +12,7 @@ use std::{
     path::{Path, PathBuf},
     str,
 };
-use tokio::{fs as tokio_fs, io::AsyncWriteExt};
+use tokio::io::AsyncWriteExt as _;
 
 pub type Result<T> = std::result::Result<T, DownloadError>;
 
@@ -48,7 +48,7 @@ pub async fn download_file(url: impl IntoUrl, folder_path: impl AsRef<Path>) -> 
         .to_string();
     zip_filename.push_str(".zip");
     let path = path.parent().expect("dep folder should have a parent").join(zip_filename);
-    let mut file = tokio_fs::File::create(&path)
+    let mut file = tokio::fs::File::create(&path)
         .await
         .map_err(|e| DownloadError::IOError { path: path.clone(), source: e })?;
     while let Some(mut chunk) = resp.chunk().await? {
@@ -63,13 +63,13 @@ pub async fn download_file(url: impl IntoUrl, folder_path: impl AsRef<Path>) -> 
 pub async fn unzip_file(path: impl AsRef<Path>, into: impl AsRef<Path>) -> Result<()> {
     let path = path.as_ref().to_path_buf();
     let out_dir = into.as_ref();
-    let zip_contents = tokio_fs::read(&path)
+    let zip_contents = tokio::fs::read(&path)
         .await
         .map_err(|e| DownloadError::IOError { path: path.clone(), source: e })?;
 
     zip_extract::extract(Cursor::new(zip_contents), out_dir, true)?;
 
-    tokio_fs::remove_file(&path)
+    tokio::fs::remove_file(&path)
         .await
         .map_err(|e| DownloadError::IOError { path: path.clone(), source: e })
 }
@@ -118,7 +118,7 @@ pub fn find_install_path_sync(dependency: &Dependency, deps: impl AsRef<Path>) -
 }
 
 pub async fn find_install_path(dependency: &Dependency, deps: impl AsRef<Path>) -> Option<PathBuf> {
-    let Ok(mut read_dir) = tokio_fs::read_dir(deps.as_ref()).await else {
+    let Ok(mut read_dir) = tokio::fs::read_dir(deps.as_ref()).await else {
         return None;
     };
     while let Ok(Some(entry)) = read_dir.next_entry().await {
@@ -140,7 +140,7 @@ pub async fn delete_dependency_files(
     let Some(path) = find_install_path(dependency, deps).await else {
         return Err(DownloadError::DependencyNotFound(dependency.to_string()));
     };
-    tokio_fs::remove_dir_all(&path)
+    tokio::fs::remove_dir_all(&path)
         .await
         .map_err(|e| DownloadError::IOError { path, source: e })?;
     Ok(())

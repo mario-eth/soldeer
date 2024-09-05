@@ -1,5 +1,3 @@
-use std::path::Path;
-
 use crate::{
     config::Dependency,
     errors::UpdateError,
@@ -8,6 +6,7 @@ use crate::{
     registry::get_latest_supported_version,
     utils::run_git_command,
 };
+use std::path::Path;
 use tokio::task::JoinSet;
 
 pub type Result<T> = std::result::Result<T, UpdateError>;

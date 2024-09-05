@@ -6,7 +6,7 @@ use crate::{
 };
 use cliclack::log::{info, remark, success};
 use ignore::{WalkBuilder, WalkState};
-use path_slash::{PathBufExt, PathExt};
+use path_slash::{PathBufExt as _, PathExt as _};
 use regex::Regex;
 use reqwest::{
     header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE},
@@ -15,7 +15,7 @@ use reqwest::{
 };
 use std::{
     fs::{remove_file, File},
-    io::{Read, Write},
+    io::{Read as _, Write as _},
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
 };

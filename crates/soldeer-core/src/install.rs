@@ -7,9 +7,9 @@ use crate::{
     utils::{canonicalize, hash_file, hash_folder, run_forge_command, run_git_command},
 };
 use cliclack::{progress_bar, MultiProgress, ProgressBar};
-use path_slash::PathBufExt;
+use path_slash::PathBufExt as _;
 use std::{
-    fmt, fs as std_fs,
+    fmt,
     path::{Path, PathBuf},
 };
 use tokio::{fs, task::JoinSet};
@@ -281,7 +281,7 @@ pub async fn check_dependency_integrity(
 pub fn ensure_dependencies_dir(path: impl AsRef<Path>) -> Result<()> {
     let path = path.as_ref();
     if !path.exists() {
-        std_fs::create_dir(path)
+        std::fs::create_dir(path)
             .map_err(|e| InstallError::IOError { path: path.to_path_buf(), source: e })?;
     }
     Ok(())

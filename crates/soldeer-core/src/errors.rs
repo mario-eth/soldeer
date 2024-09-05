@@ -5,6 +5,7 @@ use std::{
 use thiserror::Error;
 
 #[derive(Error, Debug)]
+#[non_exhaustive]
 pub enum SoldeerError {
     #[error("error during login: {0}")]
     AuthError(#[from] AuthError),
@@ -38,6 +39,7 @@ pub enum SoldeerError {
 }
 
 #[derive(Error, Debug)]
+#[non_exhaustive]
 pub enum AuthError {
     #[error("login error: invalid email or password")]
     InvalidCredentials,
@@ -53,6 +55,7 @@ pub enum AuthError {
 }
 
 #[derive(Error, Debug)]
+#[non_exhaustive]
 pub enum ConfigError {
     #[error("config file is not valid: {0}")]
     Parsing(#[from] toml_edit::TomlError),
@@ -101,6 +104,7 @@ pub enum ConfigError {
 }
 
 #[derive(Error, Debug)]
+#[non_exhaustive]
 pub enum DownloadError {
     #[error("error downloading dependency: {0}")]
     HttpError(#[from] reqwest::Error),
@@ -131,6 +135,7 @@ pub enum DownloadError {
 }
 
 #[derive(Error, Debug)]
+#[non_exhaustive]
 pub enum InstallError {
     #[error("zip checksum for {path} does not match lock file: expected {expected}, got {actual}")]
     ZipIntegrityError { path: PathBuf, expected: String, actual: String },
@@ -161,6 +166,7 @@ pub enum InstallError {
 }
 
 #[derive(Error, Debug)]
+#[non_exhaustive]
 pub enum LockError {
     #[error("soldeer.lock is missing")]
     Missing,
@@ -182,6 +188,7 @@ pub enum LockError {
 }
 
 #[derive(Error, Debug)]
+#[non_exhaustive]
 pub enum PublishError {
     #[error("no files to publish")]
     NoFiles,
@@ -224,6 +231,7 @@ pub enum PublishError {
 }
 
 #[derive(Error, Debug)]
+#[non_exhaustive]
 pub enum RegistryError {
     #[error("error with registry request: {0}")]
     HttpError(#[from] reqwest::Error),
@@ -242,6 +250,7 @@ pub enum RegistryError {
 }
 
 #[derive(Error, Debug)]
+#[non_exhaustive]
 pub enum RemappingsError {
     #[error("error writing to remappings file: {0}")]
     FileWriteError(#[from] io::Error),
@@ -254,6 +263,7 @@ pub enum RemappingsError {
 }
 
 #[derive(Error, Debug)]
+#[non_exhaustive]
 pub enum UpdateError {
     #[error("registry error: {0}")]
     RegistryError(#[from] RegistryError),

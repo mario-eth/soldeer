@@ -21,21 +21,20 @@ use std::fs;
 #[clap(
     long_about = "Install a dependency
 
-You can install a dependency from the Soldeer repository, a custom URL pointing to a zip file, or from Git using a Git link.
-
-The `~version` suffix is always required.
+If used with arguments, a dependency will be added to the configuration. When used without argument, installs all dependencies that are missing.
 
 Examples:
-- Repository: soldeer install lib_name~2.3.0
-- Custom URL: soldeer install lib_name~2.3.0 https://foo.bar/lib.zip
-- Git: soldeer install lib_name~2.3.0 git@github.com:foo/bar.git
-- Git (commit): soldeer install lib_name~2.3.0 git@github.com:foo/bar.git --rev 05f218fb6617932e56bf5388c3b389c3028a7b73
-- Git (tag): soldeer install lib_name~2.3.0 git@github.com:foo/bar.git --tag v2.3.0
-- Git (branch): soldeer install lib_name~2.3.0 git@github.com:foo/bar.git --branch feature/baz",
+- Install all: soldeer install
+- Add from registry: soldeer install lib_name~2.3.0
+- Add with custom URL: soldeer install lib_name~2.3.0 https://foo.bar/lib.zip
+- Add with git: soldeer install lib_name~2.3.0 git@github.com:foo/bar.git
+- Add with git (commit): soldeer install lib_name~2.3.0 git@github.com:foo/bar.git --rev 05f218fb6617932e56bf5388c3b389c3028a7b73
+- Add with git (tag): soldeer install lib_name~2.3.0 git@github.com:foo/bar.git --tag v2.3.0
+- Add with git (branch): soldeer install lib_name~2.3.0 git@github.com:foo/bar.git --branch feature/baz",
     after_help = "For more information, read the README.md"
 )]
 pub struct Install {
-    /// The dependency name and version, separated by a tilde.
+    /// The dependency name and version, separated by a tilde. The version is always required.
     ///
     /// If not present, this command will install all dependencies which are missing.
     #[arg(value_parser = validate_dependency, value_name = "DEPENDENCY~VERSION")]

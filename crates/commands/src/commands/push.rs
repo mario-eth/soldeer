@@ -76,7 +76,7 @@ pub(crate) async fn push_command(cmd: Push) -> Result<()> {
 }
 
 // Function to prompt the user for confirmation
-pub(crate) fn prompt_user_for_confirmation() -> Result<bool> {
+fn prompt_user_for_confirmation() -> Result<bool> {
     remark("You are about to include some sensitive files in this version").ok();
     info("If you are not sure which files will be included, you can run the command with `--dry-run`and inspect the generated zip file.").ok();
 

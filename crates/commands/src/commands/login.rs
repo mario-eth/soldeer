@@ -3,7 +3,6 @@ use cliclack::{input, log::remark};
 use email_address_parser::{EmailAddress, ParsingOptions};
 use soldeer_core::{
     auth::{execute_login, Credentials},
-    errors::AuthError,
     Result,
 };
 
@@ -13,11 +12,6 @@ use soldeer_core::{
 pub struct Login {}
 
 pub(crate) async fn login_command() -> Result<()> {
-    login().await?;
-    Ok(())
-}
-
-async fn login() -> std::result::Result<(), AuthError> {
     remark("If you do not have an account, please visit soldeer.xyz to create one.")?;
 
     let email: String = input("Email address")

@@ -1,4 +1,4 @@
-//! Soldeer is a package manager for Solidity projects
+//! Low-level library for interacting with Soldeer registries and files
 #![cfg_attr(docsrs, feature(doc_cfg, doc_auto_cfg))]
 pub use errors::SoldeerError;
 

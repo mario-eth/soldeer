@@ -1,3 +1,4 @@
+//! Soldeer is a package manager for Solidity projects
 use soldeer_commands::{commands::Parser as _, run, Args};
 use yansi::Paint as _;
 

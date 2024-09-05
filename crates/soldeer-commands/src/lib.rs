@@ -1,4 +1,4 @@
-//! Soldeer is a package manager for Solidity projects
+//! High-level commands for the Soldeer CLI
 #![cfg_attr(docsrs, feature(doc_cfg, doc_auto_cfg))]
 pub use crate::commands::{Args, Subcommands};
 use cliclack::{intro, log::step, outro, outro_cancel};

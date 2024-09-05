@@ -3,14 +3,14 @@ use crate::{
     errors::{DownloadError, InstallError},
 };
 use ignore::{WalkBuilder, WalkState};
-use path_slash::PathExt;
+use path_slash::PathExt as _;
 use regex::Regex;
-use sha2::{Digest, Sha256};
+use sha2::{Digest as _, Sha256};
 use std::{
     env,
     ffi::OsStr,
     fs,
-    io::{self as std_io, Read},
+    io::Read,
     path::{Path, PathBuf},
     sync::{Arc, LazyLock, Mutex},
 };
@@ -30,7 +30,7 @@ pub enum UrlType {
 /// Read a file contents into a vector of bytes
 pub fn read_file(path: impl AsRef<Path>) -> Result<Vec<u8>, std::io::Error> {
     let f = fs::File::open(path)?;
-    let mut reader = std_io::BufReader::new(f);
+    let mut reader = std::io::BufReader::new(f);
     let mut buffer = Vec::new();
 
     // Read file into vector.
@@ -95,7 +95,7 @@ pub fn sanitize_filename(dependency_name: &str) -> String {
 
 /// Hash the contents of a Reader with SHA256
 pub fn hash_content<R: Read>(content: &mut R) -> [u8; 32] {
-    let mut hasher = <Sha256 as Digest>::new();
+    let mut hasher = Sha256::new();
     let mut buf = [0; 1024];
     while let Ok(size) = content.read(&mut buf) {
         if size == 0 {
@@ -131,7 +131,7 @@ pub fn hash_folder(folder_path: impl AsRef<Path>) -> Result<IntegrityChecksum, s
             };
             let path = entry.path();
             // first hash the filename/dirname to make sure it can't be renamed or removed
-            let mut hasher = <Sha256 as Digest>::new();
+            let mut hasher = Sha256::new();
             hasher.update(
                 path.strip_prefix(root_path.as_ref())
                     .expect("path should be a child of root")
@@ -141,7 +141,7 @@ pub fn hash_folder(folder_path: impl AsRef<Path>) -> Result<IntegrityChecksum, s
             // for files, also hash the contents
             if let Some(true) = entry.file_type().map(|t| t.is_file()) {
                 if let Ok(file) = fs::File::open(path) {
-                    let mut reader = std_io::BufReader::new(file);
+                    let mut reader = std::io::BufReader::new(file);
                     let hash = hash_content(&mut reader);
                     hasher.update(hash);
                 }
@@ -155,7 +155,7 @@ pub fn hash_folder(folder_path: impl AsRef<Path>) -> Result<IntegrityChecksum, s
     });
 
     // sort hashes
-    let mut hasher = <Sha256 as Digest>::new();
+    let mut hasher = Sha256::new();
     let mut all_hashes = all_hashes.lock().expect("mutex should not be poisoned");
     all_hashes.sort_unstable();
     // hash the hashes (yo dawg...)
@@ -169,7 +169,7 @@ pub fn hash_folder(folder_path: impl AsRef<Path>) -> Result<IntegrityChecksum, s
 /// Compute the SHA256 hash of the contents of a file
 pub fn hash_file(path: impl AsRef<Path>) -> Result<IntegrityChecksum, std::io::Error> {
     let file = fs::File::open(path)?;
-    let mut reader = std_io::BufReader::new(file);
+    let mut reader = std::io::BufReader::new(file);
     let bytes = hash_content(&mut reader);
     Ok(const_hex::encode(bytes).into())
 }
@@ -238,7 +238,7 @@ pub async fn remove_forge_lib(root: impl AsRef<Path>) -> Result<(), InstallError
     Ok(())
 }
 
-pub async fn canonicalize(path: impl AsRef<Path>) -> Result<PathBuf, std_io::Error> {
+pub async fn canonicalize(path: impl AsRef<Path>) -> Result<PathBuf, std::io::Error> {
     let path = path.as_ref().to_path_buf();
     tokio::task::spawn_blocking(move || dunce::canonicalize(&path)).await?
 }

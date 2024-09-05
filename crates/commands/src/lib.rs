@@ -13,49 +13,43 @@ pub async fn run(command: Subcommands) -> Result<()> {
         Subcommands::Init(init) => {
             intro("🦌 Soldeer Init 🦌")?;
             step("Initialize Foundry project to use Soldeer")?;
-            commands::init::init_command(&paths, init).await.map_err(|e| {
+            commands::init::init_command(&paths, init).await.inspect_err(|_| {
                 outro_cancel("An error occurred during initialization").ok();
-                e
             })?;
             outro("Done initializing!")?;
         }
         Subcommands::Install(cmd) => {
             intro("🦌 Soldeer Install 🦌")?;
-            commands::install::install_command(&paths, cmd).await.map_err(|e| {
+            commands::install::install_command(&paths, cmd).await.inspect_err(|_| {
                 outro_cancel("An error occurred during install").ok();
-                e
             })?;
             outro("Done installing!")?;
         }
         Subcommands::Update(cmd) => {
             intro("🦌 Soldeer Update 🦌")?;
-            commands::update::update_command(&paths, cmd).await.map_err(|e| {
+            commands::update::update_command(&paths, cmd).await.inspect_err(|_| {
                 outro_cancel("An error occurred during the update").ok();
-                e
             })?;
             outro("Done updating!")?;
         }
         Subcommands::Uninstall(cmd) => {
             intro("🦌 Soldeer Uninstall 🦌")?;
-            commands::uninstall::uninstall_command(&paths, &cmd).map_err(|e| {
+            commands::uninstall::uninstall_command(&paths, &cmd).inspect_err(|_| {
                 outro_cancel("An error occurred during uninstall").ok();
-                e
             })?;
             outro("Done uninstalling!")?;
         }
         Subcommands::Login(_) => {
             intro("🦌 Soldeer Login 🦌")?;
-            commands::login::login_command().await.map_err(|e| {
+            commands::login::login_command().await.inspect_err(|_| {
                 outro_cancel("An error occurred during login").ok();
-                e
             })?;
             outro("Done logging in!")?;
         }
         Subcommands::Push(cmd) => {
             intro("🦌 Soldeer Push 🦌")?;
-            commands::push::push_command(cmd).await.map_err(|e| {
+            commands::push::push_command(cmd).await.inspect_err(|_| {
                 outro_cancel("An error occurred during push").ok();
-                e
             })?;
             outro("Done!")?;
         }

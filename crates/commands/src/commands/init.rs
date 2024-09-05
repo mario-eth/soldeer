@@ -39,9 +39,8 @@ pub(crate) async fn init_command(paths: &Paths, cmd: Init) -> Result<()> {
     let lock =
         install_dependency(&dependency, None, &paths.dependencies, None, false, progress.clone())
             .await
-            .map_err(|e| {
-                multi.error(&e);
-                e
+            .inspect_err(|e| {
+                multi.error(e);
             })?;
     progress.stop_all();
     multi.stop();

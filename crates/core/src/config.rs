@@ -178,16 +178,6 @@ pub struct GitDependency {
     pub identifier: Option<GitIdentifier>,
 }
 
-impl GitDependency {
-    pub fn install_path_sync(&self, deps: impl AsRef<Path>) -> Option<PathBuf> {
-        find_install_path_sync(&self.into(), deps)
-    }
-
-    pub async fn install_path(&self, deps: impl AsRef<Path>) -> Option<PathBuf> {
-        find_install_path(&self.into(), deps).await
-    }
-}
-
 impl fmt::Display for GitDependency {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "{}~{}", self.name, self.version_req)
@@ -202,16 +192,6 @@ pub struct HttpDependency {
     #[cfg_attr(feature = "serde", serde(rename = "version"))]
     pub version_req: String,
     pub url: Option<String>,
-}
-
-impl HttpDependency {
-    pub fn install_path_sync(&self, deps: impl AsRef<Path>) -> Option<PathBuf> {
-        find_install_path_sync(&self.into(), deps)
-    }
-
-    pub async fn install_path(&self, deps: impl AsRef<Path>) -> Option<PathBuf> {
-        find_install_path(&self.into(), deps).await
-    }
 }
 
 impl fmt::Display for HttpDependency {
@@ -300,17 +280,11 @@ impl Dependency {
     }
 
     pub fn install_path_sync(&self, deps: impl AsRef<Path>) -> Option<PathBuf> {
-        match self {
-            Self::Http(dep) => dep.install_path_sync(deps),
-            Self::Git(dep) => dep.install_path_sync(deps),
-        }
+        find_install_path_sync(self, deps)
     }
 
     pub async fn install_path(&self, deps: impl AsRef<Path>) -> Option<PathBuf> {
-        match self {
-            Self::Http(dep) => dep.install_path(deps).await,
-            Self::Git(dep) => dep.install_path(deps).await,
-        }
+        find_install_path(self, deps).await
     }
 
     pub fn to_toml_value(&self) -> (String, Item) {

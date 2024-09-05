@@ -51,7 +51,6 @@ impl Paths {
     /// The `SOLDEER_PROJECT_ROOT` environment variable is ignored.
     ///
     /// The paths are canonicalized.
-    #[allow(unused)]
     pub fn from_root(root: impl AsRef<Path>) -> Result<Self> {
         let root = dunce::canonicalize(root.as_ref())?;
         let config = Self::get_config_path(&root)?;

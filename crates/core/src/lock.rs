@@ -147,7 +147,6 @@ impl LockEntry {
         }
     }
 
-    #[allow(unused)]
     pub fn as_http(&self) -> Option<&HttpLockEntry> {
         if let Self::Http(l) = self {
             Some(l)

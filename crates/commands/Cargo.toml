@@ -19,6 +19,7 @@ workspace = true
 [dependencies]
 clap.workspace = true
 cliclack.workspace = true
+email-address-parser = "2.0.0"
 soldeer-core = { path = "../core", features = ["cli"] }
 
 [features]

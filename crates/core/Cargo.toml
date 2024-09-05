@@ -27,18 +27,12 @@ cliclack = { workspace = true, optional = true }
 const-hex = "1.12.0"
 derive_more = { version = "1.0.0", features = ["from", "display", "from_str"] }
 dunce = "1.0.5"
-email-address-parser = "2.0.0"
 futures = "0.3.30"
 home = "0.5.9"
 ignore = { version = "0.4.22", features = ["simd-accel"] }
-path-slash = "0.2.1"
+path-slash.workspace = true
 regex = "1.10.5"
-reqwest = { version = "0.12.5", default-features = false, features = [
-    "blocking",
-    "json",
-    "multipart",
-    "stream",
-] }
+reqwest = { workspace = true, features = ["json", "multipart", "stream"] }
 sanitize-filename = "0.5.0"
 semver = "1.0.23"
 serde = { version = "1.0.204", features = ["derive"] }
@@ -55,9 +49,9 @@ zip-extract = { version = "0.2.0", default-features = false, features = [
 ] }
 
 [dev-dependencies]
-mockito = "1.5.0"
-temp-env = { version = "0.3.6", features = ["async_closure"] }
-testdir = "0.9.1"
+mockito.workspace = true
+temp-env.workspace = true
+testdir.workspace = true
 
 [features]
 default = ["rustls"]

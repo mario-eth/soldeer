@@ -1450,7 +1450,6 @@ checksum = "f8f4955649ef5c38cc7f9e8aa41761d48fb9677197daea9984dc54f56aad5e63"
 dependencies = [
  "base64",
  "bytes",
- "futures-channel",
  "futures-core",
  "futures-util",
  "http",
@@ -1739,6 +1738,7 @@ version = "0.4.0"
 dependencies = [
  "clap",
  "cliclack",
+ "email-address-parser",
  "soldeer-core",
 ]
 
@@ -1752,7 +1752,6 @@ dependencies = [
  "const-hex",
  "derive_more",
  "dunce",
- "email-address-parser",
  "futures",
  "home",
  "ignore",

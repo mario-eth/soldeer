@@ -1,27 +1,19 @@
-use crate::{errors::AuthError, utils::login_file_path};
+use crate::{errors::AuthError, registry::api_url, utils::login_file_path};
+use reqwest::{Client, StatusCode};
 use serde::{Deserialize, Serialize};
 use std::fs;
 
 #[cfg(feature = "cli")]
-use crate::registry::api_url;
-#[cfg(feature = "cli")]
-use cliclack::{
-    input,
-    log::{info, remark, success},
-};
-#[cfg(feature = "cli")]
-use email_address_parser::{EmailAddress, ParsingOptions};
+use cliclack::log::{info, success};
 #[cfg(feature = "cli")]
 use path_slash::PathBufExt as _;
-#[cfg(feature = "cli")]
-use reqwest::{Client, StatusCode};
 #[cfg(feature = "cli")]
 use std::path::PathBuf;
 
 pub type Result<T> = std::result::Result<T, AuthError>;
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Login {
+pub struct Credentials {
     pub email: String,
     pub password: String,
 }
@@ -30,30 +22,6 @@ pub struct Login {
 pub struct LoginResponse {
     pub status: String,
     pub token: String,
-}
-
-#[cfg(feature = "cli")]
-pub async fn login() -> Result<()> {
-    #[cfg(feature = "cli")]
-    remark("If you do not have an account, please visit soldeer.xyz to create one.")?;
-
-    let email: String = input("Email address")
-        .validate(|input: &String| {
-            if input.is_empty() {
-                Err("Email is required")
-            } else {
-                match EmailAddress::parse(input, Some(ParsingOptions::default())) {
-                    None => Err("Invalid email address"),
-                    Some(_) => Ok(()),
-                }
-            }
-        })
-        .interact()?;
-
-    let password = cliclack::password("Password").mask('▪').interact()?;
-
-    execute_login(&Login { email, password }).await?;
-    Ok(())
 }
 
 pub fn get_token() -> Result<String> {
@@ -66,8 +34,7 @@ pub fn get_token() -> Result<String> {
     Ok(jwt)
 }
 
-#[cfg(feature = "cli")]
-async fn execute_login(login: &Login) -> Result<()> {
+pub async fn execute_login(login: &Credentials) -> std::result::Result<(), AuthError> {
     let security_file = login_file_path()?;
     let url = api_url("auth/login", &[]);
     let client = Client::new();
@@ -116,7 +83,7 @@ mod tests {
                 ("SOLDEER_API_URL", Some(server.url())),
                 ("SOLDEER_LOGIN_FILE", Some(test_file.to_string_lossy().to_string())),
             ],
-            execute_login(&Login {
+            execute_login(&Credentials {
                 email: "test@test.com".to_string(),
                 password: "1234".to_string(),
             }),
@@ -143,7 +110,7 @@ mod tests {
                 ("SOLDEER_API_URL", Some(server.url())),
                 ("SOLDEER_LOGIN_FILE", Some(test_file.to_string_lossy().to_string())),
             ],
-            execute_login(&Login {
+            execute_login(&Credentials {
                 email: "test@test.com".to_string(),
                 password: "1234".to_string(),
             }),
@@ -169,7 +136,7 @@ mod tests {
                 ("SOLDEER_API_URL", Some(server.url())),
                 ("SOLDEER_LOGIN_FILE", Some(test_file.to_string_lossy().to_string())),
             ],
-            execute_login(&Login {
+            execute_login(&Credentials {
                 email: "test@test.com".to_string(),
                 password: "1234".to_string(),
             }),

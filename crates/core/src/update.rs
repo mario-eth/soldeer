@@ -1,13 +1,16 @@
 use crate::{
     config::Dependency,
     errors::UpdateError,
-    install::{install_dependency, Progress},
+    install::install_dependency,
     lock::{format_install_path, GitLockEntry, LockEntry},
     registry::get_latest_supported_version,
     utils::run_git_command,
 };
 use std::path::Path;
 use tokio::task::JoinSet;
+
+#[cfg(feature = "cli")]
+use crate::install::Progress;
 
 pub type Result<T> = std::result::Result<T, UpdateError>;
 
@@ -16,16 +19,28 @@ pub async fn update_dependencies(
     locks: &[LockEntry],
     deps_path: impl AsRef<Path>,
     recursive_deps: bool,
-    progress: Progress,
+    #[cfg(feature = "cli")] progress: Progress,
 ) -> Result<Vec<LockEntry>> {
     let mut set = JoinSet::new();
     for dep in dependencies {
         set.spawn({
             let d = dep.clone();
+            #[cfg(feature = "cli")]
             let p = progress.clone();
+
             let lock = locks.iter().find(|l| l.name() == dep.name()).cloned();
             let paths = deps_path.as_ref().to_path_buf();
-            async move { update_dependency(&d, lock.as_ref(), &paths, recursive_deps, p).await }
+            async move {
+                update_dependency(
+                    &d,
+                    lock.as_ref(),
+                    &paths,
+                    recursive_deps,
+                    #[cfg(feature = "cli")]
+                    p,
+                )
+                .await
+            }
         });
     }
 
@@ -41,7 +56,7 @@ pub async fn update_dependency(
     lock: Option<&LockEntry>,
     deps: impl AsRef<Path>,
     recursive_deps: bool,
-    progress: Progress,
+    #[cfg(feature = "cli")] progress: Progress,
 ) -> Result<LockEntry> {
     match dependency {
         Dependency::Git(ref dep) if dep.identifier.is_none() => {
@@ -92,9 +107,16 @@ pub async fn update_dependency(
                     .build()
                     .into(),
             };
-            let new_lock =
-                install_dependency(dependency, Some(lock), &deps, None, recursive_deps, progress)
-                    .await?;
+            let new_lock = install_dependency(
+                dependency,
+                Some(lock),
+                &deps,
+                None,
+                recursive_deps,
+                #[cfg(feature = "cli")]
+                progress,
+            )
+            .await?;
             Ok(new_lock)
         }
         _ => {
@@ -124,6 +146,7 @@ pub async fn update_dependency(
                 &deps,
                 force_version,
                 recursive_deps,
+                #[cfg(feature = "cli")]
                 progress,
             )
             .await?;

@@ -79,10 +79,6 @@ impl Progress {
     }
 }
 
-#[cfg(not(feature = "cli"))]
-#[derive(Clone)]
-pub struct Progress;
-
 #[bon::builder(on(String, into))]
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct HttpInstallInfo {
@@ -145,16 +141,29 @@ pub async fn install_dependencies(
     locks: &[LockEntry],
     deps: impl AsRef<Path>,
     recursive_deps: bool,
-    #[allow(unused_variables)] progress: Progress,
+    #[cfg(feature = "cli")] progress: Progress,
 ) -> Result<Vec<LockEntry>> {
     let mut set = JoinSet::new();
     for dep in dependencies {
         set.spawn({
             let d = dep.clone();
+            #[cfg(feature = "cli")]
             let p = progress.clone();
+
             let lock = locks.iter().find(|l| l.name() == dep.name()).cloned();
             let deps = deps.as_ref().to_path_buf();
-            async move { install_dependency(&d, lock.as_ref(), deps, None, recursive_deps, p).await }
+            async move {
+                install_dependency(
+                    &d,
+                    lock.as_ref(),
+                    deps,
+                    None,
+                    recursive_deps,
+                    #[cfg(feature = "cli")]
+                    p,
+                )
+                .await
+            }
         });
     }
 
@@ -175,7 +184,7 @@ pub async fn install_dependency(
     deps: impl AsRef<Path>,
     force_version: Option<String>,
     recursive_deps: bool,
-    progress: Progress,
+    #[cfg(feature = "cli")] progress: Progress,
 ) -> Result<LockEntry> {
     if let Some(lock) = lock {
         match check_dependency_integrity(lock, &deps).await? {
@@ -236,6 +245,7 @@ pub async fn install_dependency(
             &lock.clone().into(),
             lock.install_path(&deps),
             recursive_deps,
+            #[cfg(feature = "cli")]
             progress,
         )
         .await
@@ -281,6 +291,7 @@ pub async fn install_dependency(
             &info,
             format_install_path(dependency.name(), &version, &deps),
             recursive_deps,
+            #[cfg(feature = "cli")]
             progress,
         )
         .await
@@ -310,7 +321,7 @@ async fn install_dependency_inner(
     dep: &InstallInfo,
     path: impl AsRef<Path>,
     subdependencies: bool,
-    #[allow(unused_variables)] progress: Progress,
+    #[cfg(feature = "cli")] progress: Progress,
 ) -> Result<LockEntry> {
     match dep {
         InstallInfo::Http(dep) => {

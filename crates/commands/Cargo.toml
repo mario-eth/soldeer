@@ -19,7 +19,7 @@ workspace = true
 [dependencies]
 clap.workspace = true
 cliclack.workspace = true
-soldeer-core = { path = "../core" }
+soldeer-core = { path = "../core", features = ["cli"] }
 
 [features]
 default = ["rustls"]

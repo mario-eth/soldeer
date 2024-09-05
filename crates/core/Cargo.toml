@@ -60,7 +60,7 @@ temp-env = { version = "0.3.6", features = ["async_closure"] }
 testdir = "0.9.1"
 
 [features]
-default = ["rustls", "cli"]
+default = ["rustls"]
 rustls = ["reqwest/rustls-tls"]
 cli = ["cliclack"]
 serde = []

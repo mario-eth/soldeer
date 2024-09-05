@@ -27,7 +27,6 @@ cliclack = { workspace = true, optional = true }
 const-hex = "1.12.0"
 derive_more = { version = "1.0.0", features = ["from", "display", "from_str"] }
 dunce = "1.0.5"
-futures = "0.3.30"
 home = "0.5.9"
 ignore = { version = "0.4.22", features = ["simd-accel"] }
 path-slash.workspace = true

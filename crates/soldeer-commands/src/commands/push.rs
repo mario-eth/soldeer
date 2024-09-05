@@ -13,12 +13,13 @@ use std::{env, path::PathBuf};
 #[derive(Debug, Clone, Parser)]
 #[clap(
     long_about = "Push a Dependency to the Repository
-The `PATH_TO_DEPENDENCY` is optional. If not provided, the current directory will be used.
-**Example:**
-- If the current directory is `/home/soldeer/my_project` and you do not specify the `PATH_TO_DEPENDENCY`, the files inside `/home/soldeer/my_project` will be pushed to the repository.
-- If you specify the `PATH_TO_DEPENDENCY`, the files inside the specified directory will be pushed to the repository.
-To ignore certain files, create a `.soldeerignore` file in the root of the project and add the files you want to ignore. The `.soldeerignore` works like a `.gitignore`.
-For a dry run, use the `--dry-run` argument set to `true`: `soldeer push ... --dry-run true`. This will create a zip file that you can inspect to see what will be pushed to the central repository.",
+
+Examples:
+- Current directory: soldeer push mypkg~0.1.0
+- Custom directory: soldeer push mypkg~0.1.0 /path/to/dep
+- Dry run: soldeer push mypkg~0.1.0 --dry-run
+
+To ignore certain files, create a `.soldeerignore` file in the root of the project and add the files you want to ignore. The `.soldeerignore` uses the same syntax as `.gitignore`.",
     after_help = "For more information, read the README.md"
 )]
 pub struct Push {

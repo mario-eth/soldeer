@@ -14,7 +14,7 @@ use soldeer_core::{
 };
 use std::fs;
 
-/// Initialize a new Soldeer project for use with Foundry
+/// Convert a Foundry project to use Soldeer
 #[derive(Debug, Clone, Default, Parser)]
 #[clap(after_help = "For more information, read the README.md")]
 pub struct Init {

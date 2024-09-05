@@ -7,7 +7,7 @@ pub mod push;
 pub mod uninstall;
 pub mod update;
 
-/// A minimal solidity dependency manager.
+/// A minimal Solidity dependency manager
 #[derive(Parser, Debug)]
 #[clap(name = "soldeer", author = "m4rio.eth", version)]
 pub struct Args {

@@ -21,6 +21,6 @@ name = "soldeer"
 path = "src/main.rs"
 
 [dependencies]
-owo-colors = { version = "4.0.0", features = ["supports-colors"] }
 soldeer-commands = { path = "../soldeer-commands" }
 tokio.workspace = true
+yansi = { version = "1.0.1", features = ["detect-tty", "detect-env"] }

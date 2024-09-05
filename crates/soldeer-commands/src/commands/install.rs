@@ -22,19 +22,16 @@ use std::fs;
     long_about = "Install a dependency
 
 You can install a dependency from the Soldeer repository, a custom URL pointing to a zip file, or from Git using a Git link.
-**Important:** The `~` symbol when specifying the dependency is crucial to differentiate between the name and the version that needs to be installed.
-- **Example from Soldeer repository:**
-  soldeer install @openzeppelin-contracts~2.3.0
-- **Example from a custom URL:**
-  soldeer install @openzeppelin-contracts~2.3.0 https://github.com/OpenZeppelin/openzeppelin-contracts/archive/refs/tags/v5.0.2.zip
-- **Example from Git:**
-  soldeer install @openzeppelin-contracts~2.3.0 git@github.com:OpenZeppelin/openzeppelin-contracts.git
-- **Example from Git with a specified commit:**
-  soldeer install @openzeppelin-contracts~2.3.0 git@github.com:OpenZeppelin/openzeppelin-contracts.git --rev 05f218fb6617932e56bf5388c3b389c3028a7b73
-- **Example from Git with a specified tag:**
-  soldeer install @openzeppelin-contracts~2.3.0 git@github.com:OpenZeppelin/openzeppelin-contracts.git --tag my-tag
-- **Example from Git with a specified branch:**
-  soldeer install @openzeppelin-contracts~2.3.0 git@github.com:OpenZeppelin/openzeppelin-contracts.git --branch my-branch",
+
+The `~version` suffix is always required.
+
+Examples:
+- Repository: soldeer install lib_name~2.3.0
+- Custom URL: soldeer install lib_name~2.3.0 https://foo.bar/lib.zip
+- Git: soldeer install lib_name~2.3.0 git@github.com:foo/bar.git
+- Git (commit): soldeer install lib_name~2.3.0 git@github.com:foo/bar.git --rev 05f218fb6617932e56bf5388c3b389c3028a7b73
+- Git (tag): soldeer install lib_name~2.3.0 git@github.com:foo/bar.git --tag v2.3.0
+- Git (branch): soldeer install lib_name~2.3.0 git@github.com:foo/bar.git --branch feature/baz",
     after_help = "For more information, read the README.md"
 )]
 pub struct Install {

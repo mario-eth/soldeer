@@ -6,14 +6,15 @@ use crate::{
     registry::{get_dependency_url_remote, get_latest_supported_version},
     utils::{canonicalize, hash_file, hash_folder, run_forge_command, run_git_command},
 };
-use cliclack::{progress_bar, MultiProgress, ProgressBar};
 use path_slash::PathBufExt as _;
-use std::{
-    fmt,
-    path::{Path, PathBuf},
-};
+use std::path::{Path, PathBuf};
 use tokio::{fs, task::JoinSet};
 use toml_edit::DocumentMut;
+
+#[cfg(feature = "cli")]
+use cliclack::{progress_bar, MultiProgress, ProgressBar};
+#[cfg(feature = "cli")]
+use std::fmt;
 
 pub const PROGRESS_TEMPLATE: &str = "[{elapsed_precise}] {bar:30.magenta} ({pos}/{len}) {msg}";
 
@@ -27,6 +28,7 @@ pub enum DependencyStatus {
     Installed,
 }
 
+#[cfg(feature = "cli")]
 #[derive(Clone)]
 pub struct Progress {
     pub multi: MultiProgress,
@@ -37,6 +39,7 @@ pub struct Progress {
     pub integrity: ProgressBar,
 }
 
+#[cfg(feature = "cli")]
 impl Progress {
     pub fn new(multi: &MultiProgress, deps: u64) -> Self {
         let versions = multi.add(progress_bar(deps).with_template(PROGRESS_TEMPLATE));
@@ -75,6 +78,10 @@ impl Progress {
         self.multi.println(msg);
     }
 }
+
+#[cfg(not(feature = "cli"))]
+#[derive(Clone)]
+pub struct Progress;
 
 #[bon::builder(on(String, into))]
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -138,7 +145,7 @@ pub async fn install_dependencies(
     locks: &[LockEntry],
     deps: impl AsRef<Path>,
     recursive_deps: bool,
-    progress: Progress,
+    #[allow(unused_variables)] progress: Progress,
 ) -> Result<Vec<LockEntry>> {
     let mut set = JoinSet::new();
     for dep in dependencies {
@@ -175,32 +182,41 @@ pub async fn install_dependency(
             DependencyStatus::Installed => {
                 // no action needed, dependency is already installed and matches the lockfile
                 // entry
+                #[cfg(feature = "cli")]
                 progress.increment_all();
+
                 return Ok(lock.clone());
             }
             DependencyStatus::FailedIntegrity => match dependency {
                 Dependency::Http(_) => {
                     // we know the folder exists because otherwise we would have gotten
                     // `Missing`
+                    #[cfg(feature = "cli")]
                     progress.log(format!(
                         "Dependency {dependency} failed integrity check, reinstalling"
                     ));
+
                     delete_dependency_files(dependency, &deps).await?;
                     // we won't need to retrieve the version number so we mark it as done
+                    #[cfg(feature = "cli")]
                     progress.versions.inc(1);
                 }
                 Dependency::Git(_) => {
+                    #[cfg(feature = "cli")]
                     progress.log(format!(
                         "Dependency {dependency} failed integrity check, resetting to commit {}",
                         lock.as_git().expect("lock entry should be of type git").rev
                     ));
+
                     reset_git_dependency(
                         lock.as_git().expect("lock entry should be of type git"),
                         &deps,
                     )
                     .await?;
                     // dependency should now be at the correct commit, we can exit
+                    #[cfg(feature = "cli")]
                     progress.increment_all();
+
                     return Ok(lock.clone());
                 }
             },
@@ -212,6 +228,7 @@ pub async fn install_dependency(
                         .map_err(|e| InstallError::IOError { path, source: e })?;
                 }
                 // we won't need to retrieve the version number so we mark it as done
+                #[cfg(feature = "cli")]
                 progress.versions.inc(1);
             }
         }
@@ -245,7 +262,9 @@ pub async fn install_dependency(
             }
         };
         // indicate that we have retrieved the version number
+        #[cfg(feature = "cli")]
         progress.versions.inc(1);
+
         let info = match &dependency {
             Dependency::Http(dep) => {
                 HttpInstallInfo::builder().name(&dep.name).version(&version).url(url).build().into()
@@ -291,12 +310,14 @@ async fn install_dependency_inner(
     dep: &InstallInfo,
     path: impl AsRef<Path>,
     subdependencies: bool,
-    progress: Progress,
+    #[allow(unused_variables)] progress: Progress,
 ) -> Result<LockEntry> {
     match dep {
         InstallInfo::Http(dep) => {
             let zip_path = download_file(&dep.url, &path).await?;
+            #[cfg(feature = "cli")]
             progress.downloads.inc(1);
+
             let zip_integrity = tokio::task::spawn_blocking({
                 let zip_path = zip_path.clone();
                 move || hash_file(zip_path)
@@ -313,16 +334,22 @@ async fn install_dependency_inner(
                 }
             }
             unzip_file(&zip_path, &path).await?;
+            #[cfg(feature = "cli")]
             progress.unzip.inc(1);
+
             if subdependencies {
                 install_subdependencies(&path).await?;
             }
+            #[cfg(feature = "cli")]
             progress.subdependencies.inc(1);
+
             let integrity = hash_folder(&path).map_err(|e| InstallError::IOError {
                 path: path.as_ref().to_path_buf(),
                 source: e,
             })?;
+            #[cfg(feature = "cli")]
             progress.integrity.inc(1);
+
             Ok(HttpLockEntry::builder()
                 .name(&dep.name)
                 .version(&dep.version)
@@ -336,13 +363,18 @@ async fn install_dependency_inner(
             // if the dependency was specified without a commit hash and we didn't have a lockfile,
             // clone the default branch
             let commit = clone_repo(&dep.git, dep.identifier.as_ref(), &path).await?;
+            #[cfg(feature = "cli")]
             progress.downloads.inc(1);
+
             if subdependencies {
                 install_subdependencies(&path).await?;
             }
-            progress.unzip.inc(1);
-            progress.subdependencies.inc(1);
-            progress.integrity.inc(1);
+            #[cfg(feature = "cli")]
+            {
+                progress.unzip.inc(1);
+                progress.subdependencies.inc(1);
+                progress.integrity.inc(1);
+            }
             Ok(GitLockEntry::builder()
                 .name(&dep.name)
                 .version(&dep.version)

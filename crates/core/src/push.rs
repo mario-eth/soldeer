@@ -4,9 +4,8 @@ use crate::{
     registry::{api_url, get_project_id},
     utils::read_file,
 };
-use cliclack::log::{info, remark, success};
 use ignore::{WalkBuilder, WalkState};
-use path_slash::{PathBufExt as _, PathExt as _};
+use path_slash::PathExt as _;
 use regex::Regex;
 use reqwest::{
     header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE},
@@ -20,6 +19,11 @@ use std::{
     sync::{Arc, Mutex},
 };
 use zip::{write::SimpleFileOptions, CompressionMethod, ZipWriter};
+
+#[cfg(feature = "cli")]
+use cliclack::log::{info, remark, success};
+#[cfg(feature = "cli")]
+use path_slash::PathBufExt as _;
 
 pub type Result<T> = std::result::Result<T, PublishError>;
 
@@ -41,11 +45,13 @@ pub async fn push_version(
     };
 
     if dry_run {
+        #[cfg(feature = "cli")]
         info(format!(
             "Zip file created at {}",
             PathBuf::from_slash_lossy(&zip_archive).to_string_lossy()
         ))
         .ok();
+
         return Ok(());
     }
 
@@ -196,7 +202,9 @@ async fn push_to_repo(
     let response = client.post(url).headers(headers.clone()).multipart(form).send().await?;
     match response.status() {
         StatusCode::OK => {
+            #[cfg(feature = "cli")]
             success("Pushed to repository!").ok();
+
             Ok(())
         }
         StatusCode::NO_CONTENT => Err(PublishError::ProjectNotFound),
@@ -212,12 +220,18 @@ async fn push_to_repo(
 
 // Function to prompt the user for confirmation
 pub fn prompt_user_for_confirmation() -> Result<bool> {
-    remark("You are about to include some sensitive files in this version").ok();
-    info("If you are not sure which files will be included, you can run the command with `--dry-run`and inspect the generated zip file.").ok();
+    #[cfg(feature = "cli")]
+    {
+        remark("You are about to include some sensitive files in this version").ok();
+        info("If you are not sure which files will be included, you can run the command with `--dry-run`and inspect the generated zip file.").ok();
 
-    cliclack::confirm("Do you want to continue?")
-        .interact()
-        .map_err(|e| PublishError::IOError { path: PathBuf::new(), source: e })
+        cliclack::confirm("Do you want to continue?")
+            .interact()
+            .map_err(|e| PublishError::IOError { path: PathBuf::new(), source: e })
+    }
+
+    #[cfg(not(feature = "cli"))]
+    Ok(true)
 }
 
 #[cfg(test)]

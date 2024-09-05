@@ -4,7 +4,6 @@ use crate::{
     remappings::RemappingsLocation,
     utils::{get_url_type, UrlType},
 };
-use cliclack::{log::warning, select};
 use derive_more::derive::{Display, From, FromStr};
 use serde::Deserialize;
 use std::{
@@ -12,6 +11,9 @@ use std::{
     path::{Path, PathBuf},
 };
 use toml_edit::{value, DocumentMut, InlineTable, Item, Table};
+
+#[cfg(feature = "cli")]
+use cliclack::{log::warning, select};
 
 pub type Result<T> = std::result::Result<T, ConfigError>;
 
@@ -88,7 +90,9 @@ impl Paths {
             return Ok(soldeer_path);
         }
 
+        #[cfg(feature = "cli")]
         warning("No soldeer config found")?;
+        #[cfg(feature = "cli")]
         let config_option: ConfigLocation = select("Select how you want to configure Soldeer")
             .initial_value("foundry")
             .item("foundry", "Using foundry.toml", "recommended")
@@ -96,6 +100,9 @@ impl Paths {
             .interact()?
             .parse()
             .map_err(|_| ConfigError::InvalidPromptOption)?;
+
+        #[cfg(not(feature = "cli"))]
+        let config_option = ConfigLocation::Foundry;
 
         create_example_config(config_option, &foundry_path, &soldeer_path)
     }

@@ -1,10 +1,22 @@
-use crate::{errors::AuthError, registry::api_url, utils::login_file_path};
-use cliclack::log::{info, remark, success};
-use email_address_parser::{EmailAddress, ParsingOptions};
-use path_slash::PathBufExt as _;
-use reqwest::{Client, StatusCode};
+use crate::{errors::AuthError, utils::login_file_path};
 use serde::{Deserialize, Serialize};
-use std::{fs, path::PathBuf};
+use std::fs;
+
+#[cfg(feature = "cli")]
+use crate::registry::api_url;
+#[cfg(feature = "cli")]
+use cliclack::{
+    input,
+    log::{info, remark, success},
+};
+#[cfg(feature = "cli")]
+use email_address_parser::{EmailAddress, ParsingOptions};
+#[cfg(feature = "cli")]
+use path_slash::PathBufExt as _;
+#[cfg(feature = "cli")]
+use reqwest::{Client, StatusCode};
+#[cfg(feature = "cli")]
+use std::path::PathBuf;
 
 pub type Result<T> = std::result::Result<T, AuthError>;
 
@@ -20,9 +32,12 @@ pub struct LoginResponse {
     pub token: String,
 }
 
+#[cfg(feature = "cli")]
 pub async fn login() -> Result<()> {
+    #[cfg(feature = "cli")]
     remark("If you do not have an account, please visit soldeer.xyz to create one.")?;
-    let email: String = cliclack::input("Email address")
+
+    let email: String = input("Email address")
         .validate(|input: &String| {
             if input.is_empty() {
                 Err("Email is required")
@@ -51,6 +66,7 @@ pub fn get_token() -> Result<String> {
     Ok(jwt)
 }
 
+#[cfg(feature = "cli")]
 async fn execute_login(login: &Login) -> Result<()> {
     let security_file = login_file_path()?;
     let url = api_url("auth/login", &[]);
@@ -58,13 +74,18 @@ async fn execute_login(login: &Login) -> Result<()> {
     let res = client.post(url).json(login).send().await?;
     match res.status() {
         s if s.is_success() => {
+            #[cfg(feature = "cli")]
             success("Login successful")?;
+
             let response: LoginResponse = res.json().await?;
             fs::write(&security_file, response.token)?;
+
+            #[cfg(feature = "cli")]
             info(format!(
                 "Login details saved in: {}",
-                PathBuf::from_slash_lossy(&security_file).to_string_lossy() // normalize separators
+                PathBuf::from_slash_lossy(&security_file).to_string_lossy() /* normalize separators */
             ))?;
+
             Ok(())
         }
         StatusCode::UNAUTHORIZED => Err(AuthError::InvalidCredentials),

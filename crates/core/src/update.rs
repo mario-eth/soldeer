@@ -65,6 +65,7 @@ pub async fn update_dependency(
                 .trim()
                 .to_string();
             if commit != old_commit {
+                #[cfg(feature = "cli")]
                 progress.log(format!("Updating {dependency} from {old_commit:.7} to {commit:.7}"));
             }
             let new_lock = GitLockEntry::builder()
@@ -74,7 +75,9 @@ pub async fn update_dependency(
                 .rev(commit)
                 .build()
                 .into();
+            #[cfg(feature = "cli")]
             progress.increment_all();
+
             Ok(new_lock)
         }
         Dependency::Git(ref dep) if dep.identifier.is_some() => {
@@ -104,6 +107,7 @@ pub async fn update_dependency(
                 (None, Some(lock)) => {
                     let new_version = get_latest_supported_version(dependency).await?;
                     if lock.version() != new_version {
+                        #[cfg(feature = "cli")]
                         progress.log(format!(
                             "Updating {} from {} to {new_version}",
                             dependency.name(),

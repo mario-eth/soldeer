@@ -23,7 +23,7 @@ chrono = { version = "0.4.38", default-features = false, features = [
     "serde",
     "std",
 ] }
-cliclack.workspace = true
+cliclack = { workspace = true, optional = true }
 const-hex = "1.12.0"
 derive_more = { version = "1.0.0", features = ["from", "display", "from_str"] }
 dunce = "1.0.5"
@@ -60,6 +60,7 @@ temp-env = { version = "0.3.6", features = ["async_closure"] }
 testdir = "0.9.1"
 
 [features]
-default = ["rustls"]
+default = ["rustls", "cli"]
 rustls = ["reqwest/rustls-tls"]
+cli = ["cliclack"]
 serde = []

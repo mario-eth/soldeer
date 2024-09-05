@@ -4,10 +4,12 @@ use crate::{
     registry::parse_version_req,
     utils::{run_git_command, sanitize_filename},
 };
+use derive_more::{Display, From};
 use reqwest::IntoUrl;
 use semver::Version;
 use std::{
-    fmt, fs,
+    borrow::Cow,
+    fs,
     io::Cursor,
     path::{Path, PathBuf},
     str,
@@ -16,25 +18,10 @@ use tokio::io::AsyncWriteExt as _;
 
 pub type Result<T> = std::result::Result<T, DownloadError>;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, From, Display)]
+#[from(Cow<'static, str>, String, &'static str)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct IntegrityChecksum(pub String);
-
-impl<T> From<T> for IntegrityChecksum
-where
-    T: Into<String>,
-{
-    fn from(value: T) -> Self {
-        let v: String = value.into();
-        Self(v)
-    }
-}
-
-impl fmt::Display for IntegrityChecksum {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.0)
-    }
-}
 
 pub async fn download_file(url: impl IntoUrl, folder_path: impl AsRef<Path>) -> Result<PathBuf> {
     let resp = reqwest::get(url).await?;

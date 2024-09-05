@@ -5,6 +5,7 @@ use crate::{
     utils::{get_url_type, UrlType},
 };
 use cliclack::{log::warning, select};
+use derive_more::derive::{Display, From, FromStr};
 use serde::Deserialize;
 use std::{
     env, fmt, fs,
@@ -93,7 +94,8 @@ impl Paths {
             .item("foundry", "Using foundry.toml", "recommended")
             .item("soldeer", "Using soldeer.toml", "for non-foundry projects")
             .interact()?
-            .try_into()?;
+            .parse()
+            .map_err(|_| ConfigError::InvalidPromptOption)?;
 
         create_example_config(config_option, &foundry_path, &soldeer_path)
     }
@@ -140,7 +142,7 @@ impl Default for SoldeerConfig {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Display)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, Deserialize))]
 pub enum GitIdentifier {
     Rev(String),
@@ -162,17 +164,6 @@ impl GitIdentifier {
     pub fn from_tag(tag: impl Into<String>) -> Self {
         let tag: String = tag.into();
         Self::Tag(tag)
-    }
-}
-
-impl fmt::Display for GitIdentifier {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let val = match self {
-            Self::Rev(rev) => rev,
-            Self::Branch(branch) => branch,
-            Self::Tag(tag) => tag,
-        };
-        write!(f, "{val}")
     }
 }
 
@@ -230,10 +221,13 @@ impl fmt::Display for HttpDependency {
 }
 
 // Dependency object used to store a dependency data
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Display, From)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, Deserialize))]
 pub enum Dependency {
+    #[from(HttpDependency)]
     Http(HttpDependency),
+
+    #[from(GitDependency)]
     Git(GitDependency),
 }
 
@@ -427,30 +421,9 @@ impl Dependency {
     }
 }
 
-impl fmt::Display for Dependency {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> core::fmt::Result {
-        match self {
-            Self::Http(dep) => write!(f, "{dep}"),
-            Self::Git(dep) => write!(f, "{dep}"),
-        }
-    }
-}
-
-impl From<HttpDependency> for Dependency {
-    fn from(dep: HttpDependency) -> Self {
-        Self::Http(dep)
-    }
-}
-
 impl From<&HttpDependency> for Dependency {
     fn from(dep: &HttpDependency) -> Self {
         Self::Http(dep.clone())
-    }
-}
-
-impl From<GitDependency> for Dependency {
-    fn from(dep: GitDependency) -> Self {
-        Self::Git(dep)
     }
 }
 
@@ -460,23 +433,11 @@ impl From<&GitDependency> for Dependency {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, FromStr)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, Deserialize))]
 pub enum ConfigLocation {
     Foundry,
     Soldeer,
-}
-
-impl TryFrom<&str> for ConfigLocation {
-    type Error = ConfigError;
-
-    fn try_from(value: &str) -> Result<Self> {
-        match value {
-            "foundry" => Ok(Self::Foundry),
-            "soldeer" => Ok(Self::Soldeer),
-            _ => Err(ConfigError::InvalidPromptOption),
-        }
-    }
 }
 
 /// Read the list of dependencies from the config file.

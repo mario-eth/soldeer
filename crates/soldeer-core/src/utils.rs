@@ -110,9 +110,6 @@ pub fn hash_content<R: Read>(content: &mut R) -> [u8; 32] {
 /// dir, combining them into a single hash.
 ///
 /// We hash the name of the folders and files too, so we can check the integrity of their names.
-///
-/// Since the folder contains the zip file still, we need to skip it. TODO: can we remove the zip
-/// file right after unzipping so this is not necessary?
 pub fn hash_folder(folder_path: impl AsRef<Path>) -> Result<IntegrityChecksum, std::io::Error> {
     // a list of hashes, one for each DirEntry
     let all_hashes = Arc::new(Mutex::new(Vec::with_capacity(100)));

@@ -37,11 +37,13 @@ Examples:
 pub struct Install {
     /// The dependency name and version, separated by a tilde.
     ///
-    /// If not present, this command will perform `soldeer update`
+    /// If not present, this command will install all dependencies which are missing.
     #[arg(value_parser = validate_dependency, value_name = "DEPENDENCY~VERSION")]
     pub dependency: Option<String>,
 
-    /// The URL to the dependency zip file, if not from the Soldeer repository
+    /// The URL to the dependency zip file.
+    ///
+    /// If not present, the package will be installed from the Soldeer repository.
     ///
     /// Example: https://my-domain/dep.zip
     #[arg(value_name = "URL", requires = "dependency")]
@@ -63,12 +65,12 @@ pub struct Install {
     #[arg(short = 'g', long, default_value_t = false)]
     pub regenerate_remappings: bool,
 
-    /// If set, this command will install the recursive dependencies (via submodules or via
+    /// If set, this command will install dependencies recursively (via git submodules or via
     /// soldeer)
     #[arg(short = 'd', long, default_value_t = false)]
     pub recursive_deps: bool,
 
-    /// Perform a clean install by re-installing the dependencies
+    /// Perform a clean install by re-installing all dependencies
     #[arg(long, default_value_t = false)]
     pub clean: bool,
 }

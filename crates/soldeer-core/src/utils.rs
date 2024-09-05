@@ -300,6 +300,10 @@ mod tests {
         let folder2 = create_test_folder(Some("dir2"));
         let hash1 = hash_folder(&folder1).unwrap();
         let hash2 = hash_folder(&folder2).unwrap();
+        assert_eq!(
+            hash1.to_string(),
+            "4671014a36f223796de8760df8125ca6e5a749e162dd5690e815132621dd8bfb"
+        );
         assert_eq!(hash1, hash2);
     }
 

@@ -12,7 +12,7 @@ jobs:
   build-test:
     strategy:
       matrix:
-        platform: [ubuntu-latest, windows-latest]
+        platform: [ubuntu-latest, windows-latest, macos-latest]
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v4
@@ -21,6 +21,17 @@ jobs:
         uses: foundry-rs/foundry-toolchain@v1
       - name: Run tests
         run: cargo test
+
+  doctests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+      - run: cargo test --workspace --doc
 
   feature-checks:
     runs-on: ubuntu-latest

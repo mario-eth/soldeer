@@ -2,16 +2,18 @@ name: Rust
 
 on:
   push:
-    branches: ["main"]
+    branches: ['main']
   pull_request:
-    branches: ["main"]
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
+  build-test:
+    strategy:
+      matrix:
+        platform: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -59,7 +61,7 @@ jobs:
           cache-on-failure: true
       - run: cargo doc --workspace --all-features --no-deps --document-private-items
         env:
-          RUSTDOCFLAGS: "--cfg docsrs -D warnings"
+          RUSTDOCFLAGS: '--cfg docsrs -D warnings'
 
   fmt:
     runs-on: ubuntu-latest

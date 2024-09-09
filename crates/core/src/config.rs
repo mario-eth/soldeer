@@ -17,20 +17,65 @@ use cliclack::{log::warning, select};
 
 pub type Result<T> = std::result::Result<T, ConfigError>;
 
+/// The paths used by Soldeer.
+///
+/// The paths are canonicalized on creation of the object.
+///
+/// To create this object, the [`Paths::new`] and [`Paths::from_root`] methods can be used.
+///
+/// # Examples
+///
+/// ```
+/// # use soldeer_core::config::Paths;
+/// # let dir = testdir::testdir!();
+/// # std::env::set_current_dir(&dir).unwrap();
+/// # std::fs::write("foundry.toml", "[dependencies]\n").unwrap();
+/// let paths = Paths::new().unwrap(); // foundry.toml exists in the current path
+/// assert_eq!(paths.root, std::env::current_dir().unwrap());
+/// assert_eq!(paths.config, std::env::current_dir().unwrap().join("foundry.toml"));
+///
+/// let paths = Paths::from_root(&dir).unwrap(); // root is the given path
+/// assert_eq!(paths.root, dir);
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, Deserialize))]
-// make sure the struct is not constructible from the outside without using the new/from methods
+// making sure the struct is not constructible from the outside without using the new/from methods
 #[non_exhaustive]
 pub struct Paths {
+    /// The root directory of the project.
+    ///
+    /// At the moment, the current directory or the path given by the `SOLDEER_PROJECT_ROOT`
+    /// environment variable.
     pub root: PathBuf,
+
+    /// The path to the config file.
+    ///
+    /// `foundry.toml` if it contains a `[dependencies]` table, otherwise `soldeer.toml` if it
+    /// exists. If neither file exists, the user is prompted to create one when the `cli`
+    /// feature is enabled. If the `cli` feature is not enabled, the function will return the
+    /// path to the `foundry.toml` by default. When the config file does not exist, a new one
+    /// is created with default contents.
     pub config: PathBuf,
+
+    /// The path to the dependencies folder (does not need to exist).
+    ///
+    /// This is `/dependencies` inside the root directory.
     pub dependencies: PathBuf,
+
+    /// The path to the lockfile (does not need to exist).
+    ///
+    /// This is `/soldeer.lock` inside the root directory.
     pub lock: PathBuf,
+
+    /// The path to the remappings file (does not need to exist).
+    ///
+    /// This path gets ignored if the remappings should be generated in the `foundry.toml` file.
+    /// This is `/remappings.txt` inside the root directory.
     pub remappings: PathBuf,
 }
 
 impl Paths {
-    /// Instantiate all the paths needed for Soldeer
+    /// Instantiate all the paths needed for Soldeer.
     ///
     /// The root path defaults to the current directory but can be overridden with the
     /// `SOLDEER_PROJECT_ROOT` environment variable.
@@ -46,7 +91,7 @@ impl Paths {
         Ok(Self { root, config, dependencies, lock, remappings })
     }
 
-    /// Generate the paths object from a known root directory
+    /// Generate the paths object from a known root directory.
     ///
     /// The `SOLDEER_PROJECT_ROOT` environment variable is ignored.
     ///
@@ -61,8 +106,13 @@ impl Paths {
         Ok(Self { root, config, dependencies, lock, remappings })
     }
 
-    /// TODO: find the project's root directory and use that as the root instead of the current dir
+    /// Get the root directory path.
+    ///
+    /// At the moment, this is the current directory, unless overridden by the
+    /// `SOLDEER_PROJECT_ROOT` environment variable.
     fn get_root_path() -> PathBuf {
+        // TODO: find the project's root directory and use that as the root instead of the current
+        // dir
         env::var("SOLDEER_PROJECT_ROOT")
             .map(|p| {
                 if p.is_empty() {
@@ -74,7 +124,8 @@ impl Paths {
             .unwrap_or(env::current_dir().expect("could not get current dir"))
     }
 
-    /// Get the path to the config file or prompt the user to create one
+    /// Get the path to the config file or prompt the user to choose one (only with `cli` feature
+    /// flag).
     fn get_config_path(root: impl AsRef<Path>) -> Result<PathBuf> {
         let foundry_path = root.as_ref().join("foundry.toml");
         if let Ok(contents) = fs::read_to_string(&foundry_path) {
@@ -112,25 +163,50 @@ fn default_true() -> bool {
     true
 }
 
-/// The Soldeer config options
+/// The Soldeer config options.
 #[derive(Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct SoldeerConfig {
+    /// Whether to generate remappings or completely leave them untouched.
+    ///
+    /// Defaults to `true`.
     #[serde(default = "default_true")]
     pub remappings_generate: bool,
 
+    /// Whether to regenerate the remappings every time and ignore existing content.
+    ///
+    /// Defaults to `false`.
     #[serde(default)]
     pub remappings_regenerate: bool,
 
+    /// Whether to include the version requirement string in the left part of the remappings.
+    ///
+    /// Defaults to `true`.
     #[serde(default = "default_true")]
     pub remappings_version: bool,
 
+    /// A prefix to add to each dependency name in the left part of the remappings.
+    ///
+    /// None by default.
     #[serde(default)]
     pub remappings_prefix: String,
 
+    /// The location where the remappings file should be generated.
+    ///
+    /// Either inside the `foundry.toml` config file or as a separate `remappings.txt` file.
+    /// This gets ignored if the config file is `soldeer.toml`, in which case the remappings
+    /// are always generated in a separate file.
+    ///
+    /// Defaults to [`RemappingsLocation::Txt`].
     #[serde(default)]
     pub remappings_location: RemappingsLocation,
 
+    /// Whether to include dependencies from dependencies.
+    ///
+    /// For dependencies which use soldeer, the `soldeer install` command will be invoked.
+    /// Git dependencies which have submodules will see their submodules cloned as well.
+    ///
+    /// Defaults to `false`.
     #[serde(default)]
     pub recursive_deps: bool,
 }
@@ -148,39 +224,65 @@ impl Default for SoldeerConfig {
     }
 }
 
+/// A git identifier used to specify a revision, branch or tag.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Display)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, Deserialize))]
 pub enum GitIdentifier {
+    /// A commit hash
     Rev(String),
+
+    /// A branch name
     Branch(String),
+
+    /// A tag name
     Tag(String),
 }
 
 impl GitIdentifier {
+    /// Create a new git identifier from a revision hash.
     pub fn from_rev(rev: impl Into<String>) -> Self {
         let rev: String = rev.into();
         Self::Rev(rev)
     }
 
+    /// Create a new git identifier from a branch name.
     pub fn from_branch(branch: impl Into<String>) -> Self {
         let branch: String = branch.into();
         Self::Branch(branch)
     }
 
+    /// Create a new git identifier from a tag name.
     pub fn from_tag(tag: impl Into<String>) -> Self {
         let tag: String = tag.into();
         Self::Tag(tag)
     }
 }
 
+/// A git dependency config item.
+///
+/// This struct is used to represent a git dependency from the config file.
 #[bon::builder(on(String, into))]
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, Deserialize))]
 pub struct GitDependency {
+    /// The name of the dependency (user-defined).
     pub name: String,
+
+    /// The version requirement string (semver).
+    ///
+    /// Example: `>=1.9.3 || ^2.0.0`
+    ///
+    /// When no operator is used before the version number, it defaults to `=` which pins the
+    /// version.
     #[cfg_attr(feature = "serde", serde(rename = "version"))]
     pub version_req: String,
+
+    /// The git URL, must end with `.git`.
     pub git: String,
+
+    /// The git identifier (revision, branch or tag).
+    ///
+    /// If omitted, the main branch is used.
     pub identifier: Option<GitIdentifier>,
 }
 
@@ -190,13 +292,29 @@ impl fmt::Display for GitDependency {
     }
 }
 
+/// An HTTP dependency config item.
+///
+/// This struct is used to represent an HTTP dependency from the config file.
 #[bon::builder(on(String, into))]
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, Deserialize))]
 pub struct HttpDependency {
+    /// The name of the dependency (user-defined).
     pub name: String,
+
+    /// The version requirement string (semver).
+    ///
+    /// Example: `>=1.9.3 || ^2.0.0`
+    ///
+    /// When no operator is used before the version number, it defaults to `=` which pins the
+    /// version.
     #[cfg_attr(feature = "serde", serde(rename = "version"))]
     pub version_req: String,
+
+    /// The URL to the dependency.
+    ///
+    /// If omitted, the registry will be contacted to get the download URL for that dependency (by
+    /// name).
     pub url: Option<String>,
 }
 
@@ -206,7 +324,7 @@ impl fmt::Display for HttpDependency {
     }
 }
 
-// Dependency object used to store a dependency data
+/// A git or HTTP dependency config item.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Display, From)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, Deserialize))]
 pub enum Dependency {
@@ -218,6 +336,19 @@ pub enum Dependency {
 }
 
 impl Dependency {
+    /// Create a new dependency from a name and version requirement string.
+    ///
+    /// The string should be in the format `name~version_req`.
+    ///
+    /// The version requirement string can use the semver format.
+    ///
+    /// Example: `dependency~^1.0.0`
+    ///
+    /// If a custom URL is provided, then the version requirement string
+    /// cannot contain the `=` character, as it would break the remappings.
+    ///
+    /// The type of dependency ([`HttpDependency`] or [`GitDependency`]) is inferred from the URL
+    /// format, which can be of the form `https://...`, `git@github.com:` or `git@gitlab.com:`.
     pub fn from_name_version(
         name_version: &str,
         custom_url: Option<impl Into<String>>,
@@ -264,6 +395,7 @@ impl Dependency {
         })
     }
 
+    /// Get the name of the dependency.
     pub fn name(&self) -> &str {
         match self {
             Self::Http(dep) => &dep.name,
@@ -271,6 +403,7 @@ impl Dependency {
         }
     }
 
+    /// Get the version requirement string of the dependency.
     pub fn version_req(&self) -> &str {
         match self {
             Self::Http(dep) => &dep.version_req,
@@ -278,6 +411,7 @@ impl Dependency {
         }
     }
 
+    /// Get the URL of the dependency.
     pub fn url(&self) -> Option<&String> {
         match self {
             Self::Http(dep) => dep.url.as_ref(),
@@ -285,14 +419,17 @@ impl Dependency {
         }
     }
 
+    /// Get the install path of the dependency (must exist already).
     pub fn install_path_sync(&self, deps: impl AsRef<Path>) -> Option<PathBuf> {
         find_install_path_sync(self, deps)
     }
 
+    /// Get the install path of the dependency in an async way (must exist already).
     pub async fn install_path(&self, deps: impl AsRef<Path>) -> Option<PathBuf> {
         find_install_path(self, deps).await
     }
 
+    /// Convert the dependency to a TOML value for saving to the config file.
     pub fn to_toml_value(&self) -> (String, Item) {
         match self {
             Self::Http(dep) => (
@@ -355,10 +492,12 @@ impl Dependency {
         }
     }
 
+    /// Check if the dependency is an HTTP dependency.
     pub fn is_http(&self) -> bool {
         matches!(self, Self::Http(_))
     }
 
+    /// Cast to a HTTP dependency if it is one.
     pub fn as_http(&self) -> Option<&HttpDependency> {
         if let Self::Http(v) = self {
             Some(v)
@@ -367,6 +506,7 @@ impl Dependency {
         }
     }
 
+    /// Cast to a mutable HTTP dependency if it is one.
     pub fn as_http_mut(&mut self) -> Option<&mut HttpDependency> {
         if let Self::Http(v) = self {
             Some(v)
@@ -375,10 +515,12 @@ impl Dependency {
         }
     }
 
+    /// Check if the dependency is a git dependency.
     pub fn is_git(&self) -> bool {
         matches!(self, Self::Git(_))
     }
 
+    /// Cast to a git dependency if it is one.
     pub fn as_git(&self) -> Option<&GitDependency> {
         if let Self::Git(v) = self {
             Some(v)
@@ -387,6 +529,7 @@ impl Dependency {
         }
     }
 
+    /// Cast to a mutable git dependency if it is one.
     pub fn as_git_mut(&mut self) -> Option<&mut GitDependency> {
         if let Self::Git(v) = self {
             Some(v)
@@ -408,16 +551,29 @@ impl From<&GitDependency> for Dependency {
     }
 }
 
+/// The location where the Soldeer config should be stored.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, FromStr)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, Deserialize))]
 pub enum ConfigLocation {
+    /// The `foundry.toml` file.
     Foundry,
+
+    /// The `soldeer.toml` file.
     Soldeer,
 }
 
 /// Read the list of dependencies from the config file.
 ///
-/// If no config file path is provided, then the path is inferred automatically.
+/// Dependencies are stored in a TOML table under the `dependencies` key.
+/// Each key inside of the table is the name of the dependency and the value can be:
+/// - a string representing the version requirement
+/// - a table with the following fields:
+///   - `version` (required): the version requirement string
+///   - `url` (optional): the URL to the dependency's zip file
+///   - `git` (optional): the git URL for git dependencies
+///   - `rev` (optional): the revision hash for git dependencies
+///   - `branch` (optional): the branch name for git dependencies
+///   - `tag` (optional): the tag name for git dependencies
 pub fn read_config_deps(path: impl AsRef<Path>) -> Result<Vec<Dependency>> {
     let contents = fs::read_to_string(path)?;
     let doc: DocumentMut = contents.parse::<DocumentMut>()?;
@@ -433,6 +589,7 @@ pub fn read_config_deps(path: impl AsRef<Path>) -> Result<Vec<Dependency>> {
     Ok(dependencies)
 }
 
+/// Read the Soldeer config from the config file.
 pub fn read_soldeer_config(path: impl AsRef<Path>) -> Result<SoldeerConfig> {
     #[derive(Deserialize)]
     struct SoldeerConfigParsed {
@@ -447,6 +604,7 @@ pub fn read_soldeer_config(path: impl AsRef<Path>) -> Result<SoldeerConfig> {
     Ok(config.soldeer)
 }
 
+/// Add a dependency to the config file.
 pub fn add_to_config(dependency: &Dependency, config_path: impl AsRef<Path>) -> Result<()> {
     let contents = fs::read_to_string(&config_path)?;
     let mut doc: DocumentMut = contents.parse::<DocumentMut>()?;
@@ -467,6 +625,7 @@ pub fn add_to_config(dependency: &Dependency, config_path: impl AsRef<Path>) -> 
     Ok(())
 }
 
+/// Delete a dependency from the config file.
 pub fn delete_from_config(dependency_name: &str, path: impl AsRef<Path>) -> Result<Dependency> {
     let contents = fs::read_to_string(&path)?;
     let mut doc: DocumentMut = contents.parse::<DocumentMut>().expect("invalid doc");
@@ -482,14 +641,24 @@ pub fn delete_from_config(dependency_name: &str, path: impl AsRef<Path>) -> Resu
     Ok(dependency)
 }
 
+/// Parse a dependency from a TOML value.
+///
+/// The value can be a string (version requirement) or a table.
+/// The table can have the following fields:
+/// - `version` (required): the version requirement string
+/// - `url` (optional): the URL to the dependency's zip file
+/// - `git` (optional): the git URL for git dependencies
+/// - `rev` (optional): the revision hash for git dependencies
+/// - `branch` (optional): the branch name for git dependencies
+/// - `tag` (optional): the tag name for git dependencies
+///
+/// Note that the version requirement string cannot contain the `=` symbol for git dependencies
+/// and HTTP dependencies with a custom URL.
 fn parse_dependency(name: impl Into<String>, value: &Item) -> Result<Dependency> {
     let name: String = name.into();
     if let Some(version_req) = value.as_str() {
         if version_req.is_empty() {
             return Err(ConfigError::EmptyVersion(name));
-        }
-        if version_req.contains('=') {
-            return Err(ConfigError::InvalidVersionReq(name));
         }
         // this function does not retrieve the url
         return Ok(HttpDependency { name, version_req: version_req.to_string(), url: None }.into());
@@ -522,9 +691,6 @@ fn parse_dependency(name: impl Into<String>, value: &Item) -> Result<Dependency>
     if version_req.is_empty() {
         return Err(ConfigError::EmptyVersion(name));
     }
-    if version_req.contains('=') {
-        return Err(ConfigError::InvalidVersionReq(name));
-    }
 
     // check if it's a git dependency
     match table.get("git").map(|v| v.as_str()) {
@@ -532,6 +698,12 @@ fn parse_dependency(name: impl Into<String>, value: &Item) -> Result<Dependency>
             return Err(ConfigError::InvalidField { field: "git".to_string(), dep: name });
         }
         Some(Some(git)) => {
+            // for git dependencies, the version requirement string is going to be used as part of
+            // the folder name inside the dependencies folder. As such, it's not allowed to contain
+            // the "=" character, because that would break the remappings.
+            if version_req.contains('=') {
+                return Err(ConfigError::InvalidVersionReq(name));
+            }
             // rev/branch/tag fields are optional but need to be a string if present
             let rev = match table.get("rev").map(|v| v.as_str()) {
                 Some(Some(rev)) => Some(rev.to_string()),
@@ -581,11 +753,19 @@ fn parse_dependency(name: impl Into<String>, value: &Item) -> Result<Dependency>
         Some(None) => Err(ConfigError::InvalidField { field: "url".to_string(), dep: name }),
         None => Ok(HttpDependency { name, version_req, url: None }.into()),
         Some(Some(url)) => {
+            // for HTTP dependencies with custom URL, the version requirement string is going to be
+            // used as part of the folder name inside the dependencies folder. As such,
+            // it's not allowed to contain the "=" character, because that would break
+            // the remappings.
+            if version_req.contains('=') {
+                return Err(ConfigError::InvalidVersionReq(name));
+            }
             Ok(HttpDependency { name, version_req, url: Some(url.to_string()) }.into())
         }
     }
 }
 
+/// Create a basic config file with default contents.
 fn create_example_config(
     location: ConfigLocation,
     foundry_path: impl AsRef<Path>,
@@ -1074,8 +1254,6 @@ libs = ["dependencies"]
         }
 
         for dep in [
-            r#""lib1" = "asdf=""#,
-            r#""lib1" = { version = "asdf=" }"#,
             r#""lib1" = { version = "asdf=", url = "https://example.com" }"#,
             r#""lib1" = { version = "asdf=", git = "https://example.com/repo.git" }"#,
             r#""lib1" = { version = "asdf=", git = "https://example.com/repo.git", rev = "123456" }"#,
@@ -1085,6 +1263,16 @@ libs = ["dependencies"]
             let res = read_config_deps(config_path);
             assert!(matches!(res, Err(ConfigError::InvalidVersionReq(_))), "{res:?}");
         }
+
+        // it's ok to have the "=" character in the version requirement for HTTP dependencies
+        // without a custom URL
+        let config_contents = r#"[dependencies]
+"lib1" = "asdf="
+"lib2" = { version = "asdf=" }
+"#;
+        let config_path = write_to_config(config_contents, "soldeer.toml");
+        let res = read_config_deps(config_path);
+        assert!(res.is_ok(), "{res:?}");
     }
 
     #[test]

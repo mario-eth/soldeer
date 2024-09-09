@@ -12,28 +12,33 @@ use std::path::PathBuf;
 
 pub type Result<T> = std::result::Result<T, AuthError>;
 
+/// Credentials to be used for login
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Credentials {
     pub email: String,
     pub password: String,
 }
 
+/// Response from the login endpoint
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
 pub struct LoginResponse {
     pub status: String,
+    /// JWT token
     pub token: String,
 }
 
+/// Get the JWT token from the login file
 pub fn get_token() -> Result<String> {
-    let security_file = login_file_path()?;
+    let login_file = login_file_path()?;
     let jwt =
-        fs::read_to_string(&security_file).map_err(|_| AuthError::MissingToken)?.trim().to_string();
+        fs::read_to_string(&login_file).map_err(|_| AuthError::MissingToken)?.trim().to_string();
     if jwt.is_empty() {
         return Err(AuthError::MissingToken);
     }
     Ok(jwt)
 }
 
+/// Execute the login request and store the JWT token in the login file
 pub async fn execute_login(login: &Credentials) -> std::result::Result<(), AuthError> {
     let security_file = login_file_path()?;
     let url = api_url("auth/login", &[]);

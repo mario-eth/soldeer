@@ -73,7 +73,8 @@ pub fn remappings_foundry(
             // except the default profile, where we always add the remappings
             if name == "default" {
                 let new_remappings = generate_remappings(action, paths, soldeer_config, &[])?;
-                let array = new_remappings.into_iter().collect::<Array>();
+                let mut array = new_remappings.into_iter().collect::<Array>();
+                format_array(&mut array);
                 profile["remappings"] = value(array);
             }
             continue;
@@ -89,6 +90,7 @@ pub fn remappings_foundry(
         for remapping in new_remappings {
             remappings.push(remapping);
         }
+        format_array(remappings);
     }
 
     fs::write(&paths.config, doc.to_string())?;
@@ -236,6 +238,20 @@ fn get_install_dir_relative(dependency: &Dependency, paths: &Paths) -> Result<St
         .map_err(|_| RemappingsError::DependencyNotFound(dependency.to_string()))?
         .to_slash_lossy()
         .to_string())
+}
+
+fn format_array(array: &mut Array) {
+    array.fmt();
+    if (0..=1).contains(&array.len()) {
+        array.set_trailing("");
+        array.set_trailing_comma(false);
+    } else {
+        for item in array.iter_mut() {
+            item.decor_mut().set_prefix("\n    ");
+        }
+        array.set_trailing("\n");
+        array.set_trailing_comma(true);
+    }
 }
 
 #[cfg(test)]

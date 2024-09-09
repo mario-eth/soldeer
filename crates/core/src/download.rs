@@ -1,3 +1,4 @@
+//! Download and/or extract dependencies
 use crate::{
     config::{Dependency, GitIdentifier},
     errors::DownloadError,
@@ -16,6 +17,11 @@ use tokio::io::AsyncWriteExt as _;
 
 pub type Result<T> = std::result::Result<T, DownloadError>;
 
+/// Download a zip file into the provided folder.
+///
+/// Depending on the platform, the folder path must exist prior to calling this function.
+/// The filename for the zip file will be the same as the base name of the folder containing it with
+/// the ".zip" extension
 pub async fn download_file(url: impl IntoUrl, folder_path: impl AsRef<Path>) -> Result<PathBuf> {
     let resp = reqwest::get(url).await?;
     let mut resp = resp.error_for_status()?;
@@ -40,20 +46,31 @@ pub async fn download_file(url: impl IntoUrl, folder_path: impl AsRef<Path>) -> 
     Ok(path)
 }
 
+/// Unzip a file into a directory and then delete it.
 pub async fn unzip_file(path: impl AsRef<Path>, into: impl AsRef<Path>) -> Result<()> {
     let path = path.as_ref().to_path_buf();
-    let out_dir = into.as_ref();
     let zip_contents = tokio::fs::read(&path)
         .await
         .map_err(|e| DownloadError::IOError { path: path.clone(), source: e })?;
 
-    zip_extract::extract(Cursor::new(zip_contents), out_dir, true)?;
+    tokio::task::spawn_blocking({
+        let out_dir = into.as_ref().to_path_buf();
+        move || zip_extract::extract(Cursor::new(zip_contents), &out_dir, true)
+    })
+    .await??;
 
     tokio::fs::remove_file(&path)
         .await
         .map_err(|e| DownloadError::IOError { path: path.clone(), source: e })
 }
 
+/// Clone a git repo into the given path, optionally checking out a reference.
+///
+/// The repository is cloned without trees, which can speed up cloning when the full history is not
+/// needed. Contrary to a shallow clone, it's possible to checkout any ref and the missing trees
+/// will be retrieved as they are needed.
+///
+/// This function returns the commit hash of the checked out reference (branch, tag, commit)
 pub async fn clone_repo(
     url: &str,
     identifier: Option<&GitIdentifier>,
@@ -73,6 +90,11 @@ pub async fn clone_repo(
     Ok(commit)
 }
 
+/// Remove the files for a dependency (synchronous).
+///
+/// This function should only be called in contexts where there is no concurrent access to this part
+/// of the filesystem. For a version that is safe to run in multithreaded async contexts, see
+/// [`delete_dependency_files`].
 pub fn delete_dependency_files_sync(dependency: &Dependency, deps: impl AsRef<Path>) -> Result<()> {
     let Some(path) = find_install_path_sync(dependency, deps) else {
         return Err(DownloadError::DependencyNotFound(dependency.to_string()));

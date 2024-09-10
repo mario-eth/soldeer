@@ -226,6 +226,15 @@ impl Default for SoldeerConfig {
 }
 
 /// A git identifier used to specify a revision, branch or tag.
+///
+/// # Examples
+///
+/// ```
+/// # use soldeer_core::config::GitIdentifier;
+/// let rev = GitIdentifier::from_rev("082692fcb6b5b1ab8f856914897f7f2b46b84fd2");
+/// let branch = GitIdentifier::from_branch("feature/foo");
+/// let tag = GitIdentifier::from_tag("v1.0.0");
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Display)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, Deserialize))]
 pub enum GitIdentifier {

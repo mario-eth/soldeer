@@ -70,7 +70,8 @@ pub async fn unzip_file(path: impl AsRef<Path>, into: impl AsRef<Path>) -> Resul
 /// needed. Contrary to a shallow clone, it's possible to checkout any ref and the missing trees
 /// will be retrieved as they are needed.
 ///
-/// This function returns the commit hash of the checked out reference (branch, tag, commit)
+/// This function returns the commit hash corresponding to  the checked out reference (branch, tag,
+/// commit).
 pub async fn clone_repo(
     url: &str,
     identifier: Option<&GitIdentifier>,

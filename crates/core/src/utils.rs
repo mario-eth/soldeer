@@ -26,7 +26,7 @@ pub enum UrlType {
     Http,
 }
 
-/// Newtype for the string reprentation of an integrity checksum (SHA256)
+/// Newtype for the string representation of an integrity checksum (SHA256)
 #[derive(Debug, Clone, PartialEq, Eq, Hash, From, Display)]
 #[from(Cow<'static, str>, String, &'static str)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

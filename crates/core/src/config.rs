@@ -1,3 +1,4 @@
+//! Manage the Soldeer configuration and dependencies list.
 use crate::{
     download::{find_install_path, find_install_path_sync},
     errors::ConfigError,
@@ -325,6 +326,21 @@ impl fmt::Display for HttpDependency {
 }
 
 /// A git or HTTP dependency config item.
+///
+/// A builder can be used to create the underlying [`HttpDependency`] or [`GitDependency`] and then
+/// converted into this type with `.into()`.
+///
+/// # Examples
+///
+/// ```
+/// # use soldeer_core::config::{Dependency, HttpDependency};
+/// let dep: Dependency = HttpDependency::builder()
+///     .name("my-dep")
+///     .version_req("^1.0.0")
+///     .url("https://...")
+///     .build()
+///     .into();
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Display, From)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, Deserialize))]
 pub enum Dependency {
@@ -349,6 +365,37 @@ impl Dependency {
     ///
     /// The type of dependency ([`HttpDependency`] or [`GitDependency`]) is inferred from the URL
     /// format, which can be of the form `https://...`, `git@github.com:` or `git@gitlab.com:`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use soldeer_core::config::{Dependency, HttpDependency, GitDependency, GitIdentifier};
+    /// assert_eq!(
+    ///     Dependency::from_name_version("my-lib~^1.0.0", Some("https://foo.bar/zip.zip"), None)
+    ///         .unwrap(),
+    ///     HttpDependency::builder()
+    ///         .name("my-lib")
+    ///         .version_req("^1.0.0")
+    ///         .url("https://foo.bar/zip.zip")
+    ///         .build()
+    ///         .into()
+    /// );
+    /// assert_eq!(
+    ///     Dependency::from_name_version(
+    ///         "my-lib~^1.0.0",
+    ///         Some("git@github.com:foo/bar.git"),
+    ///         Some(GitIdentifier::from_tag("v1.0.0"))
+    ///     )
+    ///     .unwrap(),
+    ///     GitDependency::builder()
+    ///         .name("my-lib")
+    ///         .version_req("^1.0.0")
+    ///         .git("git@github.com:foo/bar.git")
+    ///         .identifier(GitIdentifier::from_tag("v1.0.0"))
+    ///         .build()
+    ///         .into()
+    /// );
+    /// ```
     pub fn from_name_version(
         name_version: &str,
         custom_url: Option<impl Into<String>>,

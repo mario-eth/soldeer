@@ -163,7 +163,7 @@ pub async fn delete_dependency_files(
 
 /// Check if a path corresponds to the provided dependency.
 ///
-/// The path must be  afolder, and the folder name must start with the dependency name (sanitized).
+/// The path must be a folder, and the folder name must start with the dependency name (sanitized).
 /// For dependencies with a semver-compliant version requirement, any folder with a version that
 /// matches will give a result of `true`. Otherwise, the folder name must contain the version
 /// requirement string after the dependency name.

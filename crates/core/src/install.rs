@@ -16,31 +16,54 @@ use cliclack::{progress_bar, MultiProgress, ProgressBar};
 #[cfg(feature = "cli")]
 use std::fmt;
 
+/// Template for the progress bars.
 pub const PROGRESS_TEMPLATE: &str = "[{elapsed_precise}] {bar:30.magenta} ({pos}/{len}) {msg}";
 
 pub type Result<T> = std::result::Result<T, InstallError>;
 
+/// Status of a dependency, which can either be missing, installed and untouched, or installed but
+/// failing the integrity check.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum DependencyStatus {
+    /// The dependency is missing.
     Missing,
+
+    /// The dependency is installed but the integrity check failed.
     FailedIntegrity,
+
+    /// The dependency is installed and the integrity check passed.
     Installed,
 }
 
+/// Progress bars for the installation process.
 #[cfg(feature = "cli")]
 #[derive(Clone)]
 pub struct Progress {
+    /// The multi progress bar object.
     pub multi: MultiProgress,
+
+    /// Progress bar for calls to the API to retrieve the packages versions.
     pub versions: ProgressBar,
+
+    /// Progress bar for downloading the dependencies.
     pub downloads: ProgressBar,
+
+    /// Progress bar for unzipping the downloaded files.
     pub unzip: ProgressBar,
+
+    /// Progress bar for installing subdependencies.
     pub subdependencies: ProgressBar,
+
+    /// Progress bar for checking the integrity of the installed dependencies.
     pub integrity: ProgressBar,
 }
 
 #[cfg(feature = "cli")]
 impl Progress {
+    /// Create a new progress bar object.
+    ///
+    /// The total number of dependencies to install must be passed as an argument.
     pub fn new(multi: &MultiProgress, deps: u64) -> Self {
         let versions = multi.add(progress_bar(deps).with_template(PROGRESS_TEMPLATE));
         let downloads = multi.add(progress_bar(deps).with_template(PROGRESS_TEMPLATE));
@@ -50,6 +73,7 @@ impl Progress {
         Self { multi: multi.clone(), versions, downloads, unzip, subdependencies, integrity }
     }
 
+    /// Start all progress bars.
     pub fn start_all(&self) {
         self.versions.start("Retrieving versions...");
         self.downloads.start("Downloading dependencies...");
@@ -58,6 +82,7 @@ impl Progress {
         self.integrity.start("Checking integrity...");
     }
 
+    /// Increment all progress bars by one.
     pub fn increment_all(&self) {
         self.versions.inc(1);
         self.downloads.inc(1);
@@ -66,6 +91,7 @@ impl Progress {
         self.integrity.inc(1);
     }
 
+    /// Stop all progress bars.
     pub fn stop_all(&self) {
         self.versions.stop("Done retrieving versions");
         self.downloads.stop("Done downloading dependencies");
@@ -74,32 +100,58 @@ impl Progress {
         self.integrity.stop("Done checking integrity");
     }
 
+    /// Log a message above the multiprogress bar.
     pub fn log(&self, msg: impl fmt::Display) {
         self.multi.println(msg);
     }
 }
 
+/// HTTP dependency installation information.
 #[bon::builder(on(String, into))]
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct HttpInstallInfo {
+    /// The name of the dependency.
     name: String,
+
+    /// The version of the dependency. This is not a version requirement string but a specific.
+    /// version.
     version: String,
+
+    /// THe URL from which the zip file will be downloaded.
     url: String,
+
+    /// The checksum of the downloaded zip file, if available (e.g. from the lockfile)
     checksum: Option<String>,
 }
 
+/// Git dependency installation information.
 #[bon::builder(on(String, into))]
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct GitInstallInfo {
+    /// The name of the dependency.
     name: String,
+
+    /// The version of the dependency.
     version: String,
+
+    /// The URL of the git repository.
     git: String,
+
+    /// The identifier of the git dependency (e.g. a commit hash, branch name, or tag name). If
+    /// `None` is provided, the default branch is used.
     identifier: Option<GitIdentifier>,
 }
 
+/// Installation information for a dependency.
+///
+/// A builder can be used to create the underlying [`HttpInstallInfo`] or [`GitInstallInfo`] and
+/// then converted into this type with `.into()`.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 enum InstallInfo {
+    /// Installation information for an HTTP dependency.
     Http(HttpInstallInfo),
+
+    /// Installation information for a git dependency.
     Git(GitInstallInfo),
 }
 

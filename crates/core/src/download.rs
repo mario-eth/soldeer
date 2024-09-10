@@ -1,14 +1,13 @@
+//! Download and/or extract dependencies
 use crate::{
     config::{Dependency, GitIdentifier},
     errors::DownloadError,
     registry::parse_version_req,
     utils::{run_git_command, sanitize_filename},
 };
-use derive_more::{Display, From};
 use reqwest::IntoUrl;
 use semver::Version;
 use std::{
-    borrow::Cow,
     fs,
     io::Cursor,
     path::{Path, PathBuf},
@@ -18,11 +17,11 @@ use tokio::io::AsyncWriteExt as _;
 
 pub type Result<T> = std::result::Result<T, DownloadError>;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, From, Display)]
-#[from(Cow<'static, str>, String, &'static str)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct IntegrityChecksum(pub String);
-
+/// Download a zip file into the provided folder.
+///
+/// Depending on the platform, the folder path must exist prior to calling this function.
+/// The filename for the zip file will be the same as the base name of the folder containing it with
+/// the ".zip" extension
 pub async fn download_file(url: impl IntoUrl, folder_path: impl AsRef<Path>) -> Result<PathBuf> {
     let resp = reqwest::get(url).await?;
     let mut resp = resp.error_for_status()?;
@@ -47,20 +46,32 @@ pub async fn download_file(url: impl IntoUrl, folder_path: impl AsRef<Path>) -> 
     Ok(path)
 }
 
+/// Unzip a file into a directory and then delete it.
 pub async fn unzip_file(path: impl AsRef<Path>, into: impl AsRef<Path>) -> Result<()> {
     let path = path.as_ref().to_path_buf();
-    let out_dir = into.as_ref();
     let zip_contents = tokio::fs::read(&path)
         .await
         .map_err(|e| DownloadError::IOError { path: path.clone(), source: e })?;
 
-    zip_extract::extract(Cursor::new(zip_contents), out_dir, true)?;
+    tokio::task::spawn_blocking({
+        let out_dir = into.as_ref().to_path_buf();
+        move || zip_extract::extract(Cursor::new(zip_contents), &out_dir, true)
+    })
+    .await??;
 
     tokio::fs::remove_file(&path)
         .await
         .map_err(|e| DownloadError::IOError { path: path.clone(), source: e })
 }
 
+/// Clone a git repo into the given path, optionally checking out a reference.
+///
+/// The repository is cloned without trees, which can speed up cloning when the full history is not
+/// needed. Contrary to a shallow clone, it's possible to checkout any ref and the missing trees
+/// will be retrieved as they are needed.
+///
+/// This function returns the commit hash corresponding to  the checked out reference (branch, tag,
+/// commit).
 pub async fn clone_repo(
     url: &str,
     identifier: Option<&GitIdentifier>,
@@ -80,6 +91,10 @@ pub async fn clone_repo(
     Ok(commit)
 }
 
+/// Remove the files for a dependency (synchronous).
+///
+/// This function should only be called in sync contexts. For a version that is safe to run in
+/// multithreaded async contexts, see [`delete_dependency_files`].
 pub fn delete_dependency_files_sync(dependency: &Dependency, deps: impl AsRef<Path>) -> Result<()> {
     let Some(path) = find_install_path_sync(dependency, deps) else {
         return Err(DownloadError::DependencyNotFound(dependency.to_string()));
@@ -88,6 +103,11 @@ pub fn delete_dependency_files_sync(dependency: &Dependency, deps: impl AsRef<Pa
     Ok(())
 }
 
+/// Find the install path of a dependency by reading the dependencies directory and matching on the
+/// folder name.
+///
+/// If a dependency version requirement string is a semver requirement, any folder which version
+/// matches the requirements is returned.
 pub fn find_install_path_sync(dependency: &Dependency, deps: impl AsRef<Path>) -> Option<PathBuf> {
     let Ok(read_dir) = fs::read_dir(deps.as_ref()) else {
         return None;
@@ -104,6 +124,11 @@ pub fn find_install_path_sync(dependency: &Dependency, deps: impl AsRef<Path>) -
     None
 }
 
+/// Find the install path of a dependency by reading the dependencies directory and matching on the
+/// folder name (async version).
+///
+/// If a dependency version requirement string is a semver requirement, any folder which version
+/// matches the requirements is returned.
 pub async fn find_install_path(dependency: &Dependency, deps: impl AsRef<Path>) -> Option<PathBuf> {
     let Ok(mut read_dir) = tokio::fs::read_dir(deps.as_ref()).await else {
         return None;
@@ -120,6 +145,9 @@ pub async fn find_install_path(dependency: &Dependency, deps: impl AsRef<Path>) 
     None
 }
 
+/// Remove the files for a dependency from the dependencies folder.
+///
+/// A folder must exist for the dependency.
 pub async fn delete_dependency_files(
     dependency: &Dependency,
     deps: impl AsRef<Path>,
@@ -133,6 +161,12 @@ pub async fn delete_dependency_files(
     Ok(())
 }
 
+/// Check if a path corresponds to the provided dependency.
+///
+/// The path must be a folder, and the folder name must start with the dependency name (sanitized).
+/// For dependencies with a semver-compliant version requirement, any folder with a version that
+/// matches will give a result of `true`. Otherwise, the folder name must contain the version
+/// requirement string after the dependency name.
 fn install_path_matches(dependency: &Dependency, path: &Path) -> bool {
     if !path.is_dir() {
         return false;
@@ -141,21 +175,21 @@ fn install_path_matches(dependency: &Dependency, path: &Path) -> bool {
         return false;
     };
     let dir_name = dir_name.to_string_lossy();
-    let dep_name = sanitize_filename(dependency.name());
-    if !dir_name.starts_with(&format!("{dep_name}-")) {
+    let prefix = format!("{}-", sanitize_filename(dependency.name()));
+    if !dir_name.starts_with(&prefix) {
         return false;
     }
     if let Some(version_req) = parse_version_req(dependency.version_req()) {
-        if let Ok(version) = Version::parse(
-            dir_name.strip_prefix(&format!("{dep_name}-")).expect("prefix should be present"),
-        ) {
+        if let Ok(version) =
+            Version::parse(dir_name.strip_prefix(&prefix).expect("prefix should be present"))
+        {
             if version_req.matches(&version) {
                 return true;
             }
         }
     } else {
         // not semver compliant
-        if dir_name == format!("{dep_name}-{}", dependency.version_req()) {
+        if dir_name == format!("{prefix}{}", sanitize_filename(dependency.version_req())) {
             return true;
         }
     }

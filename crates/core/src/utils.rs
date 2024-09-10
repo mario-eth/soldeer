@@ -1,12 +1,11 @@
-use crate::{
-    download::IntegrityChecksum,
-    errors::{DownloadError, InstallError},
-};
+use crate::errors::{DownloadError, InstallError};
+use derive_more::derive::{Display, From};
 use ignore::{WalkBuilder, WalkState};
 use path_slash::PathExt as _;
 use regex::Regex;
 use sha2::{Digest as _, Sha256};
 use std::{
+    borrow::Cow,
     env,
     ffi::OsStr,
     fs,
@@ -26,6 +25,12 @@ pub enum UrlType {
     Git,
     Http,
 }
+
+/// Newtype for the string representation of an integrity checksum (SHA256)
+#[derive(Debug, Clone, PartialEq, Eq, Hash, From, Display)]
+#[from(Cow<'static, str>, String, &'static str)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct IntegrityChecksum(pub String);
 
 /// Read a file contents into a vector of bytes
 pub fn read_file(path: impl AsRef<Path>) -> Result<Vec<u8>, std::io::Error> {

@@ -92,9 +92,8 @@ pub async fn clone_repo(
 
 /// Remove the files for a dependency (synchronous).
 ///
-/// This function should only be called in contexts where there is no concurrent access to this part
-/// of the filesystem. For a version that is safe to run in multithreaded async contexts, see
-/// [`delete_dependency_files`].
+/// This function should only be called in sync contexts. For a version that is safe to run in
+/// multithreaded async contexts, see [`delete_dependency_files`].
 pub fn delete_dependency_files_sync(dependency: &Dependency, deps: impl AsRef<Path>) -> Result<()> {
     let Some(path) = find_install_path_sync(dependency, deps) else {
         return Err(DownloadError::DependencyNotFound(dependency.to_string()));
@@ -103,6 +102,11 @@ pub fn delete_dependency_files_sync(dependency: &Dependency, deps: impl AsRef<Pa
     Ok(())
 }
 
+/// Find the install path of a dependency by reading the dependencies directory and matching on the
+/// folder name.
+///
+/// If a dependency version requirement string is a semver requirement, any folder which version
+/// matches the requirements is returned.
 pub fn find_install_path_sync(dependency: &Dependency, deps: impl AsRef<Path>) -> Option<PathBuf> {
     let Ok(read_dir) = fs::read_dir(deps.as_ref()) else {
         return None;
@@ -119,6 +123,11 @@ pub fn find_install_path_sync(dependency: &Dependency, deps: impl AsRef<Path>) -
     None
 }
 
+/// Find the install path of a dependency by reading the dependencies directory and matching on the
+/// folder name (async version).
+///
+/// If a dependency version requirement string is a semver requirement, any folder which version
+/// matches the requirements is returned.
 pub async fn find_install_path(dependency: &Dependency, deps: impl AsRef<Path>) -> Option<PathBuf> {
     let Ok(mut read_dir) = tokio::fs::read_dir(deps.as_ref()).await else {
         return None;
@@ -135,6 +144,9 @@ pub async fn find_install_path(dependency: &Dependency, deps: impl AsRef<Path>) 
     None
 }
 
+/// Remove the files for a dependency from the dependencies folder.
+///
+/// A folder must exist for the dependency.
 pub async fn delete_dependency_files(
     dependency: &Dependency,
     deps: impl AsRef<Path>,
@@ -148,6 +160,12 @@ pub async fn delete_dependency_files(
     Ok(())
 }
 
+/// Check if a path corresponds to the provided dependency.
+///
+/// The path must be  afolder, and the folder name must start with the dependency name (sanitized).
+/// For dependencies with a semver-compliant version requirement, any folder with a version that
+/// matches will give a result of `true`. Otherwise, the folder name must contain the version
+/// requirement string after the dependency name.
 fn install_path_matches(dependency: &Dependency, path: &Path) -> bool {
     if !path.is_dir() {
         return false;
@@ -156,21 +174,21 @@ fn install_path_matches(dependency: &Dependency, path: &Path) -> bool {
         return false;
     };
     let dir_name = dir_name.to_string_lossy();
-    let dep_name = sanitize_filename(dependency.name());
-    if !dir_name.starts_with(&format!("{dep_name}-")) {
+    let prefix = format!("{}-", sanitize_filename(dependency.name()));
+    if !dir_name.starts_with(&prefix) {
         return false;
     }
     if let Some(version_req) = parse_version_req(dependency.version_req()) {
-        if let Ok(version) = Version::parse(
-            dir_name.strip_prefix(&format!("{dep_name}-")).expect("prefix should be present"),
-        ) {
+        if let Ok(version) =
+            Version::parse(dir_name.strip_prefix(&prefix).expect("prefix should be present"))
+        {
             if version_req.matches(&version) {
                 return true;
             }
         }
     } else {
         // not semver compliant
-        if dir_name == format!("{dep_name}-{}", dependency.version_req()) {
+        if dir_name == format!("{prefix}{}", sanitize_filename(dependency.version_req())) {
             return true;
         }
     }

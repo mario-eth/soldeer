@@ -1,3 +1,4 @@
+//! Handle publishing of a dependency to the registry.
 use crate::{
     auth::get_token,
     errors::{AuthError, PublishError},
@@ -21,19 +22,24 @@ use std::{
 use zip::{write::SimpleFileOptions, CompressionMethod, ZipWriter};
 
 #[cfg(feature = "cli")]
-use cliclack::log::{info, success};
+use cliclack::log::success;
 #[cfg(feature = "cli")]
 use path_slash::PathBufExt as _;
 
 pub type Result<T> = std::result::Result<T, PublishError>;
 
+/// Push a new version of a dependency to the registry.
+///
+/// The provided root folder will be zipped and uploaded to the registry, then deleted, unless the
+/// `dry_run` argument is set to `true`. In that case, the function will only create the zip file
+/// and return its path.
 pub async fn push_version(
     dependency_name: &str,
     dependency_version: &str,
     root_directory_path: impl AsRef<Path>,
     files_to_copy: &[PathBuf],
     dry_run: bool,
-) -> Result<()> {
+) -> Result<Option<PathBuf>> {
     let file_name =
         root_directory_path.as_ref().file_name().expect("path should have a last component");
 
@@ -45,14 +51,7 @@ pub async fn push_version(
     };
 
     if dry_run {
-        #[cfg(feature = "cli")]
-        info(format!(
-            "Zip file created at {}",
-            PathBuf::from_slash_lossy(&zip_archive).to_string_lossy()
-        ))
-        .ok();
-
-        return Ok(());
+        return Ok(Some(PathBuf::from_slash_lossy(&zip_archive)));
     }
 
     if let Err(error) = push_to_repo(&zip_archive, dependency_name, dependency_version).await {
@@ -63,7 +62,7 @@ pub async fn push_version(
     // deleting zip archive
     let _ = remove_file(zip_archive);
 
-    Ok(())
+    Ok(None)
 }
 
 pub fn validate_name(name: &str) -> Result<()> {

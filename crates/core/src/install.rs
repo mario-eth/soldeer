@@ -188,6 +188,12 @@ impl From<LockEntry> for InstallInfo {
     }
 }
 
+/// Install a list of dependencies in parallel.
+///
+/// This function spawns a task for each dependency and waits for all of them to finish. Each task
+/// checks the integrity of the dependency if found on disk, downloads the dependency (zip file or
+/// cloning repo) if not already present, unzips the zip file if necessary, installs
+/// sub-dependencies and generates the lockfile entry.
 pub async fn install_dependencies(
     dependencies: &[Dependency],
     locks: &[LockEntry],
@@ -226,10 +232,14 @@ pub async fn install_dependencies(
     Ok(results)
 }
 
-/// Install a single dependency
+/// Install a single dependency.
 ///
-/// It's important that all file operations are done via the `tokio::fs` module because we are
-/// highly concurrent here.
+/// This function checks the integrity of the dependency if found on disk, downloads the dependency
+/// (zip file or cloning repo) if not already present, unzips the zip file if necessary, installs
+/// sub-dependencies and generates the lockfile entry.
+///
+/// If no lockfile entry is provided, the dependency is installed from the config object and
+/// integrity checks are skipped.
 pub async fn install_dependency(
     dependency: &Dependency,
     lock: Option<&LockEntry>,
@@ -350,6 +360,10 @@ pub async fn install_dependency(
     }
 }
 
+/// Check the integrity of a dependency that was installed.
+///
+/// If any file has changed in the dependency directory (except ignored files and any `.git`
+/// directory), the integrity check will fail.
 pub async fn check_dependency_integrity(
     lock: &LockEntry,
     deps: impl AsRef<Path>,
@@ -360,6 +374,9 @@ pub async fn check_dependency_integrity(
     }
 }
 
+/// Ensure that the dependencies directory exists.
+///
+/// If the directory does not exist, it will be created.
 pub fn ensure_dependencies_dir(path: impl AsRef<Path>) -> Result<()> {
     let path = path.as_ref();
     if !path.exists() {
@@ -369,6 +386,7 @@ pub fn ensure_dependencies_dir(path: impl AsRef<Path>) -> Result<()> {
     Ok(())
 }
 
+/// Install a single dependency.
 async fn install_dependency_inner(
     dep: &InstallInfo,
     path: impl AsRef<Path>,
@@ -449,6 +467,14 @@ async fn install_dependency_inner(
     }
 }
 
+/// Install subdependencies of a dependency.
+///
+/// This function checks for a `.gitmodules` file in the dependency directory and clones the
+/// submodules if it exists. If a `soldeer.toml` file is found, the soldeer dependencies are
+/// installed with a call to `forge soldeer install`. If the dependency has a `foundry.toml` file
+/// with a `dependencies` table, the soldeer dependencies are installed as well.
+///
+/// TODO: this function should install soldeer deps without calling to forge or the soldeer binary.
 async fn install_subdependencies(path: impl AsRef<Path>) -> Result<()> {
     let path = path.as_ref().to_path_buf();
     let gitmodules_path = path.join(".gitmodules");
@@ -475,6 +501,10 @@ async fn install_subdependencies(path: impl AsRef<Path>) -> Result<()> {
     Ok(())
 }
 
+/// Check the integrity of an HTTP dependency.
+///
+/// THis function hashes the contents of the dependency directory and compares it with the lockfile
+/// entry.
 async fn check_http_dependency(
     lock: &HttpLockEntry,
     deps: impl AsRef<Path>,
@@ -495,6 +525,10 @@ async fn check_http_dependency(
     Ok(DependencyStatus::Installed)
 }
 
+/// Check the integrity of a git dependency.
+///
+/// This function checks that the dependency is a git repository and that the current commit is the
+/// one specified in the lockfile entry.
 async fn check_git_dependency(
     lock: &GitLockEntry,
     deps: impl AsRef<Path>,
@@ -537,10 +571,10 @@ async fn check_git_dependency(
     }
 }
 
-/// Reset a git dependency to the commit specified in the lockfile entry
+/// Reset a git dependency to the commit specified in the lockfile entry.
 ///
 /// This function runs `git reset --hard <commit>` and `git clean -fd` in the git dependency's
-/// directory
+/// directory.
 async fn reset_git_dependency(lock: &GitLockEntry, deps: impl AsRef<Path>) -> Result<()> {
     let path = lock.install_path(deps);
     run_git_command(&["reset", "--hard", &lock.rev], Some(&path)).await?;

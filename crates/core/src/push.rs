@@ -6,7 +6,7 @@ use crate::{
     utils::read_file,
 };
 use ignore::{WalkBuilder, WalkState};
-use path_slash::PathExt as _;
+use path_slash::{PathBufExt as _, PathExt as _};
 use regex::Regex;
 use reqwest::{
     header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE},
@@ -23,8 +23,6 @@ use zip::{write::SimpleFileOptions, CompressionMethod, ZipWriter};
 
 #[cfg(feature = "cli")]
 use cliclack::log::success;
-#[cfg(feature = "cli")]
-use path_slash::PathBufExt as _;
 
 pub type Result<T> = std::result::Result<T, PublishError>;
 

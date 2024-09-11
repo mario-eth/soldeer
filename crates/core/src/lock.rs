@@ -7,50 +7,106 @@ use std::{
 
 pub type Result<T> = std::result::Result<T, LockError>;
 
+/// A lock entry for a git dependency.
 #[bon::builder(on(String, into))]
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[non_exhaustive]
 pub struct GitLockEntry {
+    /// The name of the dependency.
     pub name: String,
+
+    /// The version (this corresponds to the version requirement of the dependency).
     pub version: String,
+
+    /// The git url of the dependency.
     pub git: String,
+
+    /// The resolved git commit hash.
     pub rev: String,
 }
 
 impl GitLockEntry {
+    /// Returns the install path of the dependency.
+    ///
+    /// The directory does not need to exist. Since the lock entry contains the version,
+    /// the install path can be calculated without needing to check the actual directory.
     pub fn install_path(&self, deps: impl AsRef<Path>) -> PathBuf {
         format_install_path(&self.name, &self.version, deps)
     }
 }
 
+/// A lock entry for an HTTP dependency.
 #[bon::builder(on(String, into))]
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[non_exhaustive]
 pub struct HttpLockEntry {
+    /// The name of the dependency.
     pub name: String,
+
+    /// The resolved version of the dependency (not necessarily matches the version requirement of
+    /// the dependency).
+    ///
+    /// If the version req is a semver range, then this will be the exact version that was
+    /// resolved.
     pub version: String,
+
+    /// The URL from where the dependency was downloaded.
     pub url: String,
+
+    /// The checksum of the downloaded zip file.
     pub checksum: String,
+
+    /// The integrity hash of the downloaded zip file after extraction.
     pub integrity: String,
 }
 
 impl HttpLockEntry {
+    /// Returns the install path of the dependency.
+    ///
+    /// The directory does not need to exist. Since the lock entry contains the version,
+    /// the install path can be calculated without needing to check the actual directory.
     pub fn install_path(&self, deps: impl AsRef<Path>) -> PathBuf {
         format_install_path(&self.name, &self.version, deps)
     }
 }
 
+/// A lock entry for a dependency.
+///
+/// A builder should be used to create the underlying [`HttpLockEntry`] or [`GitLockEntry`] and then
+/// converted into this type with `.into()`.
+///
+/// # Examples
+///
+/// ```
+/// # use soldeer_core::lock::{LockEntry, HttpLockEntry};
+/// let dep: LockEntry = HttpLockEntry::builder()
+///     .name("my-dep")
+///     .version("1.2.3")
+///     .url("https://...")
+///     .checksum("dead")
+///     .integrity("beef")
+///     .build()
+///     .into();
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "lowercase"))]
 #[non_exhaustive]
 pub enum LockEntry {
+    /// A lock entry for an HTTP dependency.
     Http(HttpLockEntry),
+
+    /// A lock entry for a git dependency.
     Git(GitLockEntry),
 }
 
+/// A TOML representation of a lock entry, which merges all fields from the two variants of
+/// [`LockEntry`].
+///
+/// This is used to serialize and deserialize lock entries to and from TOML. All fields which are
+/// not present in both variants are optional.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub struct TomlLockEntry {
@@ -64,6 +120,7 @@ pub struct TomlLockEntry {
 }
 
 impl From<LockEntry> for TomlLockEntry {
+    /// Convert a [`LockEntry`] into a [`TomlLockEntry`].
     fn from(value: LockEntry) -> Self {
         match value {
             LockEntry::Http(lock) => Self {
@@ -91,6 +148,7 @@ impl From<LockEntry> for TomlLockEntry {
 impl TryFrom<TomlLockEntry> for LockEntry {
     type Error = LockError;
 
+    /// Convert a [`TomlLockEntry`] into a [`LockEntry`] if possible.
     fn try_from(value: TomlLockEntry) -> std::result::Result<Self, Self::Error> {
         if let Some(url) = value.url {
             Ok(HttpLockEntry::builder()
@@ -126,6 +184,7 @@ impl TryFrom<TomlLockEntry> for LockEntry {
 }
 
 impl LockEntry {
+    /// The name of the dependency.
     pub fn name(&self) -> &str {
         match self {
             Self::Git(lock) => &lock.name,
@@ -133,6 +192,7 @@ impl LockEntry {
         }
     }
 
+    /// The version of the dependency.
     pub fn version(&self) -> &str {
         match self {
             Self::Git(lock) => &lock.version,
@@ -140,6 +200,7 @@ impl LockEntry {
         }
     }
 
+    /// The install path of the dependency.
     pub fn install_path(&self, deps: impl AsRef<Path>) -> PathBuf {
         match self {
             Self::Git(lock) => lock.install_path(deps),
@@ -147,6 +208,7 @@ impl LockEntry {
         }
     }
 
+    /// Get the underlying [`HttpLockEntry`] if this is an HTTP lock entry.
     pub fn as_http(&self) -> Option<&HttpLockEntry> {
         if let Self::Http(l) = self {
             Some(l)
@@ -155,6 +217,7 @@ impl LockEntry {
         }
     }
 
+    /// Get the underlying [`GitLockEntry`] if this is a git lock entry.
     pub fn as_git(&self) -> Option<&GitLockEntry> {
         if let Self::Git(l) = self {
             Some(l)
@@ -165,29 +228,42 @@ impl LockEntry {
 }
 
 impl From<HttpLockEntry> for LockEntry {
+    /// Wrap an [`HttpLockEntry`] in a [`LockEntry`].
     fn from(value: HttpLockEntry) -> Self {
         Self::Http(value)
     }
 }
 
 impl From<GitLockEntry> for LockEntry {
+    /// Wrap a [`GitLockEntry`] in a [`LockEntry`].
     fn from(value: GitLockEntry) -> Self {
         Self::Git(value)
     }
 }
 
+/// A parsed TOML lock file.
+///
+/// The lockfile is a table with one entry `dependencies` containing an array of [`TomlLockEntry`]s.
 #[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq, Hash)]
 struct LockFileParsed {
     dependencies: Vec<TomlLockEntry>,
 }
 
+/// The result of reading and parsing a lock file.
+///
+/// The [`TomlLockEntry`]s are converted into [`LockEntry`]s. A copy of the text contents of
+/// the lockfile is provided for diffing purposes.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct LockFile {
+    /// The parsed lock entries.
     pub entries: Vec<LockEntry>,
+
+    /// The raw contents of the lockfile.
     pub raw: String,
 }
 
+/// Read a lockfile from disk.
 pub fn read_lockfile(path: impl AsRef<Path>) -> Result<LockFile> {
     if !path.as_ref().exists() {
         return Ok(LockFile::default());
@@ -201,12 +277,19 @@ pub fn read_lockfile(path: impl AsRef<Path>) -> Result<LockFile> {
     })
 }
 
+/// Generate the contents of a lockfile from a list of lock entries.
+///
+/// The entries do not need to be sorted, they will be sorted by name.
 pub fn generate_lockfile_contents(mut entries: Vec<LockEntry>) -> String {
     entries.sort_unstable_by(|a, b| a.name().cmp(b.name()));
     let data = LockFileParsed { dependencies: entries.into_iter().map(Into::into).collect() };
     toml_edit::ser::to_string_pretty(&data).expect("Lock entries should be serializable")
 }
 
+/// Add a lock entry to a lockfile.
+///
+/// If an entry with the same name already exists, it will be replaced.
+/// The entries are sorted by name before being written back to the file.
 pub fn add_to_lockfile(entry: LockEntry, path: impl AsRef<Path>) -> Result<()> {
     let mut lockfile = read_lockfile(&path)?;
     if let Some(index) = lockfile.entries.iter().position(|e| e.name() == entry.name()) {
@@ -219,6 +302,9 @@ pub fn add_to_lockfile(entry: LockEntry, path: impl AsRef<Path>) -> Result<()> {
     Ok(())
 }
 
+/// Remove a lock entry from a lockfile, matching on the name.
+///
+/// If the entry is the last entry in the lockfile, the lockfile will be removed.
 pub fn remove_lock(dependency: &Dependency, path: impl AsRef<Path>) -> Result<()> {
     let lockfile = read_lockfile(&path)?;
 
@@ -243,6 +329,9 @@ pub fn remove_lock(dependency: &Dependency, path: impl AsRef<Path>) -> Result<()
     Ok(())
 }
 
+/// Format the install path of a dependency.
+///
+/// The folder name is sanitized to remove disallowed characters.
 pub fn format_install_path(name: &str, version: &str, deps: impl AsRef<Path>) -> PathBuf {
     deps.as_ref().join(sanitize_filename(&format!("{name}-{version}")))
 }

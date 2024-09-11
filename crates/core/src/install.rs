@@ -1,3 +1,7 @@
+//! Install dependencies.
+//!
+//! This module contains functions to install dependencies from the config object or from the
+//! lockfile. Dependencies can be installed in parallel.
 use crate::{
     config::{Dependency, GitIdentifier},
     download::{clone_repo, delete_dependency_files, download_file, unzip_file},

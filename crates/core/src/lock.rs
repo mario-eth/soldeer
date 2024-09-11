@@ -1,3 +1,11 @@
+//! Lockfile handling.
+//!
+//! The lockfile contains the resolved dependencies of a project. It is a TOML file with an array of
+//! dependencies, each containing the name, version, and other information about the dependency.
+//!
+//! The lockfile is used to ensure that the same versions of dependencies are installed across
+//! different machines. It is also used to skip the installation of dependencies that are already
+//! installed.
 use crate::{config::Dependency, errors::LockError, utils::sanitize_filename};
 use serde::{Deserialize, Serialize};
 use std::{

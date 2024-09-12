@@ -3,7 +3,7 @@ use clap::Parser;
 use cliclack::log::{info, remark, warning};
 use soldeer_core::{
     errors::PublishError,
-    push::{filter_files_to_copy, push_version, validate_name},
+    push::{filter_ignored_files, push_version, validate_name},
     utils::check_dotfiles,
     Result,
 };
@@ -47,7 +47,7 @@ pub struct Push {
 pub(crate) async fn push_command(cmd: Push) -> Result<()> {
     let path = cmd.path.unwrap_or(env::current_dir()?);
 
-    let files_to_copy: Vec<PathBuf> = filter_files_to_copy(&path);
+    let files_to_copy: Vec<PathBuf> = filter_ignored_files(&path);
 
     // Check for sensitive files or directories
     if !cmd.dry_run &&
@@ -71,7 +71,11 @@ pub(crate) async fn push_command(cmd: Push) -> Result<()> {
 
     validate_name(dependency_name)?;
 
-    push_version(dependency_name, dependency_version, path, &files_to_copy, cmd.dry_run).await?;
+    if let Some(zip_path) =
+        push_version(dependency_name, dependency_version, path, &files_to_copy, cmd.dry_run).await?
+    {
+        info(format!("Zip file created at {}", zip_path.to_string_lossy()))?;
+    }
     Ok(())
 }
 

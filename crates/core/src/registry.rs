@@ -1,3 +1,7 @@
+//! Soldeer registry client.
+//!
+//! The registry client is responsible for fetching information about packages from the Soldeer
+//! registry at <https://soldeer.xyz>.
 use crate::{
     config::{Dependency, HttpDependency},
     errors::RegistryError,
@@ -10,45 +14,100 @@ use std::env;
 
 pub type Result<T> = std::result::Result<T, RegistryError>;
 
+/// A revision (version) for a project (package).
 #[derive(Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct Revision {
+    /// The unique ID for the revision.
     pub id: uuid::Uuid,
+
+    /// The version of the revision.
     pub version: String,
+
+    /// The internal name (path of zip file) for the revision.
     pub internal_name: String,
+
+    /// The zip file download URL.
     pub url: String,
+
+    /// The project unique ID.
     pub project_id: uuid::Uuid,
+
+    /// Whether this revision has been deleted.
     pub deleted: bool,
+
+    /// Creation date for the revision.
     pub created_at: Option<DateTime<Utc>>,
 }
 
+/// A project (package) in the registry.
 #[derive(Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct Project {
+    /// The unique ID for the project.
     pub id: uuid::Uuid,
+
+    /// The name of the project.
     pub name: String,
+
+    /// The description of the project.
     pub description: String,
+
+    /// The URL of the repository on GitHub.
     pub github_url: String,
+
+    /// The unique ID for the owner of the project.
     pub user_id: uuid::Uuid,
+
+    /// Whether this project has been deleted.
     pub deleted: Option<bool>,
+
+    /// The project's creation datetime.
     pub created_at: Option<DateTime<Utc>>,
+
+    /// The project's last update datetime.
     pub updated_at: Option<DateTime<Utc>>,
 }
 
+/// The response from the revision endpoint.
 #[derive(Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct RevisionResponse {
+    /// The revisions.
     data: Vec<Revision>,
+
+    /// The status of the response.
     status: String,
 }
 
+/// The response from the project endpoint.
 #[derive(Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct ProjectResponse {
+    /// The projects.
     data: Vec<Project>,
+
+    /// The status of the response.
     status: String,
 }
 
+/// Construct a URL for the Soldeer API.
+///
+/// The URL is constructed from the `SOLDEER_API_URL` environment variable, or defaults to
+/// <https://api.soldeer.xyz>. The API version prefix and path are appended to the base URL,
+/// and any query parameters are URL-encoded and appended to the URL.
+///
+/// # Examples
+///
+/// ```
+/// # use soldeer_core::registry::api_url;
+/// let url =
+///     api_url("revision", &[("project_name", "forge-std"), ("offset", "0"), ("limit", "1")]);
+/// assert_eq!(
+///     url.as_str(),
+///     "https://api.soldeer.xyz/api/v1/revision?project_name=forge-std&offset=0&limit=1"
+/// );
+/// ```
 pub fn api_url(path: &str, params: &[(&str, &str)]) -> Url {
     let url = env::var("SOLDEER_API_URL").unwrap_or("https://api.soldeer.xyz".to_string());
     let mut url = Url::parse(&url).expect("SOLDEER_API_URL is invalid");
@@ -60,6 +119,7 @@ pub fn api_url(path: &str, params: &[(&str, &str)]) -> Url {
     url
 }
 
+/// Get the download URL for a dependency at a specific version.
 pub async fn get_dependency_url_remote(dependency: &Dependency, version: &str) -> Result<String> {
     let url =
         api_url("revision-cli", &[("project_name", dependency.name()), ("revision", version)]);
@@ -73,6 +133,7 @@ pub async fn get_dependency_url_remote(dependency: &Dependency, version: &str) -
     Ok(r.url.clone())
 }
 
+/// Get the unique ID for a project by name.
 pub async fn get_project_id(dependency_name: &str) -> Result<String> {
     let url = api_url("project", &[("project_name", dependency_name)]);
     let res = reqwest::get(url).await?;
@@ -84,8 +145,8 @@ pub async fn get_project_id(dependency_name: &str) -> Result<String> {
     Ok(p.id.to_string())
 }
 
-pub async fn get_latest_forge_std() -> Result<Dependency> {
-    let dependency_name = "forge-std";
+/// Get the latest version of a dependency.
+pub async fn get_latest_version(dependency_name: &str) -> Result<Dependency> {
     let url =
         api_url("revision", &[("project_name", dependency_name), ("offset", "0"), ("limit", "1")]);
     let res = reqwest::get(url).await?;
@@ -102,13 +163,25 @@ pub async fn get_latest_forge_std() -> Result<Dependency> {
     .into())
 }
 
+/// The versions of a dependency.
+///
+/// If all versions can be parsed as semver, then the versions are sorted in descending order
+/// according to semver. If not all versions can be parsed as semver, then the versions are returned
+/// in the order they were received from the API (descending creation date).
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Versions {
+    /// All versions are semver compliant.
     Semver(Vec<Version>),
+
+    /// Not all versions are semver compliant.
     NonSemver(Vec<String>),
 }
 
 /// Get all versions of a dependency sorted in descending order
+///
+/// If all versions can be parsed as semver, then the versions are sorted in descending order
+/// according to semver. If not all versions can be parsed as semver, then the versions are returned
+/// in the order they were received from the API (descending creation date).
 pub async fn get_all_versions_descending(dependency_name: &str) -> Result<Versions> {
     // TODO: provide a more efficient endpoint which already sorts by descending semver if possible
     // and only returns the version strings
@@ -141,6 +214,10 @@ pub async fn get_all_versions_descending(dependency_name: &str) -> Result<Versio
     }
 }
 
+/// Get the latest version of a dependency that satisfies the version requirement.
+///
+/// If the version requirement is not semver-compliant, then the latest version is the one with the
+/// latest creation date.
 pub async fn get_latest_supported_version(dependency: &Dependency) -> Result<String> {
     match get_all_versions_descending(dependency.name()).await? {
         Versions::Semver(all_versions) => {
@@ -175,7 +252,7 @@ pub async fn get_latest_supported_version(dependency: &Dependency) -> Result<Str
 /// Parse a version requirement string into a `VersionReq`.
 ///
 /// Adds the "equal" operator to the req if it doesn't have an operator.
-/// This is necessary because the semver crate considers no operator to be equivalent to the
+/// This is necessary because the [`semver`] crate considers no operator to be equivalent to the
 /// "compatible" operator, but we want to treat it as the "equal" operator.
 pub fn parse_version_req(version_req: &str) -> Option<VersionReq> {
     let Ok(mut req) = version_req.parse::<VersionReq>() else {
@@ -299,9 +376,11 @@ mod tests {
 
         let dependency =
             HttpDependency::builder().name("forge-std").version_req("1.9.2").build().into();
-        let res =
-            async_with_vars([("SOLDEER_API_URL", Some(server.url()))], get_latest_forge_std())
-                .await;
+        let res = async_with_vars(
+            [("SOLDEER_API_URL", Some(server.url()))],
+            get_latest_version("forge-std"),
+        )
+        .await;
         assert!(res.is_ok(), "{res:?}");
         assert_eq!(res.unwrap(), dependency);
     }

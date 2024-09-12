@@ -7,7 +7,7 @@ use soldeer_core::{
     config::{add_to_config, read_soldeer_config, Paths},
     install::{ensure_dependencies_dir, install_dependency, Progress},
     lock::add_to_lockfile,
-    registry::get_latest_forge_std,
+    registry::get_latest_version,
     remappings::{edit_remappings, RemappingsAction},
     utils::remove_forge_lib,
     Result,
@@ -32,7 +32,7 @@ pub(crate) async fn init_command(paths: &Paths, cmd: Init) -> Result<()> {
     let config = read_soldeer_config(&paths.config)?;
     success("Done reading config")?;
     ensure_dependencies_dir(&paths.dependencies)?;
-    let dependency = get_latest_forge_std().await?;
+    let dependency = get_latest_version("forge-std").await?;
     let multi = multi_progress(format!("Installing {dependency}"));
     let progress = Progress::new(&multi, 1);
     progress.start_all();

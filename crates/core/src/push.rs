@@ -1,3 +1,4 @@
+//! Handle publishing of a dependency to the registry.
 use crate::{
     auth::get_token,
     errors::{AuthError, PublishError},
@@ -5,7 +6,7 @@ use crate::{
     utils::read_file,
 };
 use ignore::{WalkBuilder, WalkState};
-use path_slash::PathExt as _;
+use path_slash::{PathBufExt as _, PathExt as _};
 use regex::Regex;
 use reqwest::{
     header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE},
@@ -21,19 +22,26 @@ use std::{
 use zip::{write::SimpleFileOptions, CompressionMethod, ZipWriter};
 
 #[cfg(feature = "cli")]
-use cliclack::log::{info, success};
-#[cfg(feature = "cli")]
-use path_slash::PathBufExt as _;
+use cliclack::log::success;
 
 pub type Result<T> = std::result::Result<T, PublishError>;
 
+/// Push a new version of a dependency to the registry.
+///
+/// The provided root folder will be zipped and uploaded to the registry, then deleted, unless the
+/// `dry_run` argument is set to `true`. In that case, the function will only create the zip file
+/// and return its path.
+///
+/// An authentication token is required to push a zip file to the registry. The token is retrieved
+/// from the login file (see [`login_file_path`][crate::utils::login_file_path] and
+/// [`execute_login`][crate::auth::execute_login]).
 pub async fn push_version(
     dependency_name: &str,
     dependency_version: &str,
     root_directory_path: impl AsRef<Path>,
     files_to_copy: &[PathBuf],
     dry_run: bool,
-) -> Result<()> {
+) -> Result<Option<PathBuf>> {
     let file_name =
         root_directory_path.as_ref().file_name().expect("path should have a last component");
 
@@ -45,14 +53,7 @@ pub async fn push_version(
     };
 
     if dry_run {
-        #[cfg(feature = "cli")]
-        info(format!(
-            "Zip file created at {}",
-            PathBuf::from_slash_lossy(&zip_archive).to_string_lossy()
-        ))
-        .ok();
-
-        return Ok(());
+        return Ok(Some(PathBuf::from_slash_lossy(&zip_archive)));
     }
 
     if let Err(error) = push_to_repo(&zip_archive, dependency_name, dependency_version).await {
@@ -60,12 +61,15 @@ pub async fn push_version(
         return Err(error);
     }
 
-    // deleting zip archive
     let _ = remove_file(zip_archive);
 
-    Ok(())
+    Ok(None)
 }
 
+/// Validate the name of a dependency.
+///
+/// The name must be between 3 and 100 characters long, and can only contain lowercase letters,
+/// numbers, hyphens and the `@` symbol. It cannot start or end with a hyphen.
 pub fn validate_name(name: &str) -> Result<()> {
     let regex = Regex::new(r"^[@|a-z0-9][a-z0-9-]*[a-z0-9]$").expect("regex should compile");
     if !regex.is_match(name) {
@@ -77,6 +81,10 @@ pub fn validate_name(name: &str) -> Result<()> {
     Ok(())
 }
 
+/// Create a zip file from a list of files.
+///
+/// The zip file will be created in the root directory, with the provided name and the `.zip`
+/// extension. The function returns the path to the created zip file.
 pub fn zip_file(
     root_directory_path: impl AsRef<Path>,
     files_to_copy: &[PathBuf],
@@ -126,7 +134,16 @@ pub fn zip_file(
     Ok(zip_file_path)
 }
 
-pub fn filter_files_to_copy(root_directory_path: impl AsRef<Path>) -> Vec<PathBuf> {
+/// Filter the files in a directory according to ignore rules.
+///
+/// The following ignore files are supported:
+/// - `.ignore`
+/// - `.gitignore` (including any global one)
+/// - `.git/info/exclude`
+/// - `.soldeerignore`
+///
+/// The `.git` folders are always skipped.
+pub fn filter_ignored_files(root_directory_path: impl AsRef<Path>) -> Vec<PathBuf> {
     let files_to_copy = Arc::new(Mutex::new(Vec::with_capacity(100)));
     let walker = WalkBuilder::new(root_directory_path)
         .add_custom_ignore_filename(".soldeerignore")
@@ -158,6 +175,11 @@ pub fn filter_files_to_copy(root_directory_path: impl AsRef<Path>) -> Vec<PathBu
         .expect("mutex should not be poisoned")
 }
 
+/// Push a zip file to the registry.
+///
+/// An authentication token is required to push a zip file to the registry. The token is retrieved
+/// from the login file (see [`login_file_path`][crate::utils::login_file_path] and
+/// [`execute_login`][crate::auth::execute_login]).
 async fn push_to_repo(
     zip_file: &Path,
     dependency_name: &str,
@@ -304,7 +326,7 @@ mod tests {
         ignored.push(dir.join("broadcast/random_dir_in_broadcast/dry_run/toml"));
         fs::write(ignored.last().unwrap(), "ignored").unwrap();
 
-        let res = filter_files_to_copy(&dir);
+        let res = filter_ignored_files(&dir);
         assert_eq!(res.len(), included.len());
         for r in res {
             assert!(included.contains(&r));

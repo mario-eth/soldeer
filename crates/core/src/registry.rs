@@ -163,9 +163,17 @@ pub async fn get_latest_version(dependency_name: &str) -> Result<Dependency> {
     .into())
 }
 
+/// The versions of a dependency.
+///
+/// If all versions can be parsed as semver, then the versions are sorted in descending order
+/// according to semver. If not all versions can be parsed as semver, then the versions are returned
+/// in the order they were received from the API (descending creation date).
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Versions {
+    /// All versions are semver compliant.
     Semver(Vec<Version>),
+
+    /// Not all versions are semver compliant.
     NonSemver(Vec<String>),
 }
 

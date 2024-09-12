@@ -1,3 +1,4 @@
+//! Remappings management.
 use crate::{
     config::{read_config_deps, Dependency, Paths, SoldeerConfig},
     errors::RemappingsError,
@@ -12,24 +13,44 @@ use toml_edit::{value, Array, DocumentMut};
 
 pub type Result<T> = std::result::Result<T, RemappingsError>;
 
+/// Action to perform on the remappings.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum RemappingsAction {
+    /// Add a dependency to the remappings.
     Add(Dependency),
+
+    /// Remove a dependency from the remappings.
     Remove(Dependency),
+
+    /// Update the remappings according to the config file.
     Update,
 }
 
 /// Location where to store the remappings, either in `remappings.txt` or the config file
-/// (foundry/soldeer)
+/// (foundry/soldeer).
 #[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq, Hash)]
 #[serde(rename_all = "lowercase")]
 pub enum RemappingsLocation {
+    /// Store the remappings in a dedicated `remappings.txt` file.
     #[default]
     Txt,
+
+    /// Store the remappings in the `foundry.toml` config file.
+    ///
+    /// Note that remappings are never stored in the `soldeer.toml` file because foundry wouldn't
+    /// be able to read them from there.
     Config,
 }
 
+/// Generate the remappings for storing into the `remappings.txt` file.
+///
+/// If the `remappings_regenerate` option is set to `true`, then any existing remappings are
+/// discarded and the remappings are generated from the dependencies in the config file.
+///
+/// Otherwise, existing remappings are kept, and depending on the action, a remapping entry is added
+/// or removed. For the [`RemappingsAction::Update`] action, the existing remappings are merged with
+/// the dependencies in the config file.
 pub fn remappings_txt(
     action: &RemappingsAction,
     paths: &Paths,
@@ -54,6 +75,18 @@ pub fn remappings_txt(
     Ok(())
 }
 
+/// Generate the remappings for storing into the `foundry.toml` config file.
+///
+/// If the `remappings_regenerate` option is set to `true`, then any existing remappings are
+/// discarded and the remappings are generated from the dependencies in the config file.
+///
+/// Otherwise, existing remappings are kept, and depending on the action, a remapping entry is added
+/// or removed. For the [`RemappingsAction::Update`] action, the existing remappings are merged with
+/// the dependencies in the config file.
+///
+/// The remappings are added to the default profile in all cases, and to any other profile that
+/// already has a `remappings key`. If the profile doesn't have a remappings key, it is left
+/// untouched.
 pub fn remappings_foundry(
     action: &RemappingsAction,
     paths: &Paths,
@@ -97,6 +130,14 @@ pub fn remappings_foundry(
     Ok(())
 }
 
+/// Edit the remappings according to the action and the configuration.
+///
+/// Depending on the configuration, the remappings are either stored in a `remappings.txt` file or
+/// in the `foundry.toml` config file.
+///
+/// Note that if the config is stored in a dedicated `soldeer.toml` file, then the
+/// `remappings_location` setting is ignored and the remappings are always stored in a
+/// `remappings.txt` file.
 pub fn edit_remappings(
     action: &RemappingsAction,
     config: &SoldeerConfig,
@@ -119,6 +160,11 @@ pub fn edit_remappings(
     Ok(())
 }
 
+/// Format the default left part (alias) for a remappings entry.
+///
+/// The optional `remappings_prefix` setting is prepended to the dependency name, and the
+/// version requirement string is appended (after a hyphen) if the `remappings_version` setting is
+/// set to `true`. Finally, a trailing slash is added to the alias.
 pub fn format_remap_name(soldeer_config: &SoldeerConfig, dependency: &Dependency) -> String {
     let version_suffix = if soldeer_config.remappings_version {
         &format!("-{}", dependency.version_req().replace('=', ""))
@@ -128,6 +174,16 @@ pub fn format_remap_name(soldeer_config: &SoldeerConfig, dependency: &Dependency
     format!("{}{}{}/", soldeer_config.remappings_prefix, dependency.name(), version_suffix)
 }
 
+/// Generate the remappings for a given action.
+///
+/// If the `remappings_regenerate` option is set to `true`, then any existing remappings are
+/// discarded and the remappings are generated from the dependencies in the config file.
+///
+/// Otherwise, existing remappings are kept, and depending on the action, a remapping entry is added
+/// or removed. For the [`RemappingsAction::Update`] action, the existing remappings are merged with
+/// the dependencies in the config file.
+///
+/// Dependencies are sorted alphabetically for consistency.
 fn generate_remappings(
     action: &RemappingsAction,
     paths: &Paths,
@@ -211,12 +267,17 @@ fn generate_remappings(
     Ok(new_remappings)
 }
 
+/// Generate remappings from the dependencies in the config file.
+///
+/// The remappings are generated in the form `alias/=path/`, where `alias` is the dependency name
+/// with an optional prefix and version requirement suffix, and `path` is the relative path to the
+/// dependency folder.
 fn remappings_from_deps(paths: &Paths, soldeer_config: &SoldeerConfig) -> Result<Vec<String>> {
     let dependencies = read_config_deps(&paths.config)?;
     dependencies
         .iter()
         .map(|dependency| {
-            let dependency_name_formatted = format_remap_name(soldeer_config, dependency);
+            let dependency_name_formatted = format_remap_name(soldeer_config, dependency); // contains trailing slash
             let relative_path = get_install_dir_relative(dependency, paths)?;
             Ok(format!("{dependency_name_formatted}={relative_path}/"))
         })
@@ -240,6 +301,28 @@ fn get_install_dir_relative(dependency: &Dependency, paths: &Paths) -> Result<St
         .to_string())
 }
 
+/// Format a TOML array as a multi-line array with indentation in case there is more than one
+/// element.
+///
+/// # Examples
+///
+/// ```toml
+/// [profile.default]
+/// remappings = []
+/// ```
+///
+/// ```toml
+/// [profile.default]
+/// remappings = ["lib1-1.0.0/=dependencies/lib1-1.0.0/"]
+/// ```
+///
+/// ```toml
+/// [profile.default]
+/// remappings = [
+///     "lib1-1.0.0/=dependencies/lib1-1.0.0/",
+///     "lib2-2.0.0/=dependencies/lib2-2.0.0/",
+/// ]
+/// ```
 fn format_array(array: &mut Array) {
     array.fmt();
     if (0..=1).contains(&array.len()) {

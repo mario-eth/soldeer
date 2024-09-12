@@ -1,3 +1,4 @@
+//! Utility functions used throughout the codebase.
 use crate::errors::{DownloadError, InstallError};
 use derive_more::derive::{Display, From};
 use ignore::{WalkBuilder, WalkState};
@@ -26,7 +27,7 @@ pub enum UrlType {
     Http,
 }
 
-/// Newtype for the string representation of an integrity checksum (SHA256)
+/// Newtype for the string representation of an integrity checksum (SHA256).
 #[derive(Debug, Clone, PartialEq, Eq, Hash, From, Display)]
 #[from(Cow<'static, str>, String, &'static str)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -44,7 +45,7 @@ pub fn read_file(path: impl AsRef<Path>) -> Result<Vec<u8>, std::io::Error> {
     Ok(buffer)
 }
 
-/// Get the location where the token file is stored or read from
+/// Get the location where the token file is stored or read from.
 ///
 /// The token file is stored in the home directory of the user, or in the current directory
 /// if the home cannot be found, in a hidden folder called `.soldeer`. The token file is called
@@ -68,11 +69,16 @@ pub fn login_file_path() -> Result<PathBuf, std::io::Error> {
     Ok(security_file)
 }
 
-/// Check if any file starts with a period
+/// Check if any filename in the list of paths starts with a period.
 pub fn check_dotfiles(files: &[PathBuf]) -> bool {
     files.iter().any(|file| file.file_name().unwrap_or_default().to_string_lossy().starts_with('.'))
 }
 
+/// Get the type of URL from a dependency URL.
+///
+/// Git URLs are identified by the presence of the `git@github.com` or `git@gitlab.com` prefix, as
+/// well as HTTPS URLs which have the `github.com` or `gitlab.com` domain and a trailing `.git` in
+/// their path.
 pub fn get_url_type(dependency_url: &str) -> Result<UrlType, DownloadError> {
     if GIT_SSH_REGEX.is_match(dependency_url) {
         return Ok(UrlType::Git);
@@ -91,6 +97,7 @@ pub fn get_url_type(dependency_url: &str) -> Result<UrlType, DownloadError> {
     Err(DownloadError::InvalidUrl(dependency_url.to_string()))
 }
 
+/// Sanitize a filename by replacing invalid characters with a dash.
 pub fn sanitize_filename(dependency_name: &str) -> String {
     let options =
         sanitize_filename::Options { truncate: true, windows: cfg!(windows), replacement: "-" };
@@ -111,10 +118,11 @@ pub fn hash_content<R: Read>(content: &mut R) -> [u8; 32] {
     hasher.finalize().into()
 }
 
-/// Walk a folder and compute the SHA256 hash of all non-hidden and non-gitignored files inside the
+/// Walk a folder and compute the SHA256 hash of all non-hidden and non-ignored files inside the
 /// dir, combining them into a single hash.
 ///
-/// We hash the name of the folders and files too, so we can check the integrity of their names.
+/// The paths of the folders and files are hashes too, so we can the integrity of their names and
+/// location can be checked.
 pub fn hash_folder(folder_path: impl AsRef<Path>) -> Result<IntegrityChecksum, std::io::Error> {
     // a list of hashes, one for each DirEntry
     let all_hashes = Arc::new(Mutex::new(Vec::with_capacity(100)));
@@ -179,6 +187,9 @@ pub fn hash_file(path: impl AsRef<Path>) -> Result<IntegrityChecksum, std::io::E
     Ok(const_hex::encode(bytes).into())
 }
 
+/// Run a `git` command with the given arguments in the given directory.
+///
+/// The function output is parsed as a UTF-8 string and returned.
 pub async fn run_git_command<I, S>(
     args: I,
     current_dir: Option<&PathBuf>,
@@ -203,6 +214,9 @@ where
     Ok(String::from_utf8(git.stdout).expect("git command output should be valid utf-8"))
 }
 
+/// Run a `forge` command with the given arguments in the given directory.
+///
+/// The function output is parsed as a UTF-8 string and returned.
 pub async fn run_forge_command<I, S>(
     args: I,
     current_dir: Option<&PathBuf>,
@@ -227,6 +241,10 @@ where
     Ok(String::from_utf8(forge.stdout).expect("forge command output should be valid utf-8"))
 }
 
+/// Remove/uninstall the `forge-std` library installed as a git submodule in a foundry project.
+///
+/// This function removes the `forge-std` submodule, the `.gitmodules` file and the `lib` directory
+/// from the project.
 pub async fn remove_forge_lib(root: impl AsRef<Path>) -> Result<(), InstallError> {
     let gitmodules_path = root.as_ref().join(".gitmodules");
     let lib_dir = root.as_ref().join("lib");
@@ -243,6 +261,10 @@ pub async fn remove_forge_lib(root: impl AsRef<Path>) -> Result<(), InstallError
     Ok(())
 }
 
+/// Canonicalize a path, resolving symlinks and relative paths.
+///
+/// This function also normalizes paths on Windows to use the MS-DOS format (as opposed to UNC)
+/// whenever possible.
 pub async fn canonicalize(path: impl AsRef<Path>) -> Result<PathBuf, std::io::Error> {
     let path = path.as_ref().to_path_buf();
     tokio::task::spawn_blocking(move || dunce::canonicalize(&path)).await?

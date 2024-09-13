@@ -1,5 +1,6 @@
+//! Update dependencies to the latest version.
 use crate::{
-    config::Dependency,
+    config::{Dependency, GitIdentifier},
     errors::UpdateError,
     install::install_dependency,
     lock::{format_install_path, GitLockEntry, LockEntry},
@@ -14,6 +15,21 @@ use crate::install::Progress;
 
 pub type Result<T> = std::result::Result<T, UpdateError>;
 
+/// Update the dependencies to a new version.
+///
+/// This function spawns a task for each dependency and waits for all of them to finish.
+///
+/// For Git dependencies without a ref or with a
+/// [`GitIdentifier::Branch`] ref, the function will update
+/// the dependency to the latest commit with `git pull`.
+///
+/// For Git dependencies with a [`GitIdentifier::Rev`] or [`GitIdentifier::Tag`] ref, the function
+/// will reset the repo to the ref if the integrity check fails. An update is not really possible in
+/// this case.
+///
+/// For HTTP dependencies, the function will install the latest version of the dependency according
+/// to the version requirement in the config file. If the version requirement is not a semver range,
+/// the function will install the latest version from the registry.
 pub async fn update_dependencies(
     dependencies: &[Dependency],
     locks: &[LockEntry],
@@ -51,6 +67,19 @@ pub async fn update_dependencies(
     Ok(results)
 }
 
+/// Update a single dependency to a new version.
+///
+/// For Git dependencies without a ref or with a
+/// [`GitIdentifier::Branch`] ref, the function will update
+/// the dependency to the latest commit with `git pull`.
+///
+/// For Git dependencies with a [`GitIdentifier::Rev`] or [`GitIdentifier::Tag`] ref, the function
+/// will reset the repo to the ref if the integrity check fails. An update is not really possible in
+/// this case.
+///
+/// For HTTP dependencies, the function will install the latest version of the dependency according
+/// to the version requirement in the config file. If the version requirement is not a semver range,
+/// the function will install the latest version from the registry.
 pub async fn update_dependency(
     dependency: &Dependency,
     lock: Option<&LockEntry>,
@@ -59,7 +88,9 @@ pub async fn update_dependency(
     #[cfg(feature = "cli")] progress: Progress,
 ) -> Result<LockEntry> {
     match dependency {
-        Dependency::Git(ref dep) if dep.identifier.is_none() => {
+        Dependency::Git(ref dep)
+            if matches!(dep.identifier, None | Some(GitIdentifier::Branch(_))) =>
+        {
             // we handle the git case in a special way because we don't need to re-clone the repo
             // update to the latest commit (git pull)
             let path = match lock {

@@ -1,4 +1,5 @@
 pub use clap::{Parser, Subcommand};
+use derive_more::derive::From;
 
 pub mod init;
 pub mod install;
@@ -15,7 +16,7 @@ pub struct Args {
     pub command: Subcommands,
 }
 
-#[derive(Debug, Clone, Subcommand)]
+#[derive(Debug, Clone, Subcommand, From)]
 pub enum Subcommands {
     Init(init::Init),
     Install(install::Install),

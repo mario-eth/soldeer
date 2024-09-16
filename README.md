@@ -175,7 +175,7 @@ If you want to ignore certain files from the push you need to create a `.soldeer
 
 #### Dry Run
 
-If you want to dry run a push to inspect what files will be pushed to the central repository, use `soldeer push my-project~v1.0 [PATH_TO_DEPENDENCY] --dry-run true`. This will create a zip file that you can unzip and inspect what was pushed. We recommend everyone to run a dry-run before pushing a new dependency to avoid pushing unwanted files.
+If you want to dry run a push to inspect what files will be pushed to the central repository, use `soldeer push my-project~v1.0 [PATH_TO_DEPENDENCY] --dry-run`. This will create a zip file that you can unzip and inspect what was pushed. We recommend everyone to run a dry-run before pushing a new dependency to avoid pushing unwanted files.
 
 #### Remappings
 

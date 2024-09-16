@@ -175,7 +175,16 @@ If you want to ignore certain files from the push you need to create a `.soldeer
 
 #### Dry Run
 
-If you want to dry run a push to inspect what files will be pushed to the central repository, use `soldeer push my-project~v1.0 [PATH_TO_DEPENDENCY] --dry-run true`. This will create a zip file that you can unzip and inspect what was pushed. We recommend everyone to run a dry-run before pushing a new dependency to avoid pushing unwanted files.
+If you want to dry run a push to inspect what files will be pushed to the central repository, use `soldeer push my-project~v1.0 [PATH_TO_DEPENDENCY] --dry-run`. This will create a zip file that you can unzip and inspect what was pushed. We recommend everyone to run a dry-run before pushing a new dependency to avoid pushing unwanted files.
+
+**Warning** ⚠️
+
+You are at risk to push sensitive files to the central repository that then can be seen by everyone. Make sure to exclude sensitive files in the `.soldeerignore` file.
+Furthermore, we've implemented a warning that it will be triggered if you try to push a project that contains any `.dot` files/directories.
+If you want to skip this warning, you can just use
+```bash
+forge soldeer push my-project~1.0.0 --skip-warnings
+```
 
 #### Remappings
 

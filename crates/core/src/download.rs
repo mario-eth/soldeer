@@ -29,24 +29,17 @@ pub async fn download_file(
     let resp = reqwest::get(url).await?;
     let mut resp = resp.error_for_status()?;
 
-    let path = folder_path.as_ref().to_path_buf();
-    let mut zip_filename = path
-        .file_name()
-        .expect("folder path should have a folder name")
-        .to_string_lossy()
-        .to_string();
-    zip_filename.push_str(".zip");
-    let path = path.join(sanitize_filename(&format!("{base_name}.zip")));
-    let mut file = tokio::fs::File::create(&path)
+    let zip_path = folder_path.as_ref().join(sanitize_filename(&format!("{base_name}.zip")));
+    let mut file = tokio::fs::File::create(&zip_path)
         .await
-        .map_err(|e| DownloadError::IOError { path: path.clone(), source: e })?;
+        .map_err(|e| DownloadError::IOError { path: zip_path.clone(), source: e })?;
     while let Some(mut chunk) = resp.chunk().await? {
         file.write_all_buf(&mut chunk)
             .await
-            .map_err(|e| DownloadError::IOError { path: path.clone(), source: e })?;
+            .map_err(|e| DownloadError::IOError { path: zip_path.clone(), source: e })?;
     }
-    file.flush().await.map_err(|e| DownloadError::IOError { path: path.clone(), source: e })?;
-    Ok(path)
+    file.flush().await.map_err(|e| DownloadError::IOError { path: zip_path.clone(), source: e })?;
+    Ok(zip_path)
 }
 
 /// Unzip a file into a directory and then delete it.

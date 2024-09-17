@@ -262,15 +262,16 @@ mylib = "1.1"
 "#;
     fs::write(dir.join("soldeer.toml"), contents).unwrap();
 
-    fs::create_dir(dir.join(".tmp")).unwrap();
+    // get zip file locally for mock
     let zip_file = download_file(
         "https://github.com/mario-eth/soldeer/archive/8585a7ec85a29889cec8d08f4770e15ec4795943.zip",
-        dir.join(".tmp"),
+        &dir,
         "tmp",
     )
     .await
     .unwrap();
 
+    // serve the file with mock server
     let mut server = mockito::Server::new_async().await;
     let mock = server.mock("GET", "/file.zip").with_body_from_file(zip_file).create_async().await;
     let mock = mock.expect(1); // download link should be called exactly once

@@ -1,5 +1,5 @@
 use soldeer_commands::{commands::install::Install, run, Command};
-use soldeer_core::{config::read_config_deps, lock::read_lockfile};
+use soldeer_core::{config::read_config_deps, download::download_file, lock::read_lockfile};
 use std::{fs, path::Path};
 use temp_env::async_with_vars;
 use testdir::testdir;
@@ -194,4 +194,120 @@ async fn test_install_git_branch() {
         lock.entries.first().unwrap().as_git().unwrap().rev,
         "8d903e557e8f1b6e62bde768aa456d4ddfca72c4"
     );
+}
+
+#[tokio::test]
+async fn test_install_missing_no_lock() {
+    let dir = testdir!();
+    let contents = r#"[dependencies]
+"@openzeppelin-contracts" = "5.0.2"
+"#;
+    fs::write(dir.join("soldeer.toml"), contents).unwrap();
+    let cmd: Command = Install {
+        dependency: None,
+        remote_url: None,
+        rev: None,
+        tag: None,
+        branch: None,
+        regenerate_remappings: false,
+        recursive_deps: false,
+        clean: false,
+    }
+    .into();
+    let res =
+        async_with_vars([("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))], run(cmd))
+            .await;
+    assert!(res.is_ok(), "{res:?}");
+    check_install(&dir, "@openzeppelin-contracts", "5.0.2");
+}
+
+#[tokio::test]
+async fn test_install_missing_with_lock() {
+    let dir = testdir!();
+    let contents = r#"[dependencies]
+mylib = "1.1"
+"#;
+    fs::write(dir.join("soldeer.toml"), contents).unwrap();
+    let lock = r#"[[dependencies]]
+name = "mylib"
+version = "1.1.0"
+url = "https://github.com/mario-eth/soldeer/archive/8585a7ec85a29889cec8d08f4770e15ec4795943.zip"
+checksum = "94a73dbe106f48179ea39b00d42e5d4dd96fdc6252caa3a89ce7efdaec0b9468"
+integrity = "f3c628f3e9eae4db14fe14f9ab29e49a0107c47b8ee956e4cee57b616b493fc2"
+"#;
+    fs::write(dir.join("soldeer.lock"), lock).unwrap();
+    let cmd: Command = Install {
+        dependency: None,
+        remote_url: None,
+        rev: None,
+        tag: None,
+        branch: None,
+        regenerate_remappings: false,
+        recursive_deps: false,
+        clean: false,
+    }
+    .into();
+    let res =
+        async_with_vars([("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))], run(cmd))
+            .await;
+    assert!(res.is_ok(), "{res:?}");
+    check_install(&dir, "mylib", "1.1");
+}
+
+#[tokio::test]
+async fn test_install_second_time() {
+    let dir = testdir!();
+    let contents = r#"[dependencies]
+mylib = "1.1"
+"#;
+    fs::write(dir.join("soldeer.toml"), contents).unwrap();
+
+    fs::create_dir(dir.join(".tmp")).unwrap();
+    let zip_file = download_file(
+        "https://github.com/mario-eth/soldeer/archive/8585a7ec85a29889cec8d08f4770e15ec4795943.zip",
+        dir.join(".tmp"),
+    )
+    .await
+    .unwrap();
+
+    let mut server = mockito::Server::new_async().await;
+    let mock = server.mock("GET", "/file.zip").with_body_from_file(zip_file).create_async().await;
+    let mock = mock.expect(1); // download link should be called exactly once
+
+    let lock = format!(
+        r#"[[dependencies]]
+name = "mylib"
+version = "1.1.0"
+url = "{}/file.zip"
+checksum = "94a73dbe106f48179ea39b00d42e5d4dd96fdc6252caa3a89ce7efdaec0b9468"
+integrity = "f3c628f3e9eae4db14fe14f9ab29e49a0107c47b8ee956e4cee57b616b493fc2"
+"#,
+        server.url()
+    );
+    fs::write(dir.join("soldeer.lock"), lock).unwrap();
+    let cmd: Command = Install {
+        dependency: None,
+        remote_url: None,
+        rev: None,
+        tag: None,
+        branch: None,
+        regenerate_remappings: false,
+        recursive_deps: false,
+        clean: false,
+    }
+    .into();
+    let res = async_with_vars(
+        [("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))],
+        run(cmd.clone()),
+    )
+    .await;
+    assert!(res.is_ok(), "{res:?}");
+    mock.assert(); // download link was called
+
+    // second install
+    let res =
+        async_with_vars([("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))], run(cmd))
+            .await;
+    assert!(res.is_ok(), "{res:?}");
+    mock.assert(); // download link was not called a second time
 }

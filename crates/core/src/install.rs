@@ -399,7 +399,14 @@ async fn install_dependency_inner(
 ) -> Result<LockEntry> {
     match dep {
         InstallInfo::Http(dep) => {
-            let zip_path = download_file(&dep.url, &path).await?;
+            // download zip file into the dependencies directory, naming it after the dependency
+            let path = path.as_ref();
+            let zip_path = download_file(
+                &dep.url,
+                path.parent().expect("dependency install path should have a parent"),
+                &dep.name,
+            )
+            .await?;
             #[cfg(feature = "cli")]
             progress.downloads.inc(1);
 
@@ -418,20 +425,18 @@ async fn install_dependency_inner(
                     });
                 }
             }
-            unzip_file(&zip_path, &path).await?;
+            unzip_file(&zip_path, path).await?;
             #[cfg(feature = "cli")]
             progress.unzip.inc(1);
 
             if subdependencies {
-                install_subdependencies(&path).await?;
+                install_subdependencies(path).await?;
             }
             #[cfg(feature = "cli")]
             progress.subdependencies.inc(1);
 
-            let integrity = hash_folder(&path).map_err(|e| InstallError::IOError {
-                path: path.as_ref().to_path_buf(),
-                source: e,
-            })?;
+            let integrity = hash_folder(path)
+                .map_err(|e| InstallError::IOError { path: path.to_path_buf(), source: e })?;
             #[cfg(feature = "cli")]
             progress.integrity.inc(1);
 

@@ -266,6 +266,7 @@ mylib = "1.1"
     let zip_file = download_file(
         "https://github.com/mario-eth/soldeer/archive/8585a7ec85a29889cec8d08f4770e15ec4795943.zip",
         dir.join(".tmp"),
+        "tmp",
     )
     .await
     .unwrap();

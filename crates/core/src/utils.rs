@@ -249,7 +249,13 @@ pub async fn remove_forge_lib(root: impl AsRef<Path>) -> Result<(), InstallError
     let gitmodules_path = root.as_ref().join(".gitmodules");
     let lib_dir = root.as_ref().join("lib");
     let forge_std_dir = lib_dir.join("forge-std");
-    run_git_command(&["rm", &forge_std_dir.to_string_lossy()], None).await?;
+    if forge_std_dir.exists() {
+        run_git_command(
+            &["rm", &forge_std_dir.to_string_lossy()],
+            Some(&root.as_ref().to_path_buf()),
+        )
+        .await?;
+    }
     if lib_dir.exists() {
         fs::remove_dir_all(&lib_dir)
             .map_err(|e| InstallError::IOError { path: lib_dir.clone(), source: e })?;

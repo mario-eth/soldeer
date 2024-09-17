@@ -1738,8 +1738,13 @@ version = "0.4.0"
 dependencies = [
  "clap",
  "cliclack",
+ "derive_more",
  "email-address-parser",
+ "mockito",
  "soldeer-core",
+ "temp-env",
+ "testdir",
+ "tokio",
 ]
 
 [[package]]

@@ -20,30 +20,26 @@ pub type Result<T> = std::result::Result<T, DownloadError>;
 /// Download a zip file into the provided folder.
 ///
 /// Depending on the platform, the folder path must exist prior to calling this function.
-/// The filename for the zip file will be the same as the base name of the folder containing it with
-/// the ".zip" extension
-pub async fn download_file(url: impl IntoUrl, folder_path: impl AsRef<Path>) -> Result<PathBuf> {
+/// The filename for the zip file will be the provided base name with the ".zip" extension
+pub async fn download_file(
+    url: impl IntoUrl,
+    folder_path: impl AsRef<Path>,
+    base_name: &str,
+) -> Result<PathBuf> {
     let resp = reqwest::get(url).await?;
     let mut resp = resp.error_for_status()?;
 
-    let path = folder_path.as_ref().to_path_buf();
-    let mut zip_filename = path
-        .file_name()
-        .expect("folder path should have a folder name")
-        .to_string_lossy()
-        .to_string();
-    zip_filename.push_str(".zip");
-    let path = path.parent().expect("dep folder should have a parent").join(zip_filename);
-    let mut file = tokio::fs::File::create(&path)
+    let zip_path = folder_path.as_ref().join(sanitize_filename(&format!("{base_name}.zip")));
+    let mut file = tokio::fs::File::create(&zip_path)
         .await
-        .map_err(|e| DownloadError::IOError { path: path.clone(), source: e })?;
+        .map_err(|e| DownloadError::IOError { path: zip_path.clone(), source: e })?;
     while let Some(mut chunk) = resp.chunk().await? {
         file.write_all_buf(&mut chunk)
             .await
-            .map_err(|e| DownloadError::IOError { path: path.clone(), source: e })?;
+            .map_err(|e| DownloadError::IOError { path: zip_path.clone(), source: e })?;
     }
-    file.flush().await.map_err(|e| DownloadError::IOError { path: path.clone(), source: e })?;
-    Ok(path)
+    file.flush().await.map_err(|e| DownloadError::IOError { path: zip_path.clone(), source: e })?;
+    Ok(zip_path)
 }
 
 /// Unzip a file into a directory and then delete it.
@@ -210,10 +206,11 @@ mod tests {
         let res = download_file(
             "https://raw.githubusercontent.com/mario-eth/soldeer/main/README.md",
             &path,
+            "my-dependency",
         )
         .await;
         assert!(res.is_ok(), "{res:?}");
-        let zip_path = path.with_file_name("my-dependency.zip");
+        let zip_path = path.join("my-dependency.zip");
         assert!(zip_path.exists());
     }
 

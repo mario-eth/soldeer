@@ -13,11 +13,12 @@ pub mod update;
 #[clap(name = "soldeer", author = "m4rio.eth", version)]
 pub struct Args {
     #[clap(subcommand)]
-    pub command: Subcommands,
+    pub command: Command,
 }
 
+/// The available commands for Soldeer
 #[derive(Debug, Clone, Subcommand, From)]
-pub enum Subcommands {
+pub enum Command {
     Init(init::Init),
     Install(install::Install),
     Update(update::Update),
@@ -27,13 +28,13 @@ pub enum Subcommands {
     Version(Version),
 }
 
+/// Display the version of Soldeer
+#[derive(Debug, Clone, Default, Parser)]
+pub struct Version {}
+
 fn validate_dependency(dep: &str) -> std::result::Result<String, String> {
     if dep.split('~').count() != 2 {
         return Err("The dependency should be in the format <DEPENDENCY>~<VERSION>".to_string());
     }
     Ok(dep.to_string())
 }
-
-/// Display the version of Soldeer
-#[derive(Debug, Clone, Default, Parser)]
-pub struct Version {}

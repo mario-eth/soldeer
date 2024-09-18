@@ -1,8 +1,10 @@
 use clap::Parser;
 use soldeer::commands::Args;
 use yansi::Paint as _;
+use ::cfonts::*;
 
 fn main() {
+    banr();
     let args = Args::parse();
     match soldeer::run(args.command) {
         Ok(_) => {}
@@ -11,3 +13,14 @@ fn main() {
         }
     }
 }
+
+// Bannner function - displays on every command 
+pub fn banr() {
+    say(Options {
+        text: String::from("Soldeer"),
+        font: Fonts::FontPallet,
+        align: Align::Left,
+        colors: vec![Colors::Cyan, Colors::White],
+        line_height: 1,
+        ..Options::default()
+    }) }

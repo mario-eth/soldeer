@@ -404,7 +404,7 @@ async fn install_dependency_inner(
             let zip_path = download_file(
                 &dep.url,
                 path.parent().expect("dependency install path should have a parent"),
-                &dep.name,
+                &format!("{}-{}", dep.name, dep.version),
             )
             .await?;
             #[cfg(feature = "cli")]

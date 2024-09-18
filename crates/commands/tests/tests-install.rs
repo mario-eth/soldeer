@@ -313,3 +313,84 @@ integrity = "f3c628f3e9eae4db14fe14f9ab29e49a0107c47b8ee956e4cee57b616b493fc2"
     assert!(res.is_ok(), "{res:?}");
     mock.assert(); // download link was not called a second time
 }
+
+#[tokio::test]
+async fn test_install_clean() {
+    let dir = testdir!();
+    let contents = r#"[dependencies]
+"@openzeppelin-contracts" = "5.0.2"
+"#;
+    fs::write(dir.join("soldeer.toml"), contents).unwrap();
+    let test_path = dir.join("dependencies").join("foo");
+    fs::create_dir_all(&test_path).unwrap();
+    fs::write(test_path.join("foo.txt"), "test").unwrap();
+    let cmd: Command = Install {
+        dependency: None,
+        remote_url: None,
+        rev: None,
+        tag: None,
+        branch: None,
+        regenerate_remappings: false,
+        recursive_deps: false,
+        clean: true,
+    }
+    .into();
+    let res =
+        async_with_vars([("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))], run(cmd))
+            .await;
+    assert!(res.is_ok(), "{res:?}");
+    assert!(!test_path.exists());
+}
+
+#[tokio::test]
+async fn test_install_recursive_deps() {
+    let dir = testdir!();
+    let contents = r#"[dependencies]
+foo = { version = "0.1.0", git = "https://github.com/foundry-rs/forge-template.git" }
+"#;
+    fs::write(dir.join("soldeer.toml"), contents).unwrap();
+    let cmd: Command = Install {
+        dependency: None,
+        remote_url: None,
+        rev: None,
+        tag: None,
+        branch: None,
+        regenerate_remappings: false,
+        recursive_deps: true,
+        clean: false,
+    }
+    .into();
+    let res =
+        async_with_vars([("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))], run(cmd))
+            .await;
+    assert!(res.is_ok(), "{res:?}");
+    let dep_path = dir.join("dependencies").join("foo-0.1.0");
+    assert!(dep_path.exists());
+    let sub_dirs_path = dep_path.join("lib");
+    assert!(sub_dirs_path.exists());
+    assert!(sub_dirs_path.join("forge-std").join("src").exists());
+}
+
+#[tokio::test]
+async fn test_install_regenerate_remappings() {
+    let dir = testdir!();
+    fs::write(dir.join("soldeer.toml"), "[dependencies]\n").unwrap();
+    fs::write(dir.join("remappings.txt"), "foo=bar").unwrap();
+    let cmd: Command = Install {
+        dependency: Some("@openzeppelin-contracts~5".to_string()),
+        remote_url: None,
+        rev: None,
+        tag: None,
+        branch: None,
+        regenerate_remappings: true,
+        recursive_deps: false,
+        clean: false,
+    }
+    .into();
+    let res =
+        async_with_vars([("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))], run(cmd))
+            .await;
+    assert!(res.is_ok(), "{res:?}");
+    let remappings = fs::read_to_string(dir.join("remappings.txt")).unwrap();
+    assert!(!remappings.contains("foo=bar"));
+}

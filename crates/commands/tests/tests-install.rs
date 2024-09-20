@@ -6,7 +6,11 @@ use testdir::testdir;
 
 fn check_install(dir: &Path, name: &str, version_req: &str) {
     assert!(dir.join("dependencies").exists());
-    let deps = read_config_deps(dir.join("soldeer.toml")).unwrap();
+    let mut config_path = dir.join("soldeer.toml");
+    if !config_path.exists() {
+        config_path = dir.join("foundry.toml");
+    }
+    let deps = read_config_deps(config_path).unwrap();
     assert_eq!(deps.first().unwrap().name(), name);
     let remappings = fs::read_to_string(dir.join("remappings.txt")).unwrap();
     assert!(remappings.contains(name));
@@ -194,6 +198,61 @@ async fn test_install_git_branch() {
         lock.entries.first().unwrap().as_git().unwrap().rev,
         "8d903e557e8f1b6e62bde768aa456d4ddfca72c4"
     );
+}
+
+#[tokio::test]
+async fn test_install_foundry_config() {
+    let dir = testdir!();
+    fs::write(dir.join("foundry.toml"), "[dependencies]\n").unwrap();
+    let cmd: Command = Install {
+        dependency: Some("@openzeppelin-contracts~5".to_string()),
+        remote_url: None,
+        rev: None,
+        tag: None,
+        branch: None,
+        regenerate_remappings: false,
+        recursive_deps: false,
+        clean: false,
+    }
+    .into();
+    let res =
+        async_with_vars([("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))], run(cmd))
+            .await;
+    assert!(res.is_ok(), "{res:?}");
+    check_install(&dir, "@openzeppelin-contracts", "5");
+}
+
+#[tokio::test]
+async fn test_install_foundry_remappings() {
+    let dir = testdir!();
+    let contents = r#"[profile.default]
+
+[soldeer]
+remappings_location = "config"
+
+[dependencies]
+"@openzeppelin-contracts" = "5"
+"#;
+    fs::write(dir.join("foundry.toml"), contents).unwrap();
+    let cmd: Command = Install {
+        dependency: None,
+        remote_url: None,
+        rev: None,
+        tag: None,
+        branch: None,
+        regenerate_remappings: false,
+        recursive_deps: false,
+        clean: false,
+    }
+    .into();
+    let res =
+        async_with_vars([("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))], run(cmd))
+            .await;
+    assert!(res.is_ok(), "{res:?}");
+    let config = fs::read_to_string(dir.join("foundry.toml")).unwrap();
+    assert!(config.contains(
+        "remappings = [\"@openzeppelin-contracts-5/=dependencies/@openzeppelin-contracts-5.0.2/\"]"
+    ));
 }
 
 #[tokio::test]

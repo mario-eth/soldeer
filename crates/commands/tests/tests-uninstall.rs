@@ -7,13 +7,24 @@ use std::{fs, path::PathBuf};
 use temp_env::async_with_vars;
 use testdir::testdir;
 
-async fn setup() -> PathBuf {
+async fn setup(config_filename: &str) -> PathBuf {
     let dir = testdir!();
-    let contents = r#"[dependencies]
+    let mut contents = r#"[dependencies]
 "@openzeppelin-contracts" = "5.0.2"
 solady = "0.0.238"
-"#;
-    fs::write(dir.join("soldeer.toml"), contents).unwrap();
+"#
+    .to_string();
+    if config_filename == "foundry.toml" {
+        contents = format!(
+            r#"[profile.default]
+
+[soldeer]
+remappings_location = "config"
+
+{contents}"#
+        );
+    }
+    fs::write(dir.join(config_filename), contents).unwrap();
     let cmd: Command = Install::default().into();
     let res =
         async_with_vars([("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))], run(cmd))
@@ -24,7 +35,7 @@ solady = "0.0.238"
 
 #[tokio::test]
 async fn test_uninstall_one() {
-    let dir = setup().await;
+    let dir = setup("soldeer.toml").await;
     let cmd: Command = Uninstall { dependency: "solady".to_string() }.into();
     let res =
         async_with_vars([("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))], run(cmd))
@@ -41,7 +52,7 @@ async fn test_uninstall_one() {
 
 #[tokio::test]
 async fn test_uninstall_all() {
-    let dir = setup().await;
+    let dir = setup("soldeer.toml").await;
     let cmd: Command = Uninstall { dependency: "solady".to_string() }.into();
     let res =
         async_with_vars([("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))], run(cmd))
@@ -58,4 +69,18 @@ async fn test_uninstall_all() {
     let remappings = fs::read_to_string(dir.join("remappings.txt")).unwrap();
     assert_eq!(remappings, "");
     assert!(!dir.join("soldeer.lock").exists());
+}
+
+#[tokio::test]
+async fn test_uninstall_foundry_config() {
+    let dir = setup("foundry.toml").await;
+    let cmd: Command = Uninstall { dependency: "solady".to_string() }.into();
+    let res =
+        async_with_vars([("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))], run(cmd))
+            .await;
+    assert!(res.is_ok(), "{res:?}");
+    let deps = read_config_deps(dir.join("foundry.toml")).unwrap();
+    assert!(!deps.iter().any(|d| d.name() == "solady"));
+    let config = fs::read_to_string(dir.join("foundry.toml")).unwrap();
+    assert!(!config.contains("solady"));
 }

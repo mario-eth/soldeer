@@ -223,6 +223,39 @@ async fn test_install_foundry_config() {
 }
 
 #[tokio::test]
+async fn test_install_foundry_remappings() {
+    let dir = testdir!();
+    let contents = r#"[profile.default]
+
+[soldeer]
+remappings_location = "config"
+
+[dependencies]
+"@openzeppelin-contracts" = "5"
+"#;
+    fs::write(dir.join("foundry.toml"), contents).unwrap();
+    let cmd: Command = Install {
+        dependency: None,
+        remote_url: None,
+        rev: None,
+        tag: None,
+        branch: None,
+        regenerate_remappings: true,
+        recursive_deps: false,
+        clean: false,
+    }
+    .into();
+    let res =
+        async_with_vars([("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))], run(cmd))
+            .await;
+    assert!(res.is_ok(), "{res:?}");
+    let config = fs::read_to_string(dir.join("foundry.toml")).unwrap();
+    assert!(config.contains(
+        "remappings = [\"@openzeppelin-contracts-5/=dependencies/@openzeppelin-contracts-5.0.2/\"]"
+    ));
+}
+
+#[tokio::test]
 async fn test_install_missing_no_lock() {
     let dir = testdir!();
     let contents = r#"[dependencies]

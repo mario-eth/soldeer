@@ -240,7 +240,7 @@ remappings_location = "config"
         rev: None,
         tag: None,
         branch: None,
-        regenerate_remappings: true,
+        regenerate_remappings: false,
         recursive_deps: false,
         clean: false,
     }

@@ -4,7 +4,7 @@ use cliclack::{
     multi_progress,
 };
 use soldeer_core::{
-    config::{add_to_config, read_soldeer_config, Paths},
+    config::{add_to_config, read_soldeer_config, update_config_libs, Paths},
     install::{ensure_dependencies_dir, install_dependency, Progress},
     lock::add_to_lockfile,
     registry::get_latest_version,
@@ -45,6 +45,10 @@ pub(crate) async fn init_command(paths: &Paths, cmd: Init) -> Result<()> {
     progress.stop_all();
     multi.stop();
     add_to_config(&dependency, &paths.config)?;
+    let foundry_config = paths.root.join("foundry.toml");
+    if foundry_config.exists() {
+        update_config_libs(foundry_config)?;
+    }
     success("Dependency added to config")?;
     add_to_lockfile(lock, &paths.lock)?;
     success("Dependency added to lockfile")?;

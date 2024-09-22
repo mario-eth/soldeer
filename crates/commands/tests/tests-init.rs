@@ -30,6 +30,8 @@ async fn test_init_clean() {
     assert!(remappings.contains("forge-std"));
     let gitignore = fs::read_to_string(dir.join(".gitignore")).unwrap();
     assert!(gitignore.contains("/dependencies"));
+    let foundry_config = fs::read_to_string(dir.join("foundry.toml")).unwrap();
+    assert!(foundry_config.contains("libs = [\"dependencies\"]"));
 }
 
 #[tokio::test]
@@ -58,6 +60,8 @@ async fn test_init_no_clean() {
     assert!(remappings.contains("forge-std"));
     let gitignore = fs::read_to_string(dir.join(".gitignore")).unwrap();
     assert!(gitignore.contains("/dependencies"));
+    let foundry_config = fs::read_to_string(dir.join("foundry.toml")).unwrap();
+    assert!(foundry_config.contains("libs = [\"dependencies\"]"));
 }
 
 #[tokio::test]

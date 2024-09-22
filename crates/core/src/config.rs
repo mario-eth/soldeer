@@ -11,7 +11,7 @@ use std::{
     env, fmt, fs,
     path::{Path, PathBuf},
 };
-use toml_edit::{value, DocumentMut, InlineTable, Item, Table};
+use toml_edit::{value, Array, DocumentMut, InlineTable, Item, Table};
 
 #[cfg(feature = "cli")]
 use cliclack::{log::warning, select};
@@ -695,6 +695,38 @@ pub fn delete_from_config(dependency_name: &str, path: impl AsRef<Path>) -> Resu
 
     fs::write(path, doc.to_string())?;
     Ok(dependency)
+}
+
+/// Update the config file to add the `dependencies` folder as a source for libraries.
+pub fn update_config_libs(foundry_config: impl AsRef<Path>) -> Result<()> {
+    let contents = fs::read_to_string(&foundry_config)?;
+    let mut doc: DocumentMut = contents.parse::<DocumentMut>()?;
+
+    if !doc.contains_key("profile") {
+        let mut profile = Table::default();
+        profile["default"] = Item::Table(Table::default());
+        profile.set_implicit(true);
+        doc["profile"] = Item::Table(profile);
+    }
+
+    let profile = doc["profile"].as_table_mut().expect("profile should be a table");
+    if !profile.contains_key("default") {
+        profile["default"] = Item::Table(Table::default());
+    }
+
+    let default_profile =
+        profile["default"].as_table_mut().expect("default profile should be a table");
+    if !default_profile.contains_key("libs") {
+        default_profile["libs"] = value(Array::from_iter(&["dependencies".to_string()]));
+    }
+
+    let libs = default_profile["libs"].as_array_mut().expect("libs should be an array");
+    if !libs.iter().any(|v| v.as_str() == Some("dependencies")) {
+        libs.push("dependencies");
+    }
+
+    fs::write(foundry_config, doc.to_string())?;
+    Ok(())
 }
 
 /// Parse a dependency from a TOML value.
@@ -1463,5 +1495,66 @@ libs = ["dependencies"]
         let config_path = write_to_config(config_contents, "soldeer.toml");
         let res = delete_from_config("libfoo", &config_path);
         assert!(matches!(res, Err(ConfigError::MissingDependency(_))), "{res:?}");
+    }
+
+    #[test]
+    fn test_update_config_libs() {
+        let config_contents = r#"[profile.default]
+libs = ["lib"]
+
+[dependencies]
+"#;
+        let config_path = write_to_config(config_contents, "foundry.toml");
+        let res = update_config_libs(&config_path);
+        assert!(res.is_ok(), "{res:?}");
+        let contents = fs::read_to_string(&config_path).unwrap();
+        assert_eq!(
+            contents,
+            r#"[profile.default]
+libs = ["lib", "dependencies"]
+
+[dependencies]
+"#
+        );
+    }
+
+    #[test]
+    fn test_update_config_profile_empty() {
+        let config_contents = r#"[dependencies]
+"#;
+        let config_path = write_to_config(config_contents, "foundry.toml");
+        let res = update_config_libs(&config_path);
+        assert!(res.is_ok(), "{res:?}");
+        let contents = fs::read_to_string(&config_path).unwrap();
+        assert_eq!(
+            contents,
+            r#"[dependencies]
+
+[profile.default]
+libs = ["dependencies"]
+"#
+        );
+    }
+
+    #[test]
+    fn test_update_config_libs_empty() {
+        let config_contents = r#"[profile.default]
+src = "src"
+
+[dependencies]
+"#;
+        let config_path = write_to_config(config_contents, "foundry.toml");
+        let res = update_config_libs(&config_path);
+        assert!(res.is_ok(), "{res:?}");
+        let contents = fs::read_to_string(&config_path).unwrap();
+        assert_eq!(
+            contents,
+            r#"[profile.default]
+src = "src"
+libs = ["dependencies"]
+
+[dependencies]
+"#
+        );
     }
 }

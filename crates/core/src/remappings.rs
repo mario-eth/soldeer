@@ -264,7 +264,7 @@ fn generate_remappings(
                             let path: PathBuf =
                                 PathBuf::from(existing_og).components().take(2).collect();
                             let existing_og_updated = existing_og.replace(
-                                &path.to_string_lossy().to_string(),
+                                path.to_slash_lossy().as_ref(),
                                 item_og.trim_end_matches('/'),
                             );
                             new_remappings

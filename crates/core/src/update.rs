@@ -105,6 +105,24 @@ pub async fn update_dependency(
                 .await?
                 .trim()
                 .to_string();
+
+            if let Some(GitIdentifier::Branch(ref branch)) = dep.identifier {
+                // checkout the desired branch
+                run_git_command(&["checkout", branch], Some(&path)).await?;
+            } else {
+                // necessarily `None` because of the match above
+                // checkout the default branch
+                let branch = run_git_command(
+                    &["symbolic-ref", "refs/remotes/origin/HEAD", "--short"],
+                    Some(&path),
+                )
+                .await?
+                .trim_start_matches("origin/")
+                .trim()
+                .to_string();
+                run_git_command(&["checkout", &branch], Some(&path)).await?;
+            }
+            // pull the latest commits
             run_git_command(&["pull"], Some(&path)).await?;
             let commit = run_git_command(&["rev-parse", "--verify", "HEAD"], Some(&path))
                 .await?

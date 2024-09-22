@@ -2,11 +2,9 @@
 use crate::{
     config::{Dependency, GitIdentifier},
     errors::DownloadError,
-    registry::parse_version_req,
-    utils::{run_git_command, sanitize_filename},
+    utils::{path_matches, run_git_command, sanitize_filename},
 };
 use reqwest::IntoUrl;
-use semver::Version;
 use std::{
     fs,
     io::Cursor,
@@ -159,37 +157,16 @@ pub async fn delete_dependency_files(
 
 /// Check if a path corresponds to the provided dependency.
 ///
-/// The path must be a folder, and the folder name must start with the dependency name (sanitized).
-/// For dependencies with a semver-compliant version requirement, any folder with a version that
-/// matches will give a result of `true`. Otherwise, the folder name must contain the version
-/// requirement string after the dependency name.
-fn install_path_matches(dependency: &Dependency, path: &Path) -> bool {
+/// The path must exist and be a folder, and the folder name must start with the dependency name
+/// (sanitized). For dependencies with a semver-compliant version requirement, any folder with a
+/// version that matches will give a result of `true`. Otherwise, the folder name must contain the
+/// version requirement string after the dependency name.
+fn install_path_matches(dependency: &Dependency, path: impl AsRef<Path>) -> bool {
+    let path = path.as_ref();
     if !path.is_dir() {
         return false;
     }
-    let Some(dir_name) = path.file_name() else {
-        return false;
-    };
-    let dir_name = dir_name.to_string_lossy();
-    let prefix = format!("{}-", sanitize_filename(dependency.name()));
-    if !dir_name.starts_with(&prefix) {
-        return false;
-    }
-    if let Some(version_req) = parse_version_req(dependency.version_req()) {
-        if let Ok(version) =
-            Version::parse(dir_name.strip_prefix(&prefix).expect("prefix should be present"))
-        {
-            if version_req.matches(&version) {
-                return true;
-            }
-        }
-    } else {
-        // not semver compliant
-        if dir_name == format!("{prefix}{}", sanitize_filename(dependency.version_req())) {
-            return true;
-        }
-    }
-    false
+    path_matches(dependency, path)
 }
 
 #[cfg(test)]

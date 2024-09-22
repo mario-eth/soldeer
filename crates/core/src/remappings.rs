@@ -2,12 +2,15 @@
 use crate::{
     config::{read_config_deps, Dependency, Paths, SoldeerConfig},
     errors::RemappingsError,
+    utils::path_matches,
 };
+use derive_more::derive::From;
 use path_slash::PathExt as _;
 use serde::{Deserialize, Serialize};
 use std::{
     fs::{self, File},
     io::Write as _,
+    path::PathBuf,
 };
 use toml_edit::{value, Array, DocumentMut};
 
@@ -192,7 +195,11 @@ fn generate_remappings(
 ) -> Result<Vec<String>> {
     let mut new_remappings = Vec::new();
     if soldeer_config.remappings_regenerate {
-        new_remappings = remappings_from_deps(paths, soldeer_config)?;
+        let dependencies = read_config_deps(&paths.config)?;
+        new_remappings = remappings_from_deps(&dependencies, paths, soldeer_config)?
+            .into_iter()
+            .map(|i| i.remapping_string)
+            .collect();
     } else {
         match &action {
             RemappingsAction::Remove(remove_dep) => {
@@ -231,30 +238,39 @@ fn generate_remappings(
                 // This is where we end up in the `update` command if we don't want to re-generate
                 // all remappings. We need to merge existing remappings with the full list of deps.
                 // We generate all remappings from the dependencies, then replace existing items.
-                new_remappings = remappings_from_deps(paths, soldeer_config)?;
-                if !existing_remappings.is_empty() {
-                    for item in &mut new_remappings {
+                let dependencies = read_config_deps(&paths.config)?;
+                let new_remappings_info =
+                    remappings_from_deps(&dependencies, paths, soldeer_config)?;
+                if existing_remappings.is_empty() {
+                    new_remappings =
+                        new_remappings_info.into_iter().map(|i| i.remapping_string).collect();
+                } else {
+                    for RemappingInfo { remapping_string: item, dependency: dep } in
+                        new_remappings_info
+                    {
                         let (_, item_og) =
                             item.split_once('=').expect("remappings should have two parts");
-                        // Try to find an existing item with the same path.
-                        // TODO: make the detection smarter, and match on any path where the version
-                        // is semver-compatible too.
-                        // For this we need a reference to the dependency object so we can parse the
-                        // version req string.
-                        // If we found an existing remapping with a matching version, then we do a
-                        // search and replace in the right-side (og) part to
-                        // update the path to point to the new version
-                        // folder. It's important to trim the trailing slash in case the existing
-                        // remapping doesn't contain one.
+                        // Try to find an existing item pointing to a matching dependency folder
                         if let Some((existing_remapped, existing_og)) =
                             existing_remappings.iter().find(|(_, og)| {
-                                // if the existing remapping path starts with the dependency folder,
-                                // we found a match
-                                og.trim_end_matches('/').starts_with(item_og.trim_end_matches('/'))
+                                // only keep the first two components of the path (dependencies
+                                // folder and the dependency folder)
+                                let path: PathBuf =
+                                    PathBuf::from(og).components().take(2).collect();
+                                path_matches(&dep, path)
                             })
                         {
-                            // if found, we restore it
-                            *item = format!("{existing_remapped}={existing_og}");
+                            // If found, we restore it, replacing the old version with the new one
+                            let path: PathBuf =
+                                PathBuf::from(existing_og).components().take(2).collect();
+                            let existing_og_updated = existing_og.replace(
+                                path.to_slash_lossy().as_ref(),
+                                item_og.trim_end_matches('/'),
+                            );
+                            new_remappings
+                                .push(format!("{existing_remapped}={existing_og_updated}"));
+                        } else {
+                            new_remappings.push(item);
                         }
                     }
                 }
@@ -267,21 +283,30 @@ fn generate_remappings(
     Ok(new_remappings)
 }
 
-/// Generate remappings from the dependencies in the config file.
+#[derive(Debug, Clone, From)]
+struct RemappingInfo {
+    remapping_string: String,
+    dependency: Dependency,
+}
+
+/// Generate remappings from the dependencies list.
 ///
 /// The remappings are generated in the form `alias/=path/`, where `alias` is the dependency name
 /// with an optional prefix and version requirement suffix, and `path` is the relative path to the
 /// dependency folder.
-fn remappings_from_deps(paths: &Paths, soldeer_config: &SoldeerConfig) -> Result<Vec<String>> {
-    let dependencies = read_config_deps(&paths.config)?;
+fn remappings_from_deps(
+    dependencies: &[Dependency],
+    paths: &Paths,
+    soldeer_config: &SoldeerConfig,
+) -> Result<Vec<RemappingInfo>> {
     dependencies
         .iter()
         .map(|dependency| {
             let dependency_name_formatted = format_remap_name(soldeer_config, dependency); // contains trailing slash
             let relative_path = get_install_dir_relative(dependency, paths)?;
-            Ok(format!("{dependency_name_formatted}={relative_path}/"))
+            Ok((format!("{dependency_name_formatted}={relative_path}/"), dependency.clone()).into())
         })
-        .collect::<Result<Vec<_>>>()
+        .collect::<Result<Vec<RemappingInfo>>>()
 }
 
 /// Find the install path (relative to project root) for a dependency that was already installed
@@ -445,13 +470,14 @@ dep3 = { version = "foobar", git = "git@github.com:test/test.git", branch = "foo
         fs::create_dir_all(dependencies_dir.join("dep2-2.0.0")).unwrap();
         fs::create_dir_all(dependencies_dir.join("dep3-foobar")).unwrap();
 
-        let res = remappings_from_deps(&paths, &SoldeerConfig::default());
+        let dependencies = read_config_deps(&paths.config).unwrap();
+        let res = remappings_from_deps(&dependencies, &paths, &SoldeerConfig::default());
         assert!(res.is_ok(), "{res:?}");
         let res = res.unwrap();
         assert_eq!(res.len(), 3);
-        assert_eq!(res[0], "dep1-^1.0.0/=dependencies/dep1-1.1.1/");
-        assert_eq!(res[1], "dep2-2.0.0/=dependencies/dep2-2.0.0/");
-        assert_eq!(res[2], "dep3-foobar/=dependencies/dep3-foobar/");
+        assert_eq!(res[0].remapping_string, "dep1-^1.0.0/=dependencies/dep1-1.1.1/");
+        assert_eq!(res[1].remapping_string, "dep2-2.0.0/=dependencies/dep2-2.0.0/");
+        assert_eq!(res[2].remapping_string, "dep3-foobar/=dependencies/dep3-foobar/");
     }
 
     #[test]
@@ -779,5 +805,31 @@ lib1 = "1.0.0"
         assert!(res.is_ok(), "{res:?}");
         let contents = fs::read_to_string(&paths.remappings).unwrap();
         assert_eq!(contents, "lib1-1.0.0/=dependencies/lib1-1.0.0/\n");
+    }
+
+    #[test]
+    fn test_generate_remappings_update_semver_custom() {
+        let dir = testdir!();
+        let contents = r#"[dependencies]
+lib1 = "1"
+lib2 = "2"
+"#;
+        fs::write(dir.join("soldeer.toml"), contents).unwrap();
+        let paths = Paths::from_root(&dir).unwrap();
+        // libs have been updated to newer versions
+        fs::create_dir_all(paths.dependencies.join("lib1-1.2.0")).unwrap();
+        fs::create_dir_all(paths.dependencies.join("lib2-2.1.0")).unwrap();
+        let config = SoldeerConfig::default();
+        // all entries are customized, using an old version of the libs
+        let existing_deps = vec![
+            ("lib1-1/", "dependencies/lib1-1.1.1/src/"), // customize right part
+            ("lib2/", "dependencies/lib2-2.0.1/src/"),   // customize both sides
+        ];
+        let res = generate_remappings(&RemappingsAction::Update, &paths, &config, &existing_deps);
+        assert!(res.is_ok(), "{res:?}");
+        assert_eq!(
+            res.unwrap(),
+            vec!["lib1-1/=dependencies/lib1-1.2.0/src/", "lib2/=dependencies/lib2-2.1.0/src/"]
+        );
     }
 }

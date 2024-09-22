@@ -1,9 +1,14 @@
 //! Utility functions used throughout the codebase.
-use crate::errors::{DownloadError, InstallError};
+use crate::{
+    config::Dependency,
+    errors::{DownloadError, InstallError},
+    registry::parse_version_req,
+};
 use derive_more::derive::{Display, From};
 use ignore::{WalkBuilder, WalkState};
 use path_slash::PathExt as _;
 use regex::Regex;
+use semver::Version;
 use sha2::{Digest as _, Sha256};
 use std::{
     borrow::Cow,
@@ -274,6 +279,39 @@ pub async fn remove_forge_lib(root: impl AsRef<Path>) -> Result<(), InstallError
 pub async fn canonicalize(path: impl AsRef<Path>) -> Result<PathBuf, std::io::Error> {
     let path = path.as_ref().to_path_buf();
     tokio::task::spawn_blocking(move || dunce::canonicalize(&path)).await?
+}
+
+/// Check if a path corresponds to the provided dependency.
+///
+/// The folder does not need to exist. The folder name must start with the dependency name
+/// (sanitized). For dependencies with a semver-compliant version requirement, any folder with a
+/// version that matches will give a result of `true`. Otherwise, the folder name must contain the
+/// version requirement string after the dependency name.
+pub fn path_matches(dependency: &Dependency, path: impl AsRef<Path>) -> bool {
+    let path = path.as_ref();
+    let Some(dir_name) = path.file_name() else {
+        return false;
+    };
+    let dir_name = dir_name.to_string_lossy();
+    let prefix = format!("{}-", sanitize_filename(dependency.name()));
+    if !dir_name.starts_with(&prefix) {
+        return false;
+    }
+    if let Some(version_req) = parse_version_req(dependency.version_req()) {
+        if let Ok(version) =
+            Version::parse(dir_name.strip_prefix(&prefix).expect("prefix should be present"))
+        {
+            if version_req.matches(&version) {
+                return true;
+            }
+        }
+    } else {
+        // not semver compliant
+        if dir_name == format!("{prefix}{}", sanitize_filename(dependency.version_req())) {
+            return true;
+        }
+    }
+    false
 }
 
 #[cfg(test)]

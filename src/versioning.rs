@@ -143,7 +143,7 @@ fn filter_files_to_copy(root_directory_path: impl AsRef<Path>) -> Vec<PathBuf> {
         })
     });
     drop(tx);
-    files_to_copy.join().unwrap()
+    files_to_copy.join().expect("Failed to join thread")
 }
 
 async fn push_to_repo(

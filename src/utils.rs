@@ -250,7 +250,7 @@ pub fn hash_folder(
         })
     });
     drop(tx);
-    let mut hashes = hashes.join().unwrap();
+    let mut hashes = hashes.join().expect("Failed to join thread");
     let mut hasher = <Sha256 as Digest>::new();
     hashes.par_sort_unstable();
     // hash the hashes (yo dawg...)

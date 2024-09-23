@@ -5,6 +5,7 @@ use crate::{
     utils::{hash_folder, read_file, sanitize_dependency_name, zipfile_hash},
     DEPENDENCY_DIR,
 };
+use rayon::prelude::*;
 use reqwest::IntoUrl;
 use std::{
     fs,
@@ -71,7 +72,8 @@ pub async fn download_dependencies(
         results.push(res??);
     }
     // sort to make the order consistent with the input dependencies list (which should be sorted)
-    results.sort_unstable_by(|a, b| a.name.cmp(&b.name).then_with(|| a.version.cmp(&b.version)));
+    results
+        .par_sort_unstable_by(|a, b| a.name.cmp(&b.name).then_with(|| a.version.cmp(&b.version)));
 
     Ok(results)
 }
@@ -79,7 +81,7 @@ pub async fn download_dependencies(
 // un-zip-ing dependencies to dependencies folder
 pub fn unzip_dependencies(dependencies: &[Dependency]) -> Result<Vec<Option<IntegrityChecksum>>> {
     let res: Vec<_> = dependencies
-        .iter()
+        .par_iter()
         .map(|d| match d {
             Dependency::Http(dep) => unzip_dependency(dep).map(Some),
             _ => Ok(None),

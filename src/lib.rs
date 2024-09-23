@@ -29,7 +29,6 @@ use std::{env, path::PathBuf, sync::LazyLock};
 use utils::{get_url_type, UrlType};
 use versioning::validate_name;
 use yansi::Paint as _;
-
 mod auth;
 pub mod commands;
 mod config;
@@ -130,10 +129,10 @@ pub async fn run(command: Subcommands) -> Result<(), SoldeerError> {
             let skip_warnings = push.skip_warnings;
 
             // Check for sensitive files or directories
-            if !dry_run &&
-                !skip_warnings &&
-                check_dotfiles_recursive(&path) &&
-                !prompt_user_for_confirmation()
+            if !dry_run
+                && !skip_warnings
+                && check_dotfiles_recursive(&path)
+                && !prompt_user_for_confirmation()
             {
                 println!("{}", "Push operation aborted by the user.".yellow());
                 return Ok(());
@@ -1809,8 +1808,8 @@ recursive_deps = true
     fn find_forge_std_path() -> PathBuf {
         for entry in fs::read_dir(DEPENDENCY_DIR.clone()).unwrap().filter_map(Result::ok) {
             let path = entry.path();
-            if path.is_dir() &&
-                path.file_name().unwrap().to_string_lossy().starts_with("forge-std-")
+            if path.is_dir()
+                && path.file_name().unwrap().to_string_lossy().starts_with("forge-std-")
             {
                 return path;
             }

@@ -3,6 +3,7 @@ use crate::{
     utils::{get_current_working_dir, read_file_to_string, sanitize_dependency_name},
     FOUNDRY_CONFIG_FILE, SOLDEER_CONFIG_FILE,
 };
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::{
     env, fmt,
@@ -12,7 +13,6 @@ use std::{
 };
 use toml_edit::{value, Array, DocumentMut, InlineTable, Item, Table};
 use yansi::Paint as _;
-
 pub type Result<T> = std::result::Result<T, ConfigError>;
 
 /// Location where to store the remappings, either in `remappings.txt` or the config file
@@ -311,8 +311,9 @@ pub fn read_config_deps(path: Option<PathBuf>) -> Result<Vec<Dependency>> {
     for (name, v) in data {
         dependencies.push(parse_dependency(name, v)?);
     }
-    dependencies
-        .sort_unstable_by(|a, b| a.name().cmp(b.name()).then_with(|| a.version().cmp(b.version())));
+    dependencies.par_sort_unstable_by(|a, b| {
+        a.name().cmp(b.name()).then_with(|| a.version().cmp(b.version()))
+    });
 
     Ok(dependencies)
 }
@@ -479,9 +480,13 @@ fn parse_dependency(name: impl Into<String>, value: &Item) -> Result<Dependency>
             return Err(ConfigError::EmptyVersion(name));
         }
         // this function does not retrieve the url
-        return Ok(
-            HttpDependency { name, version: version.to_string(), url: None, checksum: None }.into()
-        );
+        return Ok(HttpDependency {
+            name,
+            version: version.to_string(),
+            url: None,
+            checksum: None,
+        }
+        .into());
     }
 
     // we should have a table or inline table
@@ -579,7 +584,7 @@ fn remappings_from_deps(
     let config_path = config_path.as_ref().to_path_buf();
     let dependencies = read_config_deps(Some(config_path))?;
     Ok(dependencies
-        .iter()
+        .par_iter()
         .map(|dependency| {
             let dependency_name_formatted = format_remap_name(soldeer_config, dependency);
             format!(
@@ -679,7 +684,7 @@ fn generate_remappings(
     }
 
     // sort the remappings
-    new_remappings.sort_unstable();
+    new_remappings.par_sort_unstable();
     Ok(new_remappings)
 }
 

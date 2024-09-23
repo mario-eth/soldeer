@@ -3,6 +3,7 @@ use crate::{
 };
 use ignore::{WalkBuilder, WalkState};
 use path_slash::PathExt;
+use rayon::slice::ParallelSliceMut;
 use regex::Regex;
 use sha2::{Digest, Sha256};
 use std::{
@@ -12,7 +13,7 @@ use std::{
     path::{Path, PathBuf},
     sync::{
         atomic::{AtomicBool, Ordering},
-        Arc, LazyLock, Mutex,
+        Arc, LazyLock,
     },
 };
 use yansi::Paint as _;
@@ -186,15 +187,28 @@ pub fn hash_folder(
     // the check afterwards
     let seen_ignore_path = Arc::new(AtomicBool::new(ignore_path.is_none()));
     // a list of hashes, one for each DirEntry
-    let hashes = Arc::new(Mutex::new(Vec::with_capacity(100)));
     // we use a parallel walker to speed things up
     let walker = WalkBuilder::new(&folder_path).hidden(false).build_parallel();
     let root_path = Arc::new(dunce::canonicalize(folder_path.as_ref())?);
+    // if memory usage gets a high, this is a possible culprit
+    // shouldn't be much of an issue though based on the size of the packages.
+    // Can be replaced with a bounded version of mpsc.
+    let (tx, rx) = std::sync::mpsc::channel::<[u8; 32]>();
+    let tx = Arc::new(tx);
+
+    let hashes = std::thread::spawn(move || {
+        let mut hashes = Vec::new();
+        while let Ok(msg) = rx.recv() {
+            hashes.push(msg);
+        }
+        hashes
+    });
+
     walker.run(|| {
         let root_path = Arc::clone(&root_path);
         let ignore_path = ignore_path.clone();
         let seen_ignore_path = Arc::clone(&seen_ignore_path);
-        let hashes = Arc::clone(&hashes);
+        let tx = Arc::clone(&tx);
         // function executed for each DirEntry
         Box::new(move |result| {
             let Ok(entry) = result else {
@@ -202,13 +216,13 @@ pub fn hash_folder(
             };
             let path = entry.path();
             // check if that file is `ignore_path`, unless we've seen it already
-            if !seen_ignore_path.load(Ordering::SeqCst) {
+            if !seen_ignore_path.load(Ordering::Acquire) {
                 let ignore_path = ignore_path
                     .as_ref()
                     .expect("ignore_path should always be Some when seen_ignore_path is false");
                 if path == ignore_path {
                     // record that we've seen the zip file
-                    seen_ignore_path.swap(true, Ordering::SeqCst);
+                    seen_ignore_path.swap(true, Ordering::Release);
                     return WalkState::Continue;
                 }
             }
@@ -230,16 +244,15 @@ pub fn hash_folder(
             }
             // record the hash for that file/folder in the list
             let hash: [u8; 32] = hasher.finalize().into();
-            let mut hashes_lock = hashes.lock().expect("mutex should not be poisoned");
-            hashes_lock.push(hash);
+            tx.send(hash)
+                .expect("Channel receiver should never be dropped before end of function scope");
             WalkState::Continue
         })
     });
-
-    // sort hashes
+    drop(tx);
+    let mut hashes = hashes.join().unwrap();
     let mut hasher = <Sha256 as Digest>::new();
-    let mut hashes = hashes.lock().expect("mutex should not be poisoned");
-    hashes.sort_unstable();
+    hashes.par_sort_unstable();
     // hash the hashes (yo dawg...)
     for hash in hashes.iter() {
         hasher.update(hash);

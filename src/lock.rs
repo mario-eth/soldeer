@@ -5,6 +5,7 @@ use crate::{
     utils::{get_current_working_dir, read_file_to_string},
     LOCK_FILE,
 };
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::{fs, path::PathBuf};
 use yansi::Paint as _;
@@ -52,7 +53,7 @@ pub fn lock_check(dependency: &Dependency, allow_missing_lockfile: bool) -> Resu
         }
     };
 
-    let is_locked = lock_entries.iter().any(|lock_entry| {
+    let is_locked = lock_entries.par_iter().any(|lock_entry| {
         lock_entry.name == dependency.name() && lock_entry.version == dependency.version()
     });
 
@@ -86,43 +87,59 @@ pub fn write_lock(
     if !lock_file.exists() {
         fs::File::create(&lock_file)?;
     }
+    let entries = read_lock()?;
+    let mut entries = dependencies
+        .par_iter()
+        .zip(integrity_checksums.par_iter())
+        .fold(
+            move || entries.clone(),
+            |mut entries, (dep, integrity)| {
+                let entry = match dep {
+                    Dependency::Http(dep) => LockEntry::new(
+                        &dep.name,
+                        &dep.version,
+                        dep.url.as_ref().unwrap(),
+                        dep.checksum.as_ref().unwrap(),
+                        integrity.clone().map(|c| c.to_string()),
+                    ),
+                    Dependency::Git(dep) => LockEntry::new(
+                        &dep.name,
+                        &dep.version,
+                        &dep.git,
+                        dep.identifier.as_ref().unwrap().to_string(),
+                        None,
+                    ),
+                };
+                // check for entry already existing
+                match entries
+                    .par_iter()
+                    .position_any(|e| e.name == entry.name && e.version == entry.version)
+                {
+                    Some(pos) => {
+                        println!("{}", format!("Updating {dep} in the lock file.").green());
+                        // replace the entry with the new data
+                        entries[pos] = entry;
+                    }
+                    None => {
+                        println!(
+                            "{}",
+                            format!("Writing {}~{} to the lock file.", entry.name, entry.version)
+                                .green()
+                        );
+                        entries.push(entry);
+                    }
+                }
+                entries
+            },
+        )
+        .reduce(Vec::new, |mut a, e| {
+            a.extend_from_slice(&e);
+            a
+        });
 
-    let mut entries = read_lock()?;
-    for (dep, integrity) in dependencies.iter().zip(integrity_checksums.iter()) {
-        let entry = match dep {
-            Dependency::Http(dep) => LockEntry::new(
-                &dep.name,
-                &dep.version,
-                dep.url.as_ref().unwrap(),
-                dep.checksum.as_ref().unwrap(),
-                integrity.clone().map(|c| c.to_string()),
-            ),
-            Dependency::Git(dep) => LockEntry::new(
-                &dep.name,
-                &dep.version,
-                &dep.git,
-                dep.identifier.as_ref().unwrap().to_string(),
-                None,
-            ),
-        };
-        // check for entry already existing
-        match entries.iter().position(|e| e.name == entry.name && e.version == entry.version) {
-            Some(pos) => {
-                println!("{}", format!("Updating {dep} in the lock file.").green());
-                // replace the entry with the new data
-                entries[pos] = entry;
-            }
-            None => {
-                println!(
-                    "{}",
-                    format!("Writing {}~{} to the lock file.", entry.name, entry.version).green()
-                );
-                entries.push(entry);
-            }
-        }
-    }
+    entries
+        .par_sort_unstable_by(|a, b| a.name.cmp(&b.name).then_with(|| a.version.cmp(&b.version)));
     // make sure the ordering is consistent
-    entries.sort_unstable_by(|a, b| a.name.cmp(&b.name).then_with(|| a.version.cmp(&b.version)));
 
     if entries.is_empty() {
         // remove lock file if there are no deps left
@@ -149,7 +166,7 @@ pub fn remove_lock(dependency: &Dependency) -> Result<()> {
     }
 
     let entries: Vec<_> = read_lock()?
-        .into_iter()
+        .into_par_iter()
         .filter(|e| e.name != dependency.name() || e.version != dependency.version())
         .collect();
 

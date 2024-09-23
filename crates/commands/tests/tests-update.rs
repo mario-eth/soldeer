@@ -7,6 +7,7 @@ use std::{fs, path::PathBuf};
 use temp_env::async_with_vars;
 use testdir::testdir;
 
+#[allow(clippy::unwrap_used)]
 async fn setup(config_filename: &str) -> PathBuf {
     // install v1.9.0 of forge-std (faking an old install)
     let dir = testdir!();

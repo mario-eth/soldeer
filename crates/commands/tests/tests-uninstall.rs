@@ -7,6 +7,7 @@ use std::{fs, path::PathBuf};
 use temp_env::async_with_vars;
 use testdir::testdir;
 
+#[allow(clippy::unwrap_used)]
 async fn setup(config_filename: &str) -> PathBuf {
     let dir = testdir!();
     let mut contents = r#"[dependencies]

@@ -686,8 +686,10 @@ pub fn delete_from_config(dependency_name: &str, path: impl AsRef<Path>) -> Resu
     let contents = fs::read_to_string(&path)?;
     let mut doc: DocumentMut = contents.parse::<DocumentMut>().expect("invalid doc");
 
-    let Some(item_removed) = doc["dependencies"].as_table_mut().unwrap().remove(dependency_name)
-    else {
+    let Some(dependencies) = doc["dependencies"].as_table_mut() else {
+        return Err(ConfigError::MissingDependency(dependency_name.to_string()));
+    };
+    let Some(item_removed) = dependencies.remove(dependency_name) else {
         return Err(ConfigError::MissingDependency(dependency_name.to_string()));
     };
 

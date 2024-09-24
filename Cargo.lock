@@ -1741,6 +1741,7 @@ dependencies = [
  "derive_more",
  "email-address-parser",
  "mockito",
+ "reqwest",
  "soldeer-core",
  "temp-env",
  "testdir",

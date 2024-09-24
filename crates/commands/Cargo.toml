@@ -25,6 +25,7 @@ soldeer-core = { path = "../core", features = ["cli"] }
 
 [dev-dependencies]
 mockito.workspace = true
+reqwest.workspace = true
 temp-env.workspace = true
 testdir.workspace = true
 tokio.workspace = true

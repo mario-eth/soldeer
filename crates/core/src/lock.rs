@@ -7,12 +7,12 @@
 //! different machines. It is also used to skip the installation of dependencies that are already
 //! installed.
 use crate::{config::Dependency, errors::LockError, utils::sanitize_filename};
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::{
     fs,
     path::{Path, PathBuf},
 };
-
 pub type Result<T> = std::result::Result<T, LockError>;
 
 /// A lock entry for a git dependency.
@@ -280,7 +280,7 @@ pub fn read_lockfile(path: impl AsRef<Path>) -> Result<LockFile> {
 
     let data: LockFileParsed = toml_edit::de::from_str(&contents).unwrap_or_default();
     Ok(LockFile {
-        entries: data.dependencies.into_iter().filter_map(|d| d.try_into().ok()).collect(),
+        entries: data.dependencies.into_par_iter().filter_map(|d| d.try_into().ok()).collect(),
         raw: contents,
     })
 }
@@ -289,7 +289,7 @@ pub fn read_lockfile(path: impl AsRef<Path>) -> Result<LockFile> {
 ///
 /// The entries do not need to be sorted, they will be sorted by name.
 pub fn generate_lockfile_contents(mut entries: Vec<LockEntry>) -> String {
-    entries.sort_unstable_by(|a, b| a.name().cmp(b.name()));
+    entries.par_sort_unstable_by(|a, b| a.name().cmp(b.name()));
     let data = LockFileParsed { dependencies: entries.into_iter().map(Into::into).collect() };
     toml_edit::ser::to_string_pretty(&data).expect("Lock entries should be serializable")
 }
@@ -300,7 +300,7 @@ pub fn generate_lockfile_contents(mut entries: Vec<LockEntry>) -> String {
 /// The entries are sorted by name before being written back to the file.
 pub fn add_to_lockfile(entry: LockEntry, path: impl AsRef<Path>) -> Result<()> {
     let mut lockfile = read_lockfile(&path)?;
-    if let Some(index) = lockfile.entries.iter().position(|e| e.name() == entry.name()) {
+    if let Some(index) = lockfile.entries.par_iter().position_any(|e| e.name() == entry.name()) {
         let _ = std::mem::replace(&mut lockfile.entries[index], entry);
     } else {
         lockfile.entries.push(entry);
@@ -318,7 +318,7 @@ pub fn remove_lock(dependency: &Dependency, path: impl AsRef<Path>) -> Result<()
 
     let entries: Vec<_> = lockfile
         .entries
-        .into_iter()
+        .into_par_iter()
         .filter_map(|e| if e.name() != dependency.name() { Some(e.into()) } else { None })
         .collect();
 

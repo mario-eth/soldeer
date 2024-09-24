@@ -11,6 +11,7 @@ use crate::{
     utils::{canonicalize, hash_file, hash_folder, run_forge_command, run_git_command},
 };
 use path_slash::PathBufExt as _;
+use rayon::prelude::*;
 use std::path::{Path, PathBuf};
 use tokio::{fs, task::JoinSet};
 use toml_edit::DocumentMut;
@@ -211,8 +212,7 @@ pub async fn install_dependencies(
             let d = dep.clone();
             #[cfg(feature = "cli")]
             let p = progress.clone();
-
-            let lock = locks.iter().find(|l| l.name() == dep.name()).cloned();
+            let lock = locks.par_iter().find_any(|l| l.name() == dep.name()).cloned();
             let deps = deps.as_ref().to_path_buf();
             async move {
                 install_dependency(

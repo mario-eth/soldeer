@@ -4,6 +4,7 @@ use crate::{
     errors::DownloadError,
     utils::{path_matches, run_git_command, sanitize_filename},
 };
+use rayon::prelude::*;
 use reqwest::IntoUrl;
 use std::{
     fs,
@@ -12,7 +13,6 @@ use std::{
     str,
 };
 use tokio::io::AsyncWriteExt as _;
-
 pub type Result<T> = std::result::Result<T, DownloadError>;
 
 /// Download a zip file into the provided folder.
@@ -106,16 +106,12 @@ pub fn find_install_path_sync(dependency: &Dependency, deps: impl AsRef<Path>) -
     let Ok(read_dir) = fs::read_dir(deps.as_ref()) else {
         return None;
     };
-    for entry in read_dir {
-        let Ok(entry) = entry else {
-            continue;
-        };
-        let path = entry.path();
-        if install_path_matches(dependency, &path) {
-            return Some(path);
-        }
-    }
-    None
+
+    read_dir
+        .par_bridge()
+        .into_par_iter()
+        .find_any(|e| e.as_ref().is_ok_and(|e| install_path_matches(dependency, &e.path())))
+        .map(|e| e.as_ref().expect("map + find_first protects this from failing").path())
 }
 
 /// Find the install path of a dependency by reading the dependencies directory and matching on the
@@ -127,6 +123,7 @@ pub async fn find_install_path(dependency: &Dependency, deps: impl AsRef<Path>) 
     let Ok(mut read_dir) = tokio::fs::read_dir(deps.as_ref()).await else {
         return None;
     };
+
     while let Ok(Some(entry)) = read_dir.next_entry().await {
         let path = entry.path();
         if !path.is_dir() {

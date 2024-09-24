@@ -14,6 +14,7 @@ use soldeer_core::{
     remappings::{edit_remappings, RemappingsAction},
     Result,
 };
+use rayon::prelude::*;
 use std::fs;
 
 /// Install a dependency
@@ -129,7 +130,7 @@ pub(crate) async fn install_command(paths: &Paths, cmd: Install) -> Result<()> {
             };
             let mut dep = Dependency::from_name_version(&dependency, cmd.remote_url, identifier)?;
             if dependencies
-                .iter()
+                .par_iter()
                 .any(|d| d.name() == dep.name() && d.version_req() == dep.version_req())
             {
                 outro(format!("{dep} is already installed"))?;

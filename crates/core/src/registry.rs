@@ -7,6 +7,7 @@ use crate::{
     errors::RegistryError,
 };
 use chrono::{DateTime, Utc};
+use rayon::prelude::*;
 use reqwest::Url;
 use semver::{Version, VersionReq};
 use serde::Deserialize;
@@ -198,18 +199,20 @@ pub async fn get_all_versions_descending(dependency_name: &str) -> Result<Versio
 
     match revision
         .data
-        .iter()
+        .par_iter()
         .map(|r| Version::parse(&r.version))
         .collect::<std::result::Result<Vec<Version>, _>>()
     {
         Ok(mut versions) => {
             // all versions are semver compliant
-            versions.sort_unstable_by(|a, b| b.cmp(a)); // sort in descending order
+            versions.par_sort_unstable_by(|a, b| b.cmp(a)); // sort in descending order
             Ok(Versions::Semver(versions))
         }
         Err(_) => {
             // not all versions are semver compliant, do not sort (use API sort order)
-            Ok(Versions::NonSemver(revision.data.iter().map(|r| r.version.to_string()).collect()))
+            Ok(Versions::NonSemver(
+                revision.data.par_iter().map(|r| r.version.to_string()).collect(),
+            ))
         }
     }
 }
@@ -224,8 +227,8 @@ pub async fn get_latest_supported_version(dependency: &Dependency) -> Result<Str
             match parse_version_req(dependency.version_req()) {
                 Some(req) => {
                     let new_version = all_versions
-                        .iter()
-                        .find(|version| req.matches(version))
+                        .par_iter()
+                        .find_any(|version| req.matches(version))
                         .ok_or(RegistryError::NoMatchingVersion {
                             dependency: dependency.name().to_string(),
                             version_req: dependency.version_req().to_string(),
@@ -264,13 +267,19 @@ pub fn parse_version_req(version_req: &str) -> Option<VersionReq> {
     let orig_items: Vec<_> = version_req.split(',').collect();
     // we only perform the operator conversion if we can reference the original string, i.e. if the
     // parsed result has the same number of comparators as the original string
+
     if orig_items.len() == req.comparators.len() {
-        for (comparator, orig) in req.comparators.iter_mut().zip(orig_items.into_iter()) {
-            if comparator.op == semver::Op::Caret && !orig.trim_start_matches(' ').starts_with('^')
-            {
-                comparator.op = semver::Op::Exact;
+        std::thread::scope(|scope| {
+            for (comparator, orig) in req.comparators.iter_mut().zip(orig_items.into_iter()) {
+                scope.spawn(move || {
+                    if comparator.op == semver::Op::Caret
+                        && !orig.trim_start_matches(' ').starts_with('^')
+                    {
+                        comparator.op = semver::Op::Exact;
+                    }
+                });
             }
-        }
+        });
     }
     Some(req)
 }

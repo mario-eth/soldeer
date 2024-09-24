@@ -1,4 +1,6 @@
 //! Update dependencies to the latest version.
+#[cfg(feature = "cli")]
+use crate::install::Progress;
 use crate::{
     config::{Dependency, GitIdentifier},
     errors::UpdateError,
@@ -7,11 +9,9 @@ use crate::{
     registry::get_latest_supported_version,
     utils::run_git_command,
 };
+use rayon::prelude::*;
 use std::path::Path;
 use tokio::task::JoinSet;
-
-#[cfg(feature = "cli")]
-use crate::install::Progress;
 
 pub type Result<T> = std::result::Result<T, UpdateError>;
 
@@ -44,7 +44,7 @@ pub async fn update_dependencies(
             #[cfg(feature = "cli")]
             let p = progress.clone();
 
-            let lock = locks.iter().find(|l| l.name() == dep.name()).cloned();
+            let lock = locks.par_iter().find_any(|l| l.name() == dep.name()).cloned();
             let paths = deps_path.as_ref().to_path_buf();
             async move {
                 update_dependency(

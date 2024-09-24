@@ -17,7 +17,7 @@ use std::{
     fs::{remove_file, File},
     io::{Read as _, Write as _},
     path::{Path, PathBuf},
-    sync::{Arc, Mutex},
+    sync::Arc,
 };
 use zip::{write::SimpleFileOptions, CompressionMethod, ZipWriter};
 
@@ -144,7 +144,15 @@ pub fn zip_file(
 ///
 /// The `.git` folders are always skipped.
 pub fn filter_ignored_files(root_directory_path: impl AsRef<Path>) -> Vec<PathBuf> {
-    let files_to_copy = Arc::new(Mutex::new(Vec::with_capacity(100)));
+    let (tx, rx) = std::sync::mpsc::channel::<PathBuf>();
+    let tx = Arc::new(tx);
+    let files_to_copy = std::thread::spawn(move || {
+        let mut files = Vec::new();
+        while let Ok(path) = rx.recv() {
+            files.push(path);
+        }
+        files
+    });
     let walker = WalkBuilder::new(root_directory_path)
         .add_custom_ignore_filename(".soldeerignore")
         .hidden(false)
@@ -153,7 +161,7 @@ pub fn filter_ignored_files(root_directory_path: impl AsRef<Path>) -> Vec<PathBu
         })
         .build_parallel();
     walker.run(|| {
-        let files_to_copy = Arc::clone(&files_to_copy);
+        let tx = Arc::clone(&tx);
         // function executed for each DirEntry
         Box::new(move |result| {
             let Ok(entry) = result else {
@@ -163,16 +171,14 @@ pub fn filter_ignored_files(root_directory_path: impl AsRef<Path>) -> Vec<PathBu
             if path.is_dir() {
                 return WalkState::Continue;
             }
-            let mut files_to_copy = files_to_copy.lock().expect("mutex should not be poisoned");
-            files_to_copy.push(path.to_path_buf());
+            tx.send(path.to_path_buf())
+                .expect("Channel receiver should never be dropped before end of function scope");
             WalkState::Continue
         })
     });
 
-    Arc::into_inner(files_to_copy)
-        .expect("Arc should have no other strong references")
-        .into_inner()
-        .expect("mutex should not be poisoned")
+    drop(tx);
+    files_to_copy.join().unwrap()
 }
 
 /// Push a zip file to the registry.

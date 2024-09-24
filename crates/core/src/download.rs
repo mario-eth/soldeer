@@ -110,7 +110,7 @@ pub fn find_install_path_sync(dependency: &Dependency, deps: impl AsRef<Path>) -
     read_dir
         .par_bridge()
         .into_par_iter()
-        .find_any(|e| e.as_ref().is_ok_and(|e| install_path_matches(dependency, &e.path())))
+        .find_any(|e| e.as_ref().is_ok_and(|e| install_path_matches(dependency, e.path())))
         .map(|e| e.as_ref().expect("map + find_first protects this from failing").path())
 }
 

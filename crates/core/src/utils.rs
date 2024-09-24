@@ -77,7 +77,9 @@ pub fn login_file_path() -> Result<PathBuf, std::io::Error> {
 
 /// Check if any filename in the list of paths starts with a period.
 pub fn check_dotfiles(files: &[PathBuf]) -> bool {
-    files.par_iter().any(|file| file.file_name().unwrap_or_default().to_string_lossy().starts_with('.'))
+    files
+        .par_iter()
+        .any(|file| file.file_name().unwrap_or_default().to_string_lossy().starts_with('.'))
 }
 
 /// Get the type of URL from a dependency URL.

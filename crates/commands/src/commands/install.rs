@@ -4,6 +4,7 @@ use cliclack::{
     log::{remark, success, warning},
     multi_progress, outro,
 };
+use rayon::prelude::*;
 use soldeer_core::{
     config::{
         add_to_config, read_config_deps, read_soldeer_config, Dependency, GitIdentifier, Paths,
@@ -14,7 +15,6 @@ use soldeer_core::{
     remappings::{edit_remappings, RemappingsAction},
     Result,
 };
-use rayon::prelude::*;
 use std::fs;
 
 /// Install a dependency

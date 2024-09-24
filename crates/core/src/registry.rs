@@ -272,8 +272,8 @@ pub fn parse_version_req(version_req: &str) -> Option<VersionReq> {
         std::thread::scope(|scope| {
             for (comparator, orig) in req.comparators.iter_mut().zip(orig_items.into_iter()) {
                 scope.spawn(move || {
-                    if comparator.op == semver::Op::Caret
-                        && !orig.trim_start_matches(' ').starts_with('^')
+                    if comparator.op == semver::Op::Caret &&
+                        !orig.trim_start_matches(' ').starts_with('^')
                     {
                         comparator.op = semver::Op::Exact;
                     }

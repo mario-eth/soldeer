@@ -139,13 +139,7 @@ pub fn hash_folder(folder_path: impl AsRef<Path>) -> Result<IntegrityChecksum, s
     let (tx, rx) = std::sync::mpsc::channel::<[u8; 32]>();
     let tx = Arc::new(tx);
 
-    let all_hashes = std::thread::spawn(move || {
-        let mut hashes = Vec::new();
-        while let Ok(msg) = rx.recv() {
-            hashes.push(msg);
-        }
-        hashes
-    });
+    let mut hashes = Vec::new();
     // we use a parallel walker to speed things up
     let walker = WalkBuilder::new(folder_path)
         .filter_entry(|entry| {
@@ -187,12 +181,16 @@ pub fn hash_folder(folder_path: impl AsRef<Path>) -> Result<IntegrityChecksum, s
         })
     });
     drop(tx);
-    // sort hashes
     let mut hasher = Sha256::new();
-    let mut all_hashes = all_hashes.join().expect("Failed to join thread");
-    all_hashes.par_sort_unstable();
+
+    // this cannot happen before tx is dropped safely
+    while let Ok(msg) = rx.recv() {
+        hashes.push(msg);
+    }
+    // sort hashes
+    hashes.par_sort_unstable();
     // hash the hashes (yo dawg...)
-    for hash in all_hashes.iter() {
+    for hash in hashes.iter() {
         hasher.update(hash);
     }
     let hash: [u8; 32] = hasher.finalize().into();

@@ -146,13 +146,7 @@ pub fn zip_file(
 pub fn filter_ignored_files(root_directory_path: impl AsRef<Path>) -> Vec<PathBuf> {
     let (tx, rx) = std::sync::mpsc::channel::<PathBuf>();
     let tx = Arc::new(tx);
-    let files_to_copy = std::thread::spawn(move || {
-        let mut files = Vec::new();
-        while let Ok(path) = rx.recv() {
-            files.push(path);
-        }
-        files
-    });
+    let mut files = Vec::new();
     let walker = WalkBuilder::new(root_directory_path)
         .add_custom_ignore_filename(".soldeerignore")
         .hidden(false)
@@ -178,7 +172,11 @@ pub fn filter_ignored_files(root_directory_path: impl AsRef<Path>) -> Vec<PathBu
     });
 
     drop(tx);
-    files_to_copy.join().unwrap()
+    // this cannot happen before tx is dropped safely
+    while let Ok(path) = rx.recv() {
+        files.push(path);
+    }
+    files
 }
 
 /// Push a zip file to the registry.

@@ -14,7 +14,7 @@ use reqwest::{
     Client, StatusCode,
 };
 use std::{
-    fs::{remove_file, File},
+    fs,
     io::{Read as _, Write as _},
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
@@ -57,11 +57,11 @@ pub async fn push_version(
     }
 
     if let Err(error) = push_to_repo(&zip_archive, dependency_name, dependency_version).await {
-        remove_file(zip_archive.to_str().unwrap()).unwrap();
+        let _ = fs::remove_file(zip_archive);
         return Err(error);
     }
 
-    let _ = remove_file(zip_archive);
+    let _ = fs::remove_file(zip_archive);
 
     Ok(None)
 }
@@ -93,7 +93,8 @@ pub fn zip_file(
     let mut file_name: PathBuf = file_name.into();
     file_name.set_extension("zip");
     let zip_file_path = root_directory_path.as_ref().join(file_name);
-    let file = File::create(&zip_file_path).unwrap();
+    let file = fs::File::create(&zip_file_path)
+        .map_err(|e| PublishError::IOError { path: zip_file_path.clone(), source: e })?;
     let mut zip = ZipWriter::new(file);
     let options = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
     if files_to_copy.is_empty() {
@@ -121,7 +122,7 @@ pub fn zip_file(
             }
         }
 
-        let mut f = File::open(file_path.clone())
+        let mut f = fs::File::open(file_path.clone())
             .map_err(|e| PublishError::IOError { path: file_path.clone(), source: e })?;
         let mut buffer = Vec::new();
         zip.start_file(relative_file_path.to_slash_lossy(), options)?;
@@ -197,7 +198,8 @@ async fn push_to_repo(
 
     headers.insert(AUTHORIZATION, header_value.expect("Could not set auth header"));
 
-    let file_fs = read_file(zip_file).unwrap();
+    let file_fs = read_file(zip_file)
+        .map_err(|e| PublishError::IOError { path: zip_file.to_path_buf(), source: e })?;
     let mut part = Part::bytes(file_fs).file_name(
         zip_file
             .file_name()
@@ -233,9 +235,9 @@ async fn push_to_repo(
         StatusCode::ALREADY_REPORTED => Err(PublishError::AlreadyExists),
         StatusCode::UNAUTHORIZED => Err(PublishError::AuthError(AuthError::InvalidCredentials)),
         StatusCode::PAYLOAD_TOO_LARGE => Err(PublishError::PayloadTooLarge),
-        s if s.is_server_error() || s.is_client_error() => {
-            Err(PublishError::HttpError(response.error_for_status().unwrap_err()))
-        }
+        s if s.is_server_error() || s.is_client_error() => Err(PublishError::HttpError(
+            response.error_for_status().expect_err("result should be an error"),
+        )),
         _ => Err(PublishError::UnknownError),
     }
 }

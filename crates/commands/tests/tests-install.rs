@@ -4,6 +4,7 @@ use std::{fs, path::Path};
 use temp_env::async_with_vars;
 use testdir::testdir;
 
+#[allow(clippy::unwrap_used)]
 fn check_install(dir: &Path, name: &str, version_req: &str) {
     assert!(dir.join("dependencies").exists());
     let mut config_path = dir.join("soldeer.toml");

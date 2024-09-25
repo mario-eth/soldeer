@@ -1784,7 +1784,6 @@ dependencies = [
  "const-hex",
  "derive_more",
  "dunce",
- "futures",
  "home",
  "ignore",
  "mockito",

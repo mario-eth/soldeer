@@ -12,7 +12,6 @@ use std::{
     fs::{self, File},
     io::Write as _,
     path::PathBuf,
-    thread,
 };
 use toml_edit::{value, Array, DocumentMut};
 pub type Result<T> = std::result::Result<T, RemappingsError>;
@@ -104,54 +103,33 @@ pub fn remappings_foundry(
         return Ok(());
     };
 
-    let mut errors = vec![];
-    thread::scope(|scope| {
-        for (name, profile) in profiles.iter_mut() {
-            // we normally only edit remappings of profiles which already have a remappings key
-            let thread = scope.spawn(move || {
-                match profile.get_mut("remappings").map(|v| v.as_array_mut()) {
-                    Some(Some(remappings)) => {
-                        let existing_remappings: Vec<_> = remappings
-                            .iter()
-                            .filter_map(|r| r.as_str())
-                            .filter_map(|r| r.split_once('='))
-                            .collect();
-                        let new_remappings = generate_remappings(
-                            action,
-                            paths,
-                            soldeer_config,
-                            &existing_remappings,
-                        )?;
-                        remappings.clear();
-                        for remapping in new_remappings {
-                            remappings.push(remapping);
-                        }
-                        format_array(remappings);
-                        Ok::<(), RemappingsError>(())
-                    }
-                    _ => {
-                        if name == "default" {
-                            // except the default profile, where we always add the remappings
-                            let new_remappings =
-                                generate_remappings(action, paths, soldeer_config, &[])?;
-                            let mut array = new_remappings.into_iter().collect::<Array>();
-                            format_array(&mut array);
-                            profile["remappings"] = value(array);
-                        }
-
-                        Ok(())
-                    }
+    for (name, profile) in profiles.iter_mut() {
+        // we normally only edit remappings of profiles which already have a remappings key
+        match profile.get_mut("remappings").map(|v| v.as_array_mut()) {
+            Some(Some(remappings)) => {
+                let existing_remappings: Vec<_> = remappings
+                    .iter()
+                    .filter_map(|r| r.as_str())
+                    .filter_map(|r| r.split_once('='))
+                    .collect();
+                let new_remappings =
+                    generate_remappings(action, paths, soldeer_config, &existing_remappings)?;
+                remappings.clear();
+                for remapping in new_remappings {
+                    remappings.push(remapping);
                 }
-            });
-            let res = thread.join().expect("Failed to join thread");
-            if res.is_err() {
-                errors.push(res);
+                format_array(remappings);
+            }
+            _ => {
+                if name == "default" {
+                    // except the default profile, where we always add the remappings
+                    let new_remappings = generate_remappings(action, paths, soldeer_config, &[])?;
+                    let mut array = new_remappings.into_iter().collect::<Array>();
+                    format_array(&mut array);
+                    profile["remappings"] = value(array);
+                }
             }
         }
-    });
-
-    if !errors.is_empty() {
-        errors.into_iter().next().expect("Array should never be empty")?;
     }
 
     fs::write(&paths.config, doc.to_string())?;
@@ -223,7 +201,7 @@ fn generate_remappings(
     if soldeer_config.remappings_regenerate {
         let dependencies = read_config_deps(&paths.config)?;
         new_remappings = remappings_from_deps(&dependencies, paths, soldeer_config)?
-            .into_par_iter()
+            .into_iter()
             .map(|i| i.remapping_string)
             .collect();
     } else {
@@ -380,13 +358,9 @@ fn format_array(array: &mut Array) {
         array.set_trailing("");
         array.set_trailing_comma(false);
     } else {
-        thread::scope(|scope| {
-            for item in array.iter_mut() {
-                scope.spawn(move || {
-                    item.decor_mut().set_prefix("\n    ");
-                });
-            }
-        });
+        for item in array.iter_mut() {
+            item.decor_mut().set_prefix("\n    ");
+        }
         array.set_trailing("\n");
         array.set_trailing_comma(true);
     }

@@ -4,7 +4,6 @@ use cliclack::{
     log::{remark, success, warning},
     multi_progress, outro,
 };
-use rayon::prelude::*;
 use soldeer_core::{
     config::{
         add_to_config, read_config_deps, read_soldeer_config, Dependency, GitIdentifier, Paths,
@@ -130,7 +129,7 @@ pub(crate) async fn install_command(paths: &Paths, cmd: Install) -> Result<()> {
             };
             let mut dep = Dependency::from_name_version(&dependency, cmd.remote_url, identifier)?;
             if dependencies
-                .par_iter()
+                .iter()
                 .any(|d| d.name() == dep.name() && d.version_req() == dep.version_req())
             {
                 outro(format!("{dep} is already installed"))?;

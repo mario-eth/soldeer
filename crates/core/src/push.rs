@@ -17,7 +17,7 @@ use std::{
     fs::{remove_file, File},
     io::{Read as _, Write as _},
     path::{Path, PathBuf},
-    sync::Arc,
+    sync::mpsc,
 };
 use zip::{write::SimpleFileOptions, CompressionMethod, ZipWriter};
 
@@ -144,9 +144,7 @@ pub fn zip_file(
 ///
 /// The `.git` folders are always skipped.
 pub fn filter_ignored_files(root_directory_path: impl AsRef<Path>) -> Vec<PathBuf> {
-    let (tx, rx) = std::sync::mpsc::channel::<PathBuf>();
-    let tx = Arc::new(tx);
-    let mut files = Vec::new();
+    let (tx, rx) = mpsc::channel::<PathBuf>();
     let walker = WalkBuilder::new(root_directory_path)
         .add_custom_ignore_filename(".soldeerignore")
         .hidden(false)
@@ -155,7 +153,7 @@ pub fn filter_ignored_files(root_directory_path: impl AsRef<Path>) -> Vec<PathBu
         })
         .build_parallel();
     walker.run(|| {
-        let tx = Arc::clone(&tx);
+        let tx = tx.clone();
         // function executed for each DirEntry
         Box::new(move |result| {
             let Ok(entry) = result else {
@@ -173,6 +171,7 @@ pub fn filter_ignored_files(root_directory_path: impl AsRef<Path>) -> Vec<PathBu
 
     drop(tx);
     // this cannot happen before tx is dropped safely
+    let mut files = Vec::new();
     while let Ok(path) = rx.recv() {
         files.push(path);
     }

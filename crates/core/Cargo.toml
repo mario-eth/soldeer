@@ -29,7 +29,6 @@ derive_more.workspace = true
 dunce = "1.0.5"
 home = "0.5.9"
 ignore = { version = "0.4.22", features = ["simd-accel"] }
-futures = "0.3.30"
 path-slash.workspace = true
 rayon.workspace = true
 regex = "1.10.5"

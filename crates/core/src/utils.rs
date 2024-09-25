@@ -11,6 +11,7 @@ use rayon::prelude::*;
 use regex::Regex;
 use semver::Version;
 use sha2::{Digest as _, Sha256};
+use std::sync::mpsc;
 use std::{
     borrow::Cow,
     env,
@@ -133,13 +134,10 @@ pub fn hash_content<R: Read>(content: &mut R) -> [u8; 32] {
 /// location can be checked.
 pub fn hash_folder(folder_path: impl AsRef<Path>) -> Result<IntegrityChecksum, std::io::Error> {
     // a list of hashes, one for each DirEntry
-    //    let all_hashes = Arc::new(Mutex::new(Vec::with_capacity(100)));
     let root_path = Arc::new(dunce::canonicalize(folder_path.as_ref())?);
 
-    let (tx, rx) = std::sync::mpsc::channel::<[u8; 32]>();
-    let tx = Arc::new(tx);
+    let (tx, rx) = mpsc::channel::<[u8; 32]>();
 
-    let mut hashes = Vec::new();
     // we use a parallel walker to speed things up
     let walker = WalkBuilder::new(folder_path)
         .filter_entry(|entry| {
@@ -148,9 +146,8 @@ pub fn hash_folder(folder_path: impl AsRef<Path>) -> Result<IntegrityChecksum, s
         .hidden(false)
         .build_parallel();
     walker.run(|| {
-        //       let all_hashes = Arc::clone(&all_hashes);
+        let tx = tx.clone();
         let root_path = Arc::clone(&root_path);
-        let tx = Arc::clone(&tx);
         // function executed for each DirEntry
         Box::new(move |result| {
             let Ok(entry) = result else {
@@ -182,8 +179,8 @@ pub fn hash_folder(folder_path: impl AsRef<Path>) -> Result<IntegrityChecksum, s
     });
     drop(tx);
     let mut hasher = Sha256::new();
-
     // this cannot happen before tx is dropped safely
+    let mut hashes = Vec::new();
     while let Ok(msg) = rx.recv() {
         hashes.push(msg);
     }

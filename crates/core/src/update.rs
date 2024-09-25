@@ -44,7 +44,7 @@ pub async fn update_dependencies(
             #[cfg(feature = "cli")]
             let p = progress.clone();
 
-            let lock = locks.par_iter().find_any(|l| l.name() == dep.name()).cloned();
+            let lock = locks.par_iter().find_first(|l| l.name() == dep.name()).cloned();
             let paths = deps_path.as_ref().to_path_buf();
             async move {
                 update_dependency(

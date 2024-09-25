@@ -227,8 +227,8 @@ pub async fn get_latest_supported_version(dependency: &Dependency) -> Result<Str
             match parse_version_req(dependency.version_req()) {
                 Some(req) => {
                     let new_version = all_versions
-                        .par_iter()
-                        .find_any(|version| req.matches(version))
+                        .iter()
+                        .find(|version| req.matches(version))
                         .ok_or(RegistryError::NoMatchingVersion {
                             dependency: dependency.name().to_string(),
                             version_req: dependency.version_req().to_string(),
@@ -269,17 +269,12 @@ pub fn parse_version_req(version_req: &str) -> Option<VersionReq> {
     // parsed result has the same number of comparators as the original string
 
     if orig_items.len() == req.comparators.len() {
-        std::thread::scope(|scope| {
-            for (comparator, orig) in req.comparators.iter_mut().zip(orig_items.into_iter()) {
-                scope.spawn(move || {
-                    if comparator.op == semver::Op::Caret &&
-                        !orig.trim_start_matches(' ').starts_with('^')
-                    {
-                        comparator.op = semver::Op::Exact;
-                    }
-                });
+        for (comparator, orig) in req.comparators.iter_mut().zip(orig_items.into_iter()) {
+            if comparator.op == semver::Op::Caret && !orig.trim_start_matches(' ').starts_with('^')
+            {
+                comparator.op = semver::Op::Exact;
             }
-        });
+        }
     }
     Some(req)
 }

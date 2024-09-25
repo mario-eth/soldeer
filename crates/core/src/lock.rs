@@ -280,7 +280,7 @@ pub fn read_lockfile(path: impl AsRef<Path>) -> Result<LockFile> {
 
     let data: LockFileParsed = toml_edit::de::from_str(&contents).unwrap_or_default();
     Ok(LockFile {
-        entries: data.dependencies.into_par_iter().filter_map(|d| d.try_into().ok()).collect(),
+        entries: data.dependencies.into_iter().filter_map(|d| d.try_into().ok()).collect(),
         raw: contents,
     })
 }

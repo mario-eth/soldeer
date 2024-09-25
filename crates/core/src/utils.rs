@@ -11,7 +11,6 @@ use rayon::prelude::*;
 use regex::Regex;
 use semver::Version;
 use sha2::{Digest as _, Sha256};
-use std::sync::mpsc;
 use std::{
     borrow::Cow,
     env,
@@ -19,7 +18,7 @@ use std::{
     fs,
     io::Read,
     path::{Path, PathBuf},
-    sync::{Arc, LazyLock},
+    sync::{mpsc, Arc, LazyLock},
 };
 use tokio::process::Command;
 

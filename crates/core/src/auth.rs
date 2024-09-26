@@ -62,7 +62,9 @@ pub async fn execute_login(login: &Credentials) -> std::result::Result<(), AuthE
             Ok(())
         }
         StatusCode::UNAUTHORIZED => Err(AuthError::InvalidCredentials),
-        _ => Err(AuthError::HttpError(res.error_for_status().unwrap_err())),
+        _ => Err(AuthError::HttpError(
+            res.error_for_status().expect_err("result should be an error"),
+        )),
     }
 }
 

@@ -6,6 +6,7 @@ use std::{fs, path::PathBuf};
 use temp_env::async_with_vars;
 use testdir::testdir;
 
+#[allow(clippy::unwrap_used)]
 fn setup_project() -> (PathBuf, PathBuf) {
     let dir = testdir!();
     let login_file = dir.join("test_save_jwt");
@@ -123,5 +124,97 @@ async fn test_push_not_found() {
     )
     .await;
     assert!(matches!(res, Err(SoldeerError::PublishError(PublishError::ProjectNotFound))));
+    mock.expect(1);
+}
+
+#[tokio::test]
+async fn test_push_already_exists() {
+    let (login_file, _) = setup_project();
+
+    let (server, mock) = mock_api_server(Some(StatusCode::ALREADY_REPORTED)).await;
+
+    let res = async_with_vars(
+        [
+            ("SOLDEER_API_URL", Some(server.url())),
+            ("SOLDEER_LOGIN_FILE", Some(login_file.to_string_lossy().to_string())),
+        ],
+        run(Command::Push(Push {
+            dependency: "mypkg~0.1.0".to_string(),
+            path: None,
+            dry_run: false,
+            skip_warnings: false,
+        })),
+    )
+    .await;
+    assert!(matches!(res, Err(SoldeerError::PublishError(PublishError::AlreadyExists))));
+    mock.expect(1);
+}
+
+#[tokio::test]
+async fn test_push_unauthorized() {
+    let (login_file, _) = setup_project();
+
+    let (server, mock) = mock_api_server(Some(StatusCode::UNAUTHORIZED)).await;
+
+    let res = async_with_vars(
+        [
+            ("SOLDEER_API_URL", Some(server.url())),
+            ("SOLDEER_LOGIN_FILE", Some(login_file.to_string_lossy().to_string())),
+        ],
+        run(Command::Push(Push {
+            dependency: "mypkg~0.1.0".to_string(),
+            path: None,
+            dry_run: false,
+            skip_warnings: false,
+        })),
+    )
+    .await;
+    assert!(matches!(res, Err(SoldeerError::PublishError(PublishError::AuthError(_)))));
+    mock.expect(1);
+}
+
+#[tokio::test]
+async fn test_push_payload_too_large() {
+    let (login_file, _) = setup_project();
+
+    let (server, mock) = mock_api_server(Some(StatusCode::PAYLOAD_TOO_LARGE)).await;
+
+    let res = async_with_vars(
+        [
+            ("SOLDEER_API_URL", Some(server.url())),
+            ("SOLDEER_LOGIN_FILE", Some(login_file.to_string_lossy().to_string())),
+        ],
+        run(Command::Push(Push {
+            dependency: "mypkg~0.1.0".to_string(),
+            path: None,
+            dry_run: false,
+            skip_warnings: false,
+        })),
+    )
+    .await;
+    assert!(matches!(res, Err(SoldeerError::PublishError(PublishError::PayloadTooLarge))));
+    mock.expect(1);
+}
+
+#[tokio::test]
+async fn test_push_other_error() {
+    let (login_file, _) = setup_project();
+
+    let (server, mock) = mock_api_server(Some(StatusCode::INTERNAL_SERVER_ERROR)).await;
+
+    let res = async_with_vars(
+        [
+            ("SOLDEER_API_URL", Some(server.url())),
+            ("SOLDEER_LOGIN_FILE", Some(login_file.to_string_lossy().to_string())),
+        ],
+        run(Command::Push(Push {
+            dependency: "mypkg~0.1.0".to_string(),
+            path: None,
+            dry_run: false,
+            skip_warnings: false,
+        })),
+    )
+    .await;
+    assert!(matches!(res, Err(SoldeerError::PublishError(PublishError::HttpError(_)))));
     mock.expect(1);
 }

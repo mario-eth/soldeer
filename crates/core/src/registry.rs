@@ -264,6 +264,7 @@ pub fn parse_version_req(version_req: &str) -> Option<VersionReq> {
     let orig_items: Vec<_> = version_req.split(',').collect();
     // we only perform the operator conversion if we can reference the original string, i.e. if the
     // parsed result has the same number of comparators as the original string
+
     if orig_items.len() == req.comparators.len() {
         for (comparator, orig) in req.comparators.iter_mut().zip(orig_items.into_iter()) {
             if comparator.op == semver::Op::Caret && !orig.trim_start_matches(' ').starts_with('^')

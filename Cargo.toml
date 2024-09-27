@@ -39,6 +39,7 @@ cliclack = "0.3.4"
 derive_more = { version = "1.0.0", features = ["from", "display", "from_str"] }
 mockito = "1.5.0"
 path-slash = "0.2.1"
+rayon = "1.10.0"
 reqwest = { version = "0.12.5", default-features = false }
 temp-env = { version = "0.3.6", features = ["async_closure"] }
 testdir = "0.9.1"

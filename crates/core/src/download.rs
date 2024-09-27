@@ -103,19 +103,14 @@ pub fn delete_dependency_files_sync(dependency: &Dependency, deps: impl AsRef<Pa
 /// If a dependency version requirement string is a semver requirement, any folder which version
 /// matches the requirements is returned.
 pub fn find_install_path_sync(dependency: &Dependency, deps: impl AsRef<Path>) -> Option<PathBuf> {
-    let Ok(read_dir) = fs::read_dir(deps.as_ref()) else {
-        return None;
-    };
-    for entry in read_dir {
-        let Ok(entry) = entry else {
-            continue;
-        };
-        let path = entry.path();
-        if install_path_matches(dependency, &path) {
-            return Some(path);
-        }
-    }
-    None
+    fs::read_dir(deps.as_ref())
+        .map(|read_dir| {
+            read_dir.into_iter().find_map(|e| {
+                e.ok().filter(|e| install_path_matches(dependency, e.path())).map(|e| e.path())
+            })
+        })
+        .ok()
+        .flatten()
 }
 
 /// Find the install path of a dependency by reading the dependencies directory and matching on the
@@ -127,6 +122,7 @@ pub async fn find_install_path(dependency: &Dependency, deps: impl AsRef<Path>) 
     let Ok(mut read_dir) = tokio::fs::read_dir(deps.as_ref()).await else {
         return None;
     };
+
     while let Ok(Some(entry)) = read_dir.next_entry().await {
         let path = entry.path();
         if !path.is_dir() {

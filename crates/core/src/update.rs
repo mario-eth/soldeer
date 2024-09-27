@@ -1,4 +1,6 @@
 //! Update dependencies to the latest version.
+#[cfg(feature = "cli")]
+use crate::install::Progress;
 use crate::{
     config::{Dependency, GitIdentifier},
     errors::UpdateError,
@@ -9,9 +11,6 @@ use crate::{
 };
 use std::path::Path;
 use tokio::task::JoinSet;
-
-#[cfg(feature = "cli")]
-use crate::install::Progress;
 
 pub type Result<T> = std::result::Result<T, UpdateError>;
 

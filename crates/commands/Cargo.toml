@@ -22,6 +22,7 @@ cliclack.workspace = true
 derive_more.workspace = true
 email-address-parser = "2.0.0"
 soldeer-core = { path = "../core", features = ["cli"] }
+rayon.workspace = true
 
 [dev-dependencies]
 mockito.workspace = true

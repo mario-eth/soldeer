@@ -211,7 +211,6 @@ pub async fn install_dependencies(
             let d = dep.clone();
             #[cfg(feature = "cli")]
             let p = progress.clone();
-
             let lock = locks.iter().find(|l| l.name() == dep.name()).cloned();
             let deps = deps.as_ref().to_path_buf();
             async move {

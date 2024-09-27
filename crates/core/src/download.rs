@@ -11,8 +11,8 @@ use std::{
     path::{Path, PathBuf},
     str,
 };
-
 use tokio::io::AsyncWriteExt as _;
+
 pub type Result<T> = std::result::Result<T, DownloadError>;
 
 /// Download a zip file into the provided folder.

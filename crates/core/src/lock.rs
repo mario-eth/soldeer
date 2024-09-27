@@ -12,6 +12,7 @@ use std::{
     fs,
     path::{Path, PathBuf},
 };
+
 pub type Result<T> = std::result::Result<T, LockError>;
 
 /// A lock entry for a git dependency.

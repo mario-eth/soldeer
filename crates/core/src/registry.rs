@@ -7,7 +7,6 @@ use crate::{
     errors::RegistryError,
 };
 use chrono::{DateTime, Utc};
-use rayon::prelude::*;
 use reqwest::Url;
 use semver::{Version, VersionReq};
 use serde::Deserialize;

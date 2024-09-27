@@ -199,7 +199,7 @@ pub async fn get_all_versions_descending(dependency_name: &str) -> Result<Versio
 
     match revision
         .data
-        .par_iter()
+        .iter()
         .map(|r| Version::parse(&r.version))
         .collect::<std::result::Result<Vec<Version>, _>>()
     {

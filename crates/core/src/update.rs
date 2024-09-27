@@ -9,7 +9,6 @@ use crate::{
     registry::get_latest_supported_version,
     utils::run_git_command,
 };
-use rayon::prelude::*;
 use std::path::Path;
 use tokio::task::JoinSet;
 
@@ -44,7 +43,7 @@ pub async fn update_dependencies(
             #[cfg(feature = "cli")]
             let p = progress.clone();
 
-            let lock = locks.par_iter().find_first(|l| l.name() == dep.name()).cloned();
+            let lock = locks.iter().find(|l| l.name() == dep.name()).cloned();
             let paths = deps_path.as_ref().to_path_buf();
             async move {
                 update_dependency(

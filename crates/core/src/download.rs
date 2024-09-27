@@ -11,6 +11,7 @@ use std::{
     path::{Path, PathBuf},
     str,
 };
+
 use tokio::io::AsyncWriteExt as _;
 pub type Result<T> = std::result::Result<T, DownloadError>;
 
@@ -104,10 +105,9 @@ pub fn delete_dependency_files_sync(dependency: &Dependency, deps: impl AsRef<Pa
 pub fn find_install_path_sync(dependency: &Dependency, deps: impl AsRef<Path>) -> Option<PathBuf> {
     fs::read_dir(deps.as_ref())
         .map(|read_dir| {
-            read_dir
-                .into_iter()
-                .find(|e| e.as_ref().is_ok_and(|e| install_path_matches(dependency, e.path())))
-                .map(|e| e.expect("map + find protects this from failing").path())
+            read_dir.into_iter().find_map(|e| {
+                e.ok().filter(|e| install_path_matches(dependency, e.path())).map(|e| e.path())
+            })
         })
         .ok()
         .flatten()
@@ -125,9 +125,11 @@ pub async fn find_install_path(dependency: &Dependency, deps: impl AsRef<Path>) 
 
     while let Ok(Some(entry)) = read_dir.next_entry().await {
         let path = entry.path();
-        match (path.is_dir()).then_some(path).filter(|e| install_path_matches(dependency, e)) {
-            Some(path) => return Some(path),
-            None => continue,
+        if !path.is_dir() {
+            continue;
+        }
+        if install_path_matches(dependency, &path) {
+            return Some(path);
         }
     }
     None

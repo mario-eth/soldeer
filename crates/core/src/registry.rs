@@ -205,14 +205,12 @@ pub async fn get_all_versions_descending(dependency_name: &str) -> Result<Versio
     {
         Ok(mut versions) => {
             // all versions are semver compliant
-            versions.par_sort_unstable_by(|a, b| b.cmp(a)); // sort in descending order
+            versions.sort_unstable_by(|a, b| b.cmp(a)); // sort in descending order
             Ok(Versions::Semver(versions))
         }
         Err(_) => {
             // not all versions are semver compliant, do not sort (use API sort order)
-            Ok(Versions::NonSemver(
-                revision.data.par_iter().map(|r| r.version.to_string()).collect(),
-            ))
+            Ok(Versions::NonSemver(revision.data.iter().map(|r| r.version.to_string()).collect()))
         }
     }
 }

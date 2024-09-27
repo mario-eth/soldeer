@@ -14,6 +14,7 @@ use std::{
     path::PathBuf,
 };
 use toml_edit::{value, Array, DocumentMut};
+
 pub type Result<T> = std::result::Result<T, RemappingsError>;
 
 /// Action to perform on the remappings.
@@ -283,7 +284,7 @@ fn generate_remappings(
     }
 
     // sort the remappings
-    new_remappings.par_sort_unstable();
+    new_remappings.sort_unstable();
     Ok(new_remappings)
 }
 

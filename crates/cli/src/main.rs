@@ -11,18 +11,21 @@ async fn main() {
     }
 }
 
-// Banner edittable 
+/// Generate and print a banner
 fn banner() {
     println!(
         "{}",
-        "
+        format!(
+            "
 +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-    ╔═╗╔═╗╦  ╔╦╗╔═╗╔═╗╦═╗     Solidity Package Manager 
-    ╚═╗║ ║║   ║║║╣ ║╣ ╠╦╝          built in rust
-    ╚═╝╚═╝╩═╝═╩╝╚═╝╚═╝╩╚═    github.com/mario-eth/soldeer   
-         soldeer.xyz              x.com/m4rio_eth
+    ╔═╗╔═╗╦  ╔╦╗╔═╗╔═╗╦═╗       Solidity Package Manager
+    ╚═╗║ ║║   ║║║╣ ║╣ ╠╦╝
+    ╚═╝╚═╝╩═╝═╩╝╚═╝╚═╝╩╚═     github.com/mario-eth/soldeer
+           v{}                       soldeer.xyz
 +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-"
+",
+            env!("CARGO_PKG_VERSION")
+        )
         .bright_cyan()
     );
 }

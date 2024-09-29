@@ -224,7 +224,7 @@ async fn test_push_other_error() {
 
 #[tokio::test]
 async fn test_push_dry_run() {
-    let (login_file, _) = setup_project(true); // insert a .env file
+    let (login_file, project_path) = setup_project(true); // insert a .env file
 
     let (server, mock) = mock_api_server(None).await;
 
@@ -243,4 +243,5 @@ async fn test_push_dry_run() {
     .await;
     assert!(res.is_ok(), "{res:?}");
     mock.expect(0);
+    assert!(project_path.join("mypkg.zip").exists());
 }

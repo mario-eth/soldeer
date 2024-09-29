@@ -7,6 +7,7 @@ use crate::{
 use derive_more::derive::{Display, From};
 use ignore::{WalkBuilder, WalkState};
 use path_slash::PathExt as _;
+use rayon::prelude::*;
 use regex::Regex;
 use semver::Version;
 use sha2::{Digest as _, Sha256};
@@ -17,7 +18,7 @@ use std::{
     fs,
     io::Read,
     path::{Path, PathBuf},
-    sync::{Arc, LazyLock, Mutex},
+    sync::{mpsc, Arc, LazyLock},
 };
 use tokio::process::Command;
 
@@ -76,7 +77,9 @@ pub fn login_file_path() -> Result<PathBuf, std::io::Error> {
 
 /// Check if any filename in the list of paths starts with a period.
 pub fn check_dotfiles(files: &[PathBuf]) -> bool {
-    files.iter().any(|file| file.file_name().unwrap_or_default().to_string_lossy().starts_with('.'))
+    files
+        .par_iter()
+        .any(|file| file.file_name().unwrap_or_default().to_string_lossy().starts_with('.'))
 }
 
 /// Get the type of URL from a dependency URL.
@@ -130,8 +133,10 @@ pub fn hash_content<R: Read>(content: &mut R) -> [u8; 32] {
 /// location can be checked.
 pub fn hash_folder(folder_path: impl AsRef<Path>) -> Result<IntegrityChecksum, std::io::Error> {
     // a list of hashes, one for each DirEntry
-    let all_hashes = Arc::new(Mutex::new(Vec::with_capacity(100)));
     let root_path = Arc::new(dunce::canonicalize(folder_path.as_ref())?);
+
+    let (tx, rx) = mpsc::channel::<[u8; 32]>();
+
     // we use a parallel walker to speed things up
     let walker = WalkBuilder::new(folder_path)
         .filter_entry(|entry| {
@@ -140,7 +145,7 @@ pub fn hash_folder(folder_path: impl AsRef<Path>) -> Result<IntegrityChecksum, s
         .hidden(false)
         .build_parallel();
     walker.run(|| {
-        let all_hashes = Arc::clone(&all_hashes);
+        let tx = tx.clone();
         let root_path = Arc::clone(&root_path);
         // function executed for each DirEntry
         Box::new(move |result| {
@@ -166,18 +171,22 @@ pub fn hash_folder(folder_path: impl AsRef<Path>) -> Result<IntegrityChecksum, s
             }
             // record the hash for that file/folder in the list
             let hash: [u8; 32] = hasher.finalize().into();
-            let mut hashes_lock = all_hashes.lock().expect("mutex should not be poisoned");
-            hashes_lock.push(hash);
+            tx.send(hash)
+                .expect("Channel receiver should never be dropped before end of function scope");
             WalkState::Continue
         })
     });
-
-    // sort hashes
+    drop(tx);
     let mut hasher = Sha256::new();
-    let mut all_hashes = all_hashes.lock().expect("mutex should not be poisoned");
-    all_hashes.sort_unstable();
+    // this cannot happen before tx is dropped safely
+    let mut hashes = Vec::new();
+    while let Ok(msg) = rx.recv() {
+        hashes.push(msg);
+    }
+    // sort hashes
+    hashes.par_sort_unstable();
     // hash the hashes (yo dawg...)
-    for hash in all_hashes.iter() {
+    for hash in hashes.iter() {
         hasher.update(hash);
     }
     let hash: [u8; 32] = hasher.finalize().into();
@@ -214,7 +223,7 @@ where
     }
     let git = git.output().await.map_err(|e| DownloadError::GitError(e.to_string()))?;
     if !git.status.success() {
-        return Err(DownloadError::GitError(String::from_utf8(git.stderr).unwrap_or_default()))
+        return Err(DownloadError::GitError(String::from_utf8(git.stderr).unwrap_or_default()));
     }
     Ok(String::from_utf8(git.stdout).expect("git command output should be valid utf-8"))
 }
@@ -241,7 +250,7 @@ where
     }
     let forge = forge.output().await.map_err(|e| InstallError::ForgeError(e.to_string()))?;
     if !forge.status.success() {
-        return Err(InstallError::ForgeError(String::from_utf8(forge.stderr).unwrap_or_default()))
+        return Err(InstallError::ForgeError(String::from_utf8(forge.stderr).unwrap_or_default()));
     }
     Ok(String::from_utf8(forge.stdout).expect("forge command output should be valid utf-8"))
 }

@@ -6,6 +6,7 @@ use crate::{
 };
 use derive_more::derive::From;
 use path_slash::PathExt as _;
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::{
     fs::{self, File},
@@ -105,31 +106,35 @@ pub fn remappings_foundry(
 
     for (name, profile) in profiles.iter_mut() {
         // we normally only edit remappings of profiles which already have a remappings key
-        let Some(Some(remappings)) = profile.get_mut("remappings").map(|v| v.as_array_mut()) else {
-            // except the default profile, where we always add the remappings
-            if name == "default" {
-                let new_remappings = generate_remappings(action, paths, soldeer_config, &[])?;
-                let mut array = new_remappings.into_iter().collect::<Array>();
-                format_array(&mut array);
-                profile["remappings"] = value(array);
+        match profile.get_mut("remappings").map(|v| v.as_array_mut()) {
+            Some(Some(remappings)) => {
+                let existing_remappings: Vec<_> = remappings
+                    .iter()
+                    .filter_map(|r| r.as_str())
+                    .filter_map(|r| r.split_once('='))
+                    .collect();
+                let new_remappings =
+                    generate_remappings(action, paths, soldeer_config, &existing_remappings)?;
+                remappings.clear();
+                for remapping in new_remappings {
+                    remappings.push(remapping);
+                }
+                format_array(remappings);
             }
-            continue;
-        };
-        let existing_remappings: Vec<_> = remappings
-            .iter()
-            .filter_map(|r| r.as_str())
-            .filter_map(|r| r.split_once('='))
-            .collect();
-        let new_remappings =
-            generate_remappings(action, paths, soldeer_config, &existing_remappings)?;
-        remappings.clear();
-        for remapping in new_remappings {
-            remappings.push(remapping);
+            _ => {
+                if name == "default" {
+                    // except the default profile, where we always add the remappings
+                    let new_remappings = generate_remappings(action, paths, soldeer_config, &[])?;
+                    let mut array = new_remappings.into_iter().collect::<Array>();
+                    format_array(&mut array);
+                    profile["remappings"] = value(array);
+                }
+            }
         }
-        format_array(remappings);
     }
 
     fs::write(&paths.config, doc.to_string())?;
+
     Ok(())
 }
 
@@ -300,7 +305,7 @@ fn remappings_from_deps(
     soldeer_config: &SoldeerConfig,
 ) -> Result<Vec<RemappingInfo>> {
     dependencies
-        .iter()
+        .par_iter()
         .map(|dependency| {
             let dependency_name_formatted = format_remap_name(soldeer_config, dependency); // contains trailing slash
             let relative_path = get_install_dir_relative(dependency, paths)?;

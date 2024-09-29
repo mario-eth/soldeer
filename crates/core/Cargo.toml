@@ -30,6 +30,7 @@ dunce = "1.0.5"
 home = "0.5.9"
 ignore = { version = "0.4.22", features = ["simd-accel"] }
 path-slash.workspace = true
+rayon.workspace = true
 regex = "1.10.5"
 reqwest = { workspace = true, features = ["json", "multipart", "stream"] }
 sanitize-filename = "0.5.0"

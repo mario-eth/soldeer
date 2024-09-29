@@ -7,13 +7,16 @@ use temp_env::async_with_vars;
 use testdir::testdir;
 
 #[allow(clippy::unwrap_used)]
-fn setup_project() -> (PathBuf, PathBuf) {
+fn setup_project(dotfile: bool) -> (PathBuf, PathBuf) {
     let dir = testdir!();
     let login_file = dir.join("test_save_jwt");
     fs::write(&login_file, "jwt_token_example").unwrap();
     let project_path = dir.join("mypkg");
     fs::create_dir(&project_path).unwrap();
     fs::write(project_path.join("foundry.toml"), "[dependencies]\n").unwrap();
+    if dotfile {
+        fs::write(project_path.join(".env"), "super-secret-stuff").unwrap();
+    }
     std::env::set_current_dir(&project_path).unwrap();
     (login_file, project_path)
 }
@@ -53,7 +56,7 @@ async fn mock_api_server(status_code: Option<StatusCode>) -> (ServerGuard, Mock)
 
 #[tokio::test]
 async fn test_push_success() {
-    let (login_file, _) = setup_project();
+    let (login_file, _) = setup_project(false);
 
     let (server, mock) = mock_api_server(None).await;
 
@@ -106,7 +109,7 @@ async fn test_push_other_dir_success() {
 
 #[tokio::test]
 async fn test_push_not_found() {
-    let (login_file, _) = setup_project();
+    let (login_file, _) = setup_project(false);
 
     let (server, mock) = mock_api_server(Some(StatusCode::NO_CONTENT)).await;
 
@@ -129,7 +132,7 @@ async fn test_push_not_found() {
 
 #[tokio::test]
 async fn test_push_already_exists() {
-    let (login_file, _) = setup_project();
+    let (login_file, _) = setup_project(false);
 
     let (server, mock) = mock_api_server(Some(StatusCode::ALREADY_REPORTED)).await;
 
@@ -152,7 +155,7 @@ async fn test_push_already_exists() {
 
 #[tokio::test]
 async fn test_push_unauthorized() {
-    let (login_file, _) = setup_project();
+    let (login_file, _) = setup_project(false);
 
     let (server, mock) = mock_api_server(Some(StatusCode::UNAUTHORIZED)).await;
 
@@ -175,7 +178,7 @@ async fn test_push_unauthorized() {
 
 #[tokio::test]
 async fn test_push_payload_too_large() {
-    let (login_file, _) = setup_project();
+    let (login_file, _) = setup_project(false);
 
     let (server, mock) = mock_api_server(Some(StatusCode::PAYLOAD_TOO_LARGE)).await;
 
@@ -198,7 +201,7 @@ async fn test_push_payload_too_large() {
 
 #[tokio::test]
 async fn test_push_other_error() {
-    let (login_file, _) = setup_project();
+    let (login_file, _) = setup_project(false);
 
     let (server, mock) = mock_api_server(Some(StatusCode::INTERNAL_SERVER_ERROR)).await;
 
@@ -217,4 +220,27 @@ async fn test_push_other_error() {
     .await;
     assert!(matches!(res, Err(SoldeerError::PublishError(PublishError::HttpError(_)))));
     mock.expect(1);
+}
+
+#[tokio::test]
+async fn test_push_dry_run() {
+    let (login_file, _) = setup_project(true); // insert a .env file
+
+    let (server, mock) = mock_api_server(None).await;
+
+    let res = async_with_vars(
+        [
+            ("SOLDEER_API_URL", Some(server.url())),
+            ("SOLDEER_LOGIN_FILE", Some(login_file.to_string_lossy().to_string())),
+        ],
+        run(Command::Push(Push {
+            dependency: "mypkg~0.1.0".to_string(),
+            path: None,
+            dry_run: true,
+            skip_warnings: false,
+        })),
+    )
+    .await;
+    assert!(res.is_ok(), "{res:?}");
+    mock.expect(0);
 }

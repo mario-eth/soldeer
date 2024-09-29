@@ -16,8 +16,8 @@ use std::{
 pub type Result<T> = std::result::Result<T, LockError>;
 
 /// A lock entry for a git dependency.
-#[bon::builder(on(String, into))]
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, bon::Builder)]
+#[builder(on(String, into))]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[non_exhaustive]
 pub struct GitLockEntry {
@@ -45,8 +45,8 @@ impl GitLockEntry {
 }
 
 /// A lock entry for an HTTP dependency.
-#[bon::builder(on(String, into))]
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, bon::Builder)]
+#[builder(on(String, into))]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[non_exhaustive]
 pub struct HttpLockEntry {

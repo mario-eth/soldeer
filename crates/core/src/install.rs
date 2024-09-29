@@ -111,8 +111,8 @@ impl Progress {
 }
 
 /// HTTP dependency installation information.
-#[bon::builder(on(String, into))]
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, bon::Builder)]
+#[builder(on(String, into))]
 struct HttpInstallInfo {
     /// The name of the dependency.
     name: String,
@@ -129,8 +129,8 @@ struct HttpInstallInfo {
 }
 
 /// Git dependency installation information.
-#[bon::builder(on(String, into))]
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, bon::Builder)]
+#[builder(on(String, into))]
 struct GitInstallInfo {
     /// The name of the dependency.
     name: String,

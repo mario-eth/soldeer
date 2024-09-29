@@ -271,8 +271,8 @@ impl GitIdentifier {
 /// A git dependency config item.
 ///
 /// This struct is used to represent a git dependency from the config file.
-#[bon::builder(on(String, into))]
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, bon::Builder)]
+#[builder(on(String, into))]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, Deserialize))]
 pub struct GitDependency {
     /// The name of the dependency (user-defined).
@@ -305,8 +305,8 @@ impl fmt::Display for GitDependency {
 /// An HTTP dependency config item.
 ///
 /// This struct is used to represent an HTTP dependency from the config file.
-#[bon::builder(on(String, into))]
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, bon::Builder)]
+#[builder(on(String, into))]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, Deserialize))]
 pub struct HttpDependency {
     /// The name of the dependency (user-defined).

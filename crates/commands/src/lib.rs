@@ -8,11 +8,11 @@ use std::env;
 pub mod commands;
 
 pub async fn run(command: Command) -> Result<()> {
-    let paths = Paths::new()?;
     match command {
         Command::Init(init) => {
             intro("🦌 Soldeer Init 🦌")?;
             step("Initialize Foundry project to use Soldeer")?;
+            let paths = Paths::new()?;
             commands::init::init_command(&paths, init).await.inspect_err(|_| {
                 outro_cancel("An error occurred during initialization").ok();
             })?;
@@ -20,6 +20,7 @@ pub async fn run(command: Command) -> Result<()> {
         }
         Command::Install(cmd) => {
             intro("🦌 Soldeer Install 🦌")?;
+            let paths = Paths::new()?;
             commands::install::install_command(&paths, cmd).await.inspect_err(|_| {
                 outro_cancel("An error occurred during install").ok();
             })?;
@@ -27,6 +28,7 @@ pub async fn run(command: Command) -> Result<()> {
         }
         Command::Update(cmd) => {
             intro("🦌 Soldeer Update 🦌")?;
+            let paths = Paths::new()?;
             commands::update::update_command(&paths, cmd).await.inspect_err(|_| {
                 outro_cancel("An error occurred during the update").ok();
             })?;
@@ -34,6 +36,7 @@ pub async fn run(command: Command) -> Result<()> {
         }
         Command::Uninstall(cmd) => {
             intro("🦌 Soldeer Uninstall 🦌")?;
+            let paths = Paths::new()?;
             commands::uninstall::uninstall_command(&paths, &cmd).inspect_err(|_| {
                 outro_cancel("An error occurred during uninstall").ok();
             })?;

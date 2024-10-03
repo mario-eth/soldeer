@@ -454,3 +454,60 @@ async fn test_install_regenerate_remappings() {
     let remappings = fs::read_to_string(dir.join("remappings.txt")).unwrap();
     assert!(!remappings.contains("foo=bar"));
 }
+
+#[tokio::test]
+async fn test_add_remappings() {
+    let dir = testdir!();
+
+    let contents = r#"[profile.default]
+src = "src"
+out = "out"
+libs = ["dependencies"]
+
+# See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
+
+[soldeer]
+remappings_generate = true
+remappings_prefix = "@custom-f@"
+remappings_location = "config"
+remappings_regenerate = true
+
+[dependencies]
+"#;
+
+    fs::write(dir.join("foundry.toml"), contents).unwrap();
+    let cmd: Command = Install {
+        dependency: Some("forge-std~1.8.1".to_string()),
+        remote_url: None,
+        rev: None,
+        tag: None,
+        branch: None,
+        regenerate_remappings: false,
+        recursive_deps: false,
+        clean: false,
+    }
+    .into();
+    let res =
+        async_with_vars([("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))], run(cmd))
+            .await;
+    assert!(res.is_ok(), "{res:?}");
+
+    let updated_contents = r#"[profile.default]
+src = "src"
+out = "out"
+libs = ["dependencies"]
+remappings = ["@custom-f@forge-std-1.8.1/=dependencies/forge-std-1.8.1/"]
+
+# See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
+
+[soldeer]
+remappings_generate = true
+remappings_prefix = "@custom-f@"
+remappings_location = "config"
+remappings_regenerate = true
+
+[dependencies]
+forge-std = "1.8.1"
+"#;
+    assert_eq!(updated_contents, fs::read_to_string(dir.join("foundry.toml")).unwrap());
+}

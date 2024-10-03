@@ -170,3 +170,34 @@ rev = "78c2f6a1a54db26bab6c3f501854a1564eb3707f"
         "8d903e557e8f1b6e62bde768aa456d4ddfca72c4"
     );
 }
+
+#[tokio::test]
+async fn test_update_foundry_config_multi_dep() {
+    let dir = testdir!();
+
+    let contents = r#"[profile.default]
+
+[dependencies]
+"@tt" = {version = "1.6.1", url = "https://soldeer-revisions.s3.amazonaws.com/@openzeppelin-contracts/3_3_0-rc_2_22-01-2024_13:12:57_contracts.zip"}
+forge-std = { version = "1.8.1" }
+solmate = "6.7.0"
+mario = { version = "1.0", git = "https://gitlab.com/mario4582928/Mario.git", rev = "22868f426bd4dd0e682b5ec5f9bd55507664240c" }
+mario-custom-tag = { version = "1.0", git = "https://gitlab.com/mario4582928/Mario.git", tag = "custom-tag" }
+mario-custom-branch = { version = "1.0", git = "https://gitlab.com/mario4582928/Mario.git", tag = "custom-branch" }
+
+[soldeer]
+remappings_location = "config"
+"#;
+
+    fs::write(dir.join("foundry.toml"), contents).unwrap();
+
+    let cmd: Command = Update::default().into();
+    let res =
+        async_with_vars([("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))], run(cmd))
+            .await;
+    assert!(res.is_ok(), "{res:?}");
+    let lockfile = read_lockfile(dir.join("soldeer.lock")).unwrap();
+    let version = lockfile.entries.first().unwrap().version();
+    assert_ne!(version, "1.9.0");
+    assert!(dir.join("dependencies").join(format!("forge-std-{version}")).exists());
+}

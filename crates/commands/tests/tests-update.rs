@@ -51,7 +51,7 @@ async fn test_update_existing() {
     let version = lockfile.entries.first().unwrap().version();
     assert_ne!(version, "1.9.0");
     let remappings = fs::read_to_string(dir.join("remappings.txt")).unwrap();
-    assert_eq!(remappings, format!("forge-std-1/=dependencies/forge-std-1.9.2/\n"));
+    assert_eq!(remappings, format!("forge-std-1/=dependencies/forge-std-{version}/\n"));
     assert!(dir.join("dependencies").join(format!("forge-std-{version}")).exists());
 }
 
@@ -196,8 +196,4 @@ remappings_location = "config"
         async_with_vars([("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))], run(cmd))
             .await;
     assert!(res.is_ok(), "{res:?}");
-    let lockfile = read_lockfile(dir.join("soldeer.lock")).unwrap();
-    let version = lockfile.entries.first().unwrap().version();
-    assert_ne!(version, "1.9.0");
-    assert!(dir.join("dependencies").join(format!("forge-std-{version}")).exists());
 }

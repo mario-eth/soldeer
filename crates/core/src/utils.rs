@@ -306,21 +306,16 @@ pub fn path_matches(dependency: &Dependency, path: impl AsRef<Path>) -> bool {
     if !dir_name.starts_with(&prefix) {
         return false;
     }
-    if let Some(version_req) = parse_version_req(dependency.version_req()) {
-        if let Ok(version) =
-            Version::parse(dir_name.strip_prefix(&prefix).expect("prefix should be present"))
-        {
-            if version_req.matches(&version) {
-                return true;
-            }
+    match (
+        parse_version_req(dependency.version_req()),
+        Version::parse(dir_name.strip_prefix(&prefix).expect("prefix should be present")),
+    ) {
+        (None, _) | (Some(_), Err(_)) => {
+            // not semver compliant
+            dir_name == format!("{prefix}{}", sanitize_filename(dependency.version_req()))
         }
-    } else {
-        // not semver compliant
-        if dir_name == format!("{prefix}{}", sanitize_filename(dependency.version_req())) {
-            return true;
-        }
+        (Some(version_req), Ok(version)) => version_req.matches(&version),
     }
-    false
 }
 
 #[cfg(test)]

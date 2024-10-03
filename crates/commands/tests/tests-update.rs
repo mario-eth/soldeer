@@ -196,4 +196,11 @@ remappings_location = "config"
         async_with_vars([("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))], run(cmd))
             .await;
     assert!(res.is_ok(), "{res:?}");
+    let deps = dir.join("dependencies");
+    assert!(deps.join("@tt-1.6.1").exists());
+    assert!(deps.join("forge-std-1.8.1").exists());
+    assert!(deps.join("solmate-6.7.0").exists());
+    assert!(deps.join("mario-1.0").exists());
+    assert!(deps.join("mario-custom-tag-1.0").exists());
+    assert!(deps.join("mario-custom-branch-1.0").exists());
 }

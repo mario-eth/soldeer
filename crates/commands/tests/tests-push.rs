@@ -2,7 +2,7 @@ use mockito::{Matcher, Mock, ServerGuard};
 use reqwest::StatusCode;
 use soldeer_commands::{commands::push::Push, run, Command};
 use soldeer_core::{errors::PublishError, SoldeerError};
-use std::{fs, path::PathBuf};
+use std::{env, fs, path::PathBuf};
 use temp_env::async_with_vars;
 use testdir::testdir;
 
@@ -17,7 +17,6 @@ fn setup_project(dotfile: bool) -> (PathBuf, PathBuf) {
     if dotfile {
         fs::write(project_path.join(".env"), "super-secret-stuff").unwrap();
     }
-    std::env::set_current_dir(&project_path).unwrap();
     (login_file, project_path)
 }
 
@@ -56,12 +55,14 @@ async fn mock_api_server(status_code: Option<StatusCode>) -> (ServerGuard, Mock)
 
 #[tokio::test]
 async fn test_push_success() {
-    let (login_file, _) = setup_project(false);
+    let (login_file, project_path) = setup_project(false);
 
     let (server, mock) = mock_api_server(None).await;
 
+    env::set_current_dir(&project_path).unwrap();
     let res = async_with_vars(
         [
+            ("SOLDEER_PROJECT_ROOT", Some(project_path.to_string_lossy().to_string())),
             ("SOLDEER_API_URL", Some(server.url())),
             ("SOLDEER_LOGIN_FILE", Some(login_file.to_string_lossy().to_string())),
         ],
@@ -109,18 +110,19 @@ async fn test_push_other_dir_success() {
 
 #[tokio::test]
 async fn test_push_not_found() {
-    let (login_file, _) = setup_project(false);
+    let (login_file, project_path) = setup_project(false);
 
     let (server, mock) = mock_api_server(Some(StatusCode::NO_CONTENT)).await;
 
     let res = async_with_vars(
         [
+            ("SOLDEER_PROJECT_ROOT", Some(project_path.to_string_lossy().to_string())),
             ("SOLDEER_API_URL", Some(server.url())),
             ("SOLDEER_LOGIN_FILE", Some(login_file.to_string_lossy().to_string())),
         ],
         run(Command::Push(Push {
             dependency: "mypkg~0.1.0".to_string(),
-            path: None,
+            path: Some(project_path),
             dry_run: false,
             skip_warnings: false,
         })),
@@ -132,18 +134,19 @@ async fn test_push_not_found() {
 
 #[tokio::test]
 async fn test_push_already_exists() {
-    let (login_file, _) = setup_project(false);
+    let (login_file, project_path) = setup_project(false);
 
     let (server, mock) = mock_api_server(Some(StatusCode::ALREADY_REPORTED)).await;
 
     let res = async_with_vars(
         [
+            ("SOLDEER_PROJECT_ROOT", Some(project_path.to_string_lossy().to_string())),
             ("SOLDEER_API_URL", Some(server.url())),
             ("SOLDEER_LOGIN_FILE", Some(login_file.to_string_lossy().to_string())),
         ],
         run(Command::Push(Push {
             dependency: "mypkg~0.1.0".to_string(),
-            path: None,
+            path: Some(project_path),
             dry_run: false,
             skip_warnings: false,
         })),
@@ -155,18 +158,19 @@ async fn test_push_already_exists() {
 
 #[tokio::test]
 async fn test_push_unauthorized() {
-    let (login_file, _) = setup_project(false);
+    let (login_file, project_path) = setup_project(false);
 
     let (server, mock) = mock_api_server(Some(StatusCode::UNAUTHORIZED)).await;
 
     let res = async_with_vars(
         [
+            ("SOLDEER_PROJECT_ROOT", Some(project_path.to_string_lossy().to_string())),
             ("SOLDEER_API_URL", Some(server.url())),
             ("SOLDEER_LOGIN_FILE", Some(login_file.to_string_lossy().to_string())),
         ],
         run(Command::Push(Push {
             dependency: "mypkg~0.1.0".to_string(),
-            path: None,
+            path: Some(project_path),
             dry_run: false,
             skip_warnings: false,
         })),
@@ -178,18 +182,19 @@ async fn test_push_unauthorized() {
 
 #[tokio::test]
 async fn test_push_payload_too_large() {
-    let (login_file, _) = setup_project(false);
+    let (login_file, project_path) = setup_project(false);
 
     let (server, mock) = mock_api_server(Some(StatusCode::PAYLOAD_TOO_LARGE)).await;
 
     let res = async_with_vars(
         [
+            ("SOLDEER_PROJECT_ROOT", Some(project_path.to_string_lossy().to_string())),
             ("SOLDEER_API_URL", Some(server.url())),
             ("SOLDEER_LOGIN_FILE", Some(login_file.to_string_lossy().to_string())),
         ],
         run(Command::Push(Push {
             dependency: "mypkg~0.1.0".to_string(),
-            path: None,
+            path: Some(project_path),
             dry_run: false,
             skip_warnings: false,
         })),
@@ -201,18 +206,19 @@ async fn test_push_payload_too_large() {
 
 #[tokio::test]
 async fn test_push_other_error() {
-    let (login_file, _) = setup_project(false);
+    let (login_file, project_path) = setup_project(false);
 
     let (server, mock) = mock_api_server(Some(StatusCode::INTERNAL_SERVER_ERROR)).await;
 
     let res = async_with_vars(
         [
+            ("SOLDEER_PROJECT_ROOT", Some(project_path.to_string_lossy().to_string())),
             ("SOLDEER_API_URL", Some(server.url())),
             ("SOLDEER_LOGIN_FILE", Some(login_file.to_string_lossy().to_string())),
         ],
         run(Command::Push(Push {
             dependency: "mypkg~0.1.0".to_string(),
-            path: None,
+            path: Some(project_path),
             dry_run: false,
             skip_warnings: false,
         })),
@@ -230,12 +236,13 @@ async fn test_push_dry_run() {
 
     let res = async_with_vars(
         [
+            ("SOLDEER_PROJECT_ROOT", Some(project_path.to_string_lossy().to_string())),
             ("SOLDEER_API_URL", Some(server.url())),
             ("SOLDEER_LOGIN_FILE", Some(login_file.to_string_lossy().to_string())),
         ],
         run(Command::Push(Push {
             dependency: "mypkg~0.1.0".to_string(),
-            path: None,
+            path: Some(project_path.clone()),
             dry_run: true,
             skip_warnings: false,
         })),

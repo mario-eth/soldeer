@@ -1,0 +1,36 @@
+[package]
+name = "soldeer-commands"
+description = "High-level commands for the Soldeer CLI"
+authors.workspace = true
+categories.workspace = true
+edition.workspace = true
+exclude.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+license.workspace = true
+readme.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+clap.workspace = true
+cliclack.workspace = true
+derive_more.workspace = true
+email-address-parser = "2.0.0"
+soldeer-core = { path = "../core", features = ["cli"] }
+rayon.workspace = true
+
+[dev-dependencies]
+mockito.workspace = true
+reqwest.workspace = true
+temp-env.workspace = true
+testdir.workspace = true
+tokio.workspace = true
+
+[features]
+default = ["rustls"]
+rustls = ["soldeer-core/rustls"]

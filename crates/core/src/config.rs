@@ -155,7 +155,7 @@ impl Paths {
         #[cfg(not(feature = "cli"))]
         let config_option = ConfigLocation::Foundry;
 
-        create_example_config(config_option, &foundry_path, &soldeer_path)
+        create_or_modify_config(config_option, &foundry_path, &soldeer_path)
     }
 }
 
@@ -699,7 +699,7 @@ pub fn delete_from_config(dependency_name: &str, path: impl AsRef<Path>) -> Resu
     Ok(dependency)
 }
 
-/// Update the config file to add the `dependencies` folder as a source for libraries.
+/// Update the config file to add the `dependencies` folder as a source for libraries and the `[dependencies]` table.
 pub fn update_config_libs(foundry_config: impl AsRef<Path>) -> Result<()> {
     let contents = fs::read_to_string(&foundry_config)?;
     let mut doc: DocumentMut = contents.parse::<DocumentMut>()?;
@@ -725,6 +725,11 @@ pub fn update_config_libs(foundry_config: impl AsRef<Path>) -> Result<()> {
     let libs = default_profile["libs"].as_array_mut().expect("libs should be an array");
     if !libs.iter().any(|v| v.as_str() == Some("dependencies")) {
         libs.push("dependencies");
+    }
+
+    // in case we don't have the dependencies section defined in the config file, we add it
+    if !doc.contains_table("dependencies") {
+        doc.insert("dependencies", Item::Table(Table::default()));
     }
 
     fs::write(foundry_config, doc.to_string())?;
@@ -855,8 +860,8 @@ fn parse_dependency(name: impl Into<String>, value: &Item) -> Result<Dependency>
     }
 }
 
-/// Create a basic config file with default contents.
-fn create_example_config(
+/// Create a basic config file with default contents if it doesn't exist, otherwise add `[dependencies]`.
+fn create_or_modify_config(
     location: ConfigLocation,
     foundry_path: impl AsRef<Path>,
     soldeer_path: impl AsRef<Path>,
@@ -865,6 +870,7 @@ fn create_example_config(
         ConfigLocation::Foundry => {
             let foundry_path = foundry_path.as_ref();
             if foundry_path.exists() {
+                update_config_libs(foundry_path)?;
                 return Ok(foundry_path.to_path_buf());
             }
             let contents = r#"[profile.default]

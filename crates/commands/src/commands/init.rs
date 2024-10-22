@@ -57,7 +57,7 @@ pub(crate) async fn init_command(paths: &Paths, cmd: Init) -> Result<()> {
     success("Dependency added to config")?;
     add_to_lockfile(lock, &paths.lock)?;
     success("Dependency added to lockfile")?;
-    edit_remappings(&RemappingsAction::Add(dependency), &config, &paths)?;
+    edit_remappings(&RemappingsAction::Add(dependency), &config, paths)?;
     success("Dependency added to remappings")?;
 
     let gitignore_path = paths.root.join(".gitignore");

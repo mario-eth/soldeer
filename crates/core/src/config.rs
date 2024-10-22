@@ -168,7 +168,6 @@ libs = ["dependencies"]
                     .expect("could not write the default foundry file");
             } else {
                 let mut file = OpenOptions::new()
-                    .write(true)
                     .append(true)
                     .create(true)
                     .open(&foundry_path)
@@ -191,7 +190,6 @@ libs = ["dependencies"]
 
         if let Some(ConfigLocation::Soldeer) = config_location {
             let mut file = OpenOptions::new()
-                .write(true)
                 .append(true)
                 .create(true)
                 .open(&soldeer_path)
@@ -693,7 +691,7 @@ pub enum ConfigLocation {
 
 impl ConfigLocation {
     pub fn into(self) -> PathBuf {
-        if self == ConfigLocation::Foundry {
+        if self == Self::Foundry {
             Paths::foundry_default()
         } else {
             Paths::soldeer_default()

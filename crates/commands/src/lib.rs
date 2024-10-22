@@ -9,18 +9,18 @@ pub mod commands;
 
 pub async fn run(command: Command) -> Result<()> {
     match command {
-        Command::Init(init) => {
+        Command::Init(cmd) => {
             intro("🦌 Soldeer Init 🦌")?;
             step("Initialize Foundry project to use Soldeer")?;
-            let paths = Paths::new()?;
-            commands::init::init_command(&paths, init).await.inspect_err(|_| {
+            let paths = Paths::new_with_config(cmd.config_location)?;
+            commands::init::init_command(&paths, cmd).await.inspect_err(|_| {
                 outro_cancel("An error occurred during initialization").ok();
             })?;
             outro("Done initializing!")?;
         }
         Command::Install(cmd) => {
             intro("🦌 Soldeer Install 🦌")?;
-            let paths = Paths::new()?;
+            let paths = Paths::new_with_config(cmd.config_location)?;
             commands::install::install_command(&paths, cmd).await.inspect_err(|_| {
                 outro_cancel("An error occurred during install").ok();
             })?;

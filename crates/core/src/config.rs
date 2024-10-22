@@ -8,7 +8,9 @@ use crate::{
 use derive_more::derive::{Display, From, FromStr};
 use serde::Deserialize;
 use std::{
-    env, fmt, fs,
+    env, fmt,
+    fs::{self, OpenOptions},
+    io::Write,
     path::{Path, PathBuf},
 };
 use toml_edit::{value, Array, DocumentMut, InlineTable, Item, Table};
@@ -84,7 +86,23 @@ impl Paths {
     /// The paths are canonicalized.
     pub fn new() -> Result<Self> {
         let root = dunce::canonicalize(Self::get_root_path())?;
-        let config = Self::get_config_path(&root)?;
+        let config = Self::get_config_path(&root, None)?;
+        let dependencies = root.join("dependencies");
+        let lock = root.join("soldeer.lock");
+        let remappings = root.join("remappings.txt");
+
+        Ok(Self { root, config, dependencies, lock, remappings })
+    }
+
+    /// Instantiate all the paths needed for Soldeer.
+    ///
+    /// The root path defaults to the current directory but can be overridden with the
+    /// `SOLDEER_PROJECT_ROOT` environment variable.
+    ///
+    /// The paths are canonicalized.
+    pub fn new_with_config(config_location: Option<ConfigLocation>) -> Result<Self> {
+        let root = dunce::canonicalize(Self::get_root_path())?;
+        let config = Self::get_config_path(&root, config_location)?;
         let dependencies = root.join("dependencies");
         let lock = root.join("soldeer.lock");
         let remappings = root.join("remappings.txt");
@@ -99,7 +117,7 @@ impl Paths {
     /// The paths are canonicalized.
     pub fn from_root(root: impl AsRef<Path>) -> Result<Self> {
         let root = dunce::canonicalize(root.as_ref())?;
-        let config = Self::get_config_path(&root)?;
+        let config = Self::get_config_path(&root, None)?;
         let dependencies = root.join("dependencies");
         let lock = root.join("soldeer.lock");
         let remappings = root.join("remappings.txt");
@@ -127,7 +145,10 @@ impl Paths {
 
     /// Get the path to the config file or prompt the user to choose one (only with `cli` feature
     /// flag).
-    fn get_config_path(root: impl AsRef<Path>) -> Result<PathBuf> {
+    fn get_config_path(
+        root: impl AsRef<Path>,
+        config_location: Option<ConfigLocation>,
+    ) -> Result<PathBuf> {
         let foundry_path = root.as_ref().join("foundry.toml");
         if let Ok(contents) = fs::read_to_string(&foundry_path) {
             let doc: DocumentMut = contents.parse::<DocumentMut>()?;
@@ -136,9 +157,49 @@ impl Paths {
             }
         }
 
+        if let Some(ConfigLocation::Foundry) = config_location {
+            let content;
+            if !foundry_path.exists() {
+                content = r#"[profile.default]
+libs = ["dependencies"]
+
+[dependencies]"#;
+                fs::write(&foundry_path, content)
+                    .expect("could not write the default foundry file");
+            } else {
+                let mut file = OpenOptions::new()
+                    .write(true)
+                    .append(true)
+                    .create(true)
+                    .open(&foundry_path)
+                    .expect("Failed to open file");
+
+                file.write_all("\n[dependencies]".as_bytes()).expect("Failed to write to file");
+            }
+
+            return Ok(foundry_path)
+        }
+
         let soldeer_path = root.as_ref().join("soldeer.toml");
-        if soldeer_path.exists() {
-            return Ok(soldeer_path);
+
+        if let Ok(contents) = fs::read_to_string(&soldeer_path) {
+            let doc: DocumentMut = contents.parse::<DocumentMut>()?;
+            if doc.contains_table("dependencies") {
+                return Ok(soldeer_path);
+            }
+        }
+
+        if let Some(ConfigLocation::Soldeer) = config_location {
+            let mut file = OpenOptions::new()
+                .write(true)
+                .append(true)
+                .create(true)
+                .open(&soldeer_path)
+                .expect("Failed to open file");
+
+            file.write_all("[dependencies]".as_bytes()).expect("Failed to write to file");
+
+            return Ok(soldeer_path)
         }
 
         #[cfg(feature = "cli")]
@@ -156,6 +217,18 @@ impl Paths {
         let config_option = ConfigLocation::Foundry;
 
         create_or_modify_config(config_option, &foundry_path, &soldeer_path)
+    }
+
+    pub fn foundry_default() -> PathBuf {
+        let root: PathBuf =
+            dunce::canonicalize(Self::get_root_path()).expect("could not get the root");
+        root.join("foundry.toml")
+    }
+
+    pub fn soldeer_default() -> PathBuf {
+        let root: PathBuf =
+            dunce::canonicalize(Self::get_root_path()).expect("could not get the root");
+        root.join("soldeer.toml")
     }
 }
 
@@ -618,6 +691,16 @@ pub enum ConfigLocation {
     Soldeer,
 }
 
+impl ConfigLocation {
+    pub fn into(self) -> PathBuf {
+        if self == ConfigLocation::Foundry {
+            Paths::foundry_default()
+        } else {
+            Paths::soldeer_default()
+        }
+    }
+}
+
 /// Read the list of dependencies from the config file.
 ///
 /// Dependencies are stored in a TOML table under the `dependencies` key.
@@ -699,7 +782,8 @@ pub fn delete_from_config(dependency_name: &str, path: impl AsRef<Path>) -> Resu
     Ok(dependency)
 }
 
-/// Update the config file to add the `dependencies` folder as a source for libraries and the `[dependencies]` table.
+/// Update the config file to add the `dependencies` folder as a source for libraries and the
+/// `[dependencies]` table.
 pub fn update_config_libs(foundry_config: impl AsRef<Path>) -> Result<()> {
     let contents = fs::read_to_string(&foundry_config)?;
     let mut doc: DocumentMut = contents.parse::<DocumentMut>()?;
@@ -860,7 +944,8 @@ fn parse_dependency(name: impl Into<String>, value: &Item) -> Result<Dependency>
     }
 }
 
-/// Create a basic config file with default contents if it doesn't exist, otherwise add `[dependencies]`.
+/// Create a basic config file with default contents if it doesn't exist, otherwise add
+/// `[dependencies]`.
 fn create_or_modify_config(
     location: ConfigLocation,
     foundry_path: impl AsRef<Path>,

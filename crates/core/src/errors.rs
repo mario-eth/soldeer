@@ -136,6 +136,13 @@ pub enum DownloadError {
 
 #[derive(Error, Debug)]
 #[non_exhaustive]
+pub enum InitError {
+    #[error("no config file specified for --config_location")]
+    WrongConfig(),
+}
+
+#[derive(Error, Debug)]
+#[non_exhaustive]
 pub enum InstallError {
     #[error("zip checksum for {path} does not match lock file: expected {expected}, got {actual}")]
     ZipIntegrityError { path: PathBuf, expected: String, actual: String },

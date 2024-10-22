@@ -4,7 +4,7 @@ use cliclack::{
     multi_progress,
 };
 use soldeer_core::{
-    config::{add_to_config, read_soldeer_config, update_config_libs, Paths},
+    config::{add_to_config, read_soldeer_config, update_config_libs, ConfigLocation, Paths},
     install::{ensure_dependencies_dir, install_dependency, Progress},
     lock::add_to_lockfile,
     registry::get_latest_version,
@@ -21,6 +21,12 @@ pub struct Init {
     /// Clean the Foundry project by removing .gitmodules and the lib directory
     #[arg(long, default_value_t = false)]
     pub clean: bool,
+
+    /// Specify the config location without prompting.
+    /// Should be: `foundry` for foundry.toml
+    /// or `soldeer` for soldeer.toml
+    #[arg(long, value_enum)]
+    pub config_location: Option<ConfigLocation>,
 }
 
 pub(crate) async fn init_command(paths: &Paths, cmd: Init) -> Result<()> {
@@ -28,7 +34,6 @@ pub(crate) async fn init_command(paths: &Paths, cmd: Init) -> Result<()> {
         remark("Flag `--clean` was set, removing `lib` dir and submodules")?;
         remove_forge_lib(&paths.root).await?;
     }
-
     let config = read_soldeer_config(&paths.config)?;
     success("Done reading config")?;
     ensure_dependencies_dir(&paths.dependencies)?;
@@ -52,7 +57,7 @@ pub(crate) async fn init_command(paths: &Paths, cmd: Init) -> Result<()> {
     success("Dependency added to config")?;
     add_to_lockfile(lock, &paths.lock)?;
     success("Dependency added to lockfile")?;
-    edit_remappings(&RemappingsAction::Add(dependency), &config, paths)?;
+    edit_remappings(&RemappingsAction::Add(dependency), &config, &paths)?;
     success("Dependency added to remappings")?;
 
     let gitignore_path = paths.root.join(".gitignore");

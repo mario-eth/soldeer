@@ -137,7 +137,7 @@ pub enum DownloadError {
 #[derive(Error, Debug)]
 #[non_exhaustive]
 pub enum InitError {
-    #[error("no config file specified for --config_location")]
+    #[error("no config file specified for --config-location")]
     WrongConfig(),
 }
 

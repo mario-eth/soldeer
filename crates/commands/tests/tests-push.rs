@@ -9,7 +9,7 @@ use testdir::testdir;
 #[allow(clippy::unwrap_used)]
 fn setup_project(dotfile: bool) -> (PathBuf, PathBuf) {
     let dir = testdir!();
-    let login_file = dir.join("test_save_jwt");
+    let login_file: PathBuf = dir.join("test_save_jwt");
     fs::write(&login_file, "jwt_token_example").unwrap();
     let project_path = dir.join("mypkg");
     fs::create_dir(&project_path).unwrap();
@@ -251,4 +251,28 @@ async fn test_push_dry_run() {
     assert!(res.is_ok(), "{res:?}");
     mock.expect(0);
     assert!(project_path.join("mypkg.zip").exists());
+}
+
+#[tokio::test]
+async fn test_push_skip_warnings() {
+    let (login_file, project_path) = setup_project(true); // insert a .env file
+
+    let (server, mock) = mock_api_server(None).await;
+
+    let res = async_with_vars(
+        [
+            ("SOLDEER_PROJECT_ROOT", Some(project_path.to_string_lossy().to_string())),
+            ("SOLDEER_API_URL", Some(server.url())),
+            ("SOLDEER_LOGIN_FILE", Some(login_file.to_string_lossy().to_string())),
+        ],
+        run(Command::Push(Push {
+            dependency: "mypkg~0.1.0".to_string(),
+            path: Some(project_path.clone()),
+            dry_run: false,
+            skip_warnings: true,
+        })),
+    )
+    .await;
+    assert!(res.is_ok(), "{res:?}");
+    mock.expect(1);
 }

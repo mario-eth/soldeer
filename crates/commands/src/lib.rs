@@ -42,9 +42,9 @@ pub async fn run(command: Command) -> Result<()> {
             })?;
             outro("Done uninstalling!")?;
         }
-        Command::Login(_) => {
+        Command::Login(cmd) => {
             intro("🦌 Soldeer Login 🦌")?;
-            commands::login::login_command().await.inspect_err(|_| {
+            commands::login::login_command(cmd).await.inspect_err(|_| {
                 outro_cancel("An error occurred during login").ok();
             })?;
             outro("Done logging in!")?;

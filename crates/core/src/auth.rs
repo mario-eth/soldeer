@@ -45,12 +45,14 @@ pub async fn execute_login(login: &Credentials) -> std::result::Result<(), AuthE
     let url = api_url("auth/login", &[]);
     let client = Client::new();
     let res = client.post(url).json(login).send().await?;
+    println!("doing the request");
     match res.status() {
         s if s.is_success() => {
             #[cfg(feature = "cli")]
             success("Login successful")?;
 
             let response: LoginResponse = res.json().await?;
+            println!("response {:?}", response.token);
             fs::write(&security_file, response.token)?;
 
             #[cfg(feature = "cli")]

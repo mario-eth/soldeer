@@ -4,7 +4,10 @@ use soldeer_core::{
     download::download_file,
     lock::read_lockfile,
 };
-use std::{fs, path::Path};
+use std::{
+    fs::{self},
+    path::Path,
+};
 use temp_env::async_with_vars;
 use testdir::testdir;
 
@@ -98,6 +101,7 @@ async fn test_install_custom_http() {
         lock.entries.first().unwrap().as_http().unwrap().url,
         "https://github.com/mario-eth/soldeer/archive/8585a7ec85a29889cec8d08f4770e15ec4795943.zip"
     );
+    assert!(&dir.join("dependencies").join("mylib-1.0.0").join("README.md").exists());
 }
 
 #[tokio::test]
@@ -126,6 +130,7 @@ async fn test_install_git_main() {
         lock.entries.first().unwrap().as_git().unwrap().rev,
         "d5d72fa135d28b2e8307650b3ea79115183f2406"
     );
+    assert!(&dir.join("dependencies").join("mylib-0.1.0").join("foo.txt").exists());
 }
 
 #[tokio::test]
@@ -154,6 +159,7 @@ async fn test_install_git_commit() {
         lock.entries.first().unwrap().as_git().unwrap().rev,
         "78c2f6a1a54db26bab6c3f501854a1564eb3707f"
     );
+    assert!(!&dir.join("dependencies").join("mylib-1.0.0").join("foo.txt").exists());
 }
 
 #[tokio::test]
@@ -182,6 +188,7 @@ async fn test_install_git_tag() {
         lock.entries.first().unwrap().as_git().unwrap().rev,
         "78c2f6a1a54db26bab6c3f501854a1564eb3707f"
     );
+    assert!(!&dir.join("dependencies").join("mylib-1.0.0").join("foo.txt").exists());
 }
 
 #[tokio::test]
@@ -210,6 +217,7 @@ async fn test_install_git_branch() {
         lock.entries.first().unwrap().as_git().unwrap().rev,
         "8d903e557e8f1b6e62bde768aa456d4ddfca72c4"
     );
+    assert!(!&dir.join("dependencies").join("mylib-1.0.0").join("test.txt").exists());
 }
 
 #[tokio::test]
@@ -472,6 +480,7 @@ async fn test_install_regenerate_remappings() {
     assert!(res.is_ok(), "{res:?}");
     let remappings = fs::read_to_string(dir.join("remappings.txt")).unwrap();
     assert!(!remappings.contains("foo=bar"));
+    assert!(remappings.contains("@openzeppelin-contracts"));
 }
 
 #[tokio::test]
@@ -533,11 +542,22 @@ forge-std = "1.8.1"
 }
 
 #[tokio::test]
-async fn test_install_new_foundry_no_foundry_toml() {
+async fn test_modifying_remappings_prefix_config() {
     let dir = testdir!();
 
+    let contents = r#"[profile.default]
+remappings = ["@custom-f@forge-std-1.8.1/=dependencies/forge-std-1.8.1/"]
+
+[soldeer]
+remappings_prefix = "!custom-f!"
+remappings_location = "config"
+
+[dependencies]
+"#;
+
+    fs::write(dir.join("foundry.toml"), contents).unwrap();
     let cmd: Command = Install {
-        dependency: Some("@openzeppelin-contracts~5".to_string()),
+        dependency: Some("forge-std~1.8.1".to_string()),
         remote_url: None,
         rev: None,
         tag: None,
@@ -545,21 +565,71 @@ async fn test_install_new_foundry_no_foundry_toml() {
         regenerate_remappings: false,
         recursive_deps: false,
         clean: false,
-        config_location: Some(ConfigLocation::Foundry),
+        config_location: None,
     }
     .into();
-    let res =
-        async_with_vars([("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))], run(cmd))
-            .await;
+    let res = async_with_vars(
+        [("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))],
+        run(cmd.clone()),
+    )
+    .await;
     assert!(res.is_ok(), "{res:?}");
-    let config = fs::read_to_string(dir.join("foundry.toml")).unwrap();
-    let content = r#"[profile.default]
-libs = ["dependencies"]
+
+    let updated_contents = r#"[profile.default]
+remappings = ["!custom-f!forge-std-1.8.1/=dependencies/forge-std-1.8.1/"]
+
+[soldeer]
+remappings_prefix = "!custom-f!"
+remappings_location = "config"
 
 [dependencies]
-"@openzeppelin-contracts" = "5"
+forge-std = "1.8.1"
 "#;
-    assert_eq!(config, content);
+
+    assert_eq!(updated_contents, fs::read_to_string(dir.join("foundry.toml")).unwrap());
+}
+
+#[tokio::test]
+async fn test_modifying_remappings_prefix_txt() {
+    let dir = testdir!();
+
+    let contents = r#"[profile.default]
+
+[soldeer]
+remappings_prefix = "!custom-f!"
+remappings_regenerate = true
+
+[dependencies]
+"#;
+    fs::write(
+        dir.join("remappings.txt"),
+        "@custom-f@forge-std-1.8.1/=dependencies/forge-std-1.8.1/",
+    )
+    .unwrap();
+    fs::write(dir.join("foundry.toml"), contents).unwrap();
+    let cmd: Command = Install {
+        dependency: Some("forge-std~1.8.1".to_string()),
+        remote_url: None,
+        rev: None,
+        tag: None,
+        branch: None,
+        regenerate_remappings: false,
+        recursive_deps: false,
+        clean: false,
+        config_location: None,
+    }
+    .into();
+    let res = async_with_vars(
+        [("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))],
+        run(cmd.clone()),
+    )
+    .await;
+    assert!(res.is_ok(), "{res:?}");
+
+    let updated_contents = r#"!custom-f!forge-std-1.8.1/=dependencies/forge-std-1.8.1/
+"#;
+
+    assert_eq!(updated_contents, fs::read_to_string(dir.join("remappings.txt")).unwrap());
 }
 
 #[tokio::test]

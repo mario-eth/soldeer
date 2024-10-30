@@ -98,7 +98,6 @@ pub fn remappings_foundry(
 ) -> Result<()> {
     let contents = fs::read_to_string(&paths.config)?;
     let mut doc: DocumentMut = contents.parse::<DocumentMut>().expect("invalid doc");
-
     let Some(profiles) = doc["profile"].as_table_mut() else {
         // we don't add remappings if there are no profiles
         return Ok(());

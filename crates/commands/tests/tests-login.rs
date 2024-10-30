@@ -1,4 +1,4 @@
-use std::{fs, path::PathBuf, process::exit};
+use std::{fs, path::PathBuf};
 
 use mockito::{Matcher, Mock, ServerGuard};
 use reqwest::StatusCode;
@@ -53,7 +53,6 @@ async fn test_login_without_prompt_success() {
     let (server, mock) = mock_api_server(None).await;
     let dir = testdir!();
     let login_file: PathBuf = dir.join("test_save_jwt");
-    println!("lgin file {:?}", login_file);
 
     let cmd: Command =
         Login { email: Some("test@test.com".to_string()), password: Some("111111".to_string()) }

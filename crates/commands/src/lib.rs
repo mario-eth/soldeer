@@ -28,7 +28,7 @@ pub async fn run(command: Command) -> Result<()> {
         }
         Command::Update(cmd) => {
             intro("🦌 Soldeer Update 🦌")?;
-            let paths = Paths::new()?;
+            let paths = Paths::new_with_config(cmd.config_location)?;
             commands::update::update_command(&paths, cmd).await.inspect_err(|_| {
                 outro_cancel("An error occurred during the update").ok();
             })?;

@@ -699,7 +699,8 @@ pub fn delete_from_config(dependency_name: &str, path: impl AsRef<Path>) -> Resu
     Ok(dependency)
 }
 
-/// Update the config file to add the `dependencies` folder as a source for libraries and the `[dependencies]` table.
+/// Update the config file to add the `dependencies` folder as a source for libraries and the
+/// `[dependencies]` table.
 pub fn update_config_libs(foundry_config: impl AsRef<Path>) -> Result<()> {
     let contents = fs::read_to_string(&foundry_config)?;
     let mut doc: DocumentMut = contents.parse::<DocumentMut>()?;
@@ -860,7 +861,8 @@ fn parse_dependency(name: impl Into<String>, value: &Item) -> Result<Dependency>
     }
 }
 
-/// Create a basic config file with default contents if it doesn't exist, otherwise add `[dependencies]`.
+/// Create a basic config file with default contents if it doesn't exist, otherwise add
+/// `[dependencies]`.
 fn create_or_modify_config(
     location: ConfigLocation,
     foundry_path: impl AsRef<Path>,

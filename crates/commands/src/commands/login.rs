@@ -1,8 +1,12 @@
 use clap::Parser;
-use cliclack::{input, log::remark};
+use cliclack::{
+    input,
+    log::{remark, step},
+};
 use email_address_parser::{EmailAddress, ParsingOptions};
 use soldeer_core::{
     auth::{execute_login, Credentials},
+    errors::AuthError,
     Result,
 };
 
@@ -14,38 +18,43 @@ use soldeer_core::{
 #[clap(after_help = "For more information, read the README.md")]
 pub struct Login {
     /// Specify the email without prompting.
-    #[arg(long, requires = "password")]
+    #[arg(long)]
     pub email: Option<String>,
 
     /// Specify the password without prompting.
-    #[arg(long, requires = "email")]
+    #[arg(long)]
     pub password: Option<String>,
 }
 
 pub(crate) async fn login_command(cmd: Login) -> Result<()> {
-    if let Some(email) = cmd.email {
-        if let Some(password) = cmd.password {
-            execute_login(&Credentials { email, password }).await?;
-            return Ok(());
-        }
-    }
-
     remark("If you do not have an account, please visit soldeer.xyz to create one.")?;
 
-    let email: String = input("Email address")
-        .validate(|input: &String| {
-            if input.is_empty() {
-                Err("Email is required")
-            } else {
-                match EmailAddress::parse(input, Some(ParsingOptions::default())) {
-                    None => Err("Invalid email address"),
-                    Some(_) => Ok(()),
-                }
+    let email: String = match cmd.email {
+        Some(email) => {
+            if EmailAddress::parse(&email, Some(ParsingOptions::default())).is_none() {
+                return Err(AuthError::InvalidCredentials.into());
             }
-        })
-        .interact()?;
+            step(format!("Email: {email}"))?;
+            email
+        }
+        None => input("Email address")
+            .validate(|input: &String| {
+                if input.is_empty() {
+                    Err("Email is required")
+                } else {
+                    match EmailAddress::parse(input, Some(ParsingOptions::default())) {
+                        None => Err("Invalid email address"),
+                        Some(_) => Ok(()),
+                    }
+                }
+            })
+            .interact()?,
+    };
 
-    let password = cliclack::password("Password").mask('▪').interact()?;
+    let password = match cmd.password {
+        Some(pw) => pw,
+        None => cliclack::password("Password").mask('▪').interact()?,
+    };
 
     execute_login(&Credentials { email, password }).await?;
     Ok(())

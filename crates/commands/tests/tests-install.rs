@@ -632,7 +632,6 @@ remappings_regenerate = true
 async fn test_install_new_foundry_no_dependency_tag() {
     let dir = testdir!();
     let contents = r#"[profile.default]
-
 libs = ["lib"]
 "#;
     fs::write(dir.join("foundry.toml"), contents).unwrap();
@@ -654,8 +653,7 @@ libs = ["lib"]
     assert!(res.is_ok(), "{res:?}");
     let config = fs::read_to_string(dir.join("foundry.toml")).unwrap();
     let content = r#"[profile.default]
-
-libs = ["lib"]
+libs = ["lib", "dependencies"]
 
 [dependencies]
 "@openzeppelin-contracts" = "5"
@@ -714,6 +712,7 @@ async fn test_install_new_soldeer_no_dependency_tag() {
     assert!(res.is_ok(), "{res:?}");
     let config = fs::read_to_string(dir.join("soldeer.toml")).unwrap();
     let content = r#"[soldeer]
+
 [dependencies]
 "@openzeppelin-contracts" = "5"
 "#;

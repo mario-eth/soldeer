@@ -673,7 +673,7 @@ pub fn read_config_deps(path: impl AsRef<Path>) -> Result<Vec<Dependency>> {
     let contents = fs::read_to_string(path)?;
     let doc: DocumentMut = contents.parse::<DocumentMut>()?;
     let Some(Some(data)) = doc.get("dependencies").map(|v| v.as_table()) else {
-        return Err(ConfigError::MissingDependencies);
+        return Ok(Vec::new());
     };
 
     let mut dependencies: Vec<Dependency> = Vec::new();

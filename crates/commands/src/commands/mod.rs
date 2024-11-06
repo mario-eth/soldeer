@@ -11,6 +11,7 @@ pub mod update;
 /// A minimal Solidity dependency manager
 #[derive(Parser, Debug)]
 #[clap(name = "soldeer", author = "m4rio.eth", version)]
+#[non_exhaustive]
 pub struct Args {
     #[clap(subcommand)]
     pub command: Command,
@@ -18,6 +19,7 @@ pub struct Args {
 
 /// The available commands for Soldeer
 #[derive(Debug, Clone, Subcommand, From)]
+#[non_exhaustive]
 pub enum Command {
     Init(init::Init),
     Install(install::Install),

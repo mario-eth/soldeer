@@ -546,6 +546,7 @@ remappings = ["@custom-f@forge-std-1.8.1/=dependencies/forge-std-1.8.1/"]
 
 [soldeer]
 remappings_prefix = "!custom-f!"
+remappings_regenerate = true
 remappings_location = "config"
 
 [dependencies]
@@ -571,12 +572,12 @@ remappings_location = "config"
     .await;
     assert!(res.is_ok(), "{res:?}");
 
-    // since the remapping has been customized, it should not be updated when doing install
     let expected = r#"[profile.default]
-remappings = ["@custom-f@forge-std-1.8.1/=dependencies/forge-std-1.8.1/"]
+remappings = ["!custom-f!forge-std-1.8.1/=dependencies/forge-std-1.8.1/"]
 
 [soldeer]
 remappings_prefix = "!custom-f!"
+remappings_regenerate = true
 remappings_location = "config"
 
 [dependencies]

@@ -29,18 +29,7 @@ fn check_install(dir: &Path, name: &str, version_req: &str) {
 async fn test_install_registry_any_version() {
     let dir = testdir!();
     fs::write(dir.join("soldeer.toml"), "[dependencies]\n").unwrap();
-    let cmd: Command = Install {
-        dependency: Some("@openzeppelin-contracts~5".to_string()),
-        remote_url: None,
-        rev: None,
-        tag: None,
-        branch: None,
-        regenerate_remappings: false,
-        recursive_deps: false,
-        clean: false,
-        config_location: None,
-    }
-    .into();
+    let cmd: Command = Install::builder().dependency("@openzeppelin-contracts~5").build().into();
     let res =
         async_with_vars([("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))], run(cmd))
             .await;
@@ -52,18 +41,8 @@ async fn test_install_registry_any_version() {
 async fn test_install_registry_specific_version() {
     let dir = testdir!();
     fs::write(dir.join("soldeer.toml"), "[dependencies]\n").unwrap();
-    let cmd: Command = Install {
-        dependency: Some("@openzeppelin-contracts~4.9.5".to_string()),
-        remote_url: None,
-        rev: None,
-        tag: None,
-        branch: None,
-        regenerate_remappings: false,
-        recursive_deps: false,
-        clean: false,
-        config_location: None,
-    }
-    .into();
+    let cmd: Command =
+        Install::builder().dependency("@openzeppelin-contracts~4.9.5").build().into();
     let res =
         async_with_vars([("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))], run(cmd))
             .await;
@@ -75,18 +54,7 @@ async fn test_install_registry_specific_version() {
 async fn test_install_custom_http() {
     let dir = testdir!();
     fs::write(dir.join("soldeer.toml"), "[dependencies]\n").unwrap();
-    let cmd: Command = Install {
-        dependency: Some("mylib~1.0.0".to_string()),
-        remote_url: Some("https://github.com/mario-eth/soldeer/archive/8585a7ec85a29889cec8d08f4770e15ec4795943.zip".to_string()),
-        rev: None,
-        tag: None,
-        branch: None,
-        regenerate_remappings: false,
-        recursive_deps: false,
-        clean: false,
-        config_location: None
-    }
-    .into();
+    let cmd: Command = Install::builder().dependency("mylib~1.0.0").remote_url("https://github.com/mario-eth/soldeer/archive/8585a7ec85a29889cec8d08f4770e15ec4795943.zip").build().into();
     let res =
         async_with_vars([("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))], run(cmd))
             .await;
@@ -104,18 +72,11 @@ async fn test_install_custom_http() {
 async fn test_install_git_main() {
     let dir = testdir!();
     fs::write(dir.join("soldeer.toml"), "[dependencies]\n").unwrap();
-    let cmd: Command = Install {
-        dependency: Some("mylib~0.1.0".to_string()),
-        remote_url: Some("https://github.com/beeb/test-repo.git".to_string()),
-        rev: None,
-        tag: None,
-        branch: None,
-        regenerate_remappings: false,
-        recursive_deps: false,
-        clean: false,
-        config_location: None,
-    }
-    .into();
+    let cmd: Command = Install::builder()
+        .dependency("mylib~0.1.0")
+        .remote_url("https://github.com/beeb/test-repo.git")
+        .build()
+        .into();
     let res =
         async_with_vars([("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))], run(cmd))
             .await;
@@ -133,18 +94,12 @@ async fn test_install_git_main() {
 async fn test_install_git_commit() {
     let dir = testdir!();
     fs::write(dir.join("soldeer.toml"), "[dependencies]\n").unwrap();
-    let cmd: Command = Install {
-        dependency: Some("mylib~0.1.0".to_string()),
-        remote_url: Some("https://github.com/beeb/test-repo.git".to_string()),
-        rev: Some("78c2f6a1a54db26bab6c3f501854a1564eb3707f".to_string()),
-        tag: None,
-        branch: None,
-        regenerate_remappings: false,
-        recursive_deps: false,
-        clean: false,
-        config_location: None,
-    }
-    .into();
+    let cmd: Command = Install::builder()
+        .dependency("mylib~0.1.0")
+        .remote_url("https://github.com/beeb/test-repo.git")
+        .rev("78c2f6a1a54db26bab6c3f501854a1564eb3707f")
+        .build()
+        .into();
     let res =
         async_with_vars([("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))], run(cmd))
             .await;
@@ -162,18 +117,12 @@ async fn test_install_git_commit() {
 async fn test_install_git_tag() {
     let dir = testdir!();
     fs::write(dir.join("soldeer.toml"), "[dependencies]\n").unwrap();
-    let cmd: Command = Install {
-        dependency: Some("mylib~0.1.0".to_string()),
-        remote_url: Some("https://github.com/beeb/test-repo.git".to_string()),
-        rev: None,
-        tag: Some("v0.1.0".to_string()),
-        branch: None,
-        regenerate_remappings: false,
-        recursive_deps: false,
-        clean: false,
-        config_location: None,
-    }
-    .into();
+    let cmd: Command = Install::builder()
+        .dependency("mylib~0.1.0")
+        .remote_url("https://github.com/beeb/test-repo.git")
+        .tag("v0.1.0")
+        .build()
+        .into();
     let res =
         async_with_vars([("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))], run(cmd))
             .await;
@@ -191,18 +140,12 @@ async fn test_install_git_tag() {
 async fn test_install_git_branch() {
     let dir = testdir!();
     fs::write(dir.join("soldeer.toml"), "[dependencies]\n").unwrap();
-    let cmd: Command = Install {
-        dependency: Some("mylib~dev".to_string()),
-        remote_url: Some("https://github.com/beeb/test-repo.git".to_string()),
-        rev: None,
-        tag: None,
-        branch: Some("dev".to_string()),
-        regenerate_remappings: false,
-        recursive_deps: false,
-        clean: false,
-        config_location: None,
-    }
-    .into();
+    let cmd: Command = Install::builder()
+        .dependency("mylib~dev")
+        .remote_url("https://github.com/beeb/test-repo.git")
+        .branch("dev")
+        .build()
+        .into();
     let res =
         async_with_vars([("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))], run(cmd))
             .await;
@@ -220,18 +163,7 @@ async fn test_install_git_branch() {
 async fn test_install_foundry_config() {
     let dir = testdir!();
     fs::write(dir.join("foundry.toml"), "[dependencies]\n").unwrap();
-    let cmd: Command = Install {
-        dependency: Some("@openzeppelin-contracts~5".to_string()),
-        remote_url: None,
-        rev: None,
-        tag: None,
-        branch: None,
-        regenerate_remappings: false,
-        recursive_deps: false,
-        clean: false,
-        config_location: None,
-    }
-    .into();
+    let cmd: Command = Install::builder().dependency("@openzeppelin-contracts~5").build().into();
     let res =
         async_with_vars([("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))], run(cmd))
             .await;
@@ -251,18 +183,7 @@ remappings_location = "config"
 "@openzeppelin-contracts" = "5"
 "#;
     fs::write(dir.join("foundry.toml"), contents).unwrap();
-    let cmd: Command = Install {
-        dependency: None,
-        remote_url: None,
-        rev: None,
-        tag: None,
-        branch: None,
-        regenerate_remappings: false,
-        recursive_deps: false,
-        clean: false,
-        config_location: None,
-    }
-    .into();
+    let cmd: Command = Install::builder().build().into();
     let res =
         async_with_vars([("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))], run(cmd))
             .await;
@@ -280,18 +201,7 @@ async fn test_install_missing_no_lock() {
 "@openzeppelin-contracts" = "5.0.2"
 "#;
     fs::write(dir.join("soldeer.toml"), contents).unwrap();
-    let cmd: Command = Install {
-        dependency: None,
-        remote_url: None,
-        rev: None,
-        tag: None,
-        branch: None,
-        regenerate_remappings: false,
-        recursive_deps: false,
-        clean: false,
-        config_location: None,
-    }
-    .into();
+    let cmd: Command = Install::builder().build().into();
     let res =
         async_with_vars([("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))], run(cmd))
             .await;
@@ -314,18 +224,7 @@ checksum = "94a73dbe106f48179ea39b00d42e5d4dd96fdc6252caa3a89ce7efdaec0b9468"
 integrity = "f3c628f3e9eae4db14fe14f9ab29e49a0107c47b8ee956e4cee57b616b493fc2"
 "#;
     fs::write(dir.join("soldeer.lock"), lock).unwrap();
-    let cmd: Command = Install {
-        dependency: None,
-        remote_url: None,
-        rev: None,
-        tag: None,
-        branch: None,
-        regenerate_remappings: false,
-        recursive_deps: false,
-        clean: false,
-        config_location: None,
-    }
-    .into();
+    let cmd: Command = Install::builder().build().into();
     let res =
         async_with_vars([("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))], run(cmd))
             .await;
@@ -366,18 +265,7 @@ integrity = "f3c628f3e9eae4db14fe14f9ab29e49a0107c47b8ee956e4cee57b616b493fc2"
         server.url()
     );
     fs::write(dir.join("soldeer.lock"), lock).unwrap();
-    let cmd: Command = Install {
-        dependency: None,
-        remote_url: None,
-        rev: None,
-        tag: None,
-        branch: None,
-        regenerate_remappings: false,
-        recursive_deps: false,
-        clean: false,
-        config_location: None,
-    }
-    .into();
+    let cmd: Command = Install::builder().build().into();
     let res = async_with_vars(
         [("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))],
         run(cmd.clone()),
@@ -404,18 +292,7 @@ async fn test_install_clean() {
     let test_path = dir.join("dependencies").join("foo");
     fs::create_dir_all(&test_path).unwrap();
     fs::write(test_path.join("foo.txt"), "test").unwrap();
-    let cmd: Command = Install {
-        dependency: None,
-        remote_url: None,
-        rev: None,
-        tag: None,
-        branch: None,
-        regenerate_remappings: false,
-        recursive_deps: false,
-        clean: true,
-        config_location: None,
-    }
-    .into();
+    let cmd: Command = Install::builder().clean(true).build().into();
     let res =
         async_with_vars([("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))], run(cmd))
             .await;
@@ -430,18 +307,7 @@ async fn test_install_recursive_deps() {
 foo = { version = "0.1.0", git = "https://github.com/foundry-rs/forge-template.git" }
 "#;
     fs::write(dir.join("soldeer.toml"), contents).unwrap();
-    let cmd: Command = Install {
-        dependency: None,
-        remote_url: None,
-        rev: None,
-        tag: None,
-        branch: None,
-        regenerate_remappings: false,
-        recursive_deps: true,
-        clean: false,
-        config_location: None,
-    }
-    .into();
+    let cmd: Command = Install::builder().recursive_deps(true).build().into();
     let res =
         async_with_vars([("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))], run(cmd))
             .await;
@@ -458,18 +324,11 @@ async fn test_install_regenerate_remappings() {
     let dir = testdir!();
     fs::write(dir.join("soldeer.toml"), "[dependencies]\n").unwrap();
     fs::write(dir.join("remappings.txt"), "foo=bar").unwrap();
-    let cmd: Command = Install {
-        dependency: Some("@openzeppelin-contracts~5".to_string()),
-        remote_url: None,
-        rev: None,
-        tag: None,
-        branch: None,
-        regenerate_remappings: true,
-        recursive_deps: false,
-        clean: false,
-        config_location: None,
-    }
-    .into();
+    let cmd: Command = Install::builder()
+        .dependency("@openzeppelin-contracts~5")
+        .regenerate_remappings(true)
+        .build()
+        .into();
     let res =
         async_with_vars([("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))], run(cmd))
             .await;
@@ -500,18 +359,7 @@ remappings_regenerate = true
 "#;
 
     fs::write(dir.join("foundry.toml"), contents).unwrap();
-    let cmd: Command = Install {
-        dependency: Some("forge-std~1.8.1".to_string()),
-        remote_url: None,
-        rev: None,
-        tag: None,
-        branch: None,
-        regenerate_remappings: false,
-        recursive_deps: false,
-        clean: false,
-        config_location: None,
-    }
-    .into();
+    let cmd: Command = Install::builder().dependency("forge-std~1.8.1").build().into();
     let res =
         async_with_vars([("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))], run(cmd))
             .await;
@@ -553,18 +401,7 @@ remappings_location = "config"
 "#;
 
     fs::write(dir.join("foundry.toml"), contents).unwrap();
-    let cmd: Command = Install {
-        dependency: Some("forge-std~1.8.1".to_string()),
-        remote_url: None,
-        rev: None,
-        tag: None,
-        branch: None,
-        regenerate_remappings: false,
-        recursive_deps: false,
-        clean: false,
-        config_location: None,
-    }
-    .into();
+    let cmd: Command = Install::builder().dependency("forge-std~1.8.1").build().into();
     let res = async_with_vars(
         [("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))],
         run(cmd.clone()),
@@ -605,18 +442,7 @@ remappings_regenerate = true
     )
     .unwrap();
     fs::write(dir.join("foundry.toml"), contents).unwrap();
-    let cmd: Command = Install {
-        dependency: Some("forge-std~1.8.1".to_string()),
-        remote_url: None,
-        rev: None,
-        tag: None,
-        branch: None,
-        regenerate_remappings: false,
-        recursive_deps: false,
-        clean: false,
-        config_location: None,
-    }
-    .into();
+    let cmd: Command = Install::builder().dependency("forge-std~1.8.1").build().into();
     let res = async_with_vars(
         [("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))],
         run(cmd.clone()),
@@ -637,18 +463,11 @@ async fn test_install_new_foundry_no_dependency_tag() {
 libs = ["lib"]
 "#;
     fs::write(dir.join("foundry.toml"), contents).unwrap();
-    let cmd: Command = Install {
-        dependency: Some("@openzeppelin-contracts~5".to_string()),
-        remote_url: None,
-        rev: None,
-        tag: None,
-        branch: None,
-        regenerate_remappings: false,
-        recursive_deps: false,
-        clean: false,
-        config_location: Some(ConfigLocation::Foundry),
-    }
-    .into();
+    let cmd: Command = Install::builder()
+        .dependency("@openzeppelin-contracts~5")
+        .config_location(ConfigLocation::Foundry)
+        .build()
+        .into();
     let res =
         async_with_vars([("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))], run(cmd))
             .await;
@@ -667,18 +486,11 @@ libs = ["lib", "dependencies"]
 async fn test_install_new_soldeer_no_soldeer_toml() {
     let dir = testdir!();
 
-    let cmd: Command = Install {
-        dependency: Some("@openzeppelin-contracts~5".to_string()),
-        remote_url: None,
-        rev: None,
-        tag: None,
-        branch: None,
-        regenerate_remappings: false,
-        recursive_deps: false,
-        clean: false,
-        config_location: Some(ConfigLocation::Soldeer),
-    }
-    .into();
+    let cmd: Command = Install::builder()
+        .dependency("@openzeppelin-contracts~5")
+        .config_location(ConfigLocation::Soldeer)
+        .build()
+        .into();
     let res =
         async_with_vars([("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))], run(cmd))
             .await;
@@ -696,18 +508,11 @@ async fn test_install_new_soldeer_no_dependency_tag() {
     let contents = r#"[soldeer]
 "#;
     fs::write(dir.join("soldeer.toml"), contents).unwrap();
-    let cmd: Command = Install {
-        dependency: Some("@openzeppelin-contracts~5".to_string()),
-        remote_url: None,
-        rev: None,
-        tag: None,
-        branch: None,
-        regenerate_remappings: false,
-        recursive_deps: false,
-        clean: false,
-        config_location: Some(ConfigLocation::Soldeer),
-    }
-    .into();
+    let cmd: Command = Install::builder()
+        .dependency("@openzeppelin-contracts~5")
+        .config_location(ConfigLocation::Soldeer)
+        .build()
+        .into();
     let res =
         async_with_vars([("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))], run(cmd))
             .await;

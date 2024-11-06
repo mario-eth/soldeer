@@ -1,6 +1,6 @@
 use mockito::{Matcher, Mock, ServerGuard};
 use reqwest::StatusCode;
-use soldeer_commands::{commands::push::Push, run, Command};
+use soldeer_commands::{commands::push::Push, run};
 use soldeer_core::{errors::PublishError, SoldeerError};
 use std::{env, fs, path::PathBuf};
 use temp_env::async_with_vars;
@@ -66,12 +66,7 @@ async fn test_push_success() {
             ("SOLDEER_API_URL", Some(server.url())),
             ("SOLDEER_LOGIN_FILE", Some(login_file.to_string_lossy().to_string())),
         ],
-        run(Command::Push(Push {
-            dependency: "mypkg~0.1.0".to_string(),
-            path: None,
-            dry_run: false,
-            skip_warnings: false,
-        })),
+        run(Push::builder().dependency("mypkg~0.1.0").build().into()),
     )
     .await;
     assert!(res.is_ok(), "{res:?}");
@@ -96,12 +91,7 @@ async fn test_push_other_dir_success() {
             ("SOLDEER_API_URL", Some(server.url())),
             ("SOLDEER_LOGIN_FILE", Some(login_file.to_string_lossy().to_string())),
         ],
-        run(Command::Push(Push {
-            dependency: "mypkg~0.1.0".to_string(),
-            path: Some(project_path),
-            dry_run: false,
-            skip_warnings: false,
-        })),
+        run(Push::builder().dependency("mypkg~0.1.0").path(project_path).build().into()),
     )
     .await;
     assert!(res.is_ok(), "{res:?}");
@@ -120,12 +110,7 @@ async fn test_push_not_found() {
             ("SOLDEER_API_URL", Some(server.url())),
             ("SOLDEER_LOGIN_FILE", Some(login_file.to_string_lossy().to_string())),
         ],
-        run(Command::Push(Push {
-            dependency: "mypkg~0.1.0".to_string(),
-            path: Some(project_path),
-            dry_run: false,
-            skip_warnings: false,
-        })),
+        run(Push::builder().dependency("mypkg~0.1.0").path(project_path).build().into()),
     )
     .await;
     assert!(matches!(res, Err(SoldeerError::PublishError(PublishError::ProjectNotFound))));
@@ -144,12 +129,7 @@ async fn test_push_already_exists() {
             ("SOLDEER_API_URL", Some(server.url())),
             ("SOLDEER_LOGIN_FILE", Some(login_file.to_string_lossy().to_string())),
         ],
-        run(Command::Push(Push {
-            dependency: "mypkg~0.1.0".to_string(),
-            path: Some(project_path),
-            dry_run: false,
-            skip_warnings: false,
-        })),
+        run(Push::builder().dependency("mypkg~0.1.0").path(project_path).build().into()),
     )
     .await;
     assert!(matches!(res, Err(SoldeerError::PublishError(PublishError::AlreadyExists))));
@@ -168,12 +148,7 @@ async fn test_push_unauthorized() {
             ("SOLDEER_API_URL", Some(server.url())),
             ("SOLDEER_LOGIN_FILE", Some(login_file.to_string_lossy().to_string())),
         ],
-        run(Command::Push(Push {
-            dependency: "mypkg~0.1.0".to_string(),
-            path: Some(project_path),
-            dry_run: false,
-            skip_warnings: false,
-        })),
+        run(Push::builder().dependency("mypkg~0.1.0").path(project_path).build().into()),
     )
     .await;
     assert!(matches!(res, Err(SoldeerError::PublishError(PublishError::AuthError(_)))));
@@ -192,12 +167,7 @@ async fn test_push_payload_too_large() {
             ("SOLDEER_API_URL", Some(server.url())),
             ("SOLDEER_LOGIN_FILE", Some(login_file.to_string_lossy().to_string())),
         ],
-        run(Command::Push(Push {
-            dependency: "mypkg~0.1.0".to_string(),
-            path: Some(project_path),
-            dry_run: false,
-            skip_warnings: false,
-        })),
+        run(Push::builder().dependency("mypkg~0.1.0").path(project_path).build().into()),
     )
     .await;
     assert!(matches!(res, Err(SoldeerError::PublishError(PublishError::PayloadTooLarge))));
@@ -216,12 +186,7 @@ async fn test_push_other_error() {
             ("SOLDEER_API_URL", Some(server.url())),
             ("SOLDEER_LOGIN_FILE", Some(login_file.to_string_lossy().to_string())),
         ],
-        run(Command::Push(Push {
-            dependency: "mypkg~0.1.0".to_string(),
-            path: Some(project_path),
-            dry_run: false,
-            skip_warnings: false,
-        })),
+        run(Push::builder().dependency("mypkg~0.1.0").path(project_path).build().into()),
     )
     .await;
     assert!(matches!(res, Err(SoldeerError::PublishError(PublishError::HttpError(_)))));
@@ -240,12 +205,12 @@ async fn test_push_dry_run() {
             ("SOLDEER_API_URL", Some(server.url())),
             ("SOLDEER_LOGIN_FILE", Some(login_file.to_string_lossy().to_string())),
         ],
-        run(Command::Push(Push {
-            dependency: "mypkg~0.1.0".to_string(),
-            path: Some(project_path.clone()),
-            dry_run: true,
-            skip_warnings: false,
-        })),
+        run(Push::builder()
+            .dependency("mypkg~0.1.0")
+            .path(&project_path)
+            .dry_run(true)
+            .build()
+            .into()),
     )
     .await;
     assert!(res.is_ok(), "{res:?}");
@@ -265,12 +230,12 @@ async fn test_push_skip_warnings() {
             ("SOLDEER_API_URL", Some(server.url())),
             ("SOLDEER_LOGIN_FILE", Some(login_file.to_string_lossy().to_string())),
         ],
-        run(Command::Push(Push {
-            dependency: "mypkg~0.1.0".to_string(),
-            path: Some(project_path.clone()),
-            dry_run: false,
-            skip_warnings: true,
-        })),
+        run(Push::builder()
+            .dependency("mypkg~0.1.0")
+            .path(&project_path)
+            .skip_warnings(true)
+            .build()
+            .into()),
     )
     .await;
     assert!(res.is_ok(), "{res:?}");

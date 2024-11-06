@@ -18,7 +18,7 @@ version.workspace = true
 workspace = true
 
 [dependencies]
-bon = "2.0.0"
+bon.workspace = true
 chrono = { version = "0.4.38", default-features = false, features = [
     "serde",
     "std",

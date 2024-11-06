@@ -14,8 +14,10 @@ use soldeer_core::{
 ///
 /// The credentials are saved by default into ~/.soldeer.
 /// If you want to overwrite that location, use the SOLDEER_LOGIN_FILE env var.
-#[derive(Debug, Clone, Default, Parser)]
+#[derive(Debug, Clone, Default, Parser, bon::Builder)]
+#[builder(on(String, into))]
 #[clap(after_help = "For more information, read the README.md")]
+#[non_exhaustive]
 pub struct Login {
     /// Specify the email without prompting.
     #[arg(long)]

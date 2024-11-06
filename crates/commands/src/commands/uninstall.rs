@@ -9,8 +9,10 @@ use soldeer_core::{
 };
 
 /// Uninstall a dependency
-#[derive(Debug, Clone, Parser)]
+#[derive(Debug, Clone, Parser, bon::Builder)]
+#[builder(on(String, into))]
 #[clap(after_help = "For more information, read the README.md")]
+#[non_exhaustive]
 pub struct Uninstall {
     /// The dependency name. Specifying a version is not necessary.
     pub dependency: String,

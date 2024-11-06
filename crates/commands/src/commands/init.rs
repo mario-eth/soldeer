@@ -16,11 +16,14 @@ use soldeer_core::{
 use std::fs;
 
 /// Convert a Foundry project to use Soldeer
-#[derive(Debug, Clone, Default, Parser)]
+#[derive(Debug, Clone, Default, Parser, bon::Builder)]
+#[builder(on(String, into))]
 #[clap(after_help = "For more information, read the README.md")]
+#[non_exhaustive]
 pub struct Init {
     /// Clean the Foundry project by removing .gitmodules and the lib directory
     #[arg(long, default_value_t = false)]
+    #[builder(default)]
     pub clean: bool,
 
     /// Specify the config location.

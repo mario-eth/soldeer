@@ -14,7 +14,8 @@ async fn test_init_clean() {
     .await
     .unwrap();
     fs::write(dir.join("soldeer.toml"), "[dependencies]\n").unwrap();
-    let cmd: Command = Init { clean: true, config_location: Some(ConfigLocation::Soldeer) }.into();
+    let cmd: Command =
+        Init::builder().clean(true).config_location(ConfigLocation::Soldeer).build().into();
     let res =
         async_with_vars([("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))], run(cmd))
             .await;
@@ -44,7 +45,7 @@ async fn test_init_no_clean() {
     .await
     .unwrap();
     fs::write(dir.join("soldeer.toml"), "[dependencies]\n").unwrap();
-    let cmd: Command = Init { clean: false, config_location: Some(ConfigLocation::Soldeer) }.into();
+    let cmd: Command = Init::builder().config_location(ConfigLocation::Soldeer).build().into();
     let res =
         async_with_vars([("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))], run(cmd))
             .await;
@@ -79,7 +80,8 @@ remappings_generate = false
 [dependencies]
 ";
     fs::write(dir.join("soldeer.toml"), contents).unwrap();
-    let cmd: Command = Init { clean: true, config_location: Some(ConfigLocation::Soldeer) }.into();
+    let cmd: Command =
+        Init::builder().clean(true).config_location(ConfigLocation::Soldeer).build().into();
     let res =
         async_with_vars([("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))], run(cmd))
             .await;
@@ -98,7 +100,8 @@ async fn test_init_no_gitignore() {
     .unwrap();
     fs::remove_file(dir.join(".gitignore")).unwrap();
     fs::write(dir.join("soldeer.toml"), "[dependencies]\n").unwrap();
-    let cmd: Command = Init { clean: true, config_location: Some(ConfigLocation::Soldeer) }.into();
+    let cmd: Command =
+        Init::builder().clean(true).config_location(ConfigLocation::Soldeer).build().into();
     let res =
         async_with_vars([("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))], run(cmd))
             .await;
@@ -110,7 +113,8 @@ async fn test_init_no_gitignore() {
 async fn test_init_select_foundry_location() {
     let dir = testdir!();
 
-    let cmd: Command = Init { clean: true, config_location: Some(ConfigLocation::Foundry) }.into();
+    let cmd: Command =
+        Init::builder().clean(true).config_location(ConfigLocation::Foundry).build().into();
     let res =
         async_with_vars([("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))], run(cmd))
             .await;
@@ -136,7 +140,8 @@ forge-std = "1.9.4"
 async fn test_init_select_soldeer_location() {
     let dir = testdir!();
 
-    let cmd: Command = Init { clean: true, config_location: Some(ConfigLocation::Soldeer) }.into();
+    let cmd: Command =
+        Init::builder().clean(true).config_location(ConfigLocation::Soldeer).build().into();
     let res =
         async_with_vars([("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))], run(cmd))
             .await;

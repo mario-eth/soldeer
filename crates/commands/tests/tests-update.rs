@@ -209,12 +209,7 @@ remappings_location = "config"
 async fn test_install_new_foundry_no_foundry_toml() {
     let dir = testdir!();
 
-    let cmd: Command = Update {
-        regenerate_remappings: false,
-        recursive_deps: false,
-        config_location: Some(ConfigLocation::Foundry),
-    }
-    .into();
+    let cmd: Command = Update::builder().config_location(ConfigLocation::Foundry).build().into();
     let res =
         async_with_vars([("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))], run(cmd))
             .await;
@@ -236,12 +231,7 @@ libs = ["dependencies"]
 async fn test_install_new_soldeer_no_soldeer_toml() {
     let dir = testdir!();
 
-    let cmd: Command = Update {
-        regenerate_remappings: false,
-        recursive_deps: false,
-        config_location: Some(ConfigLocation::Soldeer),
-    }
-    .into();
+    let cmd: Command = Update::builder().config_location(ConfigLocation::Soldeer).build().into();
     let res =
         async_with_vars([("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))], run(cmd))
             .await;

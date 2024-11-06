@@ -1726,6 +1726,7 @@ dependencies = [
 name = "soldeer-commands"
 version = "0.4.1"
 dependencies = [
+ "bon",
  "clap",
  "cliclack",
  "derive_more",

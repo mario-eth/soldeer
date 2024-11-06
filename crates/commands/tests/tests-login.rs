@@ -41,9 +41,7 @@ async fn mock_api_server(status_code: Option<StatusCode>) -> (ServerGuard, Mock)
 
 #[tokio::test]
 async fn test_login_without_prompt_err_400() {
-    let cmd: Command =
-        Login { email: Some("test@test.com".to_string()), password: Some("111111".to_string()) }
-            .into();
+    let cmd: Command = Login::builder().email("test@test.com").password("111111").build().into();
     let res = run(cmd).await;
     assert_eq!(res.unwrap_err().to_string(), "error during login: http error during login: HTTP status client error (400 Bad Request) for url (https://api.soldeer.xyz/api/v1/auth/login)");
 }
@@ -54,9 +52,7 @@ async fn test_login_without_prompt_success() {
     let dir = testdir!();
     let login_file: PathBuf = dir.join("test_save_jwt");
 
-    let cmd: Command =
-        Login { email: Some("test@test.com".to_string()), password: Some("111111".to_string()) }
-            .into();
+    let cmd: Command = Login::builder().email("test@test.com").password("111111").build().into();
     let res = async_with_vars(
         [
             ("SOLDEER_API_URL", Some(server.url())),

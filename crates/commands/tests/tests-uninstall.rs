@@ -37,7 +37,7 @@ remappings_location = "config"
 #[tokio::test]
 async fn test_uninstall_one() {
     let dir = setup("soldeer.toml").await;
-    let cmd: Command = Uninstall { dependency: "solady".to_string() }.into();
+    let cmd: Command = Uninstall::builder().dependency("solady").build().into();
     let res =
         async_with_vars([("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))], run(cmd))
             .await;
@@ -54,12 +54,12 @@ async fn test_uninstall_one() {
 #[tokio::test]
 async fn test_uninstall_all() {
     let dir = setup("soldeer.toml").await;
-    let cmd: Command = Uninstall { dependency: "solady".to_string() }.into();
+    let cmd: Command = Uninstall::builder().dependency("solady").build().into();
     let res =
         async_with_vars([("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))], run(cmd))
             .await;
     assert!(res.is_ok(), "{res:?}");
-    let cmd: Command = Uninstall { dependency: "@openzeppelin-contracts".to_string() }.into();
+    let cmd: Command = Uninstall::builder().dependency("@openzeppelin-contracts").build().into();
     let res =
         async_with_vars([("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))], run(cmd))
             .await;
@@ -75,7 +75,7 @@ async fn test_uninstall_all() {
 #[tokio::test]
 async fn test_uninstall_foundry_config() {
     let dir = setup("foundry.toml").await;
-    let cmd: Command = Uninstall { dependency: "solady".to_string() }.into();
+    let cmd: Command = Uninstall::builder().dependency("solady").build().into();
     let res =
         async_with_vars([("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))], run(cmd))
             .await;

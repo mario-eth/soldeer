@@ -10,7 +10,9 @@ use soldeer_core::{
 use std::{env, path::PathBuf};
 
 /// Push a dependency to the repository
-#[derive(Debug, Clone, Parser)]
+#[derive(Debug, Clone, Parser, bon::Builder)]
+#[allow(clippy::duplicated_attributes)]
+#[builder(on(String, into), on(PathBuf, into))]
 #[clap(
     long_about = "Push a Dependency to the Repository
 
@@ -22,6 +24,7 @@ Examples:
 To ignore certain files, create a `.soldeerignore` file in the root of the project and add the files you want to ignore. The `.soldeerignore` uses the same syntax as `.gitignore`.",
     after_help = "For more information, read the README.md"
 )]
+#[non_exhaustive]
 pub struct Push {
     /// The dependency name and version, separated by a tilde.
     ///
@@ -36,11 +39,13 @@ pub struct Push {
 
     /// If set, does not publish the package but generates a zip file that can be inspected.
     #[arg(short, long, default_value_t = false)]
+    #[builder(default)]
     pub dry_run: bool,
 
     /// Use this if you want to skip the warnings that can be triggered when trying to push
     /// dotfiles like .env.
     #[arg(long, default_value_t = false)]
+    #[builder(default)]
     pub skip_warnings: bool,
 }
 

@@ -1,4 +1,5 @@
 use super::validate_dependency;
+use crate::ConfigLocation;
 use clap::Parser;
 use cliclack::{
     log::{remark, success, warning},
@@ -17,7 +18,8 @@ use soldeer_core::{
 use std::fs;
 
 /// Install a dependency
-#[derive(Debug, Clone, Default, Parser)]
+#[derive(Debug, Clone, Default, Parser, bon::Builder)]
+#[builder(on(String, into))]
 #[clap(
     long_about = "Install a dependency
 
@@ -33,6 +35,7 @@ Examples:
 - Add with git (branch): soldeer install lib_name~2.3.0 git@github.com:foo/bar.git --branch feature/baz",
     after_help = "For more information, read the README.md"
 )]
+#[non_exhaustive]
 pub struct Install {
     /// The dependency name and version, separated by a tilde. The version is always required.
     ///
@@ -62,16 +65,26 @@ pub struct Install {
 
     /// If set, this command will delete the existing remappings and re-create them
     #[arg(short = 'g', long, default_value_t = false)]
+    #[builder(default)]
     pub regenerate_remappings: bool,
 
     /// If set, this command will install dependencies recursively (via git submodules or via
     /// soldeer)
     #[arg(short = 'd', long, default_value_t = false)]
+    #[builder(default)]
     pub recursive_deps: bool,
 
     /// Perform a clean install by re-installing all dependencies
     #[arg(long, default_value_t = false)]
+    #[builder(default)]
     pub clean: bool,
+
+    /// Specify the config location without prompting.
+    ///
+    /// This prevents prompting the user if the automatic detection can't determine the config
+    /// location.
+    #[arg(long, value_enum)]
+    pub config_location: Option<ConfigLocation>,
 }
 
 pub(crate) async fn install_command(paths: &Paths, cmd: Install) -> Result<()> {

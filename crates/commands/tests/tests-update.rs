@@ -1,6 +1,6 @@
 use soldeer_commands::{
     commands::{install::Install, update::Update},
-    run, Command,
+    run, Command, ConfigLocation,
 };
 use soldeer_core::lock::read_lockfile;
 use std::{fs, path::PathBuf};
@@ -203,4 +203,40 @@ remappings_location = "config"
     assert!(deps.join("mario-1.0").exists());
     assert!(deps.join("mario-custom-tag-1.0").exists());
     assert!(deps.join("mario-custom-branch-1.0").exists());
+}
+
+#[tokio::test]
+async fn test_install_new_foundry_no_foundry_toml() {
+    let dir = testdir!();
+
+    let cmd: Command = Update::builder().config_location(ConfigLocation::Foundry).build().into();
+    let res =
+        async_with_vars([("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))], run(cmd))
+            .await;
+    assert!(res.is_ok(), "{res:?}");
+    let config = fs::read_to_string(dir.join("foundry.toml")).unwrap();
+    let expected = r#"[profile.default]
+src = "src"
+out = "out"
+libs = ["dependencies"]
+
+[dependencies]
+
+# See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
+"#;
+    assert_eq!(config, expected);
+}
+
+#[tokio::test]
+async fn test_install_new_soldeer_no_soldeer_toml() {
+    let dir = testdir!();
+
+    let cmd: Command = Update::builder().config_location(ConfigLocation::Soldeer).build().into();
+    let res =
+        async_with_vars([("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))], run(cmd))
+            .await;
+    assert!(res.is_ok(), "{res:?}");
+    let config = fs::read_to_string(dir.join("soldeer.toml")).unwrap();
+    let content = "[dependencies]\n";
+    assert_eq!(config, content);
 }

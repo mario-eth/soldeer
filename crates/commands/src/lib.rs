@@ -7,20 +7,43 @@ use std::env;
 
 pub mod commands;
 
+/// The location where the Soldeer config should be stored.
+///
+/// We re-implement the type from `soldeer_core` to avoid requiring the clap dependency to derive
+/// `ValueEnum`. Because of Rust's orphan rules, we can't implement `ValueEnum` for a type from
+/// another crate.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, clap::ValueEnum)]
+pub enum ConfigLocation {
+    /// Store config inside the `foundry.toml` file.
+    Foundry,
+
+    /// Store config inside the `soldeer.toml` file.
+    Soldeer,
+}
+
+impl From<ConfigLocation> for soldeer_core::config::ConfigLocation {
+    fn from(value: ConfigLocation) -> Self {
+        match value {
+            ConfigLocation::Foundry => Self::Foundry,
+            ConfigLocation::Soldeer => Self::Soldeer,
+        }
+    }
+}
+
 pub async fn run(command: Command) -> Result<()> {
     match command {
-        Command::Init(init) => {
+        Command::Init(cmd) => {
             intro("🦌 Soldeer Init 🦌")?;
             step("Initialize Foundry project to use Soldeer")?;
-            let paths = Paths::new()?;
-            commands::init::init_command(&paths, init).await.inspect_err(|_| {
+            let paths = Paths::with_config(cmd.config_location.map(Into::into))?;
+            commands::init::init_command(&paths, cmd).await.inspect_err(|_| {
                 outro_cancel("An error occurred during initialization").ok();
             })?;
             outro("Done initializing!")?;
         }
         Command::Install(cmd) => {
             intro("🦌 Soldeer Install 🦌")?;
-            let paths = Paths::new()?;
+            let paths = Paths::with_config(cmd.config_location.map(Into::into))?;
             commands::install::install_command(&paths, cmd).await.inspect_err(|_| {
                 outro_cancel("An error occurred during install").ok();
             })?;
@@ -28,7 +51,7 @@ pub async fn run(command: Command) -> Result<()> {
         }
         Command::Update(cmd) => {
             intro("🦌 Soldeer Update 🦌")?;
-            let paths = Paths::new()?;
+            let paths = Paths::with_config(cmd.config_location.map(Into::into))?;
             commands::update::update_command(&paths, cmd).await.inspect_err(|_| {
                 outro_cancel("An error occurred during the update").ok();
             })?;
@@ -42,9 +65,9 @@ pub async fn run(command: Command) -> Result<()> {
             })?;
             outro("Done uninstalling!")?;
         }
-        Command::Login(_) => {
+        Command::Login(cmd) => {
             intro("🦌 Soldeer Login 🦌")?;
-            commands::login::login_command().await.inspect_err(|_| {
+            commands::login::login_command(cmd).await.inspect_err(|_| {
                 outro_cancel("An error occurred during login").ok();
             })?;
             outro("Done logging in!")?;

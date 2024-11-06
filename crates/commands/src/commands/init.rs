@@ -1,3 +1,4 @@
+use crate::ConfigLocation;
 use clap::Parser;
 use cliclack::{
     log::{remark, success},
@@ -15,12 +16,22 @@ use soldeer_core::{
 use std::fs;
 
 /// Convert a Foundry project to use Soldeer
-#[derive(Debug, Clone, Default, Parser)]
+#[derive(Debug, Clone, Default, Parser, bon::Builder)]
+#[builder(on(String, into))]
 #[clap(after_help = "For more information, read the README.md")]
+#[non_exhaustive]
 pub struct Init {
     /// Clean the Foundry project by removing .gitmodules and the lib directory
     #[arg(long, default_value_t = false)]
+    #[builder(default)]
     pub clean: bool,
+
+    /// Specify the config location.
+    ///
+    /// This prevents prompting the user if the automatic detection can't determine the config
+    /// location.
+    #[arg(long, value_enum)]
+    pub config_location: Option<ConfigLocation>,
 }
 
 pub(crate) async fn init_command(paths: &Paths, cmd: Init) -> Result<()> {
@@ -28,7 +39,6 @@ pub(crate) async fn init_command(paths: &Paths, cmd: Init) -> Result<()> {
         remark("Flag `--clean` was set, removing `lib` dir and submodules")?;
         remove_forge_lib(&paths.root).await?;
     }
-
     let config = read_soldeer_config(&paths.config)?;
     success("Done reading config")?;
     ensure_dependencies_dir(&paths.dependencies)?;

@@ -17,12 +17,13 @@ version.workspace = true
 workspace = true
 
 [dependencies]
+bon.workspace = true
 clap.workspace = true
 cliclack.workspace = true
 derive_more.workspace = true
 email-address-parser = "2.0.0"
-soldeer-core = { path = "../core", version = "0.4.1", features = ["cli"] }
 rayon.workspace = true
+soldeer-core = { path = "../core", version = "0.4.1", features = ["cli"] }
 
 [dev-dependencies]
 mockito.workspace = true

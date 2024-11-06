@@ -60,9 +60,6 @@ pub enum ConfigError {
     #[error("config file is not valid: {0}")]
     Parsing(#[from] toml_edit::TomlError),
 
-    #[error("config file is missing the `[dependencies]` section")]
-    MissingDependencies,
-
     #[error("invalid user input: {source}")]
     PromptError { source: io::Error },
 

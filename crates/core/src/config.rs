@@ -83,8 +83,18 @@ impl Paths {
     ///
     /// The paths are canonicalized.
     pub fn new() -> Result<Self> {
+        Self::with_config(None)
+    }
+
+    /// Instantiate all the paths needed for Soldeer.
+    ///
+    /// The root path defaults to the current directory but can be overridden with the
+    /// `SOLDEER_PROJECT_ROOT` environment variable.
+    ///
+    /// The paths are canonicalized.
+    pub fn with_config(config_location: Option<ConfigLocation>) -> Result<Self> {
         let root = dunce::canonicalize(Self::get_root_path())?;
-        let config = Self::get_config_path(&root)?;
+        let config = Self::get_config_path(&root, config_location)?;
         let dependencies = root.join("dependencies");
         let lock = root.join("soldeer.lock");
         let remappings = root.join("remappings.txt");
@@ -99,7 +109,7 @@ impl Paths {
     /// The paths are canonicalized.
     pub fn from_root(root: impl AsRef<Path>) -> Result<Self> {
         let root = dunce::canonicalize(root.as_ref())?;
-        let config = Self::get_config_path(&root)?;
+        let config = Self::get_config_path(&root, None)?;
         let dependencies = root.join("dependencies");
         let lock = root.join("soldeer.lock");
         let remappings = root.join("remappings.txt");
@@ -127,17 +137,25 @@ impl Paths {
 
     /// Get the path to the config file or prompt the user to choose one (only with `cli` feature
     /// flag).
-    fn get_config_path(root: impl AsRef<Path>) -> Result<PathBuf> {
+    fn get_config_path(
+        root: impl AsRef<Path>,
+        config_location: Option<ConfigLocation>,
+    ) -> Result<PathBuf> {
         let foundry_path = root.as_ref().join("foundry.toml");
+        let soldeer_path = root.as_ref().join("soldeer.toml");
+        // use the user preference if available
+        if let Some(location) = config_location {
+            return create_or_modify_config(location, &foundry_path, &soldeer_path);
+        }
+
+        // auto-detect, or prompt the user if we can't determine the config path and the cli feature
+        // is enabled. Otherwise, we use `foundry.toml` by default.
         if let Ok(contents) = fs::read_to_string(&foundry_path) {
             let doc: DocumentMut = contents.parse::<DocumentMut>()?;
             if doc.contains_table("dependencies") {
                 return Ok(foundry_path);
             }
-        }
-
-        let soldeer_path = root.as_ref().join("soldeer.toml");
-        if soldeer_path.exists() {
+        } else if soldeer_path.exists() {
             return Ok(soldeer_path);
         }
 
@@ -156,6 +174,18 @@ impl Paths {
         let config_option = ConfigLocation::Foundry;
 
         create_or_modify_config(config_option, &foundry_path, &soldeer_path)
+    }
+
+    pub fn foundry_default() -> PathBuf {
+        let root: PathBuf =
+            dunce::canonicalize(Self::get_root_path()).expect("could not get the root");
+        root.join("foundry.toml")
+    }
+
+    pub fn soldeer_default() -> PathBuf {
+        let root: PathBuf =
+            dunce::canonicalize(Self::get_root_path()).expect("could not get the root");
+        root.join("soldeer.toml")
     }
 }
 
@@ -618,6 +648,15 @@ pub enum ConfigLocation {
     Soldeer,
 }
 
+impl From<ConfigLocation> for PathBuf {
+    fn from(value: ConfigLocation) -> Self {
+        match value {
+            ConfigLocation::Foundry => Paths::foundry_default(),
+            ConfigLocation::Soldeer => Paths::soldeer_default(),
+        }
+    }
+}
+
 /// Read the list of dependencies from the config file.
 ///
 /// Dependencies are stored in a TOML table under the `dependencies` key.
@@ -634,7 +673,7 @@ pub fn read_config_deps(path: impl AsRef<Path>) -> Result<Vec<Dependency>> {
     let contents = fs::read_to_string(path)?;
     let doc: DocumentMut = contents.parse::<DocumentMut>()?;
     let Some(Some(data)) = doc.get("dependencies").map(|v| v.as_table()) else {
-        return Err(ConfigError::MissingDependencies);
+        return Ok(Vec::new());
     };
 
     let mut dependencies: Vec<Dependency> = Vec::new();

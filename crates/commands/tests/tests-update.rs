@@ -220,11 +220,16 @@ async fn test_install_new_foundry_no_foundry_toml() {
             .await;
     assert!(res.is_ok(), "{res:?}");
     let config = fs::read_to_string(dir.join("foundry.toml")).unwrap();
-    let content = r#"[profile.default]
+    let expected = r#"[profile.default]
+src = "src"
+out = "out"
 libs = ["dependencies"]
 
-[dependencies]"#;
-    assert_eq!(config, content);
+[dependencies]
+
+# See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
+"#;
+    assert_eq!(config, expected);
 }
 
 #[tokio::test]
@@ -242,6 +247,6 @@ async fn test_install_new_soldeer_no_soldeer_toml() {
             .await;
     assert!(res.is_ok(), "{res:?}");
     let config = fs::read_to_string(dir.join("soldeer.toml")).unwrap();
-    let content = r#"[dependencies]"#;
+    let content = "[dependencies]\n";
     assert_eq!(config, content);
 }

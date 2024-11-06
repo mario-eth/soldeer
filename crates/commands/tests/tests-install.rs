@@ -571,8 +571,9 @@ remappings_location = "config"
     .await;
     assert!(res.is_ok(), "{res:?}");
 
-    let updated_contents = r#"[profile.default]
-remappings = ["!custom-f!forge-std-1.8.1/=dependencies/forge-std-1.8.1/"]
+    // since the remapping has been customized, it should not be updated when doing install
+    let expected = r#"[profile.default]
+remappings = ["@custom-f@forge-std-1.8.1/=dependencies/forge-std-1.8.1/"]
 
 [soldeer]
 remappings_prefix = "!custom-f!"
@@ -582,7 +583,7 @@ remappings_location = "config"
 forge-std = "1.8.1"
 "#;
 
-    assert_eq!(updated_contents, fs::read_to_string(dir.join("foundry.toml")).unwrap());
+    assert_eq!(expected, fs::read_to_string(dir.join("foundry.toml")).unwrap());
 }
 
 #[tokio::test]

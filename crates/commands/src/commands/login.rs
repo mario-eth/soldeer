@@ -7,8 +7,9 @@ use soldeer_core::{
 };
 
 /// Log into the central repository to push packages
-/// It saves the credentials by default into ~/.soldeer
-/// If you want to overwrite it set the SOLDEER_LOGIN_FILE env var
+///
+/// The credentials are saved by default into ~/.soldeer.
+/// If you want to overwrite that location, use the SOLDEER_LOGIN_FILE env var.
 #[derive(Debug, Clone, Default, Parser)]
 #[clap(after_help = "For more information, read the README.md")]
 pub struct Login {

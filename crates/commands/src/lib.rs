@@ -12,7 +12,7 @@ pub async fn run(command: Command) -> Result<()> {
         Command::Init(cmd) => {
             intro("🦌 Soldeer Init 🦌")?;
             step("Initialize Foundry project to use Soldeer")?;
-            let paths = Paths::new_with_config(cmd.config_location)?;
+            let paths = Paths::with_config(cmd.config_location)?;
             commands::init::init_command(&paths, cmd).await.inspect_err(|_| {
                 outro_cancel("An error occurred during initialization").ok();
             })?;
@@ -20,7 +20,7 @@ pub async fn run(command: Command) -> Result<()> {
         }
         Command::Install(cmd) => {
             intro("🦌 Soldeer Install 🦌")?;
-            let paths = Paths::new_with_config(cmd.config_location)?;
+            let paths = Paths::with_config(cmd.config_location)?;
             commands::install::install_command(&paths, cmd).await.inspect_err(|_| {
                 outro_cancel("An error occurred during install").ok();
             })?;
@@ -28,7 +28,7 @@ pub async fn run(command: Command) -> Result<()> {
         }
         Command::Update(cmd) => {
             intro("🦌 Soldeer Update 🦌")?;
-            let paths = Paths::new_with_config(cmd.config_location)?;
+            let paths = Paths::with_config(cmd.config_location)?;
             commands::update::update_command(&paths, cmd).await.inspect_err(|_| {
                 outro_cancel("An error occurred during the update").ok();
             })?;

@@ -9,7 +9,7 @@ pub mod uninstall;
 pub mod update;
 
 /// A minimal Solidity dependency manager
-#[derive(Parser, Debug)]
+#[derive(Parser, Debug, bon::Builder)]
 #[clap(name = "soldeer", author = "m4rio.eth", version)]
 #[non_exhaustive]
 pub struct Args {

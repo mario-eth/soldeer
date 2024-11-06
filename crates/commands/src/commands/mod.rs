@@ -32,6 +32,7 @@ pub enum Command {
 
 /// Display the version of Soldeer
 #[derive(Debug, Clone, Default, Parser)]
+#[non_exhaustive]
 pub struct Version {}
 
 fn validate_dependency(dep: &str) -> std::result::Result<String, String> {

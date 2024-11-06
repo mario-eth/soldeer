@@ -1,9 +1,5 @@
-use soldeer_commands::{commands::install::Install, run, Command};
-use soldeer_core::{
-    config::{read_config_deps, ConfigLocation},
-    download::download_file,
-    lock::read_lockfile,
-};
+use soldeer_commands::{commands::install::Install, run, Command, ConfigLocation};
+use soldeer_core::{config::read_config_deps, download::download_file, lock::read_lockfile};
 use std::{
     fs::{self},
     path::Path,

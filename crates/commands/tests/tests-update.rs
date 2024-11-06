@@ -1,8 +1,8 @@
 use soldeer_commands::{
     commands::{install::Install, update::Update},
-    run, Command,
+    run, Command, ConfigLocation,
 };
-use soldeer_core::{config::ConfigLocation, lock::read_lockfile};
+use soldeer_core::lock::read_lockfile;
 use std::{fs, path::PathBuf};
 use temp_env::async_with_vars;
 use testdir::testdir;

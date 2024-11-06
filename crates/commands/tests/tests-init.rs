@@ -1,9 +1,5 @@
-use soldeer_commands::{commands::init::Init, run, Command};
-use soldeer_core::{
-    config::{read_config_deps, ConfigLocation},
-    lock::read_lockfile,
-    utils::run_git_command,
-};
+use soldeer_commands::{commands::init::Init, run, Command, ConfigLocation};
+use soldeer_core::{config::read_config_deps, lock::read_lockfile, utils::run_git_command};
 use std::fs;
 use temp_env::async_with_vars;
 use testdir::testdir;

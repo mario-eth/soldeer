@@ -1,10 +1,11 @@
+use crate::ConfigLocation;
 use clap::Parser;
 use cliclack::{
     log::{remark, success},
     multi_progress,
 };
 use soldeer_core::{
-    config::{add_to_config, read_soldeer_config, update_config_libs, ConfigLocation, Paths},
+    config::{add_to_config, read_soldeer_config, update_config_libs, Paths},
     install::{ensure_dependencies_dir, install_dependency, Progress},
     lock::add_to_lockfile,
     registry::get_latest_version,
@@ -22,9 +23,10 @@ pub struct Init {
     #[arg(long, default_value_t = false)]
     pub clean: bool,
 
-    /// Specify the config location without prompting.
-    /// Should be: `foundry` for foundry.toml
-    /// or `soldeer` for soldeer.toml
+    /// Specify the config location.
+    ///
+    /// This prevents prompting the user if the automatic detection can't determine the config
+    /// location.
     #[arg(long, value_enum)]
     pub config_location: Option<ConfigLocation>,
 }

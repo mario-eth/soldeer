@@ -1,4 +1,5 @@
 use super::validate_dependency;
+use crate::ConfigLocation;
 use clap::Parser;
 use cliclack::{
     log::{remark, success, warning},
@@ -6,8 +7,7 @@ use cliclack::{
 };
 use soldeer_core::{
     config::{
-        add_to_config, read_config_deps, read_soldeer_config, ConfigLocation, Dependency,
-        GitIdentifier, Paths,
+        add_to_config, read_config_deps, read_soldeer_config, Dependency, GitIdentifier, Paths,
     },
     errors::{InstallError, LockError},
     install::{ensure_dependencies_dir, install_dependencies, install_dependency, Progress},
@@ -75,8 +75,9 @@ pub struct Install {
     pub clean: bool,
 
     /// Specify the config location without prompting.
-    /// Should be: `foundry` for foundry.toml
-    /// or `soldeer` for soldeer.toml
+    ///
+    /// This prevents prompting the user if the automatic detection can't determine the config
+    /// location.
     #[arg(long, value_enum)]
     pub config_location: Option<ConfigLocation>,
 }

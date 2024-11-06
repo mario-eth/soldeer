@@ -1,7 +1,8 @@
+use crate::ConfigLocation;
 use clap::Parser;
 use cliclack::{log::success, multi_progress};
 use soldeer_core::{
-    config::{read_config_deps, read_soldeer_config, ConfigLocation, Dependency, Paths},
+    config::{read_config_deps, read_soldeer_config, Dependency, Paths},
     errors::LockError,
     install::{ensure_dependencies_dir, Progress},
     lock::{generate_lockfile_contents, read_lockfile},
@@ -25,8 +26,9 @@ pub struct Update {
     pub recursive_deps: bool,
 
     /// Specify the config location without prompting.
-    /// Should be: `foundry` for foundry.toml
-    /// or `soldeer` for soldeer.toml
+    ///
+    /// This prevents prompting the user if the automatic detection can't determine the config
+    /// location.
     #[arg(long, value_enum)]
     pub config_location: Option<ConfigLocation>,
 }

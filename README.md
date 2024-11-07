@@ -23,7 +23,7 @@ Available documentation in [USAGE](./USAGE.md) or [Foundry Book](https://book.ge
 
 Please see [Changelogs](./CHANGES.md) for more information.
 
-### HOW TO INSTALL IT (FOUNDRY)
+## HOW TO INSTALL IT (FOUNDRY)
 
 Soldeer is already integrated in foundry. You can use it by running the following command:
 
@@ -31,22 +31,26 @@ Soldeer is already integrated in foundry. You can use it by running the followin
 foundry soldeer [COMMAND]
 ```
 
-### HOW TO INSTALL IT (CLI)
+## HOW TO INSTALL IT (CLI)
 
 ```bash
 cargo install soldeer
 ```
 
-#### Check if installation was successful
+### Check if installation was successful
 
 ```bash
 soldeer help
 ```
 
-### Install from sources
+## Install from sources
 
 `cargo build --release` and use the `soldeer` binary from `target/release/`.
 
 ## HOW TO USE IT
 
 Please see [USAGE](./USAGE.md) for more information.
+
+## CONTRIBUTING
+
+See [CONTRIBUTING](./CONTRIBUTING.md) for more information.

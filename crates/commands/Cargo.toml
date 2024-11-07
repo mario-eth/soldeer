@@ -1,13 +1,13 @@
 [package]
-name = "soldeer-commands"
-description = "High-level commands for the Soldeer CLI"
 authors.workspace = true
 categories.workspace = true
+description = "High-level commands for the Soldeer CLI"
 edition.workspace = true
 exclude.workspace = true
 homepage.workspace = true
 keywords.workspace = true
 license.workspace = true
+name = "soldeer-commands"
 readme.workspace = true
 repository.workspace = true
 rust-version.workspace = true
@@ -23,7 +23,7 @@ cliclack.workspace = true
 derive_more.workspace = true
 email-address-parser = "2.0.0"
 rayon.workspace = true
-soldeer-core = { path = "../core", version = "0.4.1", features = ["cli"] }
+soldeer-core = {path = "../core", version = "0.5.0", features = ["cli"]}
 
 [dev-dependencies]
 mockito.workspace = true

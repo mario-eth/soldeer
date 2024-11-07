@@ -1,13 +1,13 @@
 [package]
-name = "soldeer"
-description.workspace = true
 authors.workspace = true
 categories.workspace = true
+description.workspace = true
 edition.workspace = true
 exclude.workspace = true
 homepage.workspace = true
 keywords.workspace = true
 license.workspace = true
+name = "soldeer"
 readme.workspace = true
 repository.workspace = true
 rust-version.workspace = true
@@ -21,6 +21,6 @@ name = "soldeer"
 path = "src/main.rs"
 
 [dependencies]
-soldeer-commands = { path = "../commands", version = "0.4.1" }
+soldeer-commands = {path = "../commands", version = "0.5.0"}
 tokio.workspace = true
-yansi = { version = "1.0.1", features = ["detect-tty", "detect-env"] }
+yansi = {version = "1.0.1", features = ["detect-tty", "detect-env"]}

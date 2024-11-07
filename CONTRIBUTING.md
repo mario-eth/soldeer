@@ -74,10 +74,6 @@ If you have examples of other tools that have the feature you are requesting, pl
 
 Pull requests are the way concrete changes are made to the code, documentation, and dependencies of Soldeer.
 
-Even minor pull requests, such as those fixing wording, are greatly appreciated. Before making a large change, it is usually
-a good idea to first open an issue describing the change to solicit feedback and guidance. This will increase
-the likelihood of the PR getting merged.
-
 Please also make sure that the following commands pass if you have changed the code:
 
 ```sh
@@ -108,8 +104,6 @@ Types of tests include:
 - **Unit tests**: Functions which have very specific tasks should be unit tested.
 - **Integration tests**: For general purpose, far reaching functionality, integration tests should be added.
   The best way to add a new integration test is to look at existing ones and follow the style.
-
-Tests that use forking must contain "fork" in their name.
 
 #### Commits
 
@@ -174,14 +168,6 @@ Be aware that _how_ you communicate requests and reviews in your feedback can ha
 If a pull request appears to be abandoned or stalled, it is polite to first check with the contributor to see if they intend to continue the work before checking if they would mind if you took it over (especially if it just has nits left). When doing so, it is courteous to give the original contributor credit for the work they started, either by preserving their name and e-mail address in the commit log, or by using the `Author: ` or `Co-authored-by: ` metadata tag in the commits.
 
 _Adapted from the [ethers-rs contributing guide](https://github.com/gakonst/ethers-rs/blob/master/CONTRIBUTING.md)_.
-
-### Releasing
-
-Releases are automatically done by the release workflow when a tag is pushed, however, these steps still need to be taken:
-
-1. Ensure that the versions in the relevant `Cargo.toml` files are up-to-date.
-2. Update documentation links
-3. Perform a final audit for breaking changes.
 
 [rust-coc]: https://github.com/rust-lang/rust/blob/master/CODE_OF_CONDUCT.md
 [mcve]: https://stackoverflow.com/help/mcve

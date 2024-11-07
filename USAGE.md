@@ -39,7 +39,7 @@ The syntax is `soldeer install <dependency>~<version> <git-url>`. This will clon
 You can also use a certain commit as a dependency
 
 ```bash
-soldeer install <dependency>~<version> git:<url> <commit>
+soldeer install <dependency>~<version> --rev <commit>
 ```
 
 Some example
@@ -64,14 +64,14 @@ Or using custom commit hashes
 [forge] soldeer install
 ```
 
-This command will install all the dependencies from the `soldeer.toml`/`foundry.toml` file.
+The command will install all the dependencies from the `soldeer.toml`/`foundry.toml` file.
 
 ### How to push a new dependency to the repository
 
 In order to push a new dependency to the repository you have create an account on [https://soldeer.xyz](https://soldeer.xyz), create a project that it will match the dependency name.
 
 Example:
-Create a project called `my-project` and then use the `[forge] soldeer push my-project~v1.0`. This will push the project to the repository and it will be available for everyone to use.
+Create a project called `my-project` and then use the `[forge] soldeer push my-project~1.0.0`. This will push the project to the repository and it will be available for everyone to use.
 Before using the push command you have to use `[forge] soldeer login` to login to the repository.
 
 #### Pushing a certain directory
@@ -80,7 +80,9 @@ If you want to push a certain directory from your project you can use the `[forg
 
 #### Ignoring files
 
-If you want to ignore certain files from the push you need to create a `.soldeerignore` file that will contain the files that you want to ignore. The file should be in the root of the project. This file mimics `.gitignore` syntax.
+If you want to ignore certain files from the push you need to create one or more `.soldeerignore` files that will contain the patterns that you want to ignore. These files can be at any level of your directory structure. They use the `.gitignore` syntax.
+
+Any file that matches a pattern present in `.gitignore` and `.ignore` files is also automatically excluded.
 
 #### Dry Run
 
@@ -88,7 +90,7 @@ If you want to dry run a push to inspect what files will be pushed to the centra
 
 **Warning** ⚠️
 
-You are at risk to push sensitive files to the central repository that then can be seen by everyone. Make sure to exclude sensitive files in the `.soldeerignore` file.
+You are at risk to push sensitive files to the central repository that then can be seen by everyone. Make sure to exclude sensitive files in the `.soldeerignore` or `.gitignore` file.
 Furthermore, we've implemented a warning that it will be triggered if you try to push a project that contains any `.dot` files/directories.
 If you want to skip this warning, you can just use
 
@@ -104,12 +106,12 @@ The remappings are now fully configurable, the foundry/soldeer TOML files accept
 ```toml
 [soldeer]
 # whether soldeer manages remappings
-remappings_generated = true
+remappings_generate = true
 
 # whether soldeer re-generates all remappings when installing, updating or uninstalling deps
 remappings_regenerate = false
 
-# whether to suffix the remapping with the version: `name-a.b.c`
+# whether to suffix the remapping with the version requirement string: `name-a.b.c`
 remappings_version = true
 
 # a prefix to add to the remappings ("@" would give `@name`)
@@ -119,7 +121,7 @@ remappings_prefix = ""
 # ignored when `soldeer.toml` is used as config (uses `remappings.txt`)
 remappings_location = "txt"
 
-# whether to install sub-dependencies or not. If true this wil install the dependencies of dependencies 1 level down.
+# whether to install sub-dependencies or not. If true this wil install the dependencies of dependencies recursively.
 recursive_deps = false
 ```
 
@@ -163,8 +165,6 @@ For more commands use `[forge] soldeer --help`.
 ### CAVEATS
 
 The "add to remappings" feature only appends to the remappings.txt file and does not delete old dependencies. If you want to remove a dependency from remappings, you must do it manually.
-
-If you use other dependency managers, such as git submodules or npm, ensure you don't duplicate dependencies between soldeer and the other manager.
 
 ### Dependencies maintenance
 

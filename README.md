@@ -21,7 +21,7 @@ Available documentation in [USAGE](./USAGE.md) or [Foundry Book](https://book.ge
 
 ## Version 0.5.0
 
-Please see [Changelogs](./CHANGES.md) for more information.
+Please see the [Changelog](./CHANGES.md) for more information.
 
 ## HOW TO INSTALL IT (FOUNDRY)
 

@@ -64,7 +64,7 @@ Or using custom commit hashes
 [forge] soldeer install
 ```
 
-The command will install all the dependencies from the `soldeer.toml`/`foundry.toml` file.
+The command will install all the dependencies from the `soldeer.toml`/`foundry.toml` file, and will use the version inside of the `soldeer.lock` file if present.
 
 ### How to push a new dependency to the repository
 
@@ -165,6 +165,8 @@ For more commands use `[forge] soldeer --help`.
 ### CAVEATS
 
 The "add to remappings" feature only appends to the remappings.txt file and does not delete old dependencies. If you want to remove a dependency from remappings, you must do it manually.
+
+If you use other dependency managers, such as git submodules or npm, ensure you don't duplicate dependencies between soldeer and the other manager. Optionally, you can set the `regenerate_remappings = true` in the config so that the remappings are generated from scratch.
 
 ### Dependencies maintenance
 

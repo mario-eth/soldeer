@@ -13,44 +13,48 @@ Soldeer is a package manager for Solidity built in Rust and integrated into Foun
 Solidity development started to become more and more complex. The need for a package manager was evident.
 This project was started to solve the following issues:
 
-- git submodules in foundry are not a good solution for managing dependencies
-- npmjs was built for the js ecosystem not for solidity
+- git submodules in Foundry are not a good solution for managing dependencies
+- npmjs was built for the JS ecosystem, not for Solidity
 - github versioning of the releases is a pain and not all the projects are using it correctly
 
-Available documentation in [USAGE](./USAGE.md) or [Foundry Book](https://book.getfoundry.sh/projects/soldeer)
+## Installation (Foundry)
 
-## Version 0.5.0
-
-Please see the [Changelog](./CHANGES.md) for more information.
-
-## HOW TO INSTALL IT (FOUNDRY)
-
-Soldeer is already integrated in foundry. You can use it by running the following command:
+Soldeer is already integrated into Foundry. You can use it by running the following command:
 
 ```bash
-foundry soldeer [COMMAND]
+forge soldeer [COMMAND]
 ```
 
-## HOW TO INSTALL IT (CLI)
+To check which version of Soldeer is packaged with your Foundry install, run `forge soldeer version`.
+
+## Installation (standalone)
+
+Soldeer is available on [crates.io](https://crates.io/crates/soldeer) and can be installed with:
 
 ```bash
 cargo install soldeer
 ```
 
-### Check if installation was successful
+### Verify installation
 
 ```bash
 soldeer help
 ```
 
-## Install from sources
+## Compile from Source
 
-`cargo build --release` and use the `soldeer` binary from `target/release/`.
+Clone this repository, then run `cargo build --release` inside the root.
 
-## HOW TO USE IT
+The `soldeer` binary will be located inside the `target/release/` folder.
 
-Please see [USAGE](./USAGE.md) for more information.
+## Usage
 
-## CONTRIBUTING
+Check out the [usage guide](./USAGE.md) or [Foundry Book](https://book.getfoundry.sh/projects/soldeer).
 
-See [CONTRIBUTING](./CONTRIBUTING.md) for more information.
+## Changelog
+
+Please see the [changelog](./CHANGES.md) for more information about each release.
+
+## Contributing
+
+See the [contribution guide](./CONTRIBUTING.md) for more information.

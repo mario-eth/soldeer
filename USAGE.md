@@ -40,7 +40,7 @@ The command also adds the dependency to the project's config file and creates th
 
 #### Version Requirement
 
-The `VERSION` string is a version requirement string and can use operators and wildcards to match a range of versions.
+The `VERSION` argument is a version requirement string and can use operators and wildcards to match a range of versions.
 By default, if no operator is provided, it defaults to `=` which means "exactly this version".
 
 Examples:
@@ -66,7 +66,8 @@ select from. Dependencies specified with a custom URL do not use the version req
 [forge] soldeer install <NAME>~<VERSION> <ZIP_URL>
 ```
 
-If the URL to a ZIP file is provided, the registry is not used and the file is downloaded from the URL directly.
+If the URL to a ZIP file is provided, the registry is not used and the file is downloaded from the URL directly. Note
+that a version must still be provided, but it can be freely chosen.
 
 #### Git Repository
 
@@ -99,6 +100,8 @@ Some examples:
 [forge] soldeer install test-project~v1 git@github.com:test/test.git --tag v1
 ```
 
+Note that a version must still be provided, but it can be freely chosen.
+
 ## Installing Existing Dependencies
 
 ```bash
@@ -108,7 +111,9 @@ Some examples:
 When invoked without arguments, the `install` command installs the project's existing dependencies by looking at the
 configuration file (`soldeer.toml`/`foundry.toml`) and lockfile `soldeer.lock` if present.
 
-Dependencies which are already present inside the `dependencies` folder are not downloaded again.
+Dependencies which are already present inside the `dependencies` folder are not downloaded again. For dependencies with
+a version range specified in the config file, the exact version that is written in the lockfile is used, even if a
+newer version exists on the registry. To update the lockfile to use the latest supported version, use `soldeer update`.
 
 ### Recursive Installation
 
@@ -154,9 +159,6 @@ remappings = ["@openzeppelin-contracts-5/=dependencies/@openzeppelin-contracts-5
 
 [dependencies]
 "@openzeppelin-contracts" = "5"
-
-[soldeer]
-remappings_generate = true
 ```
 
 ```solidity
@@ -172,9 +174,11 @@ This approach should ensure that the correct version (or at least a compatible v
 ```
 
 For dependencies from the online registry which specify a version range, the `update` command can be used to retrieve
-the latest version that matches the requirements. The `soldeer.lock` lockfile is then updated accordingly.
+the latest version that matches the requirements. The `soldeer.lock` lockfile is then updated accordingly. Remappings
+are automatically updated to the new version if Soldeer is configured to generate remappings.
 
-Remappings are automatically updated to the new version if Soldeer is configured to generate remappings.
+For git dependencies which specify no identifier or a branch identifier, the `update` command checks out the latest
+commit on the default or specified branch.
 
 ## Removing a Dependency
 
@@ -239,8 +243,9 @@ name starting with `.`). This warning can be ignored with `--skip-warnings`.
 
 ## Configuration
 
-The `foundry.toml`/`soldeer.toml` file can have a `[soldeer]` section to configure the tool's behavior. See the default
-configuration below:
+The `foundry.toml`/`soldeer.toml` file can have a `[soldeer]` section to configure the tool's behavior.
+
+See the default configuration below:
 
 ```toml
 [soldeer]
@@ -266,7 +271,7 @@ recursive_deps = false
 
 ## List of Available Commands
 
-For more commands and their usage, see `[forge] soldeer --help`.
+For more commands and their usage, see `[forge] soldeer --help` and `[forge] soldeer <COMMAND> --help`.
 
 ## Remappings Caveats
 

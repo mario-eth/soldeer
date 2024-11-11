@@ -23,7 +23,7 @@ cliclack.workspace = true
 derive_more.workspace = true
 email-address-parser = "2.0.0"
 rayon.workspace = true
-soldeer-core = { path = "../core", version = "0.4.1", features = ["cli"] }
+soldeer-core = { path = "../core", version = "0.5", features = ["cli"] }
 
 [dev-dependencies]
 mockito.workspace = true

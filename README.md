@@ -25,7 +25,7 @@ Soldeer is already integrated into foundry. You can use it by running the follow
 forge soldeer [COMMAND]
 ```
 
-To check which version of soldeer is packaged with your foundry install, run `forge soldeer version`.
+To check which version of Soldeer is packaged with your foundry install, run `forge soldeer version`.
 
 ## Installation (standalone)
 

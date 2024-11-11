@@ -13,19 +13,19 @@ Soldeer is a package manager for Solidity built in Rust and integrated into Foun
 Solidity development started to become more and more complex. The need for a package manager was evident.
 This project was started to solve the following issues:
 
-- git submodules in foundry are not a good solution for managing dependencies
+- git submodules in Foundry are not a good solution for managing dependencies
 - npmjs was built for the JS ecosystem, not for Solidity
 - github versioning of the releases is a pain and not all the projects are using it correctly
 
-## Installation (foundry)
+## Installation (Foundry)
 
-Soldeer is already integrated into foundry. You can use it by running the following command:
+Soldeer is already integrated into Foundry. You can use it by running the following command:
 
 ```bash
 forge soldeer [COMMAND]
 ```
 
-To check which version of Soldeer is packaged with your foundry install, run `forge soldeer version`.
+To check which version of Soldeer is packaged with your Foundry install, run `forge soldeer version`.
 
 ## Installation (standalone)
 
@@ -41,7 +41,7 @@ cargo install soldeer
 soldeer help
 ```
 
-## Compile from source
+## Compile from Source
 
 Clone this repository, then run `cargo build --release` inside the root.
 

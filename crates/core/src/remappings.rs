@@ -591,7 +591,7 @@ lib2 = "2.0.0"
             vec!["lib1-1.0.0/=dependencies/lib1-1.0.0/", "lib2-2.0.0/=dependencies/lib2-2.0.0/"]
         );
 
-        // extra entries are removed
+        // extra entries are kep
         let existing_deps = vec![
             ("lib1-1.0.0/", "dependencies/lib1-1.0.0/"),
             ("lib2-2.0.0/", "dependencies/lib2-2.0.0/"),
@@ -601,7 +601,11 @@ lib2 = "2.0.0"
         assert!(res.is_ok(), "{res:?}");
         assert_eq!(
             res.unwrap(),
-            vec!["lib1-1.0.0/=dependencies/lib1-1.0.0/", "lib2-2.0.0/=dependencies/lib2-2.0.0/"]
+            vec![
+                "lib1-1.0.0/=dependencies/lib1-1.0.0/",
+                "lib2-2.0.0/=dependencies/lib2-2.0.0/",
+                "lib3/=dependencies/lib3/"
+            ]
         );
     }
 

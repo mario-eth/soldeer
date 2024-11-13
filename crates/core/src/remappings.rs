@@ -257,33 +257,30 @@ fn generate_remappings(
                             item.split_once('=').expect("remappings should have two parts");
                         // try to find all existing items pointing to a matching dependency folder
                         let mut found = false;
-                        existing_remappings = existing_remappings
-                            .into_iter()
-                            .filter(|(existing_remapped, existing_og)| {
-                                // only keep the first two components of the path (`dependencies`
-                                // folder and the dependency folder)
+                        existing_remappings.retain(|(existing_remapped, existing_og)| {
+                            // only keep the first two components of the path (`dependencies`
+                            // folder and the dependency folder)
+                            let path: PathBuf =
+                                PathBuf::from(existing_og).components().take(2).collect();
+                            // if path matches, we should update the item's path with the new
+                            // one and add it to the final list
+                            if path_matches(&dep, path) {
                                 let path: PathBuf =
                                     PathBuf::from(existing_og).components().take(2).collect();
-                                // if path matches, we should update the item's path with the new
-                                // one and add it to the final list
-                                if path_matches(&dep, path) {
-                                    let path: PathBuf =
-                                        PathBuf::from(existing_og).components().take(2).collect();
-                                    let existing_og_updated = existing_og.replace(
-                                        path.to_slash_lossy().as_ref(),
-                                        item_og.trim_end_matches('/'),
-                                    );
-                                    new_remappings
-                                        .push(format!("{existing_remapped}={existing_og_updated}"));
-                                    found = true;
-                                    // we remove this item from the existing remappings list as it's
-                                    // been processed
-                                    return false;
-                                }
-                                // keep this item to add it to the remappings again later
-                                true
-                            })
-                            .collect();
+                                let existing_og_updated = existing_og.replace(
+                                    path.to_slash_lossy().as_ref(),
+                                    item_og.trim_end_matches('/'),
+                                );
+                                new_remappings
+                                    .push(format!("{existing_remapped}={existing_og_updated}"));
+                                found = true;
+                                // we remove this item from the existing remappings list as it's
+                                // been processed
+                                return false;
+                            }
+                            // keep this item to add it to the remappings again later
+                            true
+                        });
                         if !found {
                             new_remappings.push(item);
                         }

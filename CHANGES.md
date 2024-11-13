@@ -1,5 +1,7 @@
 # Changelog
 
+## Current Version 0.5.1
+
 ## Version 0.5.0 introduces the following breaking changes
 
 [Changelog](https://github.com/mario-eth/soldeer/compare/v0.4.1..0.5.0)

@@ -249,33 +249,45 @@ fn generate_remappings(
                     new_remappings =
                         new_remappings_info.into_iter().map(|i| i.remapping_string).collect();
                 } else {
+                    let mut existing_remappings = Vec::from(existing_remappings);
                     for RemappingInfo { remapping_string: item, dependency: dep } in
                         new_remappings_info
                     {
                         let (_, item_og) =
                             item.split_once('=').expect("remappings should have two parts");
-                        // Try to find an existing item pointing to a matching dependency folder
-                        if let Some((existing_remapped, existing_og)) =
-                            existing_remappings.iter().find(|(_, og)| {
-                                // only keep the first two components of the path (dependencies
-                                // folder and the dependency folder)
-                                let path: PathBuf =
-                                    PathBuf::from(og).components().take(2).collect();
-                                path_matches(&dep, path)
-                            })
-                        {
-                            // If found, we restore it, replacing the old version with the new one
+                        // try to find all existing items pointing to a matching dependency folder
+                        let mut found = false;
+                        existing_remappings.retain(|(existing_remapped, existing_og)| {
+                            // only keep the first two components of the path (`dependencies`
+                            // folder and the dependency folder)
                             let path: PathBuf =
                                 PathBuf::from(existing_og).components().take(2).collect();
-                            let existing_og_updated = existing_og.replace(
-                                path.to_slash_lossy().as_ref(),
-                                item_og.trim_end_matches('/'),
-                            );
-                            new_remappings
-                                .push(format!("{existing_remapped}={existing_og_updated}"));
-                        } else {
+                            // if path matches, we should update the item's path with the new
+                            // one and add it to the final list
+                            if path_matches(&dep, path) {
+                                let path: PathBuf =
+                                    PathBuf::from(existing_og).components().take(2).collect();
+                                let existing_og_updated = existing_og.replace(
+                                    path.to_slash_lossy().as_ref(),
+                                    item_og.trim_end_matches('/'),
+                                );
+                                new_remappings
+                                    .push(format!("{existing_remapped}={existing_og_updated}"));
+                                found = true;
+                                // we remove this item from the existing remappings list as it's
+                                // been processed
+                                return false;
+                            }
+                            // keep this item to add it to the remappings again later
+                            true
+                        });
+                        if !found {
                             new_remappings.push(item);
                         }
+                    }
+                    // add extra existing remappings back
+                    for (existing_remapped, existing_og) in existing_remappings {
+                        new_remappings.push(format!("{existing_remapped}={existing_og}"));
                     }
                 }
             }
@@ -579,7 +591,7 @@ lib2 = "2.0.0"
             vec!["lib1-1.0.0/=dependencies/lib1-1.0.0/", "lib2-2.0.0/=dependencies/lib2-2.0.0/"]
         );
 
-        // extra entries are removed
+        // extra entries are kep
         let existing_deps = vec![
             ("lib1-1.0.0/", "dependencies/lib1-1.0.0/"),
             ("lib2-2.0.0/", "dependencies/lib2-2.0.0/"),
@@ -589,7 +601,11 @@ lib2 = "2.0.0"
         assert!(res.is_ok(), "{res:?}");
         assert_eq!(
             res.unwrap(),
-            vec!["lib1-1.0.0/=dependencies/lib1-1.0.0/", "lib2-2.0.0/=dependencies/lib2-2.0.0/"]
+            vec![
+                "lib1-1.0.0/=dependencies/lib1-1.0.0/",
+                "lib2-2.0.0/=dependencies/lib2-2.0.0/",
+                "lib3/=dependencies/lib3/"
+            ]
         );
     }
 
@@ -835,5 +851,33 @@ lib2 = "2"
             res.unwrap(),
             vec!["lib1-1/=dependencies/lib1-1.2.0/src/", "lib2/=dependencies/lib2-2.1.0/src/"]
         );
+    }
+
+    #[test]
+    fn test_generate_remappings_duplicates() {
+        let dir = testdir!();
+        let contents = r#"[profile.default]
+remappings = [
+    "@openzeppelin-contracts/=dependencies/@openzeppelin-contracts-5.0.2/",
+    "@openzeppelin/contracts/=dependencies/@openzeppelin-contracts-5.0.2/",
+    "foo/=bar/",
+]
+
+[dependencies]
+"@openzeppelin-contracts" = "5.0.2"
+"#;
+        fs::write(dir.join("foundry.toml"), contents).unwrap();
+        let paths = Paths::from_root(&dir).unwrap();
+        fs::create_dir_all(paths.dependencies.join("@openzeppelin-contracts-5.0.2")).unwrap();
+        let res = remappings_foundry(
+            &RemappingsAction::Update,
+            &paths,
+            &SoldeerConfig {
+                remappings_location: RemappingsLocation::Config,
+                ..Default::default()
+            },
+        );
+        assert!(res.is_ok(), "{res:?}");
+        assert_eq!(fs::read_to_string(dir.join("foundry.toml")).unwrap(), contents);
     }
 }

@@ -1,0 +1,38 @@
+name: 💡 Feature Request
+description: Suggest a feature for Soldeer
+labels: ['enhancement']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to suggest a feature!
+        Please fill out the sections below to help us understand your request.
+  - type: checkboxes
+    attributes:
+      label: 'I have checked the following:'
+      options:
+        - label: 'I have searched the issues of this repository and believe that this is not a duplicate.'
+          required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What problem are you facing that you believe this feature would solve?
+      placeholder: A clear and concise description of what the problem is.
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Solution
+      description: Describe the solution you'd like to see.
+      placeholder: A clear and concise description of what you want to happen.
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional Context
+      description: Add any other context or screenshots about the feature request here.
+    validations:
+      required: false

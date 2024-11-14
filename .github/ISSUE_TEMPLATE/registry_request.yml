@@ -1,0 +1,39 @@
+name: 📦 Registry Addition
+description: Suggest a missing package for the Soldeer registry.
+labels: ['add-dependency']
+assignees: ['mario-eth']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to suggest a package for the Soldeer registry!
+        Please fill out the sections below to help us understand your request.
+  - type: checkboxes
+    attributes:
+      label: 'I have checked the following:'
+      options:
+        - label: 'I have searched the issues of this repository and believe that this is not a duplicate.'
+          required: true
+  - type: input
+    id: package-name
+    attributes:
+      label: Package Name
+      description: What is the name of the package you would like to see added to the registry?
+      placeholder: soldeer-package-name
+    validations:
+      required: true
+  - type: input
+    id: project-url
+    attributes:
+      label: Project URL
+      description: Provide a link to the package repository or documentation.
+      placeholder: https://github.com/...
+    validations:
+      required: true
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional Context
+      description: Add any context to help us understand why this package should be added.
+    validations:
+      required: false

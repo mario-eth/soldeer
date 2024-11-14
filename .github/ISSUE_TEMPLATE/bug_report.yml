@@ -1,0 +1,63 @@
+name: 🐛 Bug Report
+description: Report an issue found in Soldeer.
+labels: ['bug']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug!
+        Please fill out the sections below to help us reproduce and fix the bug as quickly as possible.
+  - type: checkboxes
+    attributes:
+      label: 'I have checked the following:'
+      options:
+        - label: 'I have searched the issues of this repository and believe that this is not a duplicate.'
+          required: true
+        - label: 'I have checked that the bug is reproducible with the latest version of Soldeer.'
+          required: true
+  - type: input
+    id: version
+    attributes:
+      label: Soldeer Version
+      description: What is the result of running `soldeer version` or `forge soldeer version`
+      placeholder: soldeer x.y.z
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What Happened?
+      description: Describe the issue you are experiencing.
+      placeholder: A clear and concise description of what the bug is.
+    validations:
+      required: true
+  - type: textarea
+    id: expected-behavior
+    attributes:
+      label: Expected Behavior
+      description: Describe what you expected to happen.
+      placeholder: A clear and concise description of what you expected to happen in such a case.
+    validations:
+      required: false
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction Steps
+      description: Provide a detailed list of steps to reproduce the issue.
+      placeholder: |
+        1. Insert the "..." options into the config file
+        2. Run the command `...`
+        3. Observe that ... happens
+    validations:
+      required: false
+  - type: textarea
+    id: configuration
+    attributes:
+      label: Configuration
+      description: Provide the relevant sections of your `foundry.toml` or `soldeer.toml` file
+      render: toml
+      placeholder: |
+        [soldeer]
+        # Insert the relevant configuration options here
+    validations:
+      required: false

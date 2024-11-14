@@ -5,7 +5,7 @@
 [license-badge]: https://img.shields.io/badge/License-MIT-blue.svg
 
 <p align="center">
-  <img src="./logo/soldeer_logo_outline_512.png" />
+  <img src="https://github.com/mario-eth/soldeer/raw/main/logo/soldeer_logo_outline_512.png" />
 </p>
 
 Soldeer is a package manager for Solidity built in Rust and integrated into Foundry.
@@ -49,12 +49,13 @@ The `soldeer` binary will be located inside the `target/release/` folder.
 
 ## Usage
 
-Check out the [usage guide](./USAGE.md) or [Foundry Book](https://book.getfoundry.sh/projects/soldeer).
+Check out the [usage guide](https://github.com/mario-eth/soldeer/blob/main/USAGE.md) or
+[Foundry Book](https://book.getfoundry.sh/projects/soldeer).
 
 ## Changelog
 
-Please see the [changelog](./CHANGES.md) for more information about each release.
+Please see the [changelog](https://github.com/mario-eth/soldeer/blob/main/CHANGES.md) for more information about each release.
 
 ## Contributing
 
-See the [contribution guide](./CONTRIBUTING.md) for more information.
+See the [contribution guide](https://github.com/mario-eth/soldeer/blob/main/CONTRIBUTING.md) for more information.

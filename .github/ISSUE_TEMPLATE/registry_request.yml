@@ -1,6 +1,5 @@
 name: 📦 Registry Addition
-about: Suggest a missing package for the Soldeer registry.
-title: ''
+description: Suggest a missing package for the Soldeer registry.
 labels: ['add-dependency']
 assignees: ['mario-eth']
 body:
@@ -9,8 +8,12 @@ body:
       value: |
         Thanks for taking the time to suggest a package for the Soldeer registry!
         Please fill out the sections below to help us understand your request.
-
-        Note: please search to see if an issue already exists for the package you are requesting.
+  - type: checkboxes
+    attributes:
+      label: 'I have checked the following:'
+      options:
+        - label: 'I have searched the issues of this repository and believe that this is not a duplicate.'
+          required: true
   - type: input
     id: package-name
     attributes:

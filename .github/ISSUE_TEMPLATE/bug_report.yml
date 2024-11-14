@@ -1,16 +1,20 @@
 name: 🐛 Bug Report
-about: Report an issue found in Soldeer.
-title: ''
+description: Report an issue found in Soldeer.
 labels: ['bug']
-assignees: ''
 body:
   - type: markdown
     attributes:
       value: |
         Thanks for taking the time to report a bug!
         Please fill out the sections below to help us reproduce and fix the bug as quickly as possible.
-
-        Note: please search to see if an issue already exists for the bug you encountered.
+  - type: checkboxes
+    attributes:
+      label: 'I have checked the following:'
+      options:
+        - label: 'I have searched the issues of this repository and believe that this is not a duplicate.'
+          required: true
+        - label: 'I have checked that the bug is reproducible with the latest version of Soldeer.'
+          required: true
   - type: input
     id: version
     attributes:

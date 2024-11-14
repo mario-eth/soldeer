@@ -259,7 +259,7 @@ pub fn parse_version_req(version_req: &str) -> Option<VersionReq> {
         return None;
     };
     if req.comparators.is_empty() {
-        return None;
+        return Some(req); // wildcard/any version
     }
     let orig_items: Vec<_> = version_req.split(',').collect();
     // we only perform the operator conversion if we can reference the original string, i.e. if the
@@ -477,5 +477,6 @@ mod tests {
         assert_eq!(parse_version_req(">=1.9.0"), Some(VersionReq::parse(">=1.9.0").unwrap()));
         assert_eq!(parse_version_req(""), None);
         assert_eq!(parse_version_req("foobar"), None);
+        assert_eq!(parse_version_req("*"), Some(VersionReq::STAR));
     }
 }

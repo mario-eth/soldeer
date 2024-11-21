@@ -340,6 +340,13 @@ mod tests {
         };
         fs::write(named_dir.join("a.txt"), "this is a test file").unwrap();
         fs::write(named_dir.join("b.txt"), "this is a second test file").unwrap();
+        fs::write(named_dir.join("ignored.txt"), "this file should be ignored").unwrap();
+        fs::write(named_dir.join(".gitignore"), "ignored.txt\n").unwrap();
+        fs::write(
+            named_dir.parent().unwrap().join(".gitignore"),
+            format!("{}/a.txt", named_dir.file_name().unwrap().to_string_lossy()),
+        )
+        .unwrap(); // this file should be ignored because it's in the parent dir
         dunce::canonicalize(named_dir).unwrap()
     }
 
@@ -378,8 +385,13 @@ mod tests {
         let hash2 = hash_folder(&folder2).unwrap();
         assert_eq!(
             hash1.to_string(),
-            "4671014a36f223796de8760df8125ca6e5a749e162dd5690e815132621dd8bfb"
+            "c5328a2c3db7582b9074d5f5263ef111b496bbf9cda9b6c5fb0f97f1dc17b766"
         );
+        assert_eq!(hash1, hash2);
+        // ignored.txt should be ignored in the checksum calculation, so removing it should yield
+        // the same checksum
+        fs::remove_file(folder1.join("ignored.txt")).unwrap();
+        let hash1 = hash_folder(&folder1).unwrap();
         assert_eq!(hash1, hash2);
     }
 

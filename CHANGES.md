@@ -1,6 +1,6 @@
 # Changelog
 
-## Current Version 0.5.1
+## Current Version 0.5.2
 
 ## Version 0.5.0 introduces the following breaking changes
 

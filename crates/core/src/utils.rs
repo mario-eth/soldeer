@@ -143,6 +143,10 @@ pub fn hash_folder(folder_path: impl AsRef<Path>) -> Result<IntegrityChecksum, s
             !(entry.path().is_dir() && entry.path().file_name().unwrap_or_default() == ".git")
         })
         .hidden(false)
+        .require_git(false)
+        .parents(false)
+        .git_global(false)
+        .git_exclude(false)
         .build_parallel();
     walker.run(|| {
         let tx = tx.clone();

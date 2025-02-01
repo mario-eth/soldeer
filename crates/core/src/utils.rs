@@ -8,7 +8,6 @@ use derive_more::derive::{Display, From};
 use ignore::{WalkBuilder, WalkState};
 use path_slash::PathExt as _;
 use rayon::prelude::*;
-use regex::Regex;
 use semver::Version;
 use sha2::{Digest as _, Sha256};
 use std::{
@@ -18,13 +17,9 @@ use std::{
     fs,
     io::Read,
     path::{Path, PathBuf},
-    sync::{mpsc, Arc, LazyLock},
+    sync::{mpsc, Arc},
 };
 use tokio::process::Command;
-
-static GIT_SSH_REGEX: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"^(?:git@github\.com|git@gitlab)").expect("git ssh regex should compile")
-});
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -84,23 +79,13 @@ pub fn check_dotfiles(files: &[PathBuf]) -> bool {
 
 /// Get the type of URL from a dependency URL.
 ///
-/// Git URLs are identified by the presence of the `git@github.com` or `git@gitlab.com` prefix, as
-/// well as HTTPS URLs which have the `github.com` or `gitlab.com` domain and a trailing `.git` in
-/// their path.
+/// Git URLs are identified by the presence of the `git@` prefix, as
+/// well as HTTPS URLs which have the trailing `.git` in their path.
 pub fn get_url_type(dependency_url: &str) -> Result<UrlType, DownloadError> {
-    if GIT_SSH_REGEX.is_match(dependency_url) {
+    if dependency_url.starts_with("git@") {
         return Ok(UrlType::Git);
     } else if let Ok(url) = reqwest::Url::parse(dependency_url) {
-        return Ok(match url.domain() {
-            Some("github.com" | "gitlab.com") => {
-                if url.path().ends_with(".git") {
-                    UrlType::Git
-                } else {
-                    UrlType::Http
-                }
-            }
-            _ => UrlType::Http,
-        });
+        return Ok(if url.path().ends_with(".git") { UrlType::Git } else { UrlType::Http });
     }
     Err(DownloadError::InvalidUrl(dependency_url.to_string()))
 }
@@ -430,6 +415,7 @@ mod tests {
     fn test_get_url_git_ssh() {
         assert_eq!(get_url_type("git@github.com:foundry-rs/forge-std.git").unwrap(), UrlType::Git);
         assert_eq!(get_url_type("git@gitlab.com:foo/bar.git").unwrap(), UrlType::Git);
+        assert_eq!(get_url_type("git@somedomain.com:foo/bar.git").unwrap(), UrlType::Git);
     }
 
     #[test]
@@ -443,5 +429,6 @@ mod tests {
             UrlType::Git
         );
         assert_eq!(get_url_type("https://gitlab.com/foo/bar.git").unwrap(), UrlType::Git);
+        assert_eq!(get_url_type("https://somedomain.com/foo/bar.git").unwrap(), UrlType::Git);
     }
 }

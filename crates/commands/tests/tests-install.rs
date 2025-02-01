@@ -192,7 +192,7 @@ async fn test_install_foundry_remappings() {
 remappings_location = "config"
 
 [dependencies]
-"@openzeppelin-contracts" = "5"
+"@openzeppelin-contracts" = "5.1.0"
 "#;
     fs::write(dir.join("foundry.toml"), contents).unwrap();
     let cmd: Command = Install::builder().build().into();
@@ -202,7 +202,7 @@ remappings_location = "config"
     assert!(res.is_ok(), "{res:?}");
     let config = fs::read_to_string(dir.join("foundry.toml")).unwrap();
     assert!(config.contains(
-        "remappings = [\"@openzeppelin-contracts-5/=dependencies/@openzeppelin-contracts-5.1.0/\"]"
+        "remappings = [\"@openzeppelin-contracts-5.1.0/=dependencies/@openzeppelin-contracts-5.1.0/\"]"
     ));
 }
 

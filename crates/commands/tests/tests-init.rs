@@ -129,7 +129,7 @@ out = "out"
 libs = ["dependencies"]
 
 [dependencies]
-forge-std = "1.9.4"
+forge-std = "1.9.5"
 
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
 "#;
@@ -151,7 +151,7 @@ async fn test_init_select_soldeer_location() {
     assert!(config_path.exists());
 
     let contents = r#"[dependencies]
-forge-std = "1.9.4"
+forge-std = "1.9.5"
 "#;
     assert_eq!(fs::read_to_string(config_path).unwrap(), contents);
 }

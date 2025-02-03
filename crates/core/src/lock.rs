@@ -592,7 +592,7 @@ checksum = "123456"
 integrity = "beef"
 "#;
         fs::write(&file_path, content).unwrap();
-        let dep = Dependency::from_name_version("test2~2.0.0", None::<&str>, None).unwrap();
+        let dep = Dependency::from_name_version("test2~2.0.0", None, None).unwrap();
         let res = remove_lock(&dep, &file_path);
         assert!(res.is_ok(), "{res:?}");
         let lockfile = read_lockfile(&file_path).unwrap();
@@ -611,7 +611,7 @@ git = "git@github.com:test/test.git"
 rev = "123456"
 "#;
         fs::write(&file_path, content).unwrap();
-        let dep = Dependency::from_name_version("test~1.0.0", None::<&str>, None).unwrap();
+        let dep = Dependency::from_name_version("test~1.0.0", None, None).unwrap();
         let res = remove_lock(&dep, &file_path);
         assert!(res.is_ok(), "{res:?}");
         assert!(!file_path.exists());

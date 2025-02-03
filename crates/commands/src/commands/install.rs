@@ -8,6 +8,7 @@ use cliclack::{
 use soldeer_core::{
     config::{
         add_to_config, read_config_deps, read_soldeer_config, Dependency, GitIdentifier, Paths,
+        UrlType,
     },
     errors::{InstallError, LockError},
     install::{ensure_dependencies_dir, install_dependencies, install_dependency, Progress},
@@ -85,6 +86,11 @@ pub struct Install {
     /// location.
     #[arg(long, value_enum)]
     pub config_location: Option<ConfigLocation>,
+
+    /// If set, this command will treat url as url to git repository
+    #[arg(long, default_value_t = false)]
+    #[builder(default)]
+    pub git: bool,
 }
 
 pub(crate) async fn install_command(paths: &Paths, cmd: Install) -> Result<()> {
@@ -140,7 +146,17 @@ pub(crate) async fn install_command(paths: &Paths, cmd: Install) -> Result<()> {
                 (None, None, None) => None,
                 _ => unreachable!("clap should prevent this"),
             };
-            let mut dep = Dependency::from_name_version(&dependency, cmd.remote_url, identifier)?;
+            let url =
+                cmd.remote_url.map(
+                    |url| {
+                        if cmd.git {
+                            UrlType::git(url)
+                        } else {
+                            UrlType::http(url)
+                        }
+                    },
+                );
+            let mut dep = Dependency::from_name_version(&dependency, url, identifier)?;
             if dependencies
                 .iter()
                 .any(|d| d.name() == dep.name() && d.version_req() == dep.version_req())

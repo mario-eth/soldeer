@@ -21,13 +21,6 @@ use std::{
 };
 use tokio::process::Command;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub enum UrlType {
-    Git,
-    Http,
-}
-
 /// Newtype for the string representation of an integrity checksum (SHA256).
 #[derive(Debug, Clone, PartialEq, Eq, Hash, From, Display)]
 #[from(Cow<'static, str>, String, &'static str)]
@@ -75,19 +68,6 @@ pub fn check_dotfiles(files: &[PathBuf]) -> bool {
     files
         .par_iter()
         .any(|file| file.file_name().unwrap_or_default().to_string_lossy().starts_with('.'))
-}
-
-/// Get the type of URL from a dependency URL.
-///
-/// Git URLs are identified by the presence of the `git@` prefix, as
-/// well as HTTPS URLs which have the trailing `.git` in their path.
-pub fn get_url_type(dependency_url: &str) -> Result<UrlType, DownloadError> {
-    if dependency_url.starts_with("git@") {
-        return Ok(UrlType::Git);
-    } else if let Ok(url) = reqwest::Url::parse(dependency_url) {
-        return Ok(if url.path().ends_with(".git") { UrlType::Git } else { UrlType::Http });
-    }
-    Err(DownloadError::InvalidUrl(dependency_url.to_string()))
 }
 
 /// Sanitize a filename by replacing invalid characters with a dash.
@@ -400,35 +380,5 @@ mod tests {
         let hash3 = hash_folder(&folder).unwrap();
         assert_ne!(hash2, hash3);
         assert_ne!(hash1, hash3);
-    }
-
-    #[test]
-    fn test_url_type_http() {
-        assert_eq!(
-            get_url_type("https://github.com/foundry-rs/forge-std/archive/refs/tags/v1.9.1.zip")
-                .unwrap(),
-            UrlType::Http
-        );
-    }
-
-    #[test]
-    fn test_get_url_git_ssh() {
-        assert_eq!(get_url_type("git@github.com:foundry-rs/forge-std.git").unwrap(), UrlType::Git);
-        assert_eq!(get_url_type("git@gitlab.com:foo/bar.git").unwrap(), UrlType::Git);
-        assert_eq!(get_url_type("git@somedomain.com:foo/bar.git").unwrap(), UrlType::Git);
-    }
-
-    #[test]
-    fn test_get_url_git_https() {
-        assert_eq!(
-            get_url_type("https://github.com/foundry-rs/forge-std.git").unwrap(),
-            UrlType::Git
-        );
-        assert_eq!(
-            get_url_type("https://user:pass@github.com/foundry-rs/forge-std.git").unwrap(),
-            UrlType::Git
-        );
-        assert_eq!(get_url_type("https://gitlab.com/foo/bar.git").unwrap(), UrlType::Git);
-        assert_eq!(get_url_type("https://somedomain.com/foo/bar.git").unwrap(), UrlType::Git);
     }
 }

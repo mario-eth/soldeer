@@ -17,7 +17,7 @@ use cliclack::{log::warning, select};
 
 pub type Result<T> = std::result::Result<T, ConfigError>;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Display)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum UrlType {
     Git(String),

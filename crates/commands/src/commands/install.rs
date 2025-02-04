@@ -29,11 +29,11 @@ If used with arguments, a dependency will be added to the configuration. When us
 Examples:
 - Install all: soldeer install
 - Add from registry: soldeer install lib_name~2.3.0
-- Add with custom URL: soldeer install lib_name~2.3.0 https://foo.bar/lib.zip
-- Add with git: soldeer install --git lib_name~2.3.0 git@github.com:foo/bar.git
-- Add with git (commit): soldeer install --git lib_name~2.3.0 git@github.com:foo/bar.git --rev 05f218fb6617932e56bf5388c3b389c3028a7b73
-- Add with git (tag): soldeer install --git lib_name~2.3.0 git@github.com:foo/bar.git --tag v2.3.0
-- Add with git (branch): soldeer install --git lib_name~2.3.0 git@github.com:foo/bar.git --branch feature/baz",
+- Add with custom URL: soldeer install lib_name~2.3.0 --url https://foo.bar/lib.zip
+- Add with git: soldeer install lib_name~2.3.0 --git git@github.com:foo/bar.git
+- Add with git (commit): soldeer install lib_name~2.3.0 --git git@github.com:foo/bar.git --rev 05f218fb6617932e56bf5388c3b389c3028a7b73
+- Add with git (tag): soldeer install lib_name~2.3.0 --git git@github.com:foo/bar.git --tag v2.3.0
+- Add with git (branch): soldeer install lib_name~2.3.0 --git git@github.com:foo/bar.git --branch feature/baz",
     after_help = "For more information, read the README.md"
 )]
 #[non_exhaustive]
@@ -46,22 +46,26 @@ pub struct Install {
 
     /// The URL to the dependency zip file.
     ///
-    /// If not present, the package will be installed from the Soldeer repository.
-    ///
     /// Example: https://my-domain/dep.zip
-    #[arg(value_name = "URL", requires = "dependency")]
-    pub remote_url: Option<String>,
+    #[arg(long = "url", requires = "dependency", conflicts_with = "git_url")]
+    pub zip_url: Option<String>,
+
+    /// The URL to the dependency repository.
+    ///
+    /// Example: git@github.com:foo/bar.git
+    #[arg(long = "git", requires = "dependency", conflicts_with = "zip_url")]
+    pub git_url: Option<String>,
 
     /// A Git commit hash
-    #[arg(long, group = "identifier", requires = "remote_url")]
+    #[arg(long, group = "identifier", requires = "git_url")]
     pub rev: Option<String>,
 
     /// A Git tag
-    #[arg(long, group = "identifier", requires = "remote_url")]
+    #[arg(long, group = "identifier", requires = "git_url")]
     pub tag: Option<String>,
 
     /// A Git branch
-    #[arg(long, group = "identifier", requires = "remote_url")]
+    #[arg(long, group = "identifier", requires = "git_url")]
     pub branch: Option<String>,
 
     /// If set, this command will delete the existing remappings and re-create them
@@ -86,11 +90,6 @@ pub struct Install {
     /// location.
     #[arg(long, value_enum)]
     pub config_location: Option<ConfigLocation>,
-
-    /// If set, this command will treat url as url to git repository
-    #[arg(long, default_value_t = false, requires = "remote_url")]
-    #[builder(default)]
-    pub git: bool,
 }
 
 pub(crate) async fn install_command(paths: &Paths, cmd: Install) -> Result<()> {
@@ -146,16 +145,7 @@ pub(crate) async fn install_command(paths: &Paths, cmd: Install) -> Result<()> {
                 (None, None, None) => None,
                 _ => unreachable!("clap should prevent this"),
             };
-            let url =
-                cmd.remote_url.map(
-                    |url| {
-                        if cmd.git {
-                            UrlType::git(url)
-                        } else {
-                            UrlType::http(url)
-                        }
-                    },
-                );
+            let url = cmd.zip_url.map(UrlType::http).or(cmd.git_url.map(UrlType::git));
             let mut dep = Dependency::from_name_version(&dependency, url, identifier)?;
             if dependencies
                 .iter()

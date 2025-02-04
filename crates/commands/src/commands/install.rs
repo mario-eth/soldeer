@@ -30,10 +30,10 @@ Examples:
 - Install all: soldeer install
 - Add from registry: soldeer install lib_name~2.3.0
 - Add with custom URL: soldeer install lib_name~2.3.0 https://foo.bar/lib.zip
-- Add with git: soldeer install lib_name~2.3.0 git@github.com:foo/bar.git
-- Add with git (commit): soldeer install lib_name~2.3.0 git@github.com:foo/bar.git --rev 05f218fb6617932e56bf5388c3b389c3028a7b73
-- Add with git (tag): soldeer install lib_name~2.3.0 git@github.com:foo/bar.git --tag v2.3.0
-- Add with git (branch): soldeer install lib_name~2.3.0 git@github.com:foo/bar.git --branch feature/baz",
+- Add with git: soldeer install --git lib_name~2.3.0 git@github.com:foo/bar.git
+- Add with git (commit): soldeer install --git lib_name~2.3.0 git@github.com:foo/bar.git --rev 05f218fb6617932e56bf5388c3b389c3028a7b73
+- Add with git (tag): soldeer install --git lib_name~2.3.0 git@github.com:foo/bar.git --tag v2.3.0
+- Add with git (branch): soldeer install --git lib_name~2.3.0 git@github.com:foo/bar.git --branch feature/baz",
     after_help = "For more information, read the README.md"
 )]
 #[non_exhaustive]
@@ -88,7 +88,7 @@ pub struct Install {
     pub config_location: Option<ConfigLocation>,
 
     /// If set, this command will treat url as url to git repository
-    #[arg(long, default_value_t = false)]
+    #[arg(long, default_value_t = false, requires = "remote_url")]
     #[builder(default)]
     pub git: bool,
 }

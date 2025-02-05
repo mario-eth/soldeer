@@ -3,7 +3,6 @@ use crate::{
     download::{find_install_path, find_install_path_sync},
     errors::ConfigError,
     remappings::RemappingsLocation,
-    utils::{get_url_type, UrlType},
 };
 use derive_more::derive::{Display, From, FromStr};
 use serde::Deserialize;
@@ -17,6 +16,23 @@ use toml_edit::{value, Array, DocumentMut, InlineTable, Item, Table};
 use cliclack::{log::warning, select};
 
 pub type Result<T> = std::result::Result<T, ConfigError>;
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Display)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum UrlType {
+    Git(String),
+    Http(String),
+}
+
+impl UrlType {
+    pub fn git(url: impl Into<String>) -> Self {
+        Self::Git(url.into())
+    }
+
+    pub fn http(url: impl Into<String>) -> Self {
+        Self::Http(url.into())
+    }
+}
 
 /// The paths used by Soldeer.
 ///
@@ -402,15 +418,12 @@ impl Dependency {
     /// If a custom URL is provided, then the version requirement string
     /// cannot contain the `=` character, as it would break the remappings.
     ///
-    /// The type of dependency ([`HttpDependency`] or [`GitDependency`]) is inferred from the URL
-    /// format, which can be of the form `https://...`, `git@github.com:` or `git@gitlab.com:`.
-    ///
     /// # Examples
     ///
     /// ```
-    /// # use soldeer_core::config::{Dependency, HttpDependency, GitDependency, GitIdentifier};
+    /// # use soldeer_core::config::{Dependency, HttpDependency, GitDependency, GitIdentifier, UrlType};
     /// assert_eq!(
-    ///     Dependency::from_name_version("my-lib~^1.0.0", Some("https://foo.bar/zip.zip"), None)
+    ///     Dependency::from_name_version("my-lib~^1.0.0", Some(UrlType::http("https://foo.bar/zip.zip")), None)
     ///         .unwrap(),
     ///     HttpDependency::builder()
     ///         .name("my-lib")
@@ -422,8 +435,8 @@ impl Dependency {
     /// assert_eq!(
     ///     Dependency::from_name_version(
     ///         "my-lib~^1.0.0",
-    ///         Some("git@github.com:foo/bar.git"),
-    ///         Some(GitIdentifier::from_tag("v1.0.0"))
+    ///         Some(UrlType::git("git@github.com:foo/bar.git")),
+    ///         Some(GitIdentifier::from_tag("v1.0.0")),
     ///     )
     ///     .unwrap(),
     ///     GitDependency::builder()
@@ -437,7 +450,7 @@ impl Dependency {
     /// ```
     pub fn from_name_version(
         name_version: &str,
-        custom_url: Option<impl Into<String>>,
+        custom_url: Option<UrlType>,
         identifier: Option<GitIdentifier>,
     ) -> Result<Self> {
         let (dependency_name, dependency_version_req) = name_version
@@ -448,7 +461,6 @@ impl Dependency {
         }
         Ok(match custom_url {
             Some(url) => {
-                let url: String = url.into();
                 // in this case (custom url or git dependency), the version requirement string is
                 // going to be used as part of the folder name inside the
                 // dependencies folder. As such, it's not allowed to contain the "="
@@ -456,15 +468,15 @@ impl Dependency {
                 if dependency_version_req.contains('=') {
                     return Err(ConfigError::InvalidVersionReq(dependency_name.to_string()));
                 }
-                match get_url_type(&url)? {
-                    UrlType::Git => GitDependency {
+                match url {
+                    UrlType::Git(url) => GitDependency {
                         name: dependency_name.to_string(),
                         version_req: dependency_version_req.to_string(),
                         git: url,
                         identifier,
                     }
                     .into(),
-                    UrlType::Http => HttpDependency {
+                    UrlType::Http(url) => HttpDependency {
                         name: dependency_name.to_string(),
                         version_req: dependency_version_req.to_string(),
                         url: Some(url),
@@ -998,7 +1010,7 @@ libs = ["dependencies"]
 
     #[test]
     fn test_from_name_version_no_url() {
-        let res = Dependency::from_name_version("dependency~1.0.0", None::<&str>, None);
+        let res = Dependency::from_name_version("dependency~1.0.0", None, None);
         assert!(res.is_ok(), "{res:?}");
         assert_eq!(
             res.unwrap(),
@@ -1010,7 +1022,7 @@ libs = ["dependencies"]
     fn test_from_name_version_with_http_url() {
         let res = Dependency::from_name_version(
             "dependency~1.0.0",
-            Some("https://github.com/user/repo/archive/123.zip"),
+            Some(UrlType::http("https://github.com/user/repo/archive/123.zip")),
             None,
         );
         assert!(res.is_ok(), "{res:?}");
@@ -1029,7 +1041,7 @@ libs = ["dependencies"]
     fn test_from_name_version_with_git_url() {
         let res = Dependency::from_name_version(
             "dependency~1.0.0",
-            Some("https://github.com/user/repo.git"),
+            Some(UrlType::git("https://github.com/user/repo.git")),
             None,
         );
         assert!(res.is_ok(), "{res:?}");
@@ -1045,7 +1057,7 @@ libs = ["dependencies"]
 
         let res = Dependency::from_name_version(
             "dependency~1.0.0",
-            Some("https://test:test@gitlab.com/user/repo.git"),
+            Some(UrlType::git("https://test:test@gitlab.com/user/repo.git")),
             None,
         );
         assert!(res.is_ok(), "{res:?}");
@@ -1064,7 +1076,7 @@ libs = ["dependencies"]
     fn test_from_name_version_with_git_url_rev() {
         let res = Dependency::from_name_version(
             "dependency~1.0.0",
-            Some("https://github.com/user/repo.git"),
+            Some(UrlType::git("https://github.com/user/repo.git")),
             Some(GitIdentifier::from_rev("123456")),
         );
         assert!(res.is_ok(), "{res:?}");
@@ -1084,7 +1096,7 @@ libs = ["dependencies"]
     fn test_from_name_version_with_git_url_branch() {
         let res = Dependency::from_name_version(
             "dependency~1.0.0",
-            Some("https://github.com/user/repo.git"),
+            Some(UrlType::git("https://github.com/user/repo.git")),
             Some(GitIdentifier::from_branch("dev")),
         );
         assert!(res.is_ok(), "{res:?}");
@@ -1104,7 +1116,7 @@ libs = ["dependencies"]
     fn test_from_name_version_with_git_url_tag() {
         let res = Dependency::from_name_version(
             "dependency~1.0.0",
-            Some("https://github.com/user/repo.git"),
+            Some(UrlType::git("https://github.com/user/repo.git")),
             Some(GitIdentifier::from_tag("v1.0.0")),
         );
         assert!(res.is_ok(), "{res:?}");
@@ -1124,7 +1136,7 @@ libs = ["dependencies"]
     fn test_from_name_version_with_git_ssh() {
         let res = Dependency::from_name_version(
             "dependency~1.0.0",
-            Some("git@github.com:user/repo.git"),
+            Some(UrlType::git("git@github.com:user/repo.git")),
             None,
         );
         assert!(res.is_ok(), "{res:?}");
@@ -1143,7 +1155,7 @@ libs = ["dependencies"]
     fn test_from_name_version_with_git_ssh_rev() {
         let res = Dependency::from_name_version(
             "dependency~1.0.0",
-            Some("git@github.com:user/repo.git"),
+            Some(UrlType::git("git@github.com:user/repo.git")),
             Some(GitIdentifier::from_rev("123456")),
         );
         assert!(res.is_ok(), "{res:?}");
@@ -1161,23 +1173,26 @@ libs = ["dependencies"]
 
     #[test]
     fn test_from_name_version_empty_version() {
-        let res = Dependency::from_name_version("dependency~", None::<&str>, None);
+        let res = Dependency::from_name_version("dependency~", None, None);
         assert!(matches!(res, Err(ConfigError::EmptyVersion(_))), "{res:?}");
     }
 
     #[test]
     fn test_from_name_version_invalid_version() {
         // for http deps, having the "=" character in the version requirement is ok
-        let res = Dependency::from_name_version("dependency~asdf=", None::<&str>, None);
+        let res = Dependency::from_name_version("dependency~asdf=", None, None);
         assert!(res.is_ok(), "{res:?}");
 
-        let res =
-            Dependency::from_name_version("dependency~asdf=", Some("https://example.com"), None);
+        let res = Dependency::from_name_version(
+            "dependency~asdf=",
+            Some(UrlType::http("https://example.com")),
+            None,
+        );
         assert!(matches!(res, Err(ConfigError::InvalidVersionReq(_))), "{res:?}");
 
         let res = Dependency::from_name_version(
             "dependency~asdf=",
-            Some("git@github.com:user/repo.git"),
+            Some(UrlType::git("git@github.com:user/repo.git")),
             None,
         );
         assert!(matches!(res, Err(ConfigError::InvalidVersionReq(_))), "{res:?}");
@@ -1481,7 +1496,7 @@ libs = ["dependencies"]
     #[test]
     fn test_add_to_config_no_section() {
         let config_path = write_to_config("", "soldeer.toml");
-        let dep = Dependency::from_name_version("lib1~1.0.0", None::<&str>, None).unwrap();
+        let dep = Dependency::from_name_version("lib1~1.0.0", None, None).unwrap();
         let res = add_to_config(&dep, &config_path);
         assert!(res.is_ok(), "{res:?}");
         let parsed = read_config_deps(&config_path).unwrap();

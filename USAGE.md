@@ -63,7 +63,7 @@ select from. Dependencies specified with a custom URL do not use the version req
 #### ZIP file
 
 ```bash
-[forge] soldeer install <NAME>~<VERSION> <ZIP_URL>
+[forge] soldeer install <NAME>~<VERSION> --url <ZIP_URL>
 ```
 
 If the URL to a ZIP file is provided, the registry is not used and the file is downloaded from the URL directly. Note
@@ -72,12 +72,11 @@ that a version must still be provided, but it can be freely chosen.
 #### Git Repository
 
 ```bash
-[forge] soldeer install <NAME>~<VERSION> <GIT_URL>
+[forge] soldeer install <NAME>~<VERSION> --git <GIT_URL>
 ```
 
-If the URL to a git repository is provided (at the moment, only `github.com` and `gitlab.com` are supported, and the URL
-must end with `.git`), then the repository will be cloned into the `dependencies` folder with the `git` CLI available
-on the system. HTTPS and SSH-style URLs are supported (see examples below).
+If the URL to a git repository is provided, then the repository will be cloned into the `dependencies` folder with the 
+`git` CLI available on the system. HTTPS and SSH-style URLs are supported (see examples below).
 
 Cloning a specific identifier can be done with the `--rev <COMMIT>`, `--branch <BRANCH>` or `--tag <TAG>` arguments. If
 omitted, then the default branch is checked out.
@@ -85,19 +84,19 @@ omitted, then the default branch is checked out.
 Some examples:
 
 ```bash
-[forge] soldeer install test-project~v1 git@github.com:test/test.git
-[forge] soldeer install test-project~v1 git@gitlab.com:test/test.git
+[forge] soldeer install test-project~v1 --git git@github.com:test/test.git
+[forge] soldeer install test-project~v1 --git git@gitlab.com:test/test.git
 ```
 
 ```bash
-[forge] soldeer install test-project~v1 https://github.com/test/test.git
-[forge] soldeer install test-project~v1 https://gitlab.com/test/test.git
+[forge] soldeer install test-project~v1 --git https://github.com/test/test.git
+[forge] soldeer install test-project~v1 --git https://gitlab.com/test/test.git
 ```
 
 ```bash
-[forge] soldeer install test-project~v1 git@github.com:test/test.git --rev 345e611cd84bfb4e62c583fa1886c1928bc1a464
-[forge] soldeer install test-project~v1 git@github.com:test/test.git --branch dev
-[forge] soldeer install test-project~v1 git@github.com:test/test.git --tag v1
+[forge] soldeer install test-project~v1 --git git@github.com:test/test.git --rev 345e611cd84bfb4e62c583fa1886c1928bc1a464
+[forge] soldeer install test-project~v1 --git git@github.com:test/test.git --branch dev
+[forge] soldeer install test-project~v1 --git git@github.com:test/test.git --tag v1
 ```
 
 Note that a version must still be provided, but it can be freely chosen.

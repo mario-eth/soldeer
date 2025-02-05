@@ -66,7 +66,10 @@ async fn test_install_registry_specific_version() {
 async fn test_install_custom_http() {
     let dir = testdir!();
     fs::write(dir.join("soldeer.toml"), "[dependencies]\n").unwrap();
-    let cmd: Command = Install::builder().dependency("mylib~1.0.0").remote_url("https://github.com/mario-eth/soldeer/archive/8585a7ec85a29889cec8d08f4770e15ec4795943.zip").build().into();
+    let cmd: Command = Install::builder().dependency("mylib~1.0.0")
+        .zip_url("https://github.com/mario-eth/soldeer/archive/8585a7ec85a29889cec8d08f4770e15ec4795943.zip")
+        .build()
+        .into();
     let res =
         async_with_vars([("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))], run(cmd))
             .await;
@@ -86,7 +89,7 @@ async fn test_install_git_main() {
     fs::write(dir.join("soldeer.toml"), "[dependencies]\n").unwrap();
     let cmd: Command = Install::builder()
         .dependency("mylib~0.1.0")
-        .remote_url("https://github.com/beeb/test-repo.git")
+        .git_url("https://github.com/beeb/test-repo.git")
         .build()
         .into();
     let res =
@@ -108,7 +111,7 @@ async fn test_install_git_commit() {
     fs::write(dir.join("soldeer.toml"), "[dependencies]\n").unwrap();
     let cmd: Command = Install::builder()
         .dependency("mylib~0.1.0")
-        .remote_url("https://github.com/beeb/test-repo.git")
+        .git_url("https://github.com/beeb/test-repo.git")
         .rev("78c2f6a1a54db26bab6c3f501854a1564eb3707f")
         .build()
         .into();
@@ -131,7 +134,7 @@ async fn test_install_git_tag() {
     fs::write(dir.join("soldeer.toml"), "[dependencies]\n").unwrap();
     let cmd: Command = Install::builder()
         .dependency("mylib~0.1.0")
-        .remote_url("https://github.com/beeb/test-repo.git")
+        .git_url("https://github.com/beeb/test-repo.git")
         .tag("v0.1.0")
         .build()
         .into();
@@ -154,7 +157,7 @@ async fn test_install_git_branch() {
     fs::write(dir.join("soldeer.toml"), "[dependencies]\n").unwrap();
     let cmd: Command = Install::builder()
         .dependency("mylib~dev")
-        .remote_url("https://github.com/beeb/test-repo.git")
+        .git_url("https://github.com/beeb/test-repo.git")
         .branch("dev")
         .build()
         .into();
@@ -192,7 +195,7 @@ async fn test_install_foundry_remappings() {
 remappings_location = "config"
 
 [dependencies]
-"@openzeppelin-contracts" = "5"
+"@openzeppelin-contracts" = "5.1.0"
 "#;
     fs::write(dir.join("foundry.toml"), contents).unwrap();
     let cmd: Command = Install::builder().build().into();
@@ -202,7 +205,7 @@ remappings_location = "config"
     assert!(res.is_ok(), "{res:?}");
     let config = fs::read_to_string(dir.join("foundry.toml")).unwrap();
     assert!(config.contains(
-        "remappings = [\"@openzeppelin-contracts-5/=dependencies/@openzeppelin-contracts-5.1.0/\"]"
+        "remappings = [\"@openzeppelin-contracts-5.1.0/=dependencies/@openzeppelin-contracts-5.1.0/\"]"
     ));
 }
 

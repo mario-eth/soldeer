@@ -8,7 +8,6 @@ use derive_more::derive::{Display, From};
 use ignore::{WalkBuilder, WalkState};
 use path_slash::PathExt as _;
 use rayon::prelude::*;
-use regex::Regex;
 use semver::Version;
 use sha2::{Digest as _, Sha256};
 use std::{
@@ -18,20 +17,9 @@ use std::{
     fs,
     io::Read,
     path::{Path, PathBuf},
-    sync::{mpsc, Arc, LazyLock},
+    sync::{mpsc, Arc},
 };
 use tokio::process::Command;
-
-static GIT_SSH_REGEX: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"^(?:git@github\.com|git@gitlab)").expect("git ssh regex should compile")
-});
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub enum UrlType {
-    Git,
-    Http,
-}
 
 /// Newtype for the string representation of an integrity checksum (SHA256).
 #[derive(Debug, Clone, PartialEq, Eq, Hash, From, Display)]
@@ -80,29 +68,6 @@ pub fn check_dotfiles(files: &[PathBuf]) -> bool {
     files
         .par_iter()
         .any(|file| file.file_name().unwrap_or_default().to_string_lossy().starts_with('.'))
-}
-
-/// Get the type of URL from a dependency URL.
-///
-/// Git URLs are identified by the presence of the `git@github.com` or `git@gitlab.com` prefix, as
-/// well as HTTPS URLs which have the `github.com` or `gitlab.com` domain and a trailing `.git` in
-/// their path.
-pub fn get_url_type(dependency_url: &str) -> Result<UrlType, DownloadError> {
-    if GIT_SSH_REGEX.is_match(dependency_url) {
-        return Ok(UrlType::Git);
-    } else if let Ok(url) = reqwest::Url::parse(dependency_url) {
-        return Ok(match url.domain() {
-            Some("github.com" | "gitlab.com") => {
-                if url.path().ends_with(".git") {
-                    UrlType::Git
-                } else {
-                    UrlType::Http
-                }
-            }
-            _ => UrlType::Http,
-        });
-    }
-    Err(DownloadError::InvalidUrl(dependency_url.to_string()))
 }
 
 /// Sanitize a filename by replacing invalid characters with a dash.
@@ -415,33 +380,5 @@ mod tests {
         let hash3 = hash_folder(&folder).unwrap();
         assert_ne!(hash2, hash3);
         assert_ne!(hash1, hash3);
-    }
-
-    #[test]
-    fn test_url_type_http() {
-        assert_eq!(
-            get_url_type("https://github.com/foundry-rs/forge-std/archive/refs/tags/v1.9.1.zip")
-                .unwrap(),
-            UrlType::Http
-        );
-    }
-
-    #[test]
-    fn test_get_url_git_ssh() {
-        assert_eq!(get_url_type("git@github.com:foundry-rs/forge-std.git").unwrap(), UrlType::Git);
-        assert_eq!(get_url_type("git@gitlab.com:foo/bar.git").unwrap(), UrlType::Git);
-    }
-
-    #[test]
-    fn test_get_url_git_https() {
-        assert_eq!(
-            get_url_type("https://github.com/foundry-rs/forge-std.git").unwrap(),
-            UrlType::Git
-        );
-        assert_eq!(
-            get_url_type("https://user:pass@github.com/foundry-rs/forge-std.git").unwrap(),
-            UrlType::Git
-        );
-        assert_eq!(get_url_type("https://gitlab.com/foo/bar.git").unwrap(), UrlType::Git);
     }
 }

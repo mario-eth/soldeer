@@ -13,7 +13,7 @@ async fn main() {
     // disable colors if unsupported
     yansi::whenever(HAVE_COLOR);
     let args = Args::parse();
-    if !args.verbose.is_silent() {
+    if !args.verbose.is_present() {
         banner();
     }
     if let Err(err) = run(args.command, args.verbose).await {

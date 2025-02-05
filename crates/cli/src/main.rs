@@ -12,9 +12,11 @@ const HAVE_COLOR: Condition = Condition(|| {
 async fn main() {
     // disable colors if unsupported
     yansi::whenever(HAVE_COLOR);
-    banner();
     let args = Args::parse();
-    if let Err(err) = run(args.command).await {
+    if !args.verbose.is_silent() {
+        banner();
+    }
+    if let Err(err) = run(args.command, args.verbose).await {
         eprintln!("{}", err.to_string().red())
     }
 }

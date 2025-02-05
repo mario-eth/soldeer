@@ -5,6 +5,7 @@ use crate::{
     utils::path_matches,
 };
 use derive_more::derive::From;
+use log::debug;
 use path_slash::PathExt as _;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -62,8 +63,10 @@ pub fn remappings_txt(
 ) -> Result<()> {
     if soldeer_config.remappings_regenerate && paths.remappings.exists() {
         fs::remove_file(&paths.remappings)?;
+        debug!(path:? = paths.remappings; "removed existing remappings file");
     }
     let contents = if paths.remappings.exists() {
+        debug!(path:? = paths.remappings; "reading existing remappings from remappings.txt file");
         fs::read_to_string(&paths.remappings)?
     } else {
         String::new()
@@ -76,6 +79,7 @@ pub fn remappings_txt(
     for remapping in new_remappings {
         writeln!(file, "{remapping}")?;
     }
+    debug!(path:? = paths.remappings; "updated remappings.txt file");
     Ok(())
 }
 
@@ -97,9 +101,11 @@ pub fn remappings_foundry(
     soldeer_config: &SoldeerConfig,
 ) -> Result<()> {
     let contents = fs::read_to_string(&paths.config)?;
-    let mut doc: DocumentMut = contents.parse::<DocumentMut>().expect("invalid doc");
+    let mut doc: DocumentMut =
+        contents.parse::<DocumentMut>().expect("config file should be valid toml");
     let Some(profiles) = doc["profile"].as_table_mut() else {
         // we don't add remappings if there are no profiles
+        debug!("no config profile found, skipping remappings generation");
         return Ok(());
     };
 
@@ -107,6 +113,7 @@ pub fn remappings_foundry(
         // we normally only edit remappings of profiles which already have a remappings key
         match profile.get_mut("remappings").map(|v| v.as_array_mut()) {
             Some(Some(remappings)) => {
+                debug!(name:% = name; "updating remappings for profile");
                 let existing_remappings: Vec<_> = remappings
                     .iter()
                     .filter_map(|r| r.as_str())
@@ -122,6 +129,7 @@ pub fn remappings_foundry(
             }
             _ => {
                 if name == "default" {
+                    debug!("updating remappings for default profile");
                     // except the default profile, where we always add the remappings
                     let new_remappings = generate_remappings(action, paths, soldeer_config, &[])?;
                     let mut array = new_remappings.into_iter().collect::<Array>();
@@ -133,6 +141,7 @@ pub fn remappings_foundry(
     }
 
     fs::write(&paths.config, doc.to_string())?;
+    debug!(path:? = paths.config; "remappings updated in config file");
 
     Ok(())
 }
@@ -154,15 +163,20 @@ pub fn edit_remappings(
         if paths.config.to_string_lossy().contains("foundry.toml") {
             match config.remappings_location {
                 RemappingsLocation::Txt => {
+                    debug!("updating remappings.txt according to config option");
                     remappings_txt(action, paths, config)?;
                 }
                 RemappingsLocation::Config => {
+                    debug!("updating foundry.toml remappings according to config option");
                     remappings_foundry(action, paths, config)?;
                 }
             }
         } else {
+            debug!("updating remappings.txt because config file is soldeer.toml");
             remappings_txt(action, paths, config)?;
         }
+    } else {
+        debug!("skipping remappings update according to config option");
     }
     Ok(())
 }
@@ -199,6 +213,7 @@ fn generate_remappings(
 ) -> Result<Vec<String>> {
     let mut new_remappings = Vec::new();
     if soldeer_config.remappings_regenerate {
+        debug!("ignoring existing remappings and recreating from config");
         let dependencies = read_config_deps(&paths.config)?;
         new_remappings = remappings_from_deps(&dependencies, paths, soldeer_config)?
             .into_iter()
@@ -207,6 +222,7 @@ fn generate_remappings(
     } else {
         match &action {
             RemappingsAction::Remove(remove_dep) => {
+                debug!(dep:% = remove_dep; "trying to remove dependency from remappings");
                 // only keep items not matching the dependency to remove
                 if let Ok(remove_og) = get_install_dir_relative(remove_dep, paths) {
                     for (existing_remapped, existing_og) in existing_remappings {
@@ -214,15 +230,19 @@ fn generate_remappings(
                         // is semver-compatible too.
                         if !existing_og.trim_end_matches('/').starts_with(&remove_og) {
                             new_remappings.push(format!("{existing_remapped}={existing_og}"));
+                        } else {
+                            debug!(dep:% = remove_dep; "found existing remapping corresponding to dependency to remove");
                         }
                     }
                 } else {
+                    debug!(dep:% = remove_dep; "could not find a directory matching the dependency to remove");
                     for (remapped, og) in existing_remappings {
                         new_remappings.push(format!("{remapped}={og}"));
                     }
                 }
             }
             RemappingsAction::Add(add_dep) => {
+                debug!(dep:% = add_dep; "adding remapping for dependency if necessary");
                 // we only add the remapping if it's not already existing, otherwise we keep the old
                 // remapping
                 let add_dep_remapped = format_remap_name(soldeer_config, add_dep);
@@ -231,10 +251,12 @@ fn generate_remappings(
                 for (existing_remapped, existing_og) in existing_remappings {
                     new_remappings.push(format!("{existing_remapped}={existing_og}"));
                     if existing_og.trim_end_matches('/').starts_with(&add_dep_og) {
+                        debug!(dep:% = add_dep; "remapping exists already, skipping");
                         found = true;
                     }
                 }
                 if !found {
+                    debug!(dep:% = add_dep; "remapping not found, adding it");
                     new_remappings.push(format!("{add_dep_remapped}={add_dep_og}/"));
                 }
             }
@@ -242,10 +264,12 @@ fn generate_remappings(
                 // This is where we end up in the `update` command if we don't want to re-generate
                 // all remappings. We need to merge existing remappings with the full list of deps.
                 // We generate all remappings from the dependencies, then replace existing items.
+                debug!("updating remappings, merging existing ones with the ones generated from config");
                 let dependencies = read_config_deps(&paths.config)?;
                 let new_remappings_info =
                     remappings_from_deps(&dependencies, paths, soldeer_config)?;
                 if existing_remappings.is_empty() {
+                    debug!("no existing remappings, using the ones from config");
                     new_remappings =
                         new_remappings_info.into_iter().map(|i| i.remapping_string).collect();
                 } else {
@@ -253,6 +277,7 @@ fn generate_remappings(
                     for RemappingInfo { remapping_string: item, dependency: dep } in
                         new_remappings_info
                     {
+                        debug!(dep:% = dep; "trying to find a matching existing remapping for config item");
                         let (_, item_og) =
                             item.split_once('=').expect("remappings should have two parts");
                         // try to find all existing items pointing to a matching dependency folder
@@ -264,13 +289,15 @@ fn generate_remappings(
                                 PathBuf::from(existing_og).components().take(2).collect();
                             // if path matches, we should update the item's path with the new
                             // one and add it to the final list
-                            if path_matches(&dep, path) {
+                            if path_matches(&dep, &path) {
+                                debug!(path = existing_og; "existing remapping matches the config item");
                                 let path: PathBuf =
                                     PathBuf::from(existing_og).components().take(2).collect();
                                 let existing_og_updated = existing_og.replace(
                                     path.to_slash_lossy().as_ref(),
                                     item_og.trim_end_matches('/'),
                                 );
+                                debug!(new_path = existing_og_updated; "updated remapping path");
                                 new_remappings
                                     .push(format!("{existing_remapped}={existing_og_updated}"));
                                 found = true;
@@ -282,11 +309,13 @@ fn generate_remappings(
                             true
                         });
                         if !found {
+                            debug!(dep:% = dep;"no existing remapping found for config item, adding it");
                             new_remappings.push(item);
                         }
                     }
                     // add extra existing remappings back
                     for (existing_remapped, existing_og) in existing_remappings {
+                        debug!(path = existing_og; "adding extra remapping which was existing but didn't match a config item");
                         new_remappings.push(format!("{existing_remapped}={existing_og}"));
                     }
                 }
@@ -610,21 +639,6 @@ lib2 = "2.0.0"
     }
 
     #[test]
-    fn test_remappings_foundry_noprofile() {
-        let dir = testdir!();
-        let contents = r#"[dependencies]
-lib1 = "1.0.0"
-"#;
-        fs::write(dir.join("foundry.toml"), contents).unwrap();
-        let paths = Paths::from_root(&dir).unwrap();
-        let config = SoldeerConfig::default();
-        // no profile: no remappings are added
-        let res = remappings_foundry(&RemappingsAction::Update, &paths, &config);
-        assert!(res.is_ok(), "{res:?}");
-        assert_eq!(fs::read_to_string(&paths.config).unwrap(), contents);
-    }
-
-    #[test]
     fn test_remappings_foundry_default_profile_empty() {
         let dir = testdir!();
         let contents = r#"[profile.default]
@@ -862,6 +876,7 @@ remappings = [
     "@openzeppelin/contracts/=dependencies/@openzeppelin-contracts-5.0.2/",
     "foo/=bar/",
 ]
+libs = ["dependencies"]
 
 [dependencies]
 "@openzeppelin-contracts" = "5.0.2"

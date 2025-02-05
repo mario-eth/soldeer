@@ -1,14 +1,13 @@
 //! Update dependencies to the latest version.
-#[cfg(feature = "cli")]
-use crate::install::Progress;
 use crate::{
     config::{Dependency, GitIdentifier},
     errors::UpdateError,
-    install::install_dependency,
+    install::{install_dependency, InstallProgress},
     lock::{format_install_path, GitLockEntry, LockEntry},
     registry::get_latest_supported_version,
     utils::run_git_command,
 };
+use log::debug;
 use std::path::Path;
 use tokio::task::JoinSet;
 
@@ -34,28 +33,18 @@ pub async fn update_dependencies(
     locks: &[LockEntry],
     deps_path: impl AsRef<Path>,
     recursive_deps: bool,
-    #[cfg(feature = "cli")] progress: Progress,
+    progress: InstallProgress,
 ) -> Result<Vec<LockEntry>> {
     let mut set = JoinSet::new();
     for dep in dependencies {
+        debug!(dep:% = dep; "spawning task to update dependency");
         set.spawn({
             let d = dep.clone();
-            #[cfg(feature = "cli")]
             let p = progress.clone();
 
             let lock = locks.iter().find(|l| l.name() == dep.name()).cloned();
             let paths = deps_path.as_ref().to_path_buf();
-            async move {
-                update_dependency(
-                    &d,
-                    lock.as_ref(),
-                    &paths,
-                    recursive_deps,
-                    #[cfg(feature = "cli")]
-                    p,
-                )
-                .await
-            }
+            async move { update_dependency(&d, lock.as_ref(), &paths, recursive_deps, p).await }
         });
     }
 
@@ -63,6 +52,7 @@ pub async fn update_dependencies(
     while let Some(res) = set.join_next().await {
         results.push(res??);
     }
+    debug!("all update tasks have finished");
     Ok(results)
 }
 
@@ -84,7 +74,7 @@ pub async fn update_dependency(
     lock: Option<&LockEntry>,
     deps: impl AsRef<Path>,
     recursive_deps: bool,
-    #[cfg(feature = "cli")] progress: Progress,
+    progress: InstallProgress,
 ) -> Result<LockEntry> {
     match dependency {
         Dependency::Git(ref dep)
@@ -92,6 +82,7 @@ pub async fn update_dependency(
         {
             // we handle the git case in a special way because we don't need to re-clone the repo
             // update to the latest commit (git pull)
+            debug!(dep:% = dependency; "updating git dependency based on a branch");
             let path = match lock {
                 Some(lock) => lock.install_path(&deps),
                 None => dependency.install_path(&deps).await.unwrap_or_else(|| {
@@ -104,13 +95,16 @@ pub async fn update_dependency(
                 .await?
                 .trim()
                 .to_string();
+            debug!(dep:% = dependency; "old commit was {old_commit}");
 
             if let Some(GitIdentifier::Branch(ref branch)) = dep.identifier {
                 // checkout the desired branch
+                debug!(dep:% = dependency, branch; "checking out required branch");
                 run_git_command(&["checkout", branch], Some(&path)).await?;
             } else {
                 // necessarily `None` because of the match above
                 // checkout the default branch
+                debug!(dep:% = dependency; "checking out default branch");
                 let branch = run_git_command(
                     &["symbolic-ref", "refs/remotes/origin/HEAD", "--short"],
                     Some(&path),
@@ -119,17 +113,22 @@ pub async fn update_dependency(
                 .trim_start_matches("origin/")
                 .trim()
                 .to_string();
+                debug!(dep:% = dependency; "default branch is {branch}");
                 run_git_command(&["checkout", &branch], Some(&path)).await?;
             }
             // pull the latest commits
+            debug!(dep:% = dependency; "running git pull");
             run_git_command(&["pull"], Some(&path)).await?;
             let commit = run_git_command(&["rev-parse", "--verify", "HEAD"], Some(&path))
                 .await?
                 .trim()
                 .to_string();
+            debug!(dep:% = dependency; "new commit is {commit}");
             if commit != old_commit {
-                #[cfg(feature = "cli")]
+                debug!(dep:% = dependency, old_commit, new_commit = commit; "updated dependency");
                 progress.log(format!("Updating {dependency} from {old_commit:.7} to {commit:.7}"));
+            } else {
+                debug!(dep:% = dependency; "there was no update available");
             }
             let new_lock = GitLockEntry::builder()
                 .name(&dep.name)
@@ -138,13 +137,13 @@ pub async fn update_dependency(
                 .rev(commit)
                 .build()
                 .into();
-            #[cfg(feature = "cli")]
-            progress.increment_all();
+            progress.update_all(dependency.into());
 
             Ok(new_lock)
         }
         Dependency::Git(ref dep) if dep.identifier.is_some() => {
             // check integrity against the existing version since we can't update to a new rev
+            debug!(dep:% = dependency; "checking git repo integrity against required rev (can't update)");
             let lock = match lock {
                 Some(lock) => lock,
                 None => &GitLockEntry::builder()
@@ -155,20 +154,14 @@ pub async fn update_dependency(
                     .build()
                     .into(),
             };
-            let new_lock = install_dependency(
-                dependency,
-                Some(lock),
-                &deps,
-                None,
-                recursive_deps,
-                #[cfg(feature = "cli")]
-                progress,
-            )
-            .await?;
+            let new_lock =
+                install_dependency(dependency, Some(lock), &deps, None, recursive_deps, progress)
+                    .await?;
             Ok(new_lock)
         }
         _ => {
             // for http dependencies, we simply install them as if there was no lock entry
+            debug!(dep:% = dependency; "updating http dependency");
 
             // to show which version we update to, we already need to know the new version, so we
             // can pass it to `install_dependency` to spare us from another call to the
@@ -177,7 +170,7 @@ pub async fn update_dependency(
                 (None, Some(lock)) => {
                     let new_version = get_latest_supported_version(dependency).await?;
                     if lock.version() != new_version {
-                        #[cfg(feature = "cli")]
+                        debug!(dep:% = dependency, old_version = lock.version(), new_version; "dependency has a new version available");
                         progress.log(format!(
                             "Updating {} from {} to {new_version}",
                             dependency.name(),
@@ -194,7 +187,6 @@ pub async fn update_dependency(
                 &deps,
                 force_version,
                 recursive_deps,
-                #[cfg(feature = "cli")]
                 progress,
             )
             .await?;

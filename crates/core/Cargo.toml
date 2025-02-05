@@ -23,17 +23,24 @@ chrono = { version = "0.4.38", default-features = false, features = [
     "serde",
     "std",
 ] }
-cliclack = { workspace = true, optional = true }
 const-hex = "1.12.0"
 derive_more.workspace = true
 dunce = "1.0.5"
 home = "0.5.9"
 ignore = { version = "0.4.22", features = ["simd-accel"] }
+log = { workspace = true, features = ["kv_std"] }
 path-slash.workspace = true
 rayon.workspace = true
 regex = "1.10.5"
-reqwest = { workspace = true, features = ["json", "multipart", "stream"] }
-sanitize-filename = "0.5.0"
+reqwest = { workspace = true, features = [
+    "http2",                      # default
+    "charset",                    # default
+    "macos-system-configuration", # default
+    "json",
+    "multipart",
+    "stream",
+] }
+sanitize-filename = "0.6.0"
 semver = "1.0.23"
 serde = { version = "1.0.204", features = ["derive"] }
 serde_json = "1.0.120"
@@ -56,5 +63,5 @@ testdir.workspace = true
 [features]
 default = ["rustls"]
 rustls = ["reqwest/rustls-tls"]
-cli = ["cliclack"]
+default-tls = ["reqwest/default-tls"]
 serde = []

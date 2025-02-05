@@ -3,9 +3,9 @@ use crate::{
     auth::get_token,
     errors::{AuthError, PublishError},
     registry::{api_url, get_project_id},
-    utils::read_file,
 };
 use ignore::{WalkBuilder, WalkState};
+use log::debug;
 use path_slash::{PathBufExt as _, PathExt as _};
 use regex::Regex;
 use reqwest::{
@@ -20,9 +20,6 @@ use std::{
     sync::mpsc,
 };
 use zip::{write::SimpleFileOptions, CompressionMethod, ZipWriter};
-
-#[cfg(feature = "cli")]
-use cliclack::log::success;
 
 pub type Result<T> = std::result::Result<T, PublishError>;
 
@@ -51,17 +48,21 @@ pub async fn push_version(
             return Err(err);
         }
     };
+    debug!(root:? = root_directory_path.as_ref(), zip_archive:?; "created zip file from folder");
 
     if dry_run {
+        debug!(zip_archive:?; "push dry run, zip file created but not uploading");
         return Ok(Some(PathBuf::from_slash_lossy(&zip_archive)));
     }
 
     if let Err(error) = push_to_repo(&zip_archive, dependency_name, dependency_version).await {
-        let _ = fs::remove_file(zip_archive);
+        let _ = fs::remove_file(&zip_archive);
+        debug!(zip_archive:?; "zip file deleted");
         return Err(error);
     }
 
-    let _ = fs::remove_file(zip_archive);
+    let _ = fs::remove_file(&zip_archive);
+    debug!(zip_archive:?; "zip file deleted");
 
     Ok(None)
 }
@@ -73,9 +74,11 @@ pub async fn push_version(
 pub fn validate_name(name: &str) -> Result<()> {
     let regex = Regex::new(r"^[@|a-z0-9][a-z0-9-]*[a-z0-9]$").expect("regex should compile");
     if !regex.is_match(name) {
+        debug!(name; "package name contains unauthorized characters");
         return Err(PublishError::InvalidName);
     }
     if !(3..=100).contains(&name.len()) {
+        debug!(name; "package name is too short or too long");
         return Err(PublishError::InvalidName);
     }
     Ok(())
@@ -95,6 +98,7 @@ pub fn zip_file(
     let zip_file_path = root_directory_path.as_ref().join(file_name);
     let file = fs::File::create(&zip_file_path)
         .map_err(|e| PublishError::IOError { path: zip_file_path.clone(), source: e })?;
+    debug!(path:? = zip_file_path; "zip file handle created");
     let mut zip = ZipWriter::new(file);
     let options = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
     if files_to_copy.is_empty() {
@@ -105,6 +109,7 @@ pub fn zip_file(
     for file_path in files_to_copy {
         let path = file_path.as_path();
         if !path.is_file() {
+            debug!(path:?; "skipping non-file entry");
             continue;
         }
 
@@ -112,12 +117,14 @@ pub fn zip_file(
         // that we want to push and zip that as a name so we won't screw up the
         // file/dir hierarchy in the zip file.
         let relative_file_path = file_path.strip_prefix(root_directory_path.as_ref())?;
+        debug!(relative_path:? = relative_file_path; "resolved relative file path for zip archive");
 
         // we add folders explicitly to the zip file, some tools might not handle this properly
         // otherwise
         if let Some(parent) = relative_file_path.parent() {
             if !parent.as_os_str().is_empty() && !added_dirs.contains(&parent) {
                 zip.add_directory(parent.to_slash_lossy(), options)?;
+                debug!(folder:? = parent; "added parent directory in zip archive");
                 added_dirs.push(parent);
             }
         }
@@ -130,8 +137,10 @@ pub fn zip_file(
             .map_err(|e| PublishError::IOError { path: file_path.clone(), source: e })?;
         zip.write_all(&buffer)
             .map_err(|e| PublishError::IOError { path: zip_file_path.clone(), source: e })?;
+        debug!(file:? = path; "file added to zip archive");
     }
     zip.finish()?;
+    debug!(path:? = zip_file_path; "zip archive written");
     Ok(zip_file_path)
 }
 
@@ -162,8 +171,10 @@ pub fn filter_ignored_files(root_directory_path: impl AsRef<Path>) -> Vec<PathBu
             };
             let path = entry.path();
             if path.is_dir() {
+                debug!(path:?; "ignoring dir entry");
                 return WalkState::Continue;
             }
+            debug!(path:?; "adding file to list");
             tx.send(path.to_path_buf())
                 .expect("Channel receiver should never be dropped before end of function scope");
             WalkState::Continue
@@ -189,6 +200,7 @@ async fn push_to_repo(
     dependency_name: &str,
     dependency_version: &str,
 ) -> Result<()> {
+    debug!(zip_file:?; "uploading zip archive to registry");
     let token = get_token()?;
     let client = Client::new();
 
@@ -201,7 +213,7 @@ async fn push_to_repo(
 
     headers.insert(AUTHORIZATION, header_value.expect("Could not set auth header"));
 
-    let file_fs = read_file(zip_file)
+    let file_fs = fs::read(zip_file)
         .map_err(|e| PublishError::IOError { path: zip_file.to_path_buf(), source: e })?;
     let mut part = Part::bytes(file_fs).file_name(
         zip_file
@@ -215,6 +227,7 @@ async fn push_to_repo(
     part = part.mime_str("application/zip").expect("Could not set mime type");
 
     let project_id = get_project_id(dependency_name).await?;
+    debug!(project_id; "project ID fetched from registry");
 
     let form = Form::new()
         .text("project_id", project_id)
@@ -228,12 +241,7 @@ async fn push_to_repo(
     );
     let response = client.post(url).headers(headers.clone()).multipart(form).send().await?;
     match response.status() {
-        StatusCode::OK => {
-            #[cfg(feature = "cli")]
-            success("Pushed to repository!").ok();
-
-            Ok(())
-        }
+        StatusCode::OK => Ok(()),
         StatusCode::NO_CONTENT => Err(PublishError::ProjectNotFound),
         StatusCode::ALREADY_REPORTED => Err(PublishError::AlreadyExists),
         StatusCode::UNAUTHORIZED => Err(PublishError::AuthError(AuthError::InvalidCredentials)),

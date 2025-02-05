@@ -6,6 +6,7 @@ use crate::{
 };
 use derive_more::derive::{Display, From};
 use ignore::{WalkBuilder, WalkState};
+use log::{debug, warn};
 use path_slash::PathExt as _;
 use rayon::prelude::*;
 use semver::Version;
@@ -27,18 +28,6 @@ use tokio::process::Command;
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct IntegrityChecksum(pub String);
 
-/// Read a file contents into a vector of bytes
-pub fn read_file(path: impl AsRef<Path>) -> Result<Vec<u8>, std::io::Error> {
-    let f = fs::File::open(path)?;
-    let mut reader = std::io::BufReader::new(f);
-    let mut buffer = Vec::new();
-
-    // Read file into vector.
-    reader.read_to_end(&mut buffer)?;
-
-    Ok(buffer)
-}
-
 /// Get the location where the token file is stored or read from.
 ///
 /// The token file is stored in the home directory of the user, or in the current directory
@@ -49,6 +38,7 @@ pub fn read_file(path: impl AsRef<Path>) -> Result<Vec<u8>, std::io::Error> {
 pub fn login_file_path() -> Result<PathBuf, std::io::Error> {
     if let Ok(file_path) = env::var("SOLDEER_LOGIN_FILE") {
         if !file_path.is_empty() {
+            debug!("using soldeer login file defined in environment variable");
             return Ok(file_path.into());
         }
     }
@@ -57,10 +47,12 @@ pub fn login_file_path() -> Result<PathBuf, std::io::Error> {
     let dir = home::home_dir().unwrap_or(env::current_dir()?);
     let security_directory = dir.join(".soldeer");
     if !security_directory.exists() {
+        debug!(dir:? = dir; ".soldeer folder does not exist, creating it");
         fs::create_dir(&security_directory)?;
     }
-    let security_file = security_directory.join(".soldeer_login");
-    Ok(security_file)
+    let login_file = security_directory.join(".soldeer_login");
+    debug!(login_file:? = login_file; "path to login file");
+    Ok(login_file)
 }
 
 /// Check if any filename in the list of paths starts with a period.
@@ -75,7 +67,9 @@ pub fn sanitize_filename(dependency_name: &str) -> String {
     let options =
         sanitize_filename::Options { truncate: true, windows: cfg!(windows), replacement: "-" };
 
-    sanitize_filename::sanitize_with_options(dependency_name, options)
+    let filename = sanitize_filename::sanitize_with_options(dependency_name, options);
+    debug!(filename; "sanitized filename");
+    filename
 }
 
 /// Hash the contents of a Reader with SHA256
@@ -97,13 +91,14 @@ pub fn hash_content<R: Read>(content: &mut R) -> [u8; 32] {
 /// The paths of the folders and files are hashes too, so we can the integrity of their names and
 /// location can be checked.
 pub fn hash_folder(folder_path: impl AsRef<Path>) -> Result<IntegrityChecksum, std::io::Error> {
+    debug!(path:? = folder_path.as_ref(); "hashing folder");
     // a list of hashes, one for each DirEntry
     let root_path = Arc::new(dunce::canonicalize(folder_path.as_ref())?);
 
     let (tx, rx) = mpsc::channel::<[u8; 32]>();
 
     // we use a parallel walker to speed things up
-    let walker = WalkBuilder::new(folder_path)
+    let walker = WalkBuilder::new(&folder_path)
         .filter_entry(|entry| {
             !(entry.path().is_dir() && entry.path().file_name().unwrap_or_default() == ".git")
         })
@@ -136,6 +131,8 @@ pub fn hash_folder(folder_path: impl AsRef<Path>) -> Result<IntegrityChecksum, s
                     let mut reader = std::io::BufReader::new(file);
                     let hash = hash_content(&mut reader);
                     hasher.update(hash);
+                } else {
+                    warn!(path:? = path; "could not read file while hashing folder");
                 }
             }
             // record the hash for that file/folder in the list
@@ -159,15 +156,20 @@ pub fn hash_folder(folder_path: impl AsRef<Path>) -> Result<IntegrityChecksum, s
         hasher.update(hash);
     }
     let hash: [u8; 32] = hasher.finalize().into();
-    Ok(const_hex::encode(hash).into())
+    let hash = const_hex::encode(hash);
+    debug!(path:? = folder_path.as_ref(), hash; "folder hash was computed");
+    Ok(hash.into())
 }
 
 /// Compute the SHA256 hash of the contents of a file
 pub fn hash_file(path: impl AsRef<Path>) -> Result<IntegrityChecksum, std::io::Error> {
-    let file = fs::File::open(path)?;
+    debug!(path:? = path.as_ref(); "hashing file");
+    let file = fs::File::open(&path)?;
     let mut reader = std::io::BufReader::new(file);
     let bytes = hash_content(&mut reader);
-    Ok(const_hex::encode(bytes).into())
+    let hash = const_hex::encode(bytes);
+    debug!(path:? = path.as_ref(), hash; "file hash was computed");
+    Ok(hash.into())
 }
 
 /// Run a `git` command with the given arguments in the given directory.
@@ -229,6 +231,7 @@ where
 /// This function removes the `forge-std` submodule, the `.gitmodules` file and the `lib` directory
 /// from the project.
 pub async fn remove_forge_lib(root: impl AsRef<Path>) -> Result<(), InstallError> {
+    debug!("removing forge-std installed as a git submodule");
     let gitmodules_path = root.as_ref().join(".gitmodules");
     let lib_dir = root.as_ref().join("lib");
     let forge_std_dir = lib_dir.join("forge-std");
@@ -238,14 +241,17 @@ pub async fn remove_forge_lib(root: impl AsRef<Path>) -> Result<(), InstallError
             Some(&root.as_ref().to_path_buf()),
         )
         .await?;
+        debug!("removed lib/forge-std");
     }
     if lib_dir.exists() {
         fs::remove_dir_all(&lib_dir)
             .map_err(|e| InstallError::IOError { path: lib_dir.clone(), source: e })?;
+        debug!("removed lib dir");
     }
     if gitmodules_path.exists() {
         fs::remove_file(&gitmodules_path)
             .map_err(|e| InstallError::IOError { path: lib_dir, source: e })?;
+        debug!("removed .gitmodules file");
     }
     Ok(())
 }

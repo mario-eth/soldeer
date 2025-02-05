@@ -7,6 +7,7 @@ use crate::{
     errors::RegistryError,
 };
 use chrono::{DateTime, Utc};
+use log::{debug, warn};
 use reqwest::Url;
 use semver::{Version, VersionReq};
 use serde::Deserialize;
@@ -121,6 +122,7 @@ pub fn api_url(path: &str, params: &[(&str, &str)]) -> Url {
 
 /// Get the download URL for a dependency at a specific version.
 pub async fn get_dependency_url_remote(dependency: &Dependency, version: &str) -> Result<String> {
+    debug!(dep:% = dependency; "retrieving URL for dependency");
     let url =
         api_url("revision-cli", &[("project_name", dependency.name()), ("revision", version)]);
 
@@ -130,11 +132,13 @@ pub async fn get_dependency_url_remote(dependency: &Dependency, version: &str) -
     let Some(r) = revision.data.first() else {
         return Err(RegistryError::URLNotFound(dependency.to_string()));
     };
+    debug!(dep:% = dependency, url = r.url; "URL for dependency was found");
     Ok(r.url.clone())
 }
 
 /// Get the unique ID for a project by name.
 pub async fn get_project_id(dependency_name: &str) -> Result<String> {
+    debug!(name = dependency_name; "retrieving project ID");
     let url = api_url("project", &[("project_name", dependency_name)]);
     let res = reqwest::get(url).await?;
     let res = res.error_for_status()?;
@@ -142,11 +146,13 @@ pub async fn get_project_id(dependency_name: &str) -> Result<String> {
     let Some(p) = project.data.first() else {
         return Err(RegistryError::ProjectNotFound(dependency_name.to_string()));
     };
+    debug!(name = dependency_name, id:% = p.id; "project ID was found");
     Ok(p.id.to_string())
 }
 
 /// Get the latest version of a dependency.
 pub async fn get_latest_version(dependency_name: &str) -> Result<Dependency> {
+    debug!(dep = dependency_name; "retrieving latest version for dependency");
     let url =
         api_url("revision", &[("project_name", dependency_name), ("offset", "0"), ("limit", "1")]);
     let res = reqwest::get(url).await?;
@@ -155,6 +161,7 @@ pub async fn get_latest_version(dependency_name: &str) -> Result<Dependency> {
     let Some(data) = revision.data.first() else {
         return Err(RegistryError::URLNotFound(dependency_name.to_string()));
     };
+    debug!(dep = dependency_name, version = data.version; "latest version found");
     Ok(HttpDependency {
         name: dependency_name.to_string(),
         version_req: data.clone().version,
@@ -185,6 +192,7 @@ pub enum Versions {
 pub async fn get_all_versions_descending(dependency_name: &str) -> Result<Versions> {
     // TODO: provide a more efficient endpoint which already sorts by descending semver if possible
     // and only returns the version strings
+    debug!(dep = dependency_name; "retrieving all dependency versions");
     let url = api_url(
         "revision",
         &[("project_name", dependency_name), ("offset", "0"), ("limit", "10000")],
@@ -203,12 +211,12 @@ pub async fn get_all_versions_descending(dependency_name: &str) -> Result<Versio
         .collect::<std::result::Result<Vec<Version>, _>>()
     {
         Ok(mut versions) => {
-            // all versions are semver compliant
+            debug!(dep = dependency_name; "all versions are semver compliant, sorting by descending version");
             versions.sort_unstable_by(|a, b| b.cmp(a)); // sort in descending order
             Ok(Versions::Semver(versions))
         }
         Err(_) => {
-            // not all versions are semver compliant, do not sort (use API sort order)
+            debug!(dep = dependency_name; "not all versions are semver compliant, using API ordering");
             Ok(Versions::NonSemver(revision.data.iter().map(|r| r.version.to_string()).collect()))
         }
     }
@@ -219,6 +227,7 @@ pub async fn get_all_versions_descending(dependency_name: &str) -> Result<Versio
 /// If the version requirement is not semver-compliant, then the latest version is the one with the
 /// latest creation date.
 pub async fn get_latest_supported_version(dependency: &Dependency) -> Result<String> {
+    debug!(dep:% = dependency, version_req = dependency.version_req(); "retrieving latest version according to version requirement");
     match get_all_versions_descending(dependency.name()).await? {
         Versions::Semver(all_versions) => {
             match parse_version_req(dependency.version_req()) {
@@ -230,9 +239,11 @@ pub async fn get_latest_supported_version(dependency: &Dependency) -> Result<Str
                             dependency: dependency.name().to_string(),
                             version_req: dependency.version_req().to_string(),
                         })?;
+                    debug!(dep:% = dependency, version:% = new_version; "acceptable version found");
                     Ok(new_version.to_string())
                 }
                 None => {
+                    warn!(dep:% = dependency, version_req = dependency.version_req(); "could not parse version req according to semver, using latest version");
                     // we can't check which version is newer, so we just take the latest one
                     Ok(all_versions
                         .into_iter()
@@ -243,7 +254,7 @@ pub async fn get_latest_supported_version(dependency: &Dependency) -> Result<Str
             }
         }
         Versions::NonSemver(all_versions) => {
-            // we can't check which version is newer, so we just take the latest one
+            debug!(dep:% = dependency; "versions are not all semver compliant, using latest version");
             Ok(all_versions.into_iter().next().expect("there should be at least 1 version"))
         }
     }
@@ -256,9 +267,11 @@ pub async fn get_latest_supported_version(dependency: &Dependency) -> Result<Str
 /// "compatible" operator, but we want to treat it as the "equal" operator.
 pub fn parse_version_req(version_req: &str) -> Option<VersionReq> {
     let Ok(mut req) = version_req.parse::<VersionReq>() else {
+        debug!(version_req; "version requirement cannot be parsed by semver");
         return None;
     };
     if req.comparators.is_empty() {
+        debug!(version_req; "comparators list is empty (wildcard req), no further action needed");
         return Some(req); // wildcard/any version
     }
     let orig_items: Vec<_> = version_req.split(',').collect();
@@ -269,6 +282,7 @@ pub fn parse_version_req(version_req: &str) -> Option<VersionReq> {
         for (comparator, orig) in req.comparators.iter_mut().zip(orig_items.into_iter()) {
             if comparator.op == semver::Op::Caret && !orig.trim_start_matches(' ').starts_with('^')
             {
+                debug!(comparator:% = comparator; "adding exact operator for comparator");
                 comparator.op = semver::Op::Exact;
             }
         }

@@ -1,10 +1,12 @@
-use crate::ConfigLocation;
+use crate::{
+    utils::{success, Progress},
+    ConfigLocation,
+};
 use clap::Parser;
-use cliclack::{log::success, multi_progress};
 use soldeer_core::{
     config::{read_config_deps, read_soldeer_config, Dependency, Paths},
     errors::LockError,
-    install::{ensure_dependencies_dir, Progress},
+    install::{ensure_dependencies_dir, InstallProgress},
     lock::{generate_lockfile_contents, read_lockfile},
     remappings::{edit_remappings, RemappingsAction},
     update::update_dependencies,
@@ -14,7 +16,8 @@ use std::fs;
 
 /// Update dependencies by reading the config file
 #[derive(Debug, Clone, Default, Parser, bon::Builder)]
-#[builder(on(String, into))]
+#[allow(clippy::duplicated_attributes)]
+#[builder(on(String, into), on(ConfigLocation, into))]
 #[clap(after_help = "For more information, read the README.md")]
 #[non_exhaustive]
 pub struct Update {
@@ -48,30 +51,29 @@ pub(crate) async fn update_command(paths: &Paths, cmd: Update) -> Result<()> {
     if cmd.recursive_deps {
         config.recursive_deps = true;
     }
-    success("Done reading config")?;
+    success!("Done reading config");
     ensure_dependencies_dir(&paths.dependencies)?;
     let dependencies: Vec<Dependency> = read_config_deps(&paths.config)?;
     let lockfile = read_lockfile(&paths.lock)?;
-    success("Done reading lockfile")?;
-    let multi = multi_progress("Updating dependencies");
-    let progress = Progress::new(&multi, dependencies.len() as u64);
-    progress.start_all();
+    success!("Done reading lockfile");
+    let (progress, monitor) = InstallProgress::new();
+    let bars = Progress::new("Updating dependencies", dependencies.len(), monitor);
+    bars.start_all();
     let new_locks = update_dependencies(
         &dependencies,
         &lockfile.entries,
         &paths.dependencies,
         config.recursive_deps,
-        progress.clone(),
+        progress,
     )
     .await?;
-    progress.stop_all();
-    multi.stop();
+    bars.stop_all();
 
     let new_lockfile_content = generate_lockfile_contents(new_locks);
     fs::write(&paths.lock, new_lockfile_content).map_err(LockError::IOError)?;
-    success("Updated lockfile")?;
+    success!("Updated lockfile");
 
     edit_remappings(&RemappingsAction::Update, &config, paths)?;
-    success("Updated remappings")?;
+    success!("Updated remappings");
     Ok(())
 }

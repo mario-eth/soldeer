@@ -859,6 +859,13 @@ fn parse_dependency(name: impl Into<String>, value: &Item) -> Result<Dependency>
         }
     };
 
+    // check for unallowed fields
+    if let Some((k, _)) =
+        table.iter().find(|(k, _)| !["version", "url", "git", "rev", "branch", "tag"].contains(k))
+    {
+        return Err(ConfigError::InvalidField { field: k.to_string(), dep: name });
+    }
+
     // version is needed in both cases
     let version_req = match table.get("version").map(|v| v.as_str()) {
         Some(None) => {
@@ -881,6 +888,11 @@ fn parse_dependency(name: impl Into<String>, value: &Item) -> Result<Dependency>
             return Err(ConfigError::InvalidField { field: "git".to_string(), dep: name });
         }
         Some(Some(git)) => {
+            // we can't have an http url if we have a git url
+            if table.get("url").is_some() {
+                return Err(ConfigError::FieldConflict { field: "url".to_string(), dep: name })
+            }
+
             // for git dependencies, the version requirement string is going to be used as part of
             // the folder name inside the dependencies folder. As such, it's not allowed to contain
             // the "=" character, because that would break the remappings.
@@ -934,7 +946,12 @@ fn parse_dependency(name: impl Into<String>, value: &Item) -> Result<Dependency>
         None => {}
     }
 
-    // we should have a HTTP dependency
+    // we should have a HTTP dependency,
+    // unless we have `rev`, `branch`, `tag` in which case we're missing `git`
+    if table.iter().any(|(k, _)| ["rev", "branch", "tag"].contains(&k)) {
+        return Err(ConfigError::MissingField { field: "git".to_string(), dep: name });
+    }
+
     match table.get("url").map(|v| v.as_str()) {
         Some(None) => {
             debug!(dep = name; "dependency's `url` field is not a string");
@@ -1663,5 +1680,80 @@ libs = ["dependencies"]
 [dependencies]
 "#
         );
+    }
+
+    #[test]
+    fn test_parse_dependency() {
+        let config_contents = r#"[dependencies]
+"lib1" = "1.0.0"
+"lib2" = { version = "2.0.0" }
+"lib3" = { version = "3.0.0", url = "https://example.com" }
+"lib4" = { version = "4.0.0", git = "https://example.com/repo.git" }
+"lib5" = { version = "5.0.0", git = "https://example.com/repo.git", rev = "123456" }
+"lib6" = { version = "6.0.0", git = "https://example.com/repo.git", branch = "dev" }
+"lib7" = { version = "7.0.0", git = "https://example.com/repo.git", tag = "v7.0.0" }
+"#;
+        let doc: DocumentMut = config_contents.parse::<DocumentMut>().unwrap();
+        let data = doc.get("dependencies").map(|v| v.as_table()).unwrap().unwrap();
+        for (name, v) in data {
+            let res = parse_dependency(name, v);
+            assert!(res.is_ok(), "{res:?}");
+        }
+    }
+
+    #[test]
+    fn test_parse_dependency_extra_field() {
+        let config_contents = r#"[dependencies]
+"lib1" = { version = "3.0.0", url = "https://example.com", foo = "bar" }
+"#;
+        let doc: DocumentMut = config_contents.parse::<DocumentMut>().unwrap();
+        let data = doc.get("dependencies").map(|v| v.as_table()).unwrap().unwrap();
+        for (name, v) in data {
+            let res = parse_dependency(name, v);
+            assert!(matches!(res, Err(ConfigError::InvalidField { field: _, dep: _ })), "{res:?}");
+        }
+    }
+
+    #[test]
+    fn test_parse_dependency_git_extra_url() {
+        let config_contents = r#"[dependencies]
+"lib1" = { version = "3.0.0", git = "https://example.com/repo.git", url = "https://example.com" }
+"#;
+        let doc: DocumentMut = config_contents.parse::<DocumentMut>().unwrap();
+        let data = doc.get("dependencies").map(|v| v.as_table()).unwrap().unwrap();
+        for (name, v) in data {
+            let res = parse_dependency(name, v);
+            assert!(matches!(res, Err(ConfigError::FieldConflict { field: _, dep: _ })), "{res:?}");
+        }
+    }
+
+    #[test]
+    fn test_parse_dependency_git_field_conflict() {
+        let config_contents = r#"[dependencies]
+"lib2" = { version = "3.0.0", git = "https://example.com/repo.git", rev = "123456", branch = "dev" }
+"lib3" = { version = "3.0.0", git = "https://example.com/repo.git", rev = "123456", tag = "v7.0.0" }
+"lib4" = { version = "3.0.0", git = "https://example.com/repo.git", branch = "dev", tag = "v7.0.0" }
+"#;
+        let doc: DocumentMut = config_contents.parse::<DocumentMut>().unwrap();
+        let data = doc.get("dependencies").map(|v| v.as_table()).unwrap().unwrap();
+        for (name, v) in data {
+            let res = parse_dependency(name, v);
+            assert!(matches!(res, Err(ConfigError::GitIdentifierConflict(_))), "{res:?}");
+        }
+    }
+
+    #[test]
+    fn test_parse_dependency_missing_url() {
+        let config_contents = r#"[dependencies]
+"lib1" = { version = "3.0.0", rev = "123456" }
+"lib2" = { version = "3.0.0", branch = "dev" }
+"lib3" = { version = "3.0.0", tag = "v7.0.0" }
+"#;
+        let doc: DocumentMut = config_contents.parse::<DocumentMut>().unwrap();
+        let data = doc.get("dependencies").map(|v| v.as_table()).unwrap().unwrap();
+        for (name, v) in data {
+            let res = parse_dependency(name, v);
+            assert!(matches!(res, Err(ConfigError::MissingField { field: _, dep: _ })), "{res:?}");
+        }
     }
 }

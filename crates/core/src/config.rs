@@ -890,7 +890,11 @@ fn parse_dependency(name: impl Into<String>, value: &Item) -> Result<Dependency>
         Some(Some(git)) => {
             // we can't have an http url if we have a git url
             if table.get("url").is_some() {
-                return Err(ConfigError::FieldConflict { field: "url".to_string(), dep: name })
+                return Err(ConfigError::FieldConflict {
+                    field: "url".to_string(),
+                    conflicts_with: "git".to_string(),
+                    dep: name,
+                })
             }
 
             // for git dependencies, the version requirement string is going to be used as part of
@@ -1723,7 +1727,13 @@ libs = ["dependencies"]
         let data = doc.get("dependencies").map(|v| v.as_table()).unwrap().unwrap();
         for (name, v) in data {
             let res = parse_dependency(name, v);
-            assert!(matches!(res, Err(ConfigError::FieldConflict { field: _, dep: _ })), "{res:?}");
+            assert!(
+                matches!(
+                    res,
+                    Err(ConfigError::FieldConflict { field: _, conflicts_with: _, dep: _ })
+                ),
+                "{res:?}"
+            );
         }
     }
 

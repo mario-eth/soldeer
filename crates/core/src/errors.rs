@@ -52,6 +52,9 @@ pub enum AuthError {
 
     #[error("http error during login: {0}")]
     HttpError(#[from] reqwest::Error),
+
+    #[error("TUI disabled and no credentials passed via CLI")]
+    TuiDisabled,
 }
 
 #[derive(Error, Debug)]
@@ -59,12 +62,6 @@ pub enum AuthError {
 pub enum ConfigError {
     #[error("config file is not valid: {0}")]
     Parsing(#[from] toml_edit::TomlError),
-
-    #[error("invalid user input: {source}")]
-    PromptError { source: io::Error },
-
-    #[error("invalid prompt option")]
-    InvalidPromptOption,
 
     #[error("error writing to config file: {0}")]
     FileWriteError(#[from] io::Error),
@@ -98,6 +95,9 @@ pub enum ConfigError {
 
     #[error("the version requirement string for {0} cannot contain the equal symbol for git dependencies and http dependencies with a custom URL")]
     InvalidVersionReq(String),
+
+    #[error("dependency specifier {0} cannot be parsed as name~version")]
+    InvalidNameAndVersion(String),
 }
 
 #[derive(Error, Debug)]

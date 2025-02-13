@@ -7,6 +7,7 @@
 //! different machines. It is also used to skip the installation of dependencies that are already
 //! installed.
 use crate::{config::Dependency, errors::LockError, utils::sanitize_filename};
+use log::{debug, warn};
 use serde::{Deserialize, Serialize};
 use std::{
     fs,
@@ -274,11 +275,16 @@ pub struct LockFile {
 /// Read a lockfile from disk.
 pub fn read_lockfile(path: impl AsRef<Path>) -> Result<LockFile> {
     if !path.as_ref().exists() {
+        debug!(path:? = path.as_ref(); "lockfile does not exist");
         return Ok(LockFile::default());
     }
     let contents = fs::read_to_string(&path)?;
 
-    let data: LockFileParsed = toml_edit::de::from_str(&contents).unwrap_or_default();
+    let data: LockFileParsed = toml_edit::de::from_str(&contents)
+        .inspect_err(|err| {
+            warn!(err:?; "error while parsing lockfile contents, it will be ignored");
+        })
+        .unwrap_or_default();
     Ok(LockFile {
         entries: data.dependencies.into_iter().filter_map(|d| d.try_into().ok()).collect(),
         raw: contents,
@@ -301,12 +307,15 @@ pub fn generate_lockfile_contents(mut entries: Vec<LockEntry>) -> String {
 pub fn add_to_lockfile(entry: LockEntry, path: impl AsRef<Path>) -> Result<()> {
     let mut lockfile = read_lockfile(&path)?;
     if let Some(index) = lockfile.entries.iter().position(|e| e.name() == entry.name()) {
+        debug!(name = entry.name(); "replacing existing lockfile entry");
         let _ = std::mem::replace(&mut lockfile.entries[index], entry);
     } else {
+        debug!(name = entry.name(); "adding new lockfile entry");
         lockfile.entries.push(entry);
     }
     let new_contents = generate_lockfile_contents(lockfile.entries);
     fs::write(&path, new_contents)?;
+    debug!(path:? = path.as_ref(); "lockfile modified");
     Ok(())
 }
 
@@ -324,6 +333,7 @@ pub fn remove_lock(dependency: &Dependency, path: impl AsRef<Path>) -> Result<()
 
     if entries.is_empty() {
         // remove lock file if there are no deps left
+        debug!(path:? = path.as_ref(); "no remaining lockfile entry, deleting file");
         let _ = fs::remove_file(&path);
         return Ok(());
     }
@@ -333,7 +343,7 @@ pub fn remove_lock(dependency: &Dependency, path: impl AsRef<Path>) -> Result<()
 
     // replace contents of lockfile with new contents
     fs::write(&path, file_contents)?;
-
+    debug!(path:? = path.as_ref(); "lockfile modified");
     Ok(())
 }
 

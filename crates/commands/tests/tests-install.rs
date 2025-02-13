@@ -1,5 +1,9 @@
-use soldeer_commands::{commands::install::Install, run, Command, ConfigLocation};
-use soldeer_core::{config::read_config_deps, download::download_file, lock::read_lockfile};
+use soldeer_commands::{commands::install::Install, run, Command, Verbosity};
+use soldeer_core::{
+    config::{read_config_deps, ConfigLocation},
+    download::download_file,
+    lock::read_lockfile,
+};
 use std::{
     fs::{self},
     path::Path,
@@ -30,9 +34,11 @@ async fn test_install_registry_any_version() {
     let dir = testdir!();
     fs::write(dir.join("soldeer.toml"), "[dependencies]\n").unwrap();
     let cmd: Command = Install::builder().dependency("@openzeppelin-contracts~5").build().into();
-    let res =
-        async_with_vars([("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))], run(cmd))
-            .await;
+    let res = async_with_vars(
+        [("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))],
+        run(cmd, Verbosity::default()),
+    )
+    .await;
     assert!(res.is_ok(), "{res:?}");
     check_install(&dir, "@openzeppelin-contracts", "5");
 }
@@ -42,9 +48,11 @@ async fn test_install_registry_wildcard() {
     let dir = testdir!();
     fs::write(dir.join("soldeer.toml"), "[dependencies]\n").unwrap();
     let cmd: Command = Install::builder().dependency("solady~*").build().into();
-    let res =
-        async_with_vars([("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))], run(cmd))
-            .await;
+    let res = async_with_vars(
+        [("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))],
+        run(cmd, Verbosity::default()),
+    )
+    .await;
     assert!(res.is_ok(), "{res:?}");
     check_install(&dir, "solady", "");
 }
@@ -55,9 +63,11 @@ async fn test_install_registry_specific_version() {
     fs::write(dir.join("soldeer.toml"), "[dependencies]\n").unwrap();
     let cmd: Command =
         Install::builder().dependency("@openzeppelin-contracts~4.9.5").build().into();
-    let res =
-        async_with_vars([("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))], run(cmd))
-            .await;
+    let res = async_with_vars(
+        [("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))],
+        run(cmd, Verbosity::default()),
+    )
+    .await;
     assert!(res.is_ok(), "{res:?}");
     check_install(&dir, "@openzeppelin-contracts", "4.9.5");
 }
@@ -70,9 +80,11 @@ async fn test_install_custom_http() {
         .zip_url("https://github.com/mario-eth/soldeer/archive/8585a7ec85a29889cec8d08f4770e15ec4795943.zip")
         .build()
         .into();
-    let res =
-        async_with_vars([("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))], run(cmd))
-            .await;
+    let res = async_with_vars(
+        [("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))],
+        run(cmd, Verbosity::default()),
+    )
+    .await;
     assert!(res.is_ok(), "{res:?}");
     check_install(&dir, "mylib", "1.0.0");
     let lock = read_lockfile(dir.join("soldeer.lock")).unwrap();
@@ -92,9 +104,11 @@ async fn test_install_git_main() {
         .git_url("https://github.com/beeb/test-repo.git")
         .build()
         .into();
-    let res =
-        async_with_vars([("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))], run(cmd))
-            .await;
+    let res = async_with_vars(
+        [("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))],
+        run(cmd, Verbosity::default()),
+    )
+    .await;
     assert!(res.is_ok(), "{res:?}");
     check_install(&dir, "mylib", "0.1.0");
     let lock = read_lockfile(dir.join("soldeer.lock")).unwrap();
@@ -115,9 +129,11 @@ async fn test_install_git_commit() {
         .rev("78c2f6a1a54db26bab6c3f501854a1564eb3707f")
         .build()
         .into();
-    let res =
-        async_with_vars([("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))], run(cmd))
-            .await;
+    let res = async_with_vars(
+        [("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))],
+        run(cmd, Verbosity::default()),
+    )
+    .await;
     assert!(res.is_ok(), "{res:?}");
     check_install(&dir, "mylib", "0.1.0");
     let lock = read_lockfile(dir.join("soldeer.lock")).unwrap();
@@ -138,9 +154,11 @@ async fn test_install_git_tag() {
         .tag("v0.1.0")
         .build()
         .into();
-    let res =
-        async_with_vars([("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))], run(cmd))
-            .await;
+    let res = async_with_vars(
+        [("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))],
+        run(cmd, Verbosity::default()),
+    )
+    .await;
     assert!(res.is_ok(), "{res:?}");
     check_install(&dir, "mylib", "0.1.0");
     let lock = read_lockfile(dir.join("soldeer.lock")).unwrap();
@@ -161,9 +179,11 @@ async fn test_install_git_branch() {
         .branch("dev")
         .build()
         .into();
-    let res =
-        async_with_vars([("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))], run(cmd))
-            .await;
+    let res = async_with_vars(
+        [("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))],
+        run(cmd, Verbosity::default()),
+    )
+    .await;
     assert!(res.is_ok(), "{res:?}");
     check_install(&dir, "mylib", "dev");
     let lock = read_lockfile(dir.join("soldeer.lock")).unwrap();
@@ -179,9 +199,11 @@ async fn test_install_foundry_config() {
     let dir = testdir!();
     fs::write(dir.join("foundry.toml"), "[dependencies]\n").unwrap();
     let cmd: Command = Install::builder().dependency("@openzeppelin-contracts~5").build().into();
-    let res =
-        async_with_vars([("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))], run(cmd))
-            .await;
+    let res = async_with_vars(
+        [("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))],
+        run(cmd, Verbosity::default()),
+    )
+    .await;
     assert!(res.is_ok(), "{res:?}");
     check_install(&dir, "@openzeppelin-contracts", "5");
 }
@@ -199,9 +221,11 @@ remappings_location = "config"
 "#;
     fs::write(dir.join("foundry.toml"), contents).unwrap();
     let cmd: Command = Install::builder().build().into();
-    let res =
-        async_with_vars([("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))], run(cmd))
-            .await;
+    let res = async_with_vars(
+        [("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))],
+        run(cmd, Verbosity::default()),
+    )
+    .await;
     assert!(res.is_ok(), "{res:?}");
     let config = fs::read_to_string(dir.join("foundry.toml")).unwrap();
     assert!(config.contains(
@@ -217,9 +241,11 @@ async fn test_install_missing_no_lock() {
 "#;
     fs::write(dir.join("soldeer.toml"), contents).unwrap();
     let cmd: Command = Install::builder().build().into();
-    let res =
-        async_with_vars([("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))], run(cmd))
-            .await;
+    let res = async_with_vars(
+        [("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))],
+        run(cmd, Verbosity::default()),
+    )
+    .await;
     assert!(res.is_ok(), "{res:?}");
     check_install(&dir, "@openzeppelin-contracts", "5.0.2");
 }
@@ -240,9 +266,11 @@ integrity = "f3c628f3e9eae4db14fe14f9ab29e49a0107c47b8ee956e4cee57b616b493fc2"
 "#;
     fs::write(dir.join("soldeer.lock"), lock).unwrap();
     let cmd: Command = Install::builder().build().into();
-    let res =
-        async_with_vars([("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))], run(cmd))
-            .await;
+    let res = async_with_vars(
+        [("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))],
+        run(cmd, Verbosity::default()),
+    )
+    .await;
     assert!(res.is_ok(), "{res:?}");
     check_install(&dir, "mylib", "1.1");
 }
@@ -283,16 +311,18 @@ integrity = "f3c628f3e9eae4db14fe14f9ab29e49a0107c47b8ee956e4cee57b616b493fc2"
     let cmd: Command = Install::builder().build().into();
     let res = async_with_vars(
         [("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))],
-        run(cmd.clone()),
+        run(cmd.clone(), Verbosity::default()),
     )
     .await;
     assert!(res.is_ok(), "{res:?}");
     mock.assert(); // download link was called
 
     // second install
-    let res =
-        async_with_vars([("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))], run(cmd))
-            .await;
+    let res = async_with_vars(
+        [("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))],
+        run(cmd, Verbosity::default()),
+    )
+    .await;
     assert!(res.is_ok(), "{res:?}");
     mock.assert(); // download link was not called a second time
 }
@@ -308,9 +338,11 @@ async fn test_install_clean() {
     fs::create_dir_all(&test_path).unwrap();
     fs::write(test_path.join("foo.txt"), "test").unwrap();
     let cmd: Command = Install::builder().clean(true).build().into();
-    let res =
-        async_with_vars([("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))], run(cmd))
-            .await;
+    let res = async_with_vars(
+        [("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))],
+        run(cmd, Verbosity::default()),
+    )
+    .await;
     assert!(res.is_ok(), "{res:?}");
     assert!(!test_path.exists());
 }
@@ -323,9 +355,11 @@ foo = { version = "0.1.0", git = "https://github.com/foundry-rs/forge-template.g
 "#;
     fs::write(dir.join("soldeer.toml"), contents).unwrap();
     let cmd: Command = Install::builder().recursive_deps(true).build().into();
-    let res =
-        async_with_vars([("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))], run(cmd))
-            .await;
+    let res = async_with_vars(
+        [("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))],
+        run(cmd, Verbosity::default()),
+    )
+    .await;
     assert!(res.is_ok(), "{res:?}");
     let dep_path = dir.join("dependencies").join("foo-0.1.0");
     assert!(dep_path.exists());
@@ -344,9 +378,11 @@ async fn test_install_regenerate_remappings() {
         .regenerate_remappings(true)
         .build()
         .into();
-    let res =
-        async_with_vars([("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))], run(cmd))
-            .await;
+    let res = async_with_vars(
+        [("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))],
+        run(cmd, Verbosity::default()),
+    )
+    .await;
     assert!(res.is_ok(), "{res:?}");
     let remappings = fs::read_to_string(dir.join("remappings.txt")).unwrap();
     assert!(!remappings.contains("foo=bar"));
@@ -375,9 +411,11 @@ remappings_regenerate = true
 
     fs::write(dir.join("foundry.toml"), contents).unwrap();
     let cmd: Command = Install::builder().dependency("forge-std~1.8.1").build().into();
-    let res =
-        async_with_vars([("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))], run(cmd))
-            .await;
+    let res = async_with_vars(
+        [("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))],
+        run(cmd, Verbosity::default()),
+    )
+    .await;
     assert!(res.is_ok(), "{res:?}");
 
     let updated_contents = r#"[profile.default]
@@ -405,6 +443,7 @@ async fn test_modifying_remappings_prefix_config() {
     let dir = testdir!();
 
     let contents = r#"[profile.default]
+libs = ["dependencies"]
 remappings = ["@custom-f@forge-std-1.8.1/=dependencies/forge-std-1.8.1/"]
 
 [soldeer]
@@ -419,12 +458,13 @@ remappings_location = "config"
     let cmd: Command = Install::builder().dependency("forge-std~1.8.1").build().into();
     let res = async_with_vars(
         [("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))],
-        run(cmd.clone()),
+        run(cmd.clone(), Verbosity::default()),
     )
     .await;
     assert!(res.is_ok(), "{res:?}");
 
     let expected = r#"[profile.default]
+libs = ["dependencies"]
 remappings = ["!custom-f!forge-std-1.8.1/=dependencies/forge-std-1.8.1/"]
 
 [soldeer]
@@ -460,7 +500,7 @@ remappings_regenerate = true
     let cmd: Command = Install::builder().dependency("forge-std~1.8.1").build().into();
     let res = async_with_vars(
         [("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))],
-        run(cmd.clone()),
+        run(cmd.clone(), Verbosity::default()),
     )
     .await;
     assert!(res.is_ok(), "{res:?}");
@@ -483,9 +523,11 @@ libs = ["lib"]
         .config_location(ConfigLocation::Foundry)
         .build()
         .into();
-    let res =
-        async_with_vars([("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))], run(cmd))
-            .await;
+    let res = async_with_vars(
+        [("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))],
+        run(cmd, Verbosity::default()),
+    )
+    .await;
     assert!(res.is_ok(), "{res:?}");
     let config = fs::read_to_string(dir.join("foundry.toml")).unwrap();
     let content = r#"[profile.default]
@@ -506,9 +548,11 @@ async fn test_install_new_soldeer_no_soldeer_toml() {
         .config_location(ConfigLocation::Soldeer)
         .build()
         .into();
-    let res =
-        async_with_vars([("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))], run(cmd))
-            .await;
+    let res = async_with_vars(
+        [("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))],
+        run(cmd, Verbosity::default()),
+    )
+    .await;
     assert!(res.is_ok(), "{res:?}");
     let config = fs::read_to_string(dir.join("soldeer.toml")).unwrap();
     let content = r#"[dependencies]
@@ -528,9 +572,11 @@ async fn test_install_new_soldeer_no_dependency_tag() {
         .config_location(ConfigLocation::Soldeer)
         .build()
         .into();
-    let res =
-        async_with_vars([("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))], run(cmd))
-            .await;
+    let res = async_with_vars(
+        [("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))],
+        run(cmd, Verbosity::default()),
+    )
+    .await;
     assert!(res.is_ok(), "{res:?}");
     let config = fs::read_to_string(dir.join("soldeer.toml")).unwrap();
     let content = r#"[soldeer]

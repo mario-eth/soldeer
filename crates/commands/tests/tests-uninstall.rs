@@ -1,6 +1,6 @@
 use soldeer_commands::{
     commands::{install::Install, uninstall::Uninstall},
-    run, Command,
+    run, Command, Verbosity,
 };
 use soldeer_core::{config::read_config_deps, lock::read_lockfile};
 use std::{fs, path::PathBuf};
@@ -27,9 +27,11 @@ remappings_location = "config"
     }
     fs::write(dir.join(config_filename), contents).unwrap();
     let cmd: Command = Install::default().into();
-    let res =
-        async_with_vars([("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))], run(cmd))
-            .await;
+    let res = async_with_vars(
+        [("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))],
+        run(cmd, Verbosity::default()),
+    )
+    .await;
     assert!(res.is_ok(), "{res:?}");
     dir
 }
@@ -38,9 +40,11 @@ remappings_location = "config"
 async fn test_uninstall_one() {
     let dir = setup("soldeer.toml").await;
     let cmd: Command = Uninstall::builder().dependency("solady").build().into();
-    let res =
-        async_with_vars([("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))], run(cmd))
-            .await;
+    let res = async_with_vars(
+        [("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))],
+        run(cmd, Verbosity::default()),
+    )
+    .await;
     assert!(res.is_ok(), "{res:?}");
     let deps = read_config_deps(dir.join("soldeer.toml")).unwrap();
     assert!(!deps.iter().any(|d| d.name() == "solady"));
@@ -55,14 +59,18 @@ async fn test_uninstall_one() {
 async fn test_uninstall_all() {
     let dir = setup("soldeer.toml").await;
     let cmd: Command = Uninstall::builder().dependency("solady").build().into();
-    let res =
-        async_with_vars([("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))], run(cmd))
-            .await;
+    let res = async_with_vars(
+        [("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))],
+        run(cmd, Verbosity::default()),
+    )
+    .await;
     assert!(res.is_ok(), "{res:?}");
     let cmd: Command = Uninstall::builder().dependency("@openzeppelin-contracts").build().into();
-    let res =
-        async_with_vars([("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))], run(cmd))
-            .await;
+    let res = async_with_vars(
+        [("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))],
+        run(cmd, Verbosity::default()),
+    )
+    .await;
     assert!(res.is_ok(), "{res:?}");
 
     let deps = read_config_deps(dir.join("soldeer.toml")).unwrap();
@@ -76,9 +84,11 @@ async fn test_uninstall_all() {
 async fn test_uninstall_foundry_config() {
     let dir = setup("foundry.toml").await;
     let cmd: Command = Uninstall::builder().dependency("solady").build().into();
-    let res =
-        async_with_vars([("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))], run(cmd))
-            .await;
+    let res = async_with_vars(
+        [("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))],
+        run(cmd, Verbosity::default()),
+    )
+    .await;
     assert!(res.is_ok(), "{res:?}");
     let deps = read_config_deps(dir.join("foundry.toml")).unwrap();
     assert!(!deps.iter().any(|d| d.name() == "solady"));

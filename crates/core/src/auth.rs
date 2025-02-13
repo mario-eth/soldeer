@@ -1,15 +1,9 @@
 //! Registry authentication
 use crate::{errors::AuthError, registry::api_url, utils::login_file_path};
+use log::{debug, info};
 use reqwest::{Client, StatusCode};
 use serde::{Deserialize, Serialize};
-use std::fs;
-
-#[cfg(feature = "cli")]
-use cliclack::log::{info, success};
-#[cfg(feature = "cli")]
-use path_slash::PathBufExt as _;
-#[cfg(feature = "cli")]
-use std::path::PathBuf;
+use std::{fs, path::PathBuf};
 
 pub type Result<T> = std::result::Result<T, AuthError>;
 
@@ -30,36 +24,30 @@ pub struct LoginResponse {
 
 /// Get the JWT token from the login file
 pub fn get_token() -> Result<String> {
-    let login_file = login_file_path()?;
+    let token_path = login_file_path()?;
     let jwt =
-        fs::read_to_string(&login_file).map_err(|_| AuthError::MissingToken)?.trim().to_string();
+        fs::read_to_string(&token_path).map_err(|_| AuthError::MissingToken)?.trim().to_string();
     if jwt.is_empty() {
+        debug!(token_path:?; "token file exists but is empty");
         return Err(AuthError::MissingToken);
     }
+    debug!(token_path:?; "token retrieved from file");
     Ok(jwt)
 }
 
 /// Execute the login request and store the JWT token in the login file
-pub async fn execute_login(login: &Credentials) -> std::result::Result<(), AuthError> {
-    let security_file = login_file_path()?;
+pub async fn execute_login(login: &Credentials) -> std::result::Result<PathBuf, AuthError> {
+    let token_path = login_file_path()?;
     let url = api_url("auth/login", &[]);
     let client = Client::new();
     let res = client.post(url).json(login).send().await?;
     match res.status() {
         s if s.is_success() => {
-            #[cfg(feature = "cli")]
-            success("Login successful")?;
-
+            debug!("login request completed");
             let response: LoginResponse = res.json().await?;
-            fs::write(&security_file, response.token)?;
-
-            #[cfg(feature = "cli")]
-            info(format!(
-                "Login details saved in: {}",
-                PathBuf::from_slash_lossy(&security_file).to_string_lossy() /* normalize separators */
-            ))?;
-
-            Ok(())
+            fs::write(&token_path, response.token)?;
+            info!(token_path:?; "login successful");
+            Ok(token_path)
         }
         StatusCode::UNAUTHORIZED => Err(AuthError::InvalidCredentials),
         _ => Err(AuthError::HttpError(
@@ -98,6 +86,7 @@ mod tests {
         )
         .await;
         assert!(res.is_ok(), "{res:?}");
+        assert_eq!(fs::canonicalize(res.unwrap()).unwrap(), fs::canonicalize(&test_file).unwrap());
         assert_eq!(fs::read_to_string(test_file).unwrap(), "jwt_token_example");
     }
 

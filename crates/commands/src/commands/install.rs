@@ -1,17 +1,16 @@
 use super::validate_dependency;
-use crate::ConfigLocation;
-use clap::Parser;
-use cliclack::{
-    log::{remark, success, warning},
-    multi_progress, outro,
+use crate::{
+    utils::{outro, remark, success, warning, Progress},
+    ConfigLocation,
 };
+use clap::Parser;
 use soldeer_core::{
     config::{
         add_to_config, read_config_deps, read_soldeer_config, Dependency, GitIdentifier, Paths,
         UrlType,
     },
     errors::{InstallError, LockError},
-    install::{ensure_dependencies_dir, install_dependencies, install_dependency, Progress},
+    install::{ensure_dependencies_dir, install_dependencies, install_dependency, InstallProgress},
     lock::{add_to_lockfile, generate_lockfile_contents, read_lockfile},
     remappings::{edit_remappings, RemappingsAction},
     Result,
@@ -20,7 +19,8 @@ use std::fs;
 
 /// Install a dependency
 #[derive(Debug, Clone, Default, Parser, bon::Builder)]
-#[builder(on(String, into))]
+#[allow(clippy::duplicated_attributes)]
+#[builder(on(String, into), on(ConfigLocation, into))]
 #[clap(
     long_about = "Install a dependency
 
@@ -100,42 +100,42 @@ pub(crate) async fn install_command(paths: &Paths, cmd: Install) -> Result<()> {
     if cmd.recursive_deps {
         config.recursive_deps = true;
     }
-    success("Done reading config")?;
+    success!("Done reading config");
     ensure_dependencies_dir(&paths.dependencies)?;
     let dependencies: Vec<Dependency> = read_config_deps(&paths.config)?;
     match cmd.dependency {
         None => {
             let lockfile = read_lockfile(&paths.lock)?;
-            success("Done reading lockfile")?;
+            success!("Done reading lockfile");
             if cmd.clean {
-                remark("Flag `--clean` was set, re-installing all dependencies")?;
+                remark!("Flag `--clean` was set, re-installing all dependencies");
                 fs::remove_dir_all(&paths.dependencies).map_err(|e| InstallError::IOError {
                     path: paths.dependencies.clone(),
                     source: e,
                 })?;
                 ensure_dependencies_dir(&paths.dependencies)?;
             }
-            let multi = multi_progress("Installing dependencies");
-            let progress = Progress::new(&multi, dependencies.len() as u64);
-            progress.start_all();
+
+            let (progress, monitor) = InstallProgress::new();
+            let bars = Progress::new("Installing dependencies", dependencies.len(), monitor);
+            bars.start_all();
             let new_locks = install_dependencies(
                 &dependencies,
                 &lockfile.entries,
                 &paths.dependencies,
                 config.recursive_deps,
-                progress.clone(),
+                progress,
             )
             .await?;
-            progress.stop_all();
-            multi.stop();
+            bars.stop_all();
             let new_lockfile_content = generate_lockfile_contents(new_locks);
             if !lockfile.raw.is_empty() && new_lockfile_content != lockfile.raw {
-                warning("Warning: the lock file is out of sync with the dependencies. Consider running `soldeer update` to re-generate the lockfile.")?;
+                warning!("Warning: the lock file is out of sync with the dependencies. Consider running `soldeer update` to re-generate the lockfile.");
             } else if lockfile.raw.is_empty() {
                 fs::write(&paths.lock, new_lockfile_content).map_err(LockError::IOError)?;
             }
             edit_remappings(&RemappingsAction::Update, &config, paths)?;
-            success("Updated remappings")?;
+            success!("Updated remappings");
         }
         Some(dependency) => {
             let identifier = match (cmd.rev, cmd.branch, cmd.tag) {
@@ -151,23 +151,22 @@ pub(crate) async fn install_command(paths: &Paths, cmd: Install) -> Result<()> {
                 .iter()
                 .any(|d| d.name() == dep.name() && d.version_req() == dep.version_req())
             {
-                outro(format!("{dep} is already installed"))?;
+                outro!(format!("{dep} is already installed"));
                 return Ok(());
             }
-            let multi = multi_progress(format!("Installing {dep}"));
-            let progress = Progress::new(&multi, 1);
-            progress.start_all();
+            let (progress, monitor) = InstallProgress::new();
+            let bars = Progress::new(format!("Installing {dep}"), 1, monitor);
+            bars.start_all();
             let lock = install_dependency(
                 &dep,
                 None,
                 &paths.dependencies,
                 None,
                 config.recursive_deps,
-                progress.clone(),
+                progress,
             )
             .await?;
-            progress.stop_all();
-            multi.stop();
+            bars.stop_all();
             // for git deps, we need to add the commit hash before adding them to the
             // config, unless a branch/tag was specified
             if let Some(git_dep) = dep.as_git_mut() {
@@ -178,11 +177,11 @@ pub(crate) async fn install_command(paths: &Paths, cmd: Install) -> Result<()> {
                 }
             }
             add_to_config(&dep, &paths.config)?;
-            success("Dependency added to config")?;
+            success!("Dependency added to config");
             add_to_lockfile(lock, &paths.lock)?;
-            success("Dependency added to lockfile")?;
+            success!("Dependency added to lockfile");
             edit_remappings(&RemappingsAction::Add(dep), &config, paths)?;
-            success("Dependency added to remappings")?;
+            success!("Dependency added to remappings");
         }
     }
     Ok(())

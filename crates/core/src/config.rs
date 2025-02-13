@@ -5,15 +5,13 @@ use crate::{
     remappings::RemappingsLocation,
 };
 use derive_more::derive::{Display, From, FromStr};
+use log::{debug, warn};
 use serde::Deserialize;
 use std::{
     env, fmt, fs,
     path::{Path, PathBuf},
 };
 use toml_edit::{value, Array, DocumentMut, InlineTable, Item, Table};
-
-#[cfg(feature = "cli")]
-use cliclack::{log::warning, select};
 
 pub type Result<T> = std::result::Result<T, ConfigError>;
 
@@ -68,10 +66,8 @@ pub struct Paths {
     /// The path to the config file.
     ///
     /// `foundry.toml` if it contains a `[dependencies]` table, otherwise `soldeer.toml` if it
-    /// exists. If neither file exists, the user is prompted to create one when the `cli`
-    /// feature is enabled. If the `cli` feature is not enabled, the function will return the
-    /// path to the `foundry.toml` by default. When the config file does not exist, a new one
-    /// is created with default contents.
+    /// exists. Otherwise, the `foundry.toml` file is used by default. When the config file does
+    /// not exist, a new one is created with default contents.
     pub config: PathBuf,
 
     /// The path to the dependencies folder (does not need to exist).
@@ -107,6 +103,10 @@ impl Paths {
     /// The root path defaults to the current directory but can be overridden with the
     /// `SOLDEER_PROJECT_ROOT` environment variable.
     ///
+    /// If a config location is provided, it bypasses auto-detection and uses that. If `None`, then
+    /// the location is auto-detected or if impossible, the `foundry.toml` file is used. If the
+    /// config file does not exist yet, it gets created with default content.
+    ///
     /// The paths are canonicalized.
     pub fn with_config(config_location: Option<ConfigLocation>) -> Result<Self> {
         let root = dunce::canonicalize(Self::get_root_path())?;
@@ -137,22 +137,31 @@ impl Paths {
     ///
     /// At the moment, this is the current directory, unless overridden by the
     /// `SOLDEER_PROJECT_ROOT` environment variable.
-    fn get_root_path() -> PathBuf {
+    pub fn get_root_path() -> PathBuf {
         // TODO: find the project's root directory and use that as the root instead of the current
         // dir
         env::var("SOLDEER_PROJECT_ROOT")
             .map(|p| {
                 if p.is_empty() {
+                    debug!("SOLDEER_PROJECT_ROOT exists but is empty, defaulting to current dir");
                     env::current_dir().expect("could not get current dir")
                 } else {
+                    debug!(path = p; "root set by SOLDEER_PROJECT_ROOT");
                     PathBuf::from(p)
                 }
             })
-            .unwrap_or(env::current_dir().expect("could not get current dir"))
+            .unwrap_or_else(|_| {
+                debug!("SOLDEER_PROJECT_ROOT not defined, defaulting to current dir");
+                env::current_dir().expect("could not get current dir")
+            })
     }
 
-    /// Get the path to the config file or prompt the user to choose one (only with `cli` feature
-    /// flag).
+    /// Get the path to the config file.
+    ///
+    /// If a parameter is given for `config_location`, it will be used. Otherwise, the function will
+    /// try to auto-detect the location based on the existence of the `dependencies` entry in
+    /// the foundry config file, or the existence of a `soldeer.toml` file. If no config can be
+    /// found, `foundry.toml` is used by default.
     fn get_config_path(
         root: impl AsRef<Path>,
         config_location: Option<ConfigLocation>,
@@ -160,44 +169,25 @@ impl Paths {
         let foundry_path = root.as_ref().join("foundry.toml");
         let soldeer_path = root.as_ref().join("soldeer.toml");
         // use the user preference if available
-        if let Some(location) = config_location {
-            return create_or_modify_config(location, &foundry_path, &soldeer_path);
-        }
-
-        // auto-detect, or prompt the user if we can't determine the config path and the cli feature
-        // is enabled. Otherwise, we use `foundry.toml` by default.
-        if let Ok(contents) = fs::read_to_string(&foundry_path) {
-            let doc: DocumentMut = contents.parse::<DocumentMut>()?;
-            if doc.contains_table("dependencies") {
-                return Ok(foundry_path);
-            }
-        } else if soldeer_path.exists() {
-            return Ok(soldeer_path);
-        }
-
-        #[cfg(feature = "cli")]
-        warning("No soldeer config found")?;
-        #[cfg(feature = "cli")]
-        let config_option: ConfigLocation = select("Select how you want to configure Soldeer")
-            .initial_value("foundry")
-            .item("foundry", "Using foundry.toml", "recommended")
-            .item("soldeer", "Using soldeer.toml", "for non-foundry projects")
-            .interact()?
-            .parse()
-            .map_err(|_| ConfigError::InvalidPromptOption)?;
-
-        #[cfg(not(feature = "cli"))]
-        let config_option = ConfigLocation::Foundry;
-
-        create_or_modify_config(config_option, &foundry_path, &soldeer_path)
+        let location = config_location.or_else(|| {
+            debug!("no preferred config location, trying to detect automatically");
+            detect_config_location(root)
+        }).unwrap_or_else(|| {
+            warn!("config file location could not be determined automatically, using foundry by default");
+            ConfigLocation::Foundry
+        });
+        debug!("using config location {location:?}");
+        create_or_modify_config(location, &foundry_path, &soldeer_path)
     }
 
+    /// Default Foundry config file path
     pub fn foundry_default() -> PathBuf {
         let root: PathBuf =
             dunce::canonicalize(Self::get_root_path()).expect("could not get the root");
         root.join("foundry.toml")
     }
 
+    /// Default Soldeer config file path
     pub fn soldeer_default() -> PathBuf {
         let root: PathBuf =
             dunce::canonicalize(Self::get_root_path()).expect("could not get the root");
@@ -455,7 +445,7 @@ impl Dependency {
     ) -> Result<Self> {
         let (dependency_name, dependency_version_req) = name_version
             .split_once('~')
-            .expect("dependency string should have name and version requirement");
+            .ok_or(ConfigError::InvalidNameAndVersion(name_version.to_string()))?;
         if dependency_version_req.is_empty() {
             return Err(ConfigError::EmptyVersion(dependency_name.to_string()));
         }
@@ -468,6 +458,7 @@ impl Dependency {
                 if dependency_version_req.contains('=') {
                     return Err(ConfigError::InvalidVersionReq(dependency_name.to_string()));
                 }
+                debug!(url:% = url; "using custom url");
                 match url {
                     UrlType::Git(url) => GitDependency {
                         name: dependency_name.to_string(),
@@ -519,11 +510,13 @@ impl Dependency {
 
     /// Get the install path of the dependency (must exist already).
     pub fn install_path_sync(&self, deps: impl AsRef<Path>) -> Option<PathBuf> {
+        debug!(dep:% = self; "trying to find installation path of dependency (sync)");
         find_install_path_sync(self, deps)
     }
 
     /// Get the install path of the dependency in an async way (must exist already).
     pub async fn install_path(&self, deps: impl AsRef<Path>) -> Option<PathBuf> {
+        debug!(dep:% = self; "trying to find installation path of dependency (async)");
         find_install_path(self, deps).await
     }
 
@@ -669,6 +662,34 @@ impl From<ConfigLocation> for PathBuf {
     }
 }
 
+/// Detect the location of the config file in case no user preference is available.
+///
+/// The function will try to auto-detect the location based on the existence of the
+/// `dependencies` entry in the foundry config file, or the existence of a `soldeer.toml` file.
+/// If no config can be found, `None` is returned.
+pub fn detect_config_location(root: impl AsRef<Path>) -> Option<ConfigLocation> {
+    let foundry_path = root.as_ref().join("foundry.toml");
+    let soldeer_path = root.as_ref().join("soldeer.toml");
+    if let Ok(contents) = fs::read_to_string(&foundry_path) {
+        debug!(path:? = foundry_path; "found foundry.toml file");
+        if let Ok(doc) = contents.parse::<DocumentMut>() {
+            if doc.contains_table("dependencies") {
+                debug!("found `dependencies` table in foundry.toml, so using that file for config");
+                return Some(ConfigLocation::Foundry);
+            } else {
+                debug!("foundry.toml does not contain `dependencies`, trying to use soldeer.toml");
+            }
+        } else {
+            warn!(path:? = foundry_path; "foundry.toml could not be parsed a toml");
+        }
+    } else if soldeer_path.exists() {
+        debug!(path:? = soldeer_path; "soldeer.toml exists, using that file for config");
+        return Some(ConfigLocation::Soldeer);
+    }
+    debug!("could not determine existing config file location");
+    None
+}
+
 /// Read the list of dependencies from the config file.
 ///
 /// Dependencies are stored in a TOML table under the `dependencies` key.
@@ -682,9 +703,10 @@ impl From<ConfigLocation> for PathBuf {
 ///   - `branch` (optional): the branch name for git dependencies
 ///   - `tag` (optional): the tag name for git dependencies
 pub fn read_config_deps(path: impl AsRef<Path>) -> Result<Vec<Dependency>> {
-    let contents = fs::read_to_string(path)?;
+    let contents = fs::read_to_string(&path)?;
     let doc: DocumentMut = contents.parse::<DocumentMut>()?;
     let Some(Some(data)) = doc.get("dependencies").map(|v| v.as_table()) else {
+        warn!("no `dependencies` table in config file");
         return Ok(Vec::new());
     };
 
@@ -692,7 +714,7 @@ pub fn read_config_deps(path: impl AsRef<Path>) -> Result<Vec<Dependency>> {
     for (name, v) in data {
         dependencies.push(parse_dependency(name, v)?);
     }
-
+    debug!(path:? = path.as_ref(); "found {} dependencies in config file", dependencies.len());
     Ok(dependencies)
 }
 
@@ -704,10 +726,11 @@ pub fn read_soldeer_config(path: impl AsRef<Path>) -> Result<SoldeerConfig> {
         soldeer: SoldeerConfig,
     }
 
-    let contents = fs::read_to_string(path)?;
+    let contents = fs::read_to_string(&path)?;
 
     let config: SoldeerConfigParsed = toml_edit::de::from_str(&contents)?;
 
+    debug!(path:? = path.as_ref(); "parsed soldeer config from file");
     Ok(config.soldeer)
 }
 
@@ -718,6 +741,7 @@ pub fn add_to_config(dependency: &Dependency, config_path: impl AsRef<Path>) -> 
 
     // in case we don't have the dependencies section defined in the config file, we add it
     if !doc.contains_table("dependencies") {
+        debug!("`dependencies` table added to config file because it was missing");
         doc.insert("dependencies", Item::Table(Table::default()));
     }
 
@@ -727,8 +751,8 @@ pub fn add_to_config(dependency: &Dependency, config_path: impl AsRef<Path>) -> 
         .expect("dependencies should be a table")
         .insert(&name, value);
 
-    fs::write(config_path, doc.to_string())?;
-
+    fs::write(&config_path, doc.to_string())?;
+    debug!(dep:% = dependency, path:? = config_path.as_ref(); "added dependency to config file");
     Ok(())
 }
 
@@ -738,25 +762,29 @@ pub fn delete_from_config(dependency_name: &str, path: impl AsRef<Path>) -> Resu
     let mut doc: DocumentMut = contents.parse::<DocumentMut>().expect("invalid doc");
 
     let Some(dependencies) = doc["dependencies"].as_table_mut() else {
+        debug!("no `dependencies` table in config file");
         return Err(ConfigError::MissingDependency(dependency_name.to_string()));
     };
     let Some(item_removed) = dependencies.remove(dependency_name) else {
+        debug!("dependency not present in config file");
         return Err(ConfigError::MissingDependency(dependency_name.to_string()));
     };
 
     let dependency = parse_dependency(dependency_name, &item_removed)?;
 
-    fs::write(path, doc.to_string())?;
+    fs::write(&path, doc.to_string())?;
+    debug!(dep = dependency_name, path:? = path.as_ref(); "removed dependency from config file");
     Ok(dependency)
 }
 
 /// Update the config file to add the `dependencies` folder as a source for libraries and the
-/// `[dependencies]` table.
+/// `[dependencies]` table if necessary.
 pub fn update_config_libs(foundry_config: impl AsRef<Path>) -> Result<()> {
     let contents = fs::read_to_string(&foundry_config)?;
     let mut doc: DocumentMut = contents.parse::<DocumentMut>()?;
 
     if !doc.contains_key("profile") {
+        debug!("missing `profile` in config file, adding it");
         let mut profile = Table::default();
         profile["default"] = Item::Table(Table::default());
         profile.set_implicit(true);
@@ -765,26 +793,31 @@ pub fn update_config_libs(foundry_config: impl AsRef<Path>) -> Result<()> {
 
     let profile = doc["profile"].as_table_mut().expect("profile should be a table");
     if !profile.contains_key("default") {
+        debug!("missing `default` profile in config file, adding it");
         profile["default"] = Item::Table(Table::default());
     }
 
     let default_profile =
         profile["default"].as_table_mut().expect("default profile should be a table");
     if !default_profile.contains_key("libs") {
+        debug!("missing `libs` array in config file, adding it");
         default_profile["libs"] = value(Array::from_iter(&["dependencies".to_string()]));
     }
 
     let libs = default_profile["libs"].as_array_mut().expect("libs should be an array");
     if !libs.iter().any(|v| v.as_str() == Some("dependencies")) {
+        debug!("adding `dependencies` folder to `libs` array");
         libs.push("dependencies");
     }
 
     // in case we don't have the dependencies section defined in the config file, we add it
     if !doc.contains_table("dependencies") {
+        debug!("adding `dependencies` table in config file");
         doc.insert("dependencies", Item::Table(Table::default()));
     }
 
-    fs::write(foundry_config, doc.to_string())?;
+    fs::write(&foundry_config, doc.to_string())?;
+    debug!(path:? = foundry_config.as_ref(); "config file updated");
     Ok(())
 }
 
@@ -819,6 +852,7 @@ fn parse_dependency(name: impl Into<String>, value: &Item) -> Result<Dependency>
                 // we normalize to inline table
                 Some(table) => &table.clone().into_inline_table(),
                 None => {
+                    debug!(dep = name; "dependency config entry could not be parsed as a table");
                     return Err(ConfigError::InvalidDependency(name));
                 }
             },
@@ -828,6 +862,7 @@ fn parse_dependency(name: impl Into<String>, value: &Item) -> Result<Dependency>
     // version is needed in both cases
     let version_req = match table.get("version").map(|v| v.as_str()) {
         Some(None) => {
+            debug!(dep = name; "dependency's `version` field is not a string");
             return Err(ConfigError::InvalidField { field: "version".to_string(), dep: name });
         }
         None => {
@@ -842,6 +877,7 @@ fn parse_dependency(name: impl Into<String>, value: &Item) -> Result<Dependency>
     // check if it's a git dependency
     match table.get("git").map(|v| v.as_str()) {
         Some(None) => {
+            debug!(dep = name; "dependency's `git` field is not a string");
             return Err(ConfigError::InvalidField { field: "git".to_string(), dep: name });
         }
         Some(Some(git)) => {
@@ -855,6 +891,7 @@ fn parse_dependency(name: impl Into<String>, value: &Item) -> Result<Dependency>
             let rev = match table.get("rev").map(|v| v.as_str()) {
                 Some(Some(rev)) => Some(rev.to_string()),
                 Some(None) => {
+                    debug!(dep = name; "dependency's `rev` field is not a string");
                     return Err(ConfigError::InvalidField { field: "rev".to_string(), dep: name });
                 }
                 None => None,
@@ -862,6 +899,7 @@ fn parse_dependency(name: impl Into<String>, value: &Item) -> Result<Dependency>
             let branch = match table.get("branch").map(|v| v.as_str()) {
                 Some(Some(tag)) => Some(tag.to_string()),
                 Some(None) => {
+                    debug!(dep = name; "dependency's `branch` field is not a string");
                     return Err(ConfigError::InvalidField {
                         field: "branch".to_string(),
                         dep: name,
@@ -872,6 +910,7 @@ fn parse_dependency(name: impl Into<String>, value: &Item) -> Result<Dependency>
             let tag = match table.get("tag").map(|v| v.as_str()) {
                 Some(Some(tag)) => Some(tag.to_string()),
                 Some(None) => {
+                    debug!(dep = name; "dependency's `tag` field is not a string");
                     return Err(ConfigError::InvalidField { field: "tag".to_string(), dep: name });
                 }
                 None => None,
@@ -897,7 +936,10 @@ fn parse_dependency(name: impl Into<String>, value: &Item) -> Result<Dependency>
 
     // we should have a HTTP dependency
     match table.get("url").map(|v| v.as_str()) {
-        Some(None) => Err(ConfigError::InvalidField { field: "url".to_string(), dep: name }),
+        Some(None) => {
+            debug!(dep = name; "dependency's `url` field is not a string");
+            Err(ConfigError::InvalidField { field: "url".to_string(), dep: name })
+        }
         None => Ok(HttpDependency { name, version_req, url: None }.into()),
         Some(Some(url)) => {
             // for HTTP dependencies with custom URL, the version requirement string is going to be
@@ -913,7 +955,7 @@ fn parse_dependency(name: impl Into<String>, value: &Item) -> Result<Dependency>
 }
 
 /// Create a basic config file with default contents if it doesn't exist, otherwise add
-/// `[dependencies]`.
+/// `[dependencies]` if necessary.
 fn create_or_modify_config(
     location: ConfigLocation,
     foundry_path: impl AsRef<Path>,
@@ -926,6 +968,7 @@ fn create_or_modify_config(
                 update_config_libs(foundry_path)?;
                 return Ok(foundry_path.to_path_buf());
             }
+            debug!(path:? = foundry_path; "foundry.toml does not exist, creating it");
             let contents = r#"[profile.default]
 src = "src"
 out = "out"
@@ -944,7 +987,7 @@ libs = ["dependencies"]
             if soldeer_path.exists() {
                 return Ok(soldeer_path.to_path_buf());
             }
-
+            debug!(path:? = soldeer_path; "soldeer.toml does not exist, creating it");
             fs::write(soldeer_path, "[dependencies]\n")?;
             Ok(soldeer_path.to_path_buf())
         }

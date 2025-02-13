@@ -1,14 +1,13 @@
+use crate::utils::{info, remark, step, success};
 use clap::Parser;
-use cliclack::{
-    input,
-    log::{remark, step},
-};
 use email_address_parser::{EmailAddress, ParsingOptions};
+use path_slash::PathBufExt as _;
 use soldeer_core::{
     auth::{execute_login, Credentials},
     errors::AuthError,
     Result,
 };
+use std::path::PathBuf;
 
 /// Log into the central repository to push packages
 ///
@@ -29,35 +28,50 @@ pub struct Login {
 }
 
 pub(crate) async fn login_command(cmd: Login) -> Result<()> {
-    remark("If you do not have an account, please visit soldeer.xyz to create one.")?;
+    remark!("If you do not have an account, please visit soldeer.xyz to create one.");
 
     let email: String = match cmd.email {
         Some(email) => {
             if EmailAddress::parse(&email, Some(ParsingOptions::default())).is_none() {
                 return Err(AuthError::InvalidCredentials.into());
             }
-            step(format!("Email: {email}"))?;
+            step!(format!("Email: {email}"));
             email
         }
-        None => input("Email address")
-            .validate(|input: &String| {
-                if input.is_empty() {
-                    Err("Email is required")
-                } else {
-                    match EmailAddress::parse(input, Some(ParsingOptions::default())) {
-                        None => Err("Invalid email address"),
-                        Some(_) => Ok(()),
+        None => {
+            if !crate::TUI_ENABLED.load(std::sync::atomic::Ordering::Relaxed) {
+                return Err(AuthError::TuiDisabled.into());
+            }
+            cliclack::input("Email address")
+                .validate(|input: &String| {
+                    if input.is_empty() {
+                        Err("Email is required")
+                    } else {
+                        match EmailAddress::parse(input, Some(ParsingOptions::default())) {
+                            None => Err("Invalid email address"),
+                            Some(_) => Ok(()),
+                        }
                     }
-                }
-            })
-            .interact()?,
+                })
+                .interact()?
+        }
     };
 
     let password = match cmd.password {
         Some(pw) => pw,
-        None => cliclack::password("Password").mask('▪').interact()?,
+        None => {
+            if !crate::TUI_ENABLED.load(std::sync::atomic::Ordering::Relaxed) {
+                return Err(AuthError::TuiDisabled.into());
+            }
+            cliclack::password("Password").mask('▪').interact()?
+        }
     };
 
-    execute_login(&Credentials { email, password }).await?;
+    let token_path = execute_login(&Credentials { email, password }).await?;
+    success!("Login successful");
+    info!(format!(
+        "Login details saved in: {}",
+        PathBuf::from_slash_lossy(&token_path).to_string_lossy() /* normalize separators */
+    ));
     Ok(())
 }

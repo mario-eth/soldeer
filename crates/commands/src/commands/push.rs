@@ -1,13 +1,13 @@
 use super::validate_dependency;
+use crate::utils::{info, remark, success, warning};
 use clap::Parser;
-use cliclack::log::{info, remark, warning};
 use soldeer_core::{
     errors::PublishError,
     push::{filter_ignored_files, push_version, validate_name},
     utils::check_dotfiles,
     Result,
 };
-use std::{env, path::PathBuf};
+use std::{env, path::PathBuf, sync::atomic::Ordering};
 
 /// Push a dependency to the repository
 #[derive(Debug, Clone, Parser, bon::Builder)]
@@ -64,11 +64,11 @@ pub(crate) async fn push_command(cmd: Push) -> Result<()> {
     }
 
     if cmd.dry_run {
-        remark("Running in dry-run mode, a zip file will be created for inspection")?;
+        remark!("Running in dry-run mode, a zip file will be created for inspection");
     }
 
     if cmd.skip_warnings {
-        warning("Sensitive file warnings are being ignored as requested")?;
+        warning!("Sensitive file warnings are being ignored as requested");
     }
 
     let (dependency_name, dependency_version) =
@@ -79,17 +79,23 @@ pub(crate) async fn push_command(cmd: Push) -> Result<()> {
     if let Some(zip_path) =
         push_version(dependency_name, dependency_version, path, &files_to_copy, cmd.dry_run).await?
     {
-        info(format!("Zip file created at {}", zip_path.to_string_lossy()))?;
+        info!(format!("Zip file created at {}", zip_path.to_string_lossy()));
+    } else {
+        success!("Pushed to repository!");
     }
     Ok(())
 }
 
 // Function to prompt the user for confirmation
 fn prompt_user_for_confirmation() -> Result<bool> {
-    remark("You are about to include some sensitive files in this version").ok();
-    info("If you are not sure which files will be included, you can run the command with `--dry-run`and inspect the generated zip file.").ok();
+    remark!("You are about to include some sensitive files in this version");
+    info!("If you are not sure which files will be included, you can run the command with `--dry-run`and inspect the generated zip file.");
 
-    cliclack::confirm("Do you want to continue?")
-        .interact()
-        .map_err(|e| PublishError::IOError { path: PathBuf::new(), source: e }.into())
+    if crate::TUI_ENABLED.load(Ordering::Relaxed) {
+        cliclack::confirm("Do you want to continue?")
+            .interact()
+            .map_err(|e| PublishError::IOError { path: PathBuf::new(), source: e }.into())
+    } else {
+        Ok(true)
+    }
 }

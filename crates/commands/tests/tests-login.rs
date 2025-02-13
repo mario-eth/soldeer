@@ -2,7 +2,7 @@ use std::{fs, path::PathBuf};
 
 use mockito::{Matcher, Mock, ServerGuard};
 use reqwest::StatusCode;
-use soldeer_commands::{commands::login::Login, run, Command};
+use soldeer_commands::{commands::login::Login, run, Command, Verbosity};
 use temp_env::async_with_vars;
 use testdir::testdir;
 
@@ -42,7 +42,7 @@ async fn mock_api_server(status_code: Option<StatusCode>) -> (ServerGuard, Mock)
 #[tokio::test]
 async fn test_login_without_prompt_err_400() {
     let cmd: Command = Login::builder().email("test@test.com").password("111111").build().into();
-    let res = run(cmd).await;
+    let res = run(cmd, Verbosity::default()).await;
     assert_eq!(res.unwrap_err().to_string(), "error during login: http error during login: HTTP status client error (400 Bad Request) for url (https://api.soldeer.xyz/api/v1/auth/login)");
 }
 
@@ -58,7 +58,7 @@ async fn test_login_without_prompt_success() {
             ("SOLDEER_API_URL", Some(server.url())),
             ("SOLDEER_LOGIN_FILE", Some(login_file.to_string_lossy().to_string())),
         ],
-        run(cmd),
+        run(cmd, Verbosity::default()),
     )
     .await;
     assert!(res.is_ok());

@@ -1,8 +1,8 @@
 use soldeer_commands::{
     commands::{install::Install, update::Update},
-    run, Command, ConfigLocation,
+    run, Command, Verbosity,
 };
-use soldeer_core::lock::read_lockfile;
+use soldeer_core::{config::ConfigLocation, lock::read_lockfile};
 use std::{fs, path::PathBuf};
 use temp_env::async_with_vars;
 use testdir::testdir;
@@ -27,9 +27,11 @@ remappings_location = "config"
     }
     fs::write(dir.join(config_filename), &contents).unwrap();
     let cmd: Command = Install::default().into();
-    let res =
-        async_with_vars([("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))], run(cmd))
-            .await;
+    let res = async_with_vars(
+        [("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))],
+        run(cmd, Verbosity::default()),
+    )
+    .await;
     assert!(res.is_ok(), "{res:?}");
     // change install requirement to forge-std ^1.0.0 (making the current install outdated)
     contents = contents.replace("1.9.0", "1");
@@ -43,9 +45,11 @@ remappings_location = "config"
 async fn test_update_existing() {
     let dir = setup("soldeer.toml").await;
     let cmd: Command = Update::default().into();
-    let res =
-        async_with_vars([("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))], run(cmd))
-            .await;
+    let res = async_with_vars(
+        [("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))],
+        run(cmd, Verbosity::default()),
+    )
+    .await;
     assert!(res.is_ok(), "{res:?}");
     let lockfile = read_lockfile(dir.join("soldeer.lock")).unwrap();
     let version = lockfile.entries.first().unwrap().version();
@@ -59,9 +63,11 @@ async fn test_update_existing() {
 async fn test_update_foundry_config() {
     let dir = setup("foundry.toml").await;
     let cmd: Command = Update::default().into();
-    let res =
-        async_with_vars([("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))], run(cmd))
-            .await;
+    let res = async_with_vars(
+        [("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))],
+        run(cmd, Verbosity::default()),
+    )
+    .await;
     assert!(res.is_ok(), "{res:?}");
     let lockfile = read_lockfile(dir.join("soldeer.lock")).unwrap();
     let version = lockfile.entries.first().unwrap().version();
@@ -77,9 +83,11 @@ forge-std = "1"
 "#;
     fs::write(dir.join("soldeer.toml"), contents).unwrap();
     let cmd: Command = Update::default().into();
-    let res =
-        async_with_vars([("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))], run(cmd))
-            .await;
+    let res = async_with_vars(
+        [("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))],
+        run(cmd, Verbosity::default()),
+    )
+    .await;
     assert!(res.is_ok(), "{res:?}");
     let lockfile = read_lockfile(dir.join("soldeer.lock")).unwrap();
     let version = lockfile.entries.first().unwrap().version();
@@ -93,9 +101,11 @@ async fn test_update_custom_remappings() {
     fs::write(dir.join("remappings.txt"), "forge-std/=dependencies/forge-std-1.9.0/src/\n")
         .unwrap();
     let cmd: Command = Update::default().into();
-    let res =
-        async_with_vars([("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))], run(cmd))
-            .await;
+    let res = async_with_vars(
+        [("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))],
+        run(cmd, Verbosity::default()),
+    )
+    .await;
     assert!(res.is_ok(), "{res:?}");
     let lockfile = read_lockfile(dir.join("soldeer.lock")).unwrap();
     let version = lockfile.entries.first().unwrap().version();
@@ -119,16 +129,20 @@ rev = "78c2f6a1a54db26bab6c3f501854a1564eb3707f"
 "#;
     fs::write(dir.join("soldeer.lock"), lockfile).unwrap();
     let cmd: Command = Install::default().into();
-    let res =
-        async_with_vars([("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))], run(cmd))
-            .await;
+    let res = async_with_vars(
+        [("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))],
+        run(cmd, Verbosity::default()),
+    )
+    .await;
     assert!(res.is_ok(), "{res:?}");
 
     // update to latest commit in "main" branch
     let cmd: Command = Update::default().into();
-    let res =
-        async_with_vars([("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))], run(cmd))
-            .await;
+    let res = async_with_vars(
+        [("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))],
+        run(cmd, Verbosity::default()),
+    )
+    .await;
     assert!(res.is_ok(), "{res:?}");
     let lockfile = read_lockfile(dir.join("soldeer.lock")).unwrap();
     assert_eq!(
@@ -153,16 +167,20 @@ rev = "78c2f6a1a54db26bab6c3f501854a1564eb3707f"
 "#;
     fs::write(dir.join("soldeer.lock"), lockfile).unwrap();
     let cmd: Command = Install::default().into();
-    let res =
-        async_with_vars([("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))], run(cmd))
-            .await;
+    let res = async_with_vars(
+        [("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))],
+        run(cmd, Verbosity::default()),
+    )
+    .await;
     assert!(res.is_ok(), "{res:?}");
 
     // update to latest commit in "dev" branch
     let cmd: Command = Update::default().into();
-    let res =
-        async_with_vars([("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))], run(cmd))
-            .await;
+    let res = async_with_vars(
+        [("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))],
+        run(cmd, Verbosity::default()),
+    )
+    .await;
     assert!(res.is_ok(), "{res:?}");
     let lockfile = read_lockfile(dir.join("soldeer.lock")).unwrap();
     assert_eq!(
@@ -192,9 +210,11 @@ remappings_location = "config"
     fs::write(dir.join("foundry.toml"), contents).unwrap();
 
     let cmd: Command = Update::default().into();
-    let res =
-        async_with_vars([("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))], run(cmd))
-            .await;
+    let res = async_with_vars(
+        [("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))],
+        run(cmd, Verbosity::default()),
+    )
+    .await;
     assert!(res.is_ok(), "{res:?}");
     let deps = dir.join("dependencies");
     assert!(deps.join("@tt-1.6.1").exists());
@@ -210,9 +230,11 @@ async fn test_install_new_foundry_no_foundry_toml() {
     let dir = testdir!();
 
     let cmd: Command = Update::builder().config_location(ConfigLocation::Foundry).build().into();
-    let res =
-        async_with_vars([("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))], run(cmd))
-            .await;
+    let res = async_with_vars(
+        [("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))],
+        run(cmd, Verbosity::default()),
+    )
+    .await;
     assert!(res.is_ok(), "{res:?}");
     let config = fs::read_to_string(dir.join("foundry.toml")).unwrap();
     let expected = r#"[profile.default]
@@ -232,9 +254,11 @@ async fn test_install_new_soldeer_no_soldeer_toml() {
     let dir = testdir!();
 
     let cmd: Command = Update::builder().config_location(ConfigLocation::Soldeer).build().into();
-    let res =
-        async_with_vars([("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))], run(cmd))
-            .await;
+    let res = async_with_vars(
+        [("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))],
+        run(cmd, Verbosity::default()),
+    )
+    .await;
     assert!(res.is_ok(), "{res:?}");
     let config = fs::read_to_string(dir.join("soldeer.toml")).unwrap();
     let content = "[dependencies]\n";

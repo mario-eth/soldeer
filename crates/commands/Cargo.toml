@@ -19,19 +19,24 @@ workspace = true
 [dependencies]
 bon.workspace = true
 clap.workspace = true
+clap-verbosity-flag = "3.0.2"
 cliclack.workspace = true
 derive_more.workspace = true
 email-address-parser = "2.0.0"
+env_logger = { version = "0.11.6", features = ["unstable-kv"] }
+path-slash.workspace = true
 rayon.workspace = true
-soldeer-core = { path = "../core", version = "0.5.2", features = ["cli"] }
+soldeer-core = { path = "../core", version = "0.5.2" }
+tokio.workspace = true
 
 [dev-dependencies]
 mockito.workspace = true
 reqwest.workspace = true
 temp-env.workspace = true
 testdir.workspace = true
-tokio.workspace = true
 
 [features]
 default = ["rustls"]
 rustls = ["soldeer-core/rustls"]
+default-tls = ["soldeer-core/default-tls"]
+serde = ["soldeer-core/serde"]

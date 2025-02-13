@@ -220,6 +220,9 @@ pub enum PublishError {
     #[error("invalid package name, only alphanumeric characters, `-` and `@` are allowed. Length must be between 3 and 100 characters")]
     InvalidName,
 
+    #[error("package version cannot be empty")]
+    EmptyVersion,
+
     #[error("user cancelled operation")]
     UserAborted,
 

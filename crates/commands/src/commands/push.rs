@@ -3,7 +3,7 @@ use clap::Parser;
 use cliclack::log::{info, remark, warning};
 use soldeer_core::{
     errors::PublishError,
-    push::{filter_ignored_files, push_version, validate_name},
+    push::{filter_ignored_files, push_version, validate_name, validate_version},
     utils::check_dotfiles,
     Result,
 };
@@ -75,6 +75,7 @@ pub(crate) async fn push_command(cmd: Push) -> Result<()> {
         cmd.dependency.split_once('~').expect("dependency string should have name and version");
 
     validate_name(dependency_name)?;
+    validate_version(dependency_version)?;
 
     if let Some(zip_path) =
         push_version(dependency_name, dependency_version, path, &files_to_copy, cmd.dry_run).await?

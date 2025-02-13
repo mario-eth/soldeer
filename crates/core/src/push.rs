@@ -81,6 +81,13 @@ pub fn validate_name(name: &str) -> Result<()> {
     Ok(())
 }
 
+pub fn validate_version(version: &str) -> Result<()> {
+    if version.is_empty() {
+        return Err(PublishError::EmptyVersion);
+    }
+    Ok(())
+}
+
 /// Create a zip file from a list of files.
 ///
 /// The zip file will be created in the root directory, with the provided name and the `.zip`
@@ -267,6 +274,11 @@ mod tests {
         assert!(validate_name("foo.bar").is_err());
         assert!(validate_name("mypäckage").is_err());
         assert!(validate_name(&"a".repeat(101)).is_err());
+    }
+
+    #[test]
+    fn test_empty_version() {
+        assert!(validate_version("").is_err());
     }
 
     #[test]

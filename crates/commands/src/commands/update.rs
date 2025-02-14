@@ -1,10 +1,10 @@
 use crate::{
-    utils::{success, Progress},
+    utils::{success, warning, Progress},
     ConfigLocation,
 };
 use clap::Parser;
 use soldeer_core::{
-    config::{read_config_deps, read_soldeer_config, Dependency, Paths},
+    config::{read_config_deps, read_soldeer_config, Paths},
     errors::LockError,
     install::{ensure_dependencies_dir, InstallProgress},
     lock::{generate_lockfile_contents, read_lockfile},
@@ -53,7 +53,11 @@ pub(crate) async fn update_command(paths: &Paths, cmd: Update) -> Result<()> {
     }
     success!("Done reading config");
     ensure_dependencies_dir(&paths.dependencies)?;
-    let dependencies: Vec<Dependency> = read_config_deps(&paths.config)?;
+    let (dependencies, warnings) = read_config_deps(&paths.config)?;
+    for w in warnings {
+        warning!(w.to_string());
+    }
+
     let lockfile = read_lockfile(&paths.lock)?;
     success!("Done reading lockfile");
     let (progress, monitor) = InstallProgress::new();

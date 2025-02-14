@@ -55,7 +55,7 @@ pub(crate) async fn update_command(paths: &Paths, cmd: Update) -> Result<()> {
     ensure_dependencies_dir(&paths.dependencies)?;
     let (dependencies, warnings) = read_config_deps(&paths.config)?;
     for w in warnings {
-        warning!(w.to_string());
+        warning!(format!("Config warning: {w}"));
     }
 
     let lockfile = read_lockfile(&paths.lock)?;

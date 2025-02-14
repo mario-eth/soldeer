@@ -104,7 +104,7 @@ pub(crate) async fn install_command(paths: &Paths, cmd: Install) -> Result<()> {
     ensure_dependencies_dir(&paths.dependencies)?;
     let (dependencies, warnings) = read_config_deps(&paths.config)?;
     for w in warnings {
-        warning!(w.to_string());
+        warning!(format!("Config warning: {w}"));
     }
 
     match cmd.dependency {

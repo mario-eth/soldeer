@@ -1,6 +1,7 @@
 [workspace]
 dependencies_update = true
-git_release_enable = false # we only need to create a git tag for one of the crates
+git_release_enable = false        # we only need to create a git tag for one of the crates
+changelog_path = "./CHANGELOG.md"
 
 [[package]]
 name = "soldeer-core"
@@ -15,3 +16,19 @@ name = "soldeer"
 version_group = "soldeer"
 git_tag_enable = true
 git_release_enable = true
+
+[changelog]
+body = """
+
+## `{{ package }}` - [{{ version | trim_start_matches(pat="v") }}]{%- if release_link -%}({{ release_link }}){% endif %} - {{ timestamp | date(format="%Y-%m-%d") }}
+{% for group, commits in commits | group_by(attribute="group") %}
+### {{ group | upper_first }}
+{% for commit in commits %}
+{%- if commit.scope -%}
+- *({{commit.scope}})* {% if commit.breaking %}[**breaking**] {% endif %}{{ commit.message }}{%- if commit.links %} ({% for link in commit.links %}[{{link.text}}]({{link.href}}) {% endfor -%}){% endif %}
+{% else -%}
+- {% if commit.breaking %}[**breaking**] {% endif %}{{ commit.message }}
+{% endif -%}
+{% endfor -%}
+{% endfor -%}
+"""

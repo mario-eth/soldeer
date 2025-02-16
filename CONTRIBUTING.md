@@ -124,10 +124,30 @@ changes that are split across multiple commits.
 That said, if you have a number of commits that are "checkpoints" and don't represent a single logical change, please
 squash those together.
 
+Please adhere to the [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) format for commit messages
+and PR titles.
+
+The following types should be used:
+
+- **build**: changes that affect the build system or external dependencies (example scope: cargo)
+- **chore**: tool configuration, metadata, manifests, miscellaneous changes (anything that doesn't fit the other types)
+- **ci**: changes to the CI configuration files and scripts (GitHub Actions)
+- **docs**: documentation-only changes (doc comments, mdbook)
+- **feat**: a new feature
+- **fix**: a bug fix
+- **perf**: a code change that improves performance
+- **refactor**: a code change that neither fixes a bug nor adds a feature
+- **revert**: reverting an older commit or change
+- **style**: changes that do not affect the meaning of the code (whitespace, formatting, etc.)
+- **test**: adding or modifying tests (no change to lib/binary source code allowed)
+
 #### Opening the pull request
 
 From within GitHub, opening a new pull request will present you with a template that should be filled out. Please try
 your best at filling out the details, but feel free to skip parts if you're not sure what to put.
+
+Make sure to use the [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) format described above for
+your PR title.
 
 #### Discuss and update
 

@@ -1,5 +1,6 @@
 [workspace]
 dependencies_update = true
+git_release_enable = false # we only need to create a git tag for one of the crates
 
 [[package]]
 name = "soldeer-core"
@@ -12,3 +13,5 @@ version_group = "soldeer"
 [[package]]
 name = "soldeer"
 version_group = "soldeer"
+git_tag_enable = true
+git_release_enable = true

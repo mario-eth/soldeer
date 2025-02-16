@@ -1,3 +1,6 @@
+[workspace]
+dependencies_update = true
+
 [[package]]
 name = "soldeer-core"
 version_group = "soldeer"

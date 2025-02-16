@@ -130,7 +130,7 @@ and PR titles. Prefer all-lowercase descriptions when possible.
 The following types should be used:
 
 - **build**: changes that affect the build system or external dependencies (example scope: cargo)
-- **chore**: tool configuration, metadata, manifests, miscellaneous changes (anything that doesn't fit the other types)
+- **chore**: tool configuration, metadata, manifest changes, dependencies updates, miscellaneous changes (anything that doesn't fit the other types)
 - **ci**: changes to the CI configuration files and scripts (GitHub Actions)
 - **docs**: documentation-only changes (doc comments, mdbook)
 - **feat**: a new feature

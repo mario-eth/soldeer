@@ -125,7 +125,7 @@ That said, if you have a number of commits that are "checkpoints" and don't repr
 squash those together.
 
 Please adhere to the [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) format for commit messages
-and PR titles.
+and PR titles. Prefer all-lowercase descriptions when possible.
 
 The following types should be used:
 

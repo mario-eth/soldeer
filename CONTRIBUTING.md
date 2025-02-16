@@ -124,7 +124,7 @@ changes that are split across multiple commits.
 That said, if you have a number of commits that are "checkpoints" and don't represent a single logical change, please
 squash those together.
 
-Please adhere to the [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) format for commit messages
+Please adhere to the [Conventional Commits][conventional-commits] format for commit messages
 and PR titles. Prefer all-lowercase descriptions when possible.
 
 The following types should be used:
@@ -146,7 +146,7 @@ The following types should be used:
 From within GitHub, opening a new pull request will present you with a template that should be filled out. Please try
 your best at filling out the details, but feel free to skip parts if you're not sure what to put.
 
-Make sure to use the [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) format described above for
+Make sure to use the [Conventional Commits][conventional-commits] format described above for
 your PR title.
 
 #### Discuss and update
@@ -231,3 +231,4 @@ _Adapted from the [ethers-rs contributing guide](https://github.com/gakonst/ethe
 [rust-coc]: https://www.rust-lang.org/policies/code-of-conduct
 [mcve]: https://stackoverflow.com/help/mcve
 [hiding-a-comment]: https://help.github.com/articles/managing-disruptive-comments/#hiding-a-comment
+[conventional-commits]: https://www.conventionalcommits.org/en/v1.0.0

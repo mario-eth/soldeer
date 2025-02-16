@@ -1,0 +1,11 @@
+[[package]]
+name = "soldeer-core"
+version_group = "soldeer"
+
+[[package]]
+name = "soldeer-commands"
+version_group = "soldeer"
+
+[[package]]
+name = "soldeer"
+version_group = "soldeer"

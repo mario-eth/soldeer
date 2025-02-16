@@ -214,7 +214,7 @@ fn generate_remappings(
     let mut new_remappings = Vec::new();
     if soldeer_config.remappings_regenerate {
         debug!("ignoring existing remappings and recreating from config");
-        let dependencies = read_config_deps(&paths.config)?;
+        let (dependencies, _) = read_config_deps(&paths.config)?;
         new_remappings = remappings_from_deps(&dependencies, paths, soldeer_config)?
             .into_iter()
             .map(|i| i.remapping_string)
@@ -265,7 +265,7 @@ fn generate_remappings(
                 // all remappings. We need to merge existing remappings with the full list of deps.
                 // We generate all remappings from the dependencies, then replace existing items.
                 debug!("updating remappings, merging existing ones with the ones generated from config");
-                let dependencies = read_config_deps(&paths.config)?;
+                let (dependencies, _) = read_config_deps(&paths.config)?;
                 let new_remappings_info =
                     remappings_from_deps(&dependencies, paths, soldeer_config)?;
                 if existing_remappings.is_empty() {
@@ -515,7 +515,7 @@ dep3 = { version = "foobar", git = "git@github.com:test/test.git", branch = "foo
         fs::create_dir_all(dependencies_dir.join("dep2-2.0.0")).unwrap();
         fs::create_dir_all(dependencies_dir.join("dep3-foobar")).unwrap();
 
-        let dependencies = read_config_deps(&paths.config).unwrap();
+        let (dependencies, _) = read_config_deps(&paths.config).unwrap();
         let res = remappings_from_deps(&dependencies, &paths, &SoldeerConfig::default());
         assert!(res.is_ok(), "{res:?}");
         let res = res.unwrap();

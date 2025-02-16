@@ -102,7 +102,11 @@ pub(crate) async fn install_command(paths: &Paths, cmd: Install) -> Result<()> {
     }
     success!("Done reading config");
     ensure_dependencies_dir(&paths.dependencies)?;
-    let dependencies: Vec<Dependency> = read_config_deps(&paths.config)?;
+    let (dependencies, warnings) = read_config_deps(&paths.config)?;
+    for w in warnings {
+        warning!(format!("Config warning: {w}"));
+    }
+
     match cmd.dependency {
         None => {
             let lockfile = read_lockfile(&paths.lock)?;

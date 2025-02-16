@@ -662,6 +662,53 @@ impl From<ConfigLocation> for PathBuf {
     }
 }
 
+/// A warning generated during parsing of a dependency from the config file.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, Deserialize))]
+pub struct ParsingWarning {
+    dependency_name: String,
+    message: String,
+}
+
+impl fmt::Display for ParsingWarning {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}: {}", self.dependency_name, self.message)
+    }
+}
+
+/// The result of parsing a dependency from the config file.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, Deserialize))]
+pub struct ParsingResult {
+    pub dependency: Dependency,
+    pub warnings: Vec<ParsingWarning>,
+}
+
+impl ParsingResult {
+    /// Whether the parsing result contains one or more warnings.
+    pub fn has_warnings(&self) -> bool {
+        !self.warnings.is_empty()
+    }
+}
+
+impl From<HttpDependency> for ParsingResult {
+    fn from(value: HttpDependency) -> Self {
+        Self { dependency: value.into(), warnings: Vec::default() }
+    }
+}
+
+impl From<GitDependency> for ParsingResult {
+    fn from(value: GitDependency) -> Self {
+        Self { dependency: value.into(), warnings: Vec::default() }
+    }
+}
+
+impl From<Dependency> for ParsingResult {
+    fn from(value: Dependency) -> Self {
+        Self { dependency: value, warnings: Vec::default() }
+    }
+}
+
 /// Detect the location of the config file in case no user preference is available.
 ///
 /// The function will try to auto-detect the location based on the existence of the
@@ -702,20 +749,23 @@ pub fn detect_config_location(root: impl AsRef<Path>) -> Option<ConfigLocation> 
 ///   - `rev` (optional): the revision hash for git dependencies
 ///   - `branch` (optional): the branch name for git dependencies
 ///   - `tag` (optional): the tag name for git dependencies
-pub fn read_config_deps(path: impl AsRef<Path>) -> Result<Vec<Dependency>> {
+pub fn read_config_deps(path: impl AsRef<Path>) -> Result<(Vec<Dependency>, Vec<ParsingWarning>)> {
     let contents = fs::read_to_string(&path)?;
     let doc: DocumentMut = contents.parse::<DocumentMut>()?;
     let Some(Some(data)) = doc.get("dependencies").map(|v| v.as_table()) else {
         warn!("no `dependencies` table in config file");
-        return Ok(Vec::new());
+        return Ok(Default::default());
     };
 
     let mut dependencies: Vec<Dependency> = Vec::new();
+    let mut warnings: Vec<ParsingWarning> = Vec::new();
     for (name, v) in data {
-        dependencies.push(parse_dependency(name, v)?);
+        let mut res = parse_dependency(name, v)?;
+        dependencies.push(res.dependency);
+        warnings.append(&mut res.warnings);
     }
     debug!(path:? = path.as_ref(); "found {} dependencies in config file", dependencies.len());
-    Ok(dependencies)
+    Ok((dependencies, warnings))
 }
 
 /// Read the Soldeer config from the config file.
@@ -774,7 +824,7 @@ pub fn delete_from_config(dependency_name: &str, path: impl AsRef<Path>) -> Resu
 
     fs::write(&path, doc.to_string())?;
     debug!(dep = dependency_name, path:? = path.as_ref(); "removed dependency from config file");
-    Ok(dependency)
+    Ok(dependency.dependency)
 }
 
 /// Update the config file to add the `dependencies` folder as a source for libraries and the
@@ -834,7 +884,7 @@ pub fn update_config_libs(foundry_config: impl AsRef<Path>) -> Result<()> {
 ///
 /// Note that the version requirement string cannot contain the `=` symbol for git dependencies
 /// and HTTP dependencies with a custom URL.
-fn parse_dependency(name: impl Into<String>, value: &Item) -> Result<Dependency> {
+fn parse_dependency(name: impl Into<String>, value: &Item) -> Result<ParsingResult> {
     let name: String = name.into();
     if let Some(version_req) = value.as_str() {
         if version_req.is_empty() {
@@ -859,6 +909,21 @@ fn parse_dependency(name: impl Into<String>, value: &Item) -> Result<Dependency>
         }
     };
 
+    let mut warnings = Vec::new();
+
+    // check for unsupported fields
+    warnings.extend(table.iter().filter_map(|(k, _)| {
+        if !["version", "url", "git", "rev", "branch", "tag"].contains(&k) {
+            warn!(dependency = name; "toml parsing: `{k}` is not a valid dependency option");
+            Some(ParsingWarning {
+                dependency_name: name.clone(),
+                message: format!("`{k}` is not a valid dependency option"),
+            })
+        } else {
+            None
+        }
+    }));
+
     // version is needed in both cases
     let version_req = match table.get("version").map(|v| v.as_str()) {
         Some(None) => {
@@ -881,6 +946,15 @@ fn parse_dependency(name: impl Into<String>, value: &Item) -> Result<Dependency>
             return Err(ConfigError::InvalidField { field: "git".to_string(), dep: name });
         }
         Some(Some(git)) => {
+            // we can't have an http url if we have a git url
+            if table.get("url").is_some() {
+                return Err(ConfigError::FieldConflict {
+                    field: "url".to_string(),
+                    conflicts_with: "git".to_string(),
+                    dep: name,
+                })
+            }
+
             // for git dependencies, the version requirement string is going to be used as part of
             // the folder name inside the dependencies folder. As such, it's not allowed to contain
             // the "=" character, because that would break the remappings.
@@ -924,23 +998,39 @@ fn parse_dependency(name: impl Into<String>, value: &Item) -> Result<Dependency>
                     return Err(ConfigError::GitIdentifierConflict(name));
                 }
             };
-            return Ok(Dependency::Git(GitDependency {
-                name,
-                git: git.to_string(),
-                version_req,
-                identifier,
-            }));
+            return Ok(ParsingResult {
+                dependency: GitDependency { name, git: git.to_string(), version_req, identifier }
+                    .into(),
+                warnings,
+            });
         }
         None => {}
     }
 
-    // we should have a HTTP dependency
+    // we should have a HTTP dependency,
+
+    // check for extra fields in the HTTP context
+    warnings.extend(table.iter().filter_map(|(k, _)| {
+        if ["rev", "branch", "tag"].contains(&k) {
+            warn!(dependency = name; "toml parsing: `{k}` is ignored if no `git` URL is provided");
+            Some(ParsingWarning {
+                dependency_name: name.clone(),
+                message: format!("`{k}` is ignored if no `git` URL is provided"),
+            })
+        } else {
+            None
+        }
+    }));
+
     match table.get("url").map(|v| v.as_str()) {
         Some(None) => {
             debug!(dep = name; "dependency's `url` field is not a string");
             Err(ConfigError::InvalidField { field: "url".to_string(), dep: name })
         }
-        None => Ok(HttpDependency { name, version_req, url: None }.into()),
+        None => Ok(ParsingResult {
+            dependency: HttpDependency { name, version_req, url: None }.into(),
+            warnings,
+        }),
         Some(Some(url)) => {
             // for HTTP dependencies with custom URL, the version requirement string is going to be
             // used as part of the folder name inside the dependencies folder. As such,
@@ -949,7 +1039,10 @@ fn parse_dependency(name: impl Into<String>, value: &Item) -> Result<Dependency>
             if version_req.contains('=') {
                 return Err(ConfigError::InvalidVersionReq(name));
             }
-            Ok(HttpDependency { name, version_req, url: Some(url.to_string()) }.into())
+            Ok(ParsingResult {
+                dependency: HttpDependency { name, version_req, url: Some(url.to_string()) }.into(),
+                warnings,
+            })
         }
     }
 }
@@ -1299,7 +1392,7 @@ libs = ["dependencies"]
         let config_path = write_to_config(config_contents, "foundry.toml");
         let res = read_config_deps(config_path);
         assert!(res.is_ok(), "{res:?}");
-        let result = res.unwrap();
+        let (result, _) = res.unwrap();
 
         assert_eq!(
             result[0],
@@ -1373,7 +1466,7 @@ libs = ["dependencies"]
         let config_path = write_to_config(config_contents, "soldeer.toml");
         let res = read_config_deps(config_path);
         assert!(res.is_ok(), "{res:?}");
-        let result = res.unwrap();
+        let (result, _) = res.unwrap();
 
         assert_eq!(
             result[0],
@@ -1530,7 +1623,7 @@ libs = ["dependencies"]
             assert!(res.is_ok(), "{dep}: {res:?}");
         }
 
-        let parsed = read_config_deps(&config_path).unwrap();
+        let (parsed, _) = read_config_deps(&config_path).unwrap();
         for (dep, parsed) in deps.iter().zip(parsed.iter()) {
             assert_eq!(dep, parsed);
         }
@@ -1542,7 +1635,7 @@ libs = ["dependencies"]
         let dep = Dependency::from_name_version("lib1~1.0.0", None, None).unwrap();
         let res = add_to_config(&dep, &config_path);
         assert!(res.is_ok(), "{res:?}");
-        let parsed = read_config_deps(&config_path).unwrap();
+        let (parsed, _) = read_config_deps(&config_path).unwrap();
         assert_eq!(parsed[0], dep);
     }
 
@@ -1561,37 +1654,37 @@ libs = ["dependencies"]
         let res = delete_from_config("lib1", &config_path);
         assert!(res.is_ok(), "{res:?}");
         assert_eq!(res.unwrap().name(), "lib1");
-        assert_eq!(read_config_deps(&config_path).unwrap().len(), 6);
+        assert_eq!(read_config_deps(&config_path).unwrap().0.len(), 6);
 
         let res = delete_from_config("lib2", &config_path);
         assert!(res.is_ok(), "{res:?}");
         assert_eq!(res.unwrap().name(), "lib2");
-        assert_eq!(read_config_deps(&config_path).unwrap().len(), 5);
+        assert_eq!(read_config_deps(&config_path).unwrap().0.len(), 5);
 
         let res = delete_from_config("lib3", &config_path);
         assert!(res.is_ok(), "{res:?}");
         assert_eq!(res.unwrap().name(), "lib3");
-        assert_eq!(read_config_deps(&config_path).unwrap().len(), 4);
+        assert_eq!(read_config_deps(&config_path).unwrap().0.len(), 4);
 
         let res = delete_from_config("lib4", &config_path);
         assert!(res.is_ok(), "{res:?}");
         assert_eq!(res.unwrap().name(), "lib4");
-        assert_eq!(read_config_deps(&config_path).unwrap().len(), 3);
+        assert_eq!(read_config_deps(&config_path).unwrap().0.len(), 3);
 
         let res = delete_from_config("lib5", &config_path);
         assert!(res.is_ok(), "{res:?}");
         assert_eq!(res.unwrap().name(), "lib5");
-        assert_eq!(read_config_deps(&config_path).unwrap().len(), 2);
+        assert_eq!(read_config_deps(&config_path).unwrap().0.len(), 2);
 
         let res = delete_from_config("lib6", &config_path);
         assert!(res.is_ok(), "{res:?}");
         assert_eq!(res.unwrap().name(), "lib6");
-        assert_eq!(read_config_deps(&config_path).unwrap().len(), 1);
+        assert_eq!(read_config_deps(&config_path).unwrap().0.len(), 1);
 
         let res = delete_from_config("lib7", &config_path);
         assert!(res.is_ok(), "{res:?}");
         assert_eq!(res.unwrap().name(), "lib7");
-        assert!(read_config_deps(&config_path).unwrap().is_empty());
+        assert!(read_config_deps(&config_path).unwrap().0.is_empty());
     }
 
     #[test]
@@ -1663,5 +1756,86 @@ libs = ["dependencies"]
 [dependencies]
 "#
         );
+    }
+
+    #[test]
+    fn test_parse_dependency() {
+        let config_contents = r#"[dependencies]
+"lib1" = "1.0.0"
+"lib2" = { version = "2.0.0" }
+"lib3" = { version = "3.0.0", url = "https://example.com" }
+"lib4" = { version = "4.0.0", git = "https://example.com/repo.git" }
+"lib5" = { version = "5.0.0", git = "https://example.com/repo.git", rev = "123456" }
+"lib6" = { version = "6.0.0", git = "https://example.com/repo.git", branch = "dev" }
+"lib7" = { version = "7.0.0", git = "https://example.com/repo.git", tag = "v7.0.0" }
+"#;
+        let doc: DocumentMut = config_contents.parse::<DocumentMut>().unwrap();
+        let data = doc.get("dependencies").map(|v| v.as_table()).unwrap().unwrap();
+        for (name, v) in data {
+            let res = parse_dependency(name, v);
+            assert!(res.is_ok(), "{res:?}");
+        }
+    }
+
+    #[test]
+    fn test_parse_dependency_extra_field() {
+        let config_contents = r#"[dependencies]
+"lib1" = { version = "3.0.0", url = "https://example.com", foo = "bar" }
+"#;
+        let doc: DocumentMut = config_contents.parse::<DocumentMut>().unwrap();
+        let data = doc.get("dependencies").map(|v| v.as_table()).unwrap().unwrap();
+        for (name, v) in data {
+            let res = parse_dependency(name, v).unwrap();
+            assert_eq!(res.warnings[0].message, "`foo` is not a valid dependency option");
+        }
+    }
+
+    #[test]
+    fn test_parse_dependency_git_extra_url() {
+        let config_contents = r#"[dependencies]
+"lib1" = { version = "3.0.0", git = "https://example.com/repo.git", url = "https://example.com" }
+"#;
+        let doc: DocumentMut = config_contents.parse::<DocumentMut>().unwrap();
+        let data = doc.get("dependencies").map(|v| v.as_table()).unwrap().unwrap();
+        for (name, v) in data {
+            let res = parse_dependency(name, v);
+            assert!(
+                matches!(
+                    res,
+                    Err(ConfigError::FieldConflict { field: _, conflicts_with: _, dep: _ })
+                ),
+                "{res:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_parse_dependency_git_field_conflict() {
+        let config_contents = r#"[dependencies]
+"lib2" = { version = "3.0.0", git = "https://example.com/repo.git", rev = "123456", branch = "dev" }
+"lib3" = { version = "3.0.0", git = "https://example.com/repo.git", rev = "123456", tag = "v7.0.0" }
+"lib4" = { version = "3.0.0", git = "https://example.com/repo.git", branch = "dev", tag = "v7.0.0" }
+"#;
+        let doc: DocumentMut = config_contents.parse::<DocumentMut>().unwrap();
+        let data = doc.get("dependencies").map(|v| v.as_table()).unwrap().unwrap();
+        for (name, v) in data {
+            let res = parse_dependency(name, v);
+            assert!(matches!(res, Err(ConfigError::GitIdentifierConflict(_))), "{res:?}");
+        }
+    }
+
+    #[test]
+    fn test_parse_dependency_missing_url() {
+        let config_contents = r#"[dependencies]
+"lib1" = { version = "3.0.0", rev = "123456" }
+"lib2" = { version = "3.0.0", branch = "dev" }
+"lib3" = { version = "3.0.0", tag = "v7.0.0" }
+"#;
+        let doc: DocumentMut = config_contents.parse::<DocumentMut>().unwrap();
+        let data = doc.get("dependencies").map(|v| v.as_table()).unwrap().unwrap();
+        for (name, v) in data {
+            let res = parse_dependency(name, v).unwrap();
+            assert!(res.warnings[0].message.ends_with("is ignored if no `git` URL is provided"));
+        }
     }
 }

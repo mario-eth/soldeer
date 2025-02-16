@@ -18,7 +18,7 @@ fn check_install(dir: &Path, name: &str, version_req: &str) {
     if !config_path.exists() {
         config_path = dir.join("foundry.toml");
     }
-    let deps = read_config_deps(config_path).unwrap();
+    let (deps, _) = read_config_deps(config_path).unwrap();
     assert_eq!(deps.first().unwrap().name(), name);
     let remappings = fs::read_to_string(dir.join("remappings.txt")).unwrap();
     assert!(remappings.contains(name));

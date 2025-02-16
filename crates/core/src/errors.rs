@@ -75,7 +75,10 @@ pub enum ConfigError {
     #[error("invalid `{field}` field in {dep}")]
     InvalidField { field: String, dep: String },
 
-    #[error("only one of `git`, `branch` or `rev` can be specified for dependency {0}")]
+    #[error("field `{field}` conflicts with `{conflicts_with}` in {dep}")]
+    FieldConflict { field: String, conflicts_with: String, dep: String },
+
+    #[error("only one of `rev`, `branch` or `tag` can be specified for git dependency {0}")]
     GitIdentifierConflict(String),
 
     #[error("dependency {0} is not valid")]

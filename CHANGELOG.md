@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## `soldeer` - [0.5.4](https://github.com/mario-eth/soldeer/compare/soldeer-v0.5.3...soldeer-v0.5.4) - 2025-04-27
+
+### Other
+- update Cargo.lock dependencies
+
+## `soldeer-core` - [0.5.4](https://github.com/mario-eth/soldeer/compare/soldeer-core-v0.5.3...soldeer-core-v0.5.4) - 2025-04-27
+
+### Fixed
+- *(registry)* version resolution when no SemVer ([#271](https://github.com/mario-eth/soldeer/pull/271))
+
 ## [0.5.3](https://github.com/mario-eth/soldeer/compare/v0.5.2...v0.5.3) - 2025-03-18
 
 ### What's Changed

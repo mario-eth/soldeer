@@ -224,8 +224,8 @@ pub async fn get_all_versions_descending(dependency_name: &str) -> Result<Versio
 
 /// Get the latest version of a dependency that satisfies the version requirement.
 ///
-/// If the version requirement is not semver-compliant, then the latest version is the one with the
-/// latest creation date.
+/// If the API response contains non-semver-compliant versions, then we attempt to find an exact
+/// match for the requirement, or error out.
 pub async fn get_latest_supported_version(dependency: &Dependency) -> Result<String> {
     debug!(dep:% = dependency, version_req = dependency.version_req(); "retrieving latest version according to version requirement");
     match get_all_versions_descending(dependency.name()).await? {
@@ -254,8 +254,15 @@ pub async fn get_latest_supported_version(dependency: &Dependency) -> Result<Str
             }
         }
         Versions::NonSemver(all_versions) => {
-            debug!(dep:% = dependency; "versions are not all semver compliant, using latest version");
-            Ok(all_versions.into_iter().next().expect("there should be at least 1 version"))
+            // try to find the exact version specifier in the list of all versions, otherwise error
+            // out
+            debug!(dep:% = dependency; "versions are not all semver compliant, trying to find exact match");
+            all_versions.into_iter().find(|v| v == dependency.version_req()).ok_or_else(|| {
+                RegistryError::NoMatchingVersion {
+                    dependency: dependency.name().to_string(),
+                    version_req: dependency.version_req().to_string(),
+                }
+            })
         }
     }
 }
@@ -465,14 +472,23 @@ mod tests {
             .await;
 
         let dependency: Dependency =
-            HttpDependency::builder().name("forge-std").version_req("foobar").build().into();
+            HttpDependency::builder().name("forge-std").version_req("2024-06").build().into();
         let res = async_with_vars(
             [("SOLDEER_API_URL", Some(server.url()))],
             get_latest_supported_version(&dependency),
         )
         .await;
         assert!(res.is_ok(), "{res:?}");
-        assert_eq!(res.unwrap(), "2024-08");
+        assert_eq!(res.unwrap(), "2024-06"); // should resolve to the exact match
+
+        let dependency: Dependency =
+            HttpDependency::builder().name("forge-std").version_req("non-existant").build().into();
+        let res = async_with_vars(
+            [("SOLDEER_API_URL", Some(server.url()))],
+            get_latest_supported_version(&dependency),
+        )
+        .await;
+        assert!(matches!(res, Err(RegistryError::NoMatchingVersion { .. })));
     }
 
     #[test]

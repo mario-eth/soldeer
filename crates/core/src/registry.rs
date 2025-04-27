@@ -224,7 +224,7 @@ pub async fn get_all_versions_descending(dependency_name: &str) -> Result<Versio
 
 /// Get the latest version of a dependency that satisfies the version requirement.
 ///
-/// If the version requirement is not semver-compliant, then we attempt to find an exact match for the requirement, or error out.
+/// If the API response contains non-semver-compliant versions, then we attempt to find an exact match for the requirement, or error out.
 pub async fn get_latest_supported_version(dependency: &Dependency) -> Result<String> {
     debug!(dep:% = dependency, version_req = dependency.version_req(); "retrieving latest version according to version requirement");
     match get_all_versions_descending(dependency.name()).await? {

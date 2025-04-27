@@ -1,6 +1,7 @@
 [workspace]
 dependencies_update = true
 git_release_enable = false        # we only need to create a git tag for one of the crates
+git_tag_enable = false
 publish = false                   # cargo publish will be done by hand for now
 changelog_path = "./CHANGELOG.md"
 
@@ -17,6 +18,7 @@ name = "soldeer"
 version_group = "soldeer"
 git_tag_enable = true
 git_release_enable = true
+git_tag_name = "v{{ version }}"
 
 [changelog]
 body = """

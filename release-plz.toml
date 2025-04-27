@@ -16,9 +16,10 @@ version_group = "soldeer"
 [[package]]
 name = "soldeer"
 version_group = "soldeer"
+git_tag_name = "v{{ version }}"
+git_release_name = "v{{ version }}"
 git_tag_enable = true
 git_release_enable = true
-git_tag_name = "v{{ version }}"
 
 [changelog]
 body = """

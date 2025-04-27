@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.3](https://github.com/mario-eth/soldeer/compare/v0.5.2...v0.5.3) - 2025-03-18
+
+### What's Changed
+
+* fix(core): remove hardcoded git domains by @puuuuh in https://github.com/mario-eth/soldeer/pull/244
+* refactor!: logging by @beeb in https://github.com/mario-eth/soldeer/pull/242
+* fix(push): ensure version is non-empty when pushing to registry by @kubkon in https://github.com/mario-eth/soldeer/pull/247
+* feat!: improve toml validation by @beeb in https://github.com/mario-eth/soldeer/pull/248
+* chore(deps): update deps by @beeb in https://github.com/mario-eth/soldeer/pull/257
+
 ## [0.5.2](https://github.com/mario-eth/soldeer/compare/v0.5.1...v0.5.2) - 2024-11-21
 
 ### What's Changed

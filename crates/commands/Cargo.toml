@@ -26,7 +26,7 @@ email-address-parser = "2.0.0"
 env_logger = { version = "0.11.6", features = ["unstable-kv"] }
 path-slash.workspace = true
 rayon.workspace = true
-soldeer-core = { path = "../core", version = "0.5.3" }
+soldeer-core = { path = "../core", version = "0.5.4" }
 tokio.workspace = true
 
 [dev-dependencies]

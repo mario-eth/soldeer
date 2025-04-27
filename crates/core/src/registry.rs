@@ -224,7 +224,8 @@ pub async fn get_all_versions_descending(dependency_name: &str) -> Result<Versio
 
 /// Get the latest version of a dependency that satisfies the version requirement.
 ///
-/// If the API response contains non-semver-compliant versions, then we attempt to find an exact match for the requirement, or error out.
+/// If the API response contains non-semver-compliant versions, then we attempt to find an exact
+/// match for the requirement, or error out.
 pub async fn get_latest_supported_version(dependency: &Dependency) -> Result<String> {
     debug!(dep:% = dependency, version_req = dependency.version_req(); "retrieving latest version according to version requirement");
     match get_all_versions_descending(dependency.name()).await? {
@@ -253,7 +254,8 @@ pub async fn get_latest_supported_version(dependency: &Dependency) -> Result<Str
             }
         }
         Versions::NonSemver(all_versions) => {
-            // try to find the exact version specifier in the list of all versions, otherwise error out
+            // try to find the exact version specifier in the list of all versions, otherwise error
+            // out
             debug!(dep:% = dependency; "versions are not all semver compliant, trying to find exact match");
             all_versions.into_iter().find(|v| v == dependency.version_req()).ok_or_else(|| {
                 RegistryError::NoMatchingVersion {

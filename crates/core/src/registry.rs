@@ -471,14 +471,23 @@ mod tests {
             .await;
 
         let dependency: Dependency =
-            HttpDependency::builder().name("forge-std").version_req("foobar").build().into();
+            HttpDependency::builder().name("forge-std").version_req("2024-06").build().into();
         let res = async_with_vars(
             [("SOLDEER_API_URL", Some(server.url()))],
             get_latest_supported_version(&dependency),
         )
         .await;
         assert!(res.is_ok(), "{res:?}");
-        assert_eq!(res.unwrap(), "2024-08");
+        assert_eq!(res.unwrap(), "2024-06"); // should resolve to the exact match
+
+        let dependency: Dependency =
+            HttpDependency::builder().name("forge-std").version_req("non-existant").build().into();
+        let res = async_with_vars(
+            [("SOLDEER_API_URL", Some(server.url()))],
+            get_latest_supported_version(&dependency),
+        )
+        .await;
+        assert!(matches!(res, Err(RegistryError::NoMatchingVersion { .. })));
     }
 
     #[test]

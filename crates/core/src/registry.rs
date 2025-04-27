@@ -254,8 +254,14 @@ pub async fn get_latest_supported_version(dependency: &Dependency) -> Result<Str
             }
         }
         Versions::NonSemver(all_versions) => {
-            debug!(dep:% = dependency; "versions are not all semver compliant, using latest version");
-            Ok(all_versions.into_iter().next().expect("there should be at least 1 version"))
+            // try to find the exact version specifier in the list of all versions, otherwise error out
+            debug!(dep:% = dependency; "versions are not all semver compliant, trying to find exact match");
+            all_versions.into_iter().find(|v| v == dependency.version_req()).ok_or_else(|| {
+                RegistryError::NoMatchingVersion {
+                    dependency: dependency.name().to_string(),
+                    version_req: dependency.version_req().to_string(),
+                }
+            })
         }
     }
 }

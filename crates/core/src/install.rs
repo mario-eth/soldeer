@@ -319,9 +319,9 @@ pub async fn install_dependencies_sequential(
             install_dependency(dep, lock, deps.clone(), None, recursive_deps, progress.clone())
                 .await?,
         );
-        debug!(dep:% = dep; "install task finished");
+        debug!(dep:% = dep; "sequential install finished");
     }
-    debug!("all sequential install tasks have finished");
+    debug!("all sequential installs have finished");
     Ok(results)
 }
 

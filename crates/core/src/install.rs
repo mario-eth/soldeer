@@ -562,10 +562,8 @@ async fn install_dependency_inner(
 /// Install subdependencies of a dependency.
 ///
 /// This function checks for a `.gitmodules` file in the dependency directory and clones the
-/// submodules if it exists. If a `soldeer.toml` file is found, the soldeer dependencies are
-/// installed. If the dependency has a `foundry.toml` file with a `dependencies` table, the soldeer
-/// dependencies are installed as well. TODO: this function should install soldeer deps without
-/// calling to forge or the soldeer binary.
+/// submodules if it exists. If a valid Soldeer config is found, the soldeer dependencies are
+/// installed.
 async fn install_subdependencies(path: impl AsRef<Path>) -> Result<()> {
     let path = path.as_ref().to_path_buf();
     let gitmodules_path = path.join(".gitmodules");

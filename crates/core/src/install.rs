@@ -583,7 +583,7 @@ async fn install_subdependencies(path: impl AsRef<Path>) -> Result<()> {
 
 /// Inner logic for installing subdependencies at a given path.
 ///
-/// This is a similar implementation to [`soldeer_commands::install::install_command`] but
+/// This is a similar implementation to the one found in `soldeer_commands` but
 /// simplified.
 async fn install_subdependencies_inner(paths: Paths) -> Result<()> {
     let config = read_soldeer_config(&paths.config)?;

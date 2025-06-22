@@ -369,6 +369,28 @@ foo = { version = "0.1.0", git = "https://github.com/foundry-rs/forge-template.g
 }
 
 #[tokio::test]
+async fn test_install_recursive_deps_soldeer() {
+    let dir = testdir!();
+    // this template uses soldeer to install forge-std
+    let contents = r#"[dependencies]
+foo = { version = "0.1.0", git = "https://github.com/beeb/forge-template.git" }
+"#;
+    fs::write(dir.join("soldeer.toml"), contents).unwrap();
+    let cmd: Command = Install::builder().recursive_deps(true).build().into();
+    let res = async_with_vars(
+        [("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))],
+        run(cmd, Verbosity::default()),
+    )
+    .await;
+    assert!(res.is_ok(), "{res:?}");
+    let dep_path = dir.join("dependencies").join("foo-0.1.0");
+    assert!(dep_path.exists());
+    let sub_dirs_path = dep_path.join("dependencies");
+    assert!(sub_dirs_path.exists());
+    assert!(sub_dirs_path.join("forge-std-1.9.7").join("src").exists());
+}
+
+#[tokio::test]
 async fn test_install_regenerate_remappings() {
     let dir = testdir!();
     fs::write(dir.join("soldeer.toml"), "[dependencies]\n").unwrap();

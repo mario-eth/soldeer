@@ -3,12 +3,15 @@
 //! This module contains functions to install dependencies from the config object or from the
 //! lockfile. Dependencies can be installed in parallel.
 use crate::{
-    config::{Dependency, GitIdentifier},
+    config::{
+        detect_config_location, read_config_deps, read_soldeer_config, Dependency, GitIdentifier,
+        Paths,
+    },
     download::{clone_repo, delete_dependency_files, download_file, unzip_file},
     errors::InstallError,
-    lock::{format_install_path, GitLockEntry, HttpLockEntry, LockEntry},
+    lock::{format_install_path, read_lockfile, GitLockEntry, HttpLockEntry, LockEntry},
     registry::{get_dependency_url_remote, get_latest_supported_version},
-    utils::{canonicalize, hash_file, hash_folder, run_forge_command, run_git_command},
+    utils::{canonicalize, hash_file, hash_folder, run_git_command},
 };
 use derive_more::derive::Display;
 use log::{debug, info, warn};
@@ -19,7 +22,6 @@ use std::{
     path::{Path, PathBuf},
 };
 use tokio::{fs, sync::mpsc, task::JoinSet};
-use toml_edit::DocumentMut;
 
 pub type Result<T> = std::result::Result<T, InstallError>;
 
@@ -296,6 +298,33 @@ pub async fn install_dependencies(
     Ok(results)
 }
 
+/// Install a list of dependencies sequentially.
+///
+/// This function can be used inside another tokio task to avoid spawning more tasks, useful for
+/// recursive install. For each dep, checks the integrity of the dependency if found on disk,
+/// downloads the dependency (zip file or cloning repo) if not already present, unzips the zip file
+/// if necessary, installs sub-dependencies and generates the lockfile entry.
+pub async fn install_dependencies_sequential(
+    dependencies: &[Dependency],
+    locks: &[LockEntry],
+    deps: impl AsRef<Path> + Clone,
+    recursive_deps: bool,
+    progress: InstallProgress,
+) -> Result<Vec<LockEntry>> {
+    let mut results = Vec::new();
+    for dep in dependencies {
+        debug!(dep:% = dep; "installing dependency sequentially");
+        let lock = locks.iter().find(|l| l.name() == dep.name());
+        results.push(
+            install_dependency(dep, lock, deps.clone(), None, recursive_deps, progress.clone())
+                .await?,
+        );
+        debug!(dep:% = dep; "sequential install finished");
+    }
+    debug!("all sequential installs have finished");
+    Ok(results)
+}
+
 /// Install a single dependency.
 ///
 /// This function checks the integrity of the dependency if found on disk, downloads the dependency
@@ -486,7 +515,7 @@ async fn install_dependency_inner(
 
             if subdependencies {
                 debug!(dep:% = dep; "installing subdependencies");
-                install_subdependencies(path).await?;
+                Box::pin(install_subdependencies(path)).await?;
                 debug!(dep:% = dep; "finished installing subdependencies");
             }
             progress.subdependencies.send(dep.into()).ok();
@@ -513,7 +542,7 @@ async fn install_dependency_inner(
 
             if subdependencies {
                 debug!(dep:% = dep; "installing subdependencies");
-                install_subdependencies(&path).await?;
+                Box::pin(install_subdependencies(&path)).await?;
                 debug!(dep:% = dep; "finished installing subdependencies");
             }
             progress.unzip.send(dep.into()).ok();
@@ -533,11 +562,8 @@ async fn install_dependency_inner(
 /// Install subdependencies of a dependency.
 ///
 /// This function checks for a `.gitmodules` file in the dependency directory and clones the
-/// submodules if it exists. If a `soldeer.toml` file is found, the soldeer dependencies are
-/// installed with a call to `forge soldeer install`. If the dependency has a `foundry.toml` file
-/// with a `dependencies` table, the soldeer dependencies are installed as well.
-///
-/// TODO: this function should install soldeer deps without calling to forge or the soldeer binary.
+/// submodules if it exists. If a valid Soldeer config is found, the soldeer dependencies are
+/// installed.
 async fn install_subdependencies(path: impl AsRef<Path>) -> Result<()> {
     let path = path.as_ref().to_path_buf();
     let gitmodules_path = path.join(".gitmodules");
@@ -545,22 +571,32 @@ async fn install_subdependencies(path: impl AsRef<Path>) -> Result<()> {
         // clone submodules
         run_git_command(&["submodule", "update", "--init", "--recursive"], Some(&path)).await?;
     }
-    // if there is a soldeer.toml file, install the soldeer deps
-    let soldeer_config_path = path.join("soldeer.toml");
-    if fs::metadata(&soldeer_config_path).await.is_ok() {
+    // if there's a suitable soldeer config, install the soldeer deps
+    if detect_config_location(&path).is_some() {
         // install subdependencies
-        run_forge_command(&["soldeer", "install"], Some(&path)).await?;
-        return Ok(());
+        install_subdependencies_inner(Paths::from_root(path)?).await?;
     }
-    // if soldeer deps are defined in the foundry.toml file, install them
-    let foundry_path = path.join("foundry.toml");
-    if let Ok(contents) = fs::read_to_string(&foundry_path).await {
-        if let Ok(doc) = contents.parse::<DocumentMut>() {
-            if doc.contains_table("dependencies") {
-                run_forge_command(&["soldeer", "install"], Some(&path)).await?;
-            }
-        }
-    }
+    Ok(())
+}
+
+/// Inner logic for installing subdependencies at a given path.
+///
+/// This is a similar implementation to the one found in `soldeer_commands` but
+/// simplified.
+async fn install_subdependencies_inner(paths: Paths) -> Result<()> {
+    let config = read_soldeer_config(&paths.config)?;
+    ensure_dependencies_dir(&paths.dependencies)?;
+    let (dependencies, _) = read_config_deps(&paths.config)?;
+    let lockfile = read_lockfile(&paths.lock)?;
+    let (progress, _) = InstallProgress::new(); // not used at the moment
+    let _ = install_dependencies_sequential(
+        &dependencies,
+        &lockfile.entries,
+        &paths.dependencies,
+        config.recursive_deps,
+        progress,
+    )
+    .await?;
     Ok(())
 }
 

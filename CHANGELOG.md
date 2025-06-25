@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## `soldeer` - [0.5.5](https://github.com/mario-eth/soldeer/compare/v0.5.4...v0.5.5) - 2025-06-25
+
+### Other
+- update Cargo.lock dependencies
+
+## `soldeer-core` - [0.5.5](https://github.com/mario-eth/soldeer/compare/soldeer-core-v0.5.4...soldeer-core-v0.5.5) - 2025-06-25
+
+### Added
+- *(core)* remove forge requirement for recursive install ([#281](https://github.com/mario-eth/soldeer/pull/281))
+
 ## `soldeer` - [0.5.4](https://github.com/mario-eth/soldeer/compare/v0.5.3...v0.5.4) - 2025-04-27
 
 ### Other

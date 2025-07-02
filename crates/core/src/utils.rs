@@ -270,7 +270,7 @@ pub async fn canonicalize(path: impl AsRef<Path>) -> Result<PathBuf, std::io::Er
 /// This function also normalizes paths on Windows to use the MS-DOS format (as opposed to UNC)
 /// whenever possible.
 pub fn canonicalize_sync(path: impl AsRef<Path>) -> Result<PathBuf, std::io::Error> {
-    dunce::canonicalize(&path)
+    dunce::canonicalize(path)
 }
 
 /// Check if a path corresponds to the provided dependency.

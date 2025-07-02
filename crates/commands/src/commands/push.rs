@@ -4,7 +4,7 @@ use clap::Parser;
 use soldeer_core::{
     errors::PublishError,
     push::{filter_ignored_files, push_version, validate_name, validate_version},
-    utils::check_dotfiles,
+    utils::{canonicalize_sync, check_dotfiles},
     Result,
 };
 use std::{env, path::PathBuf, sync::atomic::Ordering};
@@ -51,6 +51,7 @@ pub struct Push {
 
 pub(crate) async fn push_command(cmd: Push) -> Result<()> {
     let path = cmd.path.unwrap_or(env::current_dir()?);
+    let path = canonicalize_sync(&path)?;
 
     let files_to_copy: Vec<PathBuf> = filter_ignored_files(&path);
 

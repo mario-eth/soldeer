@@ -265,6 +265,14 @@ pub async fn canonicalize(path: impl AsRef<Path>) -> Result<PathBuf, std::io::Er
     tokio::task::spawn_blocking(move || dunce::canonicalize(&path)).await?
 }
 
+/// Canonicalize a path, resolving symlinks and relative paths, synchronously.
+///
+/// This function also normalizes paths on Windows to use the MS-DOS format (as opposed to UNC)
+/// whenever possible.
+pub fn canonicalize_sync(path: impl AsRef<Path>) -> Result<PathBuf, std::io::Error> {
+    dunce::canonicalize(path)
+}
+
 /// Check if a path corresponds to the provided dependency.
 ///
 /// The folder does not need to exist. The folder name must start with the dependency name

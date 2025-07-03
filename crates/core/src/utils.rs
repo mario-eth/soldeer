@@ -47,11 +47,11 @@ pub fn login_file_path() -> Result<PathBuf, std::io::Error> {
     let dir = home::home_dir().unwrap_or(env::current_dir()?);
     let security_directory = dir.join(".soldeer");
     if !security_directory.exists() {
-        debug!(dir:? = dir; ".soldeer folder does not exist, creating it");
+        debug!(dir:?; ".soldeer folder does not exist, creating it");
         fs::create_dir(&security_directory)?;
     }
     let login_file = security_directory.join(".soldeer_login");
-    debug!(login_file:? = login_file; "path to login file");
+    debug!(login_file:?; "path to login file");
     Ok(login_file)
 }
 
@@ -132,7 +132,7 @@ pub fn hash_folder(folder_path: impl AsRef<Path>) -> Result<IntegrityChecksum, s
                     let hash = hash_content(&mut reader);
                     hasher.update(hash);
                 } else {
-                    warn!(path:? = path; "could not read file while hashing folder");
+                    warn!(path:?; "could not read file while hashing folder");
                 }
             }
             // record the hash for that file/folder in the list

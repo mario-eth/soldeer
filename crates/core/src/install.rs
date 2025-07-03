@@ -17,6 +17,7 @@ use derive_more::derive::Display;
 use log::{debug, info, warn};
 use path_slash::PathBufExt as _;
 use std::{
+    collections::HashMap,
     fmt,
     ops::Deref,
     path::{Path, PathBuf},
@@ -253,6 +254,17 @@ impl From<LockEntry> for InstallInfo {
     }
 }
 
+/// Git submodule information
+#[derive(Debug, Default, Clone, PartialEq, Eq, Hash, bon::Builder)]
+#[non_exhaustive]
+pub struct Submodule<'a> {
+    #[builder(default)]
+    pub url: &'a str,
+    #[builder(default)]
+    pub path: &'a str,
+    pub branch: Option<&'a str>,
+}
+
 /// Install a list of dependencies in parallel.
 ///
 /// This function spawns a task for each dependency and waits for all of them to finish. Each task
@@ -467,7 +479,7 @@ pub async fn check_dependency_integrity(
 pub fn ensure_dependencies_dir(path: impl AsRef<Path>) -> Result<()> {
     let path = path.as_ref();
     if !path.exists() {
-        debug!(path:? = path; "dependencies dir doesn't exist, creating it");
+        debug!(path:?; "dependencies dir doesn't exist, creating it");
         std::fs::create_dir(path)
             .map_err(|e| InstallError::IOError { path: path.to_path_buf(), source: e })?;
     }
@@ -568,13 +580,67 @@ async fn install_subdependencies(path: impl AsRef<Path>) -> Result<()> {
     let path = path.as_ref().to_path_buf();
     let gitmodules_path = path.join(".gitmodules");
     if fs::metadata(&gitmodules_path).await.is_ok() {
-        // clone submodules
-        run_git_command(&["submodule", "update", "--init", "--recursive"], Some(&path)).await?;
+        debug!(path:?; "found .gitmodules, installing subdependencies with git");
+        if fs::metadata(path.join(".git")).await.is_ok() {
+            debug!(path:?; "subdependency contains .git directory, cloning submodules");
+            run_git_command(&["submodule", "update", "--init", "--recursive"], Some(&path)).await?;
+        } else {
+            debug!(path:?; "subdependency has git submodules configuration but is not a git repository");
+            reinit_submodules(&path).await?;
+        }
     }
     // if there's a suitable soldeer config, install the soldeer deps
     if detect_config_location(&path).is_some() {
         // install subdependencies
+        debug!(path:?; "found soldeer config, installing subdependencies");
         install_subdependencies_inner(Paths::from_root(path)?).await?;
+    }
+    Ok(())
+}
+
+/// Re-add submodules found in a `.gitmodules` when the folder has to be re-initialized as a git
+/// repo.
+///
+/// The file is parsed, and each module is added again with `git submodules add`.
+async fn reinit_submodules(path: &PathBuf) -> Result<()> {
+    debug!(path:?; "running git init");
+    run_git_command(&["init"], Some(path)).await?;
+    let submodules_config =
+        run_git_command(&["config", "-f", ".gitmodules", "-l"], Some(path)).await?;
+    let mut submodules = HashMap::<&str, Submodule<'_>>::new();
+    for config_line in submodules_config.trim().lines() {
+        let (item, value) = config_line.split_once('=').expect("config format should be valid");
+        let Some(item) = item.strip_prefix("submodule.") else {
+            continue;
+        };
+        let (submodule_name, item_name) =
+            item.rsplit_once('.').expect("config format should be valid");
+        submodules
+            .entry(submodule_name)
+            .and_modify(|e: &mut _| match item_name {
+                "path" => e.path = value,
+                "url" => e.url = value,
+                "branch" => e.branch = Some(value),
+                _ => {}
+            })
+            .or_insert_with(|| match item_name {
+                "path" => Submodule::builder().path(value).build(),
+                "url" => Submodule::builder().url(value).build(),
+                "branch" => Submodule::builder().branch(value).build(),
+                _ => Submodule::default(),
+            });
+    }
+    debug!(submodules:?, path:?; "got submodules config");
+    for (submodule_name, submodule) in submodules {
+        let mut args = vec!["submodule", "add", "--name", submodule_name];
+        if let Some(branch) = submodule.branch {
+            args.push("-b");
+            args.push(branch);
+        }
+        args.push(submodule.url);
+        args.push(submodule.path);
+        run_git_command(args, Some(path)).await?;
+        debug!(submodule_name, path:?; "added submodule");
     }
     Ok(())
 }

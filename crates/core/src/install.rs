@@ -255,11 +255,9 @@ impl From<LockEntry> for InstallInfo {
 }
 
 /// Git submodule information
-#[derive(Debug, Default, Clone, PartialEq, Eq, Hash, bon::Builder)]
+#[derive(Debug, Default, Clone, PartialEq, Eq, Hash)]
 struct Submodule<'a> {
-    #[builder(default)]
     url: &'a str,
-    #[builder(default)]
     path: &'a str,
     branch: Option<&'a str>,
 }

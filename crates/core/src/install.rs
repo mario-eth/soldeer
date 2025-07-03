@@ -656,7 +656,7 @@ async fn get_submodules(path: &PathBuf) -> Result<HashMap<String, Submodule>> {
 /// Re-add submodules found in a `.gitmodules` when the folder has to be re-initialized as a git
 /// repo.
 ///
-/// The file is parsed, and each module is added again with `git submodules add`.
+/// The file is parsed, and each module is added again with `git submodule add`.
 async fn reinit_submodules(path: &PathBuf) -> Result<Vec<PathBuf>> {
     debug!(path:?; "running git init");
     run_git_command(&["init"], Some(path)).await?;

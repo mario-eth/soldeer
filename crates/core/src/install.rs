@@ -581,6 +581,8 @@ async fn install_subdependencies(path: impl AsRef<Path>) -> Result<()> {
         if fs::metadata(path.join(".git")).await.is_ok() {
             debug!(path:?; "subdependency contains .git directory, cloning submodules");
             run_git_command(&["submodule", "update", "--init"], Some(&path)).await?;
+            // we need to recurse into each of the submodules to ensure any soldeer sub-deps of
+            // those are also installed
             let submodules = get_submodules(&path).await?;
             for (_, submodule) in submodules {
                 let sub_path = path.join(submodule.path);
@@ -590,6 +592,8 @@ async fn install_subdependencies(path: impl AsRef<Path>) -> Result<()> {
         } else {
             debug!(path:?; "subdependency has git submodules configuration but is not a git repository");
             let submodule_paths = reinit_submodules(&path).await?;
+            // we need to recurse into each of the submodules to ensure any soldeer sub-deps of
+            // those are also installed
             for sub_path in submodule_paths {
                 debug!(sub_path:?; "recursing into the git submodule");
                 Box::pin(install_subdependencies(sub_path)).await?;

@@ -256,13 +256,12 @@ impl From<LockEntry> for InstallInfo {
 
 /// Git submodule information
 #[derive(Debug, Default, Clone, PartialEq, Eq, Hash, bon::Builder)]
-#[non_exhaustive]
-pub struct Submodule<'a> {
+struct Submodule<'a> {
     #[builder(default)]
-    pub url: &'a str,
+    url: &'a str,
     #[builder(default)]
-    pub path: &'a str,
-    pub branch: Option<&'a str>,
+    path: &'a str,
+    branch: Option<&'a str>,
 }
 
 /// Install a list of dependencies in parallel.
@@ -615,20 +614,13 @@ async fn reinit_submodules(path: &PathBuf) -> Result<()> {
         };
         let (submodule_name, item_name) =
             item.rsplit_once('.').expect("config format should be valid");
-        submodules
-            .entry(submodule_name)
-            .and_modify(|e: &mut _| match item_name {
-                "path" => e.path = value,
-                "url" => e.url = value,
-                "branch" => e.branch = Some(value),
-                _ => {}
-            })
-            .or_insert_with(|| match item_name {
-                "path" => Submodule::builder().path(value).build(),
-                "url" => Submodule::builder().url(value).build(),
-                "branch" => Submodule::builder().branch(value).build(),
-                _ => Submodule::default(),
-            });
+        let entry = submodules.entry(submodule_name).or_default();
+        match item_name {
+            "path" => entry.path = value,
+            "url" => entry.url = value,
+            "branch" => entry.branch = Some(value),
+            _ => {}
+        }
     }
     debug!(submodules:?, path:?; "got submodules config");
     for (submodule_name, submodule) in submodules {
@@ -642,6 +634,8 @@ async fn reinit_submodules(path: &PathBuf) -> Result<()> {
         run_git_command(args, Some(path)).await?;
         debug!(submodule_name, path:?; "added submodule");
     }
+    debug!(path:?; "making sure submodules are recursively updated");
+    run_git_command(&["submodule", "update", "--init", "--recursive"], Some(path)).await?;
     Ok(())
 }
 

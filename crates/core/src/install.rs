@@ -675,8 +675,6 @@ async fn reinit_submodules(path: &PathBuf) -> Result<Vec<PathBuf>> {
         debug!(submodule_name, path:?; "added submodule");
         out.push(path.join(submodule.path));
     }
-    // debug!(path:?; "making sure submodules are recursively updated");
-    // run_git_command(&["submodule", "update", "--init", "--recursive"], Some(path)).await?;
     Ok(out)
 }
 

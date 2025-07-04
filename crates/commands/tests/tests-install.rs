@@ -405,16 +405,12 @@ async fn test_install_recursive_deps_nested() {
     .await;
     assert!(res.is_ok(), "{res:?}");
     let paths = [
-        "@uniswap-permit2-1.0.0",
-        "@uniswap-permit2-1.0.0/lib/forge-gas-snapshot",
-        "@uniswap-permit2-1.0.0/lib/forge-std",
-        "@uniswap-permit2-1.0.0/lib/openzeppelin-contracts",
-        "@uniswap-permit2-1.0.0/lib/solmate",
-        "@uniswap-permit2-1.0.0/lib/forge-gas-snapshot/dependencies/forge-std-1.9.2",
-        "@uniswap-permit2-1.0.0/lib/openzeppelin-contracts/lib/erc4626-tests",
-        "@uniswap-permit2-1.0.0/lib/openzeppelin-contracts/lib/forge-std",
-        "@uniswap-permit2-1.0.0/lib/openzeppelin-contracts/lib/halmos-cheatcodes",
-        "@uniswap-permit2-1.0.0/lib/solmate/lib/ds-test",
+        "@uniswap-permit2-1.0.0/lib/forge-std/src",
+        "@uniswap-permit2-1.0.0/lib/forge-gas-snapshot/dependencies/forge-std-1.9.2/src",
+        "@uniswap-permit2-1.0.0/lib/openzeppelin-contracts/lib/erc4626-tests/ERC4626.test.sol",
+        "@uniswap-permit2-1.0.0/lib/openzeppelin-contracts/lib/forge-std/src",
+        "@uniswap-permit2-1.0.0/lib/openzeppelin-contracts/lib/halmos-cheatcodes/src",
+        "@uniswap-permit2-1.0.0/lib/solmate/lib/ds-test/src",
     ];
     for path in paths {
         let dep_path = dir.join("dependencies").join(path);

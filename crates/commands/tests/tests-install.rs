@@ -328,6 +328,38 @@ integrity = "f3c628f3e9eae4db14fe14f9ab29e49a0107c47b8ee956e4cee57b616b493fc2"
 }
 
 #[tokio::test]
+async fn test_install_add_existing_reinstall() {
+    let dir = testdir!();
+    let contents = r#"[dependencies]
+"@openzeppelin-contracts" = "5.0.2"
+"#;
+    fs::write(dir.join("soldeer.toml"), contents).unwrap();
+    let cmd: Command = Install::builder().build().into();
+    let res = async_with_vars(
+        [("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))],
+        run(cmd, Verbosity::default()),
+    )
+    .await;
+    assert!(res.is_ok());
+
+    // remove dependencies folder and lockfile
+    fs::remove_dir_all(dir.join("dependencies")).unwrap();
+    fs::remove_file(dir.join("soldeer.lock")).unwrap();
+
+    // re-add the same dep, should re-install it
+    let cmd: Command =
+        Install::builder().dependency("@openzeppelin-contracts~5.0.2").build().into();
+    let res = async_with_vars(
+        [("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))],
+        run(cmd, Verbosity::default()),
+    )
+    .await;
+    assert!(res.is_ok());
+    let dep_path = dir.join("dependencies").join("@openzeppelin-contracts-5.0.2");
+    assert!(dep_path.exists());
+}
+
+#[tokio::test]
 async fn test_install_clean() {
     let dir = testdir!();
     let contents = r#"[dependencies]

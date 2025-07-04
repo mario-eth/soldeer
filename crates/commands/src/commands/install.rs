@@ -1,6 +1,6 @@
 use super::validate_dependency;
 use crate::{
-    utils::{outro, remark, success, warning, Progress},
+    utils::{remark, success, warning, Progress},
     ConfigLocation,
 };
 use clap::Parser;
@@ -107,7 +107,7 @@ pub(crate) async fn install_command(paths: &Paths, cmd: Install) -> Result<()> {
         warning!(format!("Config warning: {w}"));
     }
 
-    match cmd.dependency {
+    match &cmd.dependency {
         None => {
             let lockfile = read_lockfile(&paths.lock)?;
             success!("Done reading lockfile");
@@ -142,20 +142,31 @@ pub(crate) async fn install_command(paths: &Paths, cmd: Install) -> Result<()> {
             success!("Updated remappings");
         }
         Some(dependency) => {
-            let identifier = match (cmd.rev, cmd.branch, cmd.tag) {
-                (Some(rev), None, None) => Some(GitIdentifier::from_rev(&rev)),
-                (None, Some(branch), None) => Some(GitIdentifier::from_branch(&branch)),
-                (None, None, Some(tag)) => Some(GitIdentifier::from_tag(&tag)),
+            let identifier = match (&cmd.rev, &cmd.branch, &cmd.tag) {
+                (Some(rev), None, None) => Some(GitIdentifier::from_rev(rev)),
+                (None, Some(branch), None) => Some(GitIdentifier::from_branch(branch)),
+                (None, None, Some(tag)) => Some(GitIdentifier::from_tag(tag)),
                 (None, None, None) => None,
                 _ => unreachable!("clap should prevent this"),
             };
-            let url = cmd.zip_url.map(UrlType::http).or(cmd.git_url.map(UrlType::git));
-            let mut dep = Dependency::from_name_version(&dependency, url, identifier)?;
+            let url =
+                cmd.zip_url.as_ref().map(UrlType::http).or(cmd.git_url.as_ref().map(UrlType::git));
+            let mut dep = Dependency::from_name_version(dependency, url, identifier)?;
             if dependencies
                 .iter()
                 .any(|d| d.name() == dep.name() && d.version_req() == dep.version_req())
             {
-                outro!(format!("{dep} is already installed"));
+                remark!(format!("{dep} is already installed, running `install` instead"));
+                Box::pin(install_command(
+                    paths,
+                    Install::builder()
+                        .regenerate_remappings(cmd.regenerate_remappings)
+                        .recursive_deps(cmd.recursive_deps)
+                        .clean(cmd.clean)
+                        .maybe_config_location(cmd.config_location)
+                        .build(),
+                ))
+                .await?;
                 return Ok(());
             }
             let (progress, monitor) = InstallProgress::new();

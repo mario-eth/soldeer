@@ -664,7 +664,12 @@ async fn reinit_submodules(path: &PathBuf) -> Result<Vec<PathBuf>> {
     debug!(submodules:?, path:?; "got submodules config");
     let mut out = Vec::new();
     for (submodule_name, submodule) in submodules {
-        let mut args = vec!["submodule", "add", "--name", &submodule_name];
+        // make sure to remove the path if it already exists
+        let dest_path = path.join(&submodule.path);
+        fs::remove_dir_all(&dest_path)
+            .await
+            .map_err(|e| InstallError::IOError { path: dest_path, source: e })?;
+        let mut args = vec!["submodule", "add", "-f", "--name", &submodule_name];
         if let Some(branch) = &submodule.branch {
             args.push("-b");
             args.push(branch);

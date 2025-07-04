@@ -180,11 +180,11 @@ pub async fn run_git_command<I, S>(
     current_dir: Option<&PathBuf>,
 ) -> Result<String, DownloadError>
 where
-    I: IntoIterator<Item = S>,
+    I: IntoIterator<Item = S> + Clone,
     S: AsRef<OsStr>,
 {
     let mut git = Command::new("git");
-    git.args(args).env("GIT_TERMINAL_PROMPT", "0");
+    git.args(args.clone()).env("GIT_TERMINAL_PROMPT", "0");
     if let Some(current_dir) = current_dir {
         git.current_dir(
             canonicalize(current_dir)
@@ -192,9 +192,15 @@ where
                 .map_err(|e| DownloadError::IOError { path: current_dir.clone(), source: e })?,
         );
     }
-    let git = git.output().await.map_err(|e| DownloadError::GitError(e.to_string()))?;
+    let git = git.output().await.map_err(|e| DownloadError::GitError {
+        message: e.to_string(),
+        args: args.clone().into_iter().map(|a| a.as_ref().to_string_lossy().into_owned()).collect(),
+    })?;
     if !git.status.success() {
-        return Err(DownloadError::GitError(String::from_utf8(git.stderr).unwrap_or_default()));
+        return Err(DownloadError::GitError {
+            message: String::from_utf8(git.stderr).unwrap_or_default(),
+            args: args.into_iter().map(|a| a.as_ref().to_string_lossy().into_owned()).collect(),
+        });
     }
     Ok(String::from_utf8(git.stdout).expect("git command output should be valid utf-8"))
 }

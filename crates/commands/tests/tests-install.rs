@@ -391,6 +391,38 @@ foo = { version = "0.1.0", git = "https://github.com/beeb/forge-template.git" }
 }
 
 #[tokio::test]
+async fn test_install_recursive_deps_nested() {
+    let dir = testdir!();
+    let contents = r#"[dependencies]
+"@uniswap-permit2" = { version = "1.0.0", url = "https://github.com/Uniswap/permit2/archive/cc56ad0f3439c502c246fc5cfcc3db92bb8b7219.zip" }
+"#;
+    fs::write(dir.join("soldeer.toml"), contents).unwrap();
+    let cmd: Command = Install::builder().recursive_deps(true).build().into();
+    let res = async_with_vars(
+        [("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))],
+        run(cmd, Verbosity::default()),
+    )
+    .await;
+    assert!(res.is_ok(), "{res:?}");
+    let paths = [
+        "@uniswap-permit2-1.0.0",
+        "@uniswap-permit2-1.0.0/lib/forge-gas-snapshot",
+        "@uniswap-permit2-1.0.0/lib/forge-std",
+        "@uniswap-permit2-1.0.0/lib/openzeppelin-contracts",
+        "@uniswap-permit2-1.0.0/lib/solmate",
+        "@uniswap-permit2-1.0.0/lib/forge-gas-snapshot/dependencies/forge-std-1.9.2",
+        "@uniswap-permit2-1.0.0/lib/openzeppelin-contracts/lib/erc4626-tests",
+        "@uniswap-permit2-1.0.0/lib/openzeppelin-contracts/lib/forge-std",
+        "@uniswap-permit2-1.0.0/lib/openzeppelin-contracts/lib/halmos-cheatcodes",
+        "@uniswap-permit2-1.0.0/lib/solmate/lib/ds-test",
+    ];
+    for path in paths {
+        let dep_path = dir.join("dependencies").join(path);
+        assert!(dep_path.exists());
+    }
+}
+
+#[tokio::test]
 async fn test_install_regenerate_remappings() {
     let dir = testdir!();
     fs::write(dir.join("soldeer.toml"), "[dependencies]\n").unwrap();

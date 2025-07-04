@@ -47,11 +47,11 @@ pub fn login_file_path() -> Result<PathBuf, std::io::Error> {
     let dir = home::home_dir().unwrap_or(env::current_dir()?);
     let security_directory = dir.join(".soldeer");
     if !security_directory.exists() {
-        debug!(dir:? = dir; ".soldeer folder does not exist, creating it");
+        debug!(dir:?; ".soldeer folder does not exist, creating it");
         fs::create_dir(&security_directory)?;
     }
     let login_file = security_directory.join(".soldeer_login");
-    debug!(login_file:? = login_file; "path to login file");
+    debug!(login_file:?; "path to login file");
     Ok(login_file)
 }
 
@@ -132,7 +132,7 @@ pub fn hash_folder(folder_path: impl AsRef<Path>) -> Result<IntegrityChecksum, s
                     let hash = hash_content(&mut reader);
                     hasher.update(hash);
                 } else {
-                    warn!(path:? = path; "could not read file while hashing folder");
+                    warn!(path:?; "could not read file while hashing folder");
                 }
             }
             // record the hash for that file/folder in the list
@@ -180,11 +180,11 @@ pub async fn run_git_command<I, S>(
     current_dir: Option<&PathBuf>,
 ) -> Result<String, DownloadError>
 where
-    I: IntoIterator<Item = S>,
+    I: IntoIterator<Item = S> + Clone,
     S: AsRef<OsStr>,
 {
     let mut git = Command::new("git");
-    git.args(args).env("GIT_TERMINAL_PROMPT", "0");
+    git.args(args.clone()).env("GIT_TERMINAL_PROMPT", "0");
     if let Some(current_dir) = current_dir {
         git.current_dir(
             canonicalize(current_dir)
@@ -192,9 +192,15 @@ where
                 .map_err(|e| DownloadError::IOError { path: current_dir.clone(), source: e })?,
         );
     }
-    let git = git.output().await.map_err(|e| DownloadError::GitError(e.to_string()))?;
+    let git = git.output().await.map_err(|e| DownloadError::GitError {
+        message: e.to_string(),
+        args: args.clone().into_iter().map(|a| a.as_ref().to_string_lossy().into_owned()).collect(),
+    })?;
     if !git.status.success() {
-        return Err(DownloadError::GitError(String::from_utf8(git.stderr).unwrap_or_default()));
+        return Err(DownloadError::GitError {
+            message: String::from_utf8(git.stderr).unwrap_or_default(),
+            args: args.into_iter().map(|a| a.as_ref().to_string_lossy().into_owned()).collect(),
+        });
     }
     Ok(String::from_utf8(git.stdout).expect("git command output should be valid utf-8"))
 }

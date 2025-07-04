@@ -61,7 +61,7 @@ pub async fn unzip_file(path: impl AsRef<Path>, into: impl AsRef<Path>) -> Resul
     tokio::fs::remove_file(&path)
         .await
         .map_err(|e| DownloadError::IOError { path: path.clone(), source: e })?;
-    debug!(path:? = path; "removed zip file");
+    debug!(path:?; "removed zip file");
     Ok(())
 }
 
@@ -145,9 +145,9 @@ pub async fn find_install_path(dependency: &Dependency, deps: impl AsRef<Path>) 
         if !path.is_dir() {
             continue;
         }
-        trace!(path:? = path; "found folder in deps");
+        trace!(path:?; "found folder in deps");
         if install_path_matches(dependency, &path) {
-            debug!(path:? = path, dep:% = dependency; "folder name matches dependency");
+            debug!(path:?, dep:% = dependency; "folder name matches dependency");
             return Some(path);
         }
     }
@@ -181,7 +181,7 @@ pub async fn delete_dependency_files(
 fn install_path_matches(dependency: &Dependency, path: impl AsRef<Path>) -> bool {
     let path = path.as_ref();
     if !path.is_dir() {
-        trace!(path:? = path; "path is not a directory");
+        trace!(path:?; "path is not a directory");
         return false;
     }
     path_matches(dependency, path)

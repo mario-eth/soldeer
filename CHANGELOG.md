@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## `soldeer` - [0.6.0](https://github.com/mario-eth/soldeer/compare/v0.5.4...v0.6.0) - 2025-07-09
+
+### Other
+- update Cargo.lock dependencies
+
+## `soldeer-commands` - [0.6.0](https://github.com/mario-eth/soldeer/compare/soldeer-commands-v0.5.4...soldeer-commands-v0.6.0) - 2025-07-09
+
+### Added
+- *(commands)* if adding a dependency which is already present, re-install all ([#289](https://github.com/mario-eth/soldeer/pull/289))
+
+### Fixed
+- *(core)* recursive subdependencies install ([#288](https://github.com/mario-eth/soldeer/pull/288))
+- *(commands)* canonicalize path in push command ([#284](https://github.com/mario-eth/soldeer/pull/284))
+
+## `soldeer-core` - [0.6.0](https://github.com/mario-eth/soldeer/compare/soldeer-core-v0.5.4...soldeer-core-v0.6.0) - 2025-07-09
+
+### Added
+- *(core)* remove forge requirement for recursive install ([#281](https://github.com/mario-eth/soldeer/pull/281))
+
+### Fixed
+- *(core)* recursive subdependencies install ([#288](https://github.com/mario-eth/soldeer/pull/288))
+- *(commands)* canonicalize path in push command ([#284](https://github.com/mario-eth/soldeer/pull/284))
+
 ## `soldeer` - [0.5.4](https://github.com/mario-eth/soldeer/compare/v0.5.3...v0.5.4) - 2025-04-27
 
 ### Other

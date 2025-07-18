@@ -30,9 +30,9 @@ async fn test_init_clean() {
     assert!(!dir.join("lib").exists());
     assert!(!dir.join(".gitmodules").exists());
     assert!(dir.join("dependencies").exists());
-    let (deps, _) = read_config_deps(dir.join("soldeer.toml")).unwrap();
+    let (deps, _) = read_config_deps(&dir.join("soldeer.toml")).unwrap();
     assert_eq!(deps.first().unwrap().name(), "forge-std");
-    let lock = read_lockfile(dir.join("soldeer.lock")).unwrap();
+    let lock = read_lockfile(&dir.join("soldeer.lock")).unwrap();
     assert_eq!(lock.entries.first().unwrap().name(), "forge-std");
     let remappings = fs::read_to_string(dir.join("remappings.txt")).unwrap();
     assert!(remappings.contains("forge-std"));
@@ -62,9 +62,9 @@ async fn test_init_no_clean() {
     assert!(dir.join("lib").exists());
     assert!(dir.join(".gitmodules").exists());
     assert!(dir.join("dependencies").exists());
-    let (deps, _) = read_config_deps(dir.join("soldeer.toml")).unwrap();
+    let (deps, _) = read_config_deps(&dir.join("soldeer.toml")).unwrap();
     assert_eq!(deps.first().unwrap().name(), "forge-std");
-    let lock = read_lockfile(dir.join("soldeer.lock")).unwrap();
+    let lock = read_lockfile(&dir.join("soldeer.lock")).unwrap();
     assert_eq!(lock.entries.first().unwrap().name(), "forge-std");
     let remappings = fs::read_to_string(dir.join("remappings.txt")).unwrap();
     assert!(remappings.contains("forge-std"));

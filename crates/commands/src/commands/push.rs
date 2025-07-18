@@ -79,7 +79,8 @@ pub(crate) async fn push_command(cmd: Push) -> Result<()> {
     validate_version(dependency_version)?;
 
     if let Some(zip_path) =
-        push_version(dependency_name, dependency_version, path, &files_to_copy, cmd.dry_run).await?
+        push_version(dependency_name, dependency_version, &path, &files_to_copy, cmd.dry_run)
+            .await?
     {
         info!(format!("Zip file created at {}", zip_path.to_string_lossy()));
     } else {

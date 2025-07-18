@@ -55,7 +55,7 @@ pub(crate) async fn init_command(paths: &Paths, cmd: Init) -> Result<()> {
     add_to_config(&dependency, &paths.config)?;
     let foundry_config = paths.root.join("foundry.toml");
     if foundry_config.exists() {
-        update_config_libs(foundry_config)?;
+        update_config_libs(&foundry_config)?;
     }
     success!("Dependency added to config");
     add_to_lockfile(lock, &paths.lock)?;

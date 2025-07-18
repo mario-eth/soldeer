@@ -90,15 +90,15 @@ pub fn hash_content<R: Read>(content: &mut R) -> [u8; 32] {
 ///
 /// The paths of the folders and files are hashes too, so we can the integrity of their names and
 /// location can be checked.
-pub fn hash_folder(folder_path: impl AsRef<Path>) -> Result<IntegrityChecksum, std::io::Error> {
-    debug!(path:? = folder_path.as_ref(); "hashing folder");
+pub fn hash_folder(folder_path: &Path) -> Result<IntegrityChecksum, std::io::Error> {
+    debug!(path:? = folder_path; "hashing folder");
     // a list of hashes, one for each DirEntry
-    let root_path = Arc::new(dunce::canonicalize(folder_path.as_ref())?);
+    let root_path = Arc::new(dunce::canonicalize(folder_path)?);
 
     let (tx, rx) = mpsc::channel::<[u8; 32]>();
 
     // we use a parallel walker to speed things up
-    let walker = WalkBuilder::new(&folder_path)
+    let walker = WalkBuilder::new(folder_path)
         .filter_entry(|entry| {
             !(entry.path().is_dir() && entry.path().file_name().unwrap_or_default() == ".git")
         })
@@ -157,18 +157,18 @@ pub fn hash_folder(folder_path: impl AsRef<Path>) -> Result<IntegrityChecksum, s
     }
     let hash: [u8; 32] = hasher.finalize().into();
     let hash = const_hex::encode(hash);
-    debug!(path:? = folder_path.as_ref(), hash; "folder hash was computed");
+    debug!(path:? = folder_path, hash; "folder hash was computed");
     Ok(hash.into())
 }
 
 /// Compute the SHA256 hash of the contents of a file
-pub fn hash_file(path: impl AsRef<Path>) -> Result<IntegrityChecksum, std::io::Error> {
-    debug!(path:? = path.as_ref(); "hashing file");
-    let file = fs::File::open(&path)?;
+pub fn hash_file(path: &Path) -> Result<IntegrityChecksum, std::io::Error> {
+    debug!(path:? = path; "hashing file");
+    let file = fs::File::open(path)?;
     let mut reader = std::io::BufReader::new(file);
     let bytes = hash_content(&mut reader);
     let hash = const_hex::encode(bytes);
-    debug!(path:? = path.as_ref(), hash; "file hash was computed");
+    debug!(path:? = path, hash; "file hash was computed");
     Ok(hash.into())
 }
 
@@ -236,17 +236,14 @@ where
 ///
 /// This function removes the `forge-std` submodule, the `.gitmodules` file and the `lib` directory
 /// from the project.
-pub async fn remove_forge_lib(root: impl AsRef<Path>) -> Result<(), InstallError> {
+pub async fn remove_forge_lib(root: &Path) -> Result<(), InstallError> {
     debug!("removing forge-std installed as a git submodule");
-    let gitmodules_path = root.as_ref().join(".gitmodules");
-    let lib_dir = root.as_ref().join("lib");
+    let gitmodules_path = root.join(".gitmodules");
+    let lib_dir = root.join("lib");
     let forge_std_dir = lib_dir.join("forge-std");
     if forge_std_dir.exists() {
-        run_git_command(
-            &["rm", &forge_std_dir.to_string_lossy()],
-            Some(&root.as_ref().to_path_buf()),
-        )
-        .await?;
+        run_git_command(&["rm", &forge_std_dir.to_string_lossy()], Some(&root.to_path_buf()))
+            .await?;
         debug!("removed lib/forge-std");
     }
     if lib_dir.exists() {
@@ -266,8 +263,8 @@ pub async fn remove_forge_lib(root: impl AsRef<Path>) -> Result<(), InstallError
 ///
 /// This function also normalizes paths on Windows to use the MS-DOS format (as opposed to UNC)
 /// whenever possible.
-pub async fn canonicalize(path: impl AsRef<Path>) -> Result<PathBuf, std::io::Error> {
-    let path = path.as_ref().to_path_buf();
+pub async fn canonicalize(path: &Path) -> Result<PathBuf, std::io::Error> {
+    let path = path.to_path_buf();
     tokio::task::spawn_blocking(move || dunce::canonicalize(&path)).await?
 }
 
@@ -275,7 +272,7 @@ pub async fn canonicalize(path: impl AsRef<Path>) -> Result<PathBuf, std::io::Er
 ///
 /// This function also normalizes paths on Windows to use the MS-DOS format (as opposed to UNC)
 /// whenever possible.
-pub fn canonicalize_sync(path: impl AsRef<Path>) -> Result<PathBuf, std::io::Error> {
+pub fn canonicalize_sync(path: &Path) -> Result<PathBuf, std::io::Error> {
     dunce::canonicalize(path)
 }
 
@@ -285,8 +282,7 @@ pub fn canonicalize_sync(path: impl AsRef<Path>) -> Result<PathBuf, std::io::Err
 /// (sanitized). For dependencies with a semver-compliant version requirement, any folder with a
 /// version that matches will give a result of `true`. Otherwise, the folder name must contain the
 /// version requirement string after the dependency name.
-pub fn path_matches(dependency: &Dependency, path: impl AsRef<Path>) -> bool {
-    let path = path.as_ref();
+pub fn path_matches(dependency: &Dependency, path: &Path) -> bool {
     let Some(dir_name) = path.file_name() else {
         return false;
     };

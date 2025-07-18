@@ -51,7 +51,7 @@ async fn test_update_existing() {
     )
     .await;
     assert!(res.is_ok(), "{res:?}");
-    let lockfile = read_lockfile(dir.join("soldeer.lock")).unwrap();
+    let lockfile = read_lockfile(&dir.join("soldeer.lock")).unwrap();
     let version = lockfile.entries.first().unwrap().version();
     assert_ne!(version, "1.9.0");
     let remappings = fs::read_to_string(dir.join("remappings.txt")).unwrap();
@@ -69,7 +69,7 @@ async fn test_update_foundry_config() {
     )
     .await;
     assert!(res.is_ok(), "{res:?}");
-    let lockfile = read_lockfile(dir.join("soldeer.lock")).unwrap();
+    let lockfile = read_lockfile(&dir.join("soldeer.lock")).unwrap();
     let version = lockfile.entries.first().unwrap().version();
     assert_ne!(version, "1.9.0");
     assert!(dir.join("dependencies").join(format!("forge-std-{version}")).exists());
@@ -89,7 +89,7 @@ forge-std = "1"
     )
     .await;
     assert!(res.is_ok(), "{res:?}");
-    let lockfile = read_lockfile(dir.join("soldeer.lock")).unwrap();
+    let lockfile = read_lockfile(&dir.join("soldeer.lock")).unwrap();
     let version = lockfile.entries.first().unwrap().version();
     assert!(dir.join("dependencies").join(format!("forge-std-{version}")).exists());
 }
@@ -107,7 +107,7 @@ async fn test_update_custom_remappings() {
     )
     .await;
     assert!(res.is_ok(), "{res:?}");
-    let lockfile = read_lockfile(dir.join("soldeer.lock")).unwrap();
+    let lockfile = read_lockfile(&dir.join("soldeer.lock")).unwrap();
     let version = lockfile.entries.first().unwrap().version();
     let remappings = fs::read_to_string(dir.join("remappings.txt")).unwrap();
     assert_eq!(remappings, format!("forge-std/=dependencies/forge-std-{version}/src/\n"));
@@ -144,7 +144,7 @@ rev = "78c2f6a1a54db26bab6c3f501854a1564eb3707f"
     )
     .await;
     assert!(res.is_ok(), "{res:?}");
-    let lockfile = read_lockfile(dir.join("soldeer.lock")).unwrap();
+    let lockfile = read_lockfile(&dir.join("soldeer.lock")).unwrap();
     assert_eq!(
         lockfile.entries.first().unwrap().as_git().unwrap().rev,
         "d5d72fa135d28b2e8307650b3ea79115183f2406"
@@ -182,7 +182,7 @@ rev = "78c2f6a1a54db26bab6c3f501854a1564eb3707f"
     )
     .await;
     assert!(res.is_ok(), "{res:?}");
-    let lockfile = read_lockfile(dir.join("soldeer.lock")).unwrap();
+    let lockfile = read_lockfile(&dir.join("soldeer.lock")).unwrap();
     assert_eq!(
         lockfile.entries.first().unwrap().as_git().unwrap().rev,
         "8d903e557e8f1b6e62bde768aa456d4ddfca72c4"

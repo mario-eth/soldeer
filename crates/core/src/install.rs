@@ -271,7 +271,7 @@ struct Submodule {
 pub async fn install_dependencies(
     dependencies: &[Dependency],
     locks: &[LockEntry],
-    deps: impl AsRef<Path>,
+    deps: &Path,
     recursive_deps: bool,
     progress: InstallProgress,
 ) -> Result<Vec<LockEntry>> {
@@ -282,12 +282,12 @@ pub async fn install_dependencies(
             let d = dep.clone();
             let p = progress.clone();
             let lock = locks.iter().find(|l| l.name() == dep.name()).cloned();
-            let deps = deps.as_ref().to_path_buf();
+            let deps = deps.to_path_buf();
             async move {
                 install_dependency(
                     &d,
                     lock.as_ref(),
-                    deps,
+                    &deps,
                     None,
                     recursive_deps,
                     p,
@@ -316,7 +316,7 @@ pub async fn install_dependencies(
 pub async fn install_dependencies_sequential(
     dependencies: &[Dependency],
     locks: &[LockEntry],
-    deps: impl AsRef<Path> + Clone,
+    deps: &Path,
     recursive_deps: bool,
     progress: InstallProgress,
 ) -> Result<Vec<LockEntry>> {
@@ -325,8 +325,7 @@ pub async fn install_dependencies_sequential(
         debug!(dep:% = dep; "installing dependency sequentially");
         let lock = locks.iter().find(|l| l.name() == dep.name());
         results.push(
-            install_dependency(dep, lock, deps.clone(), None, recursive_deps, progress.clone())
-                .await?,
+            install_dependency(dep, lock, deps, None, recursive_deps, progress.clone()).await?,
         );
         debug!(dep:% = dep; "sequential install finished");
     }
@@ -345,14 +344,14 @@ pub async fn install_dependencies_sequential(
 pub async fn install_dependency(
     dependency: &Dependency,
     lock: Option<&LockEntry>,
-    deps: impl AsRef<Path>,
+    deps: &Path,
     force_version: Option<String>,
     recursive_deps: bool,
     progress: InstallProgress,
 ) -> Result<LockEntry> {
     if let Some(lock) = lock {
         debug!(dep:% = dependency; "installing based on lock entry");
-        match check_dependency_integrity(lock, &deps).await? {
+        match check_dependency_integrity(lock, deps).await? {
             DependencyStatus::Installed => {
                 info!(dep:% = dependency; "skipped install, dependency already up-to-date with lockfile");
                 progress.update_all(dependency.into());
@@ -367,7 +366,7 @@ pub async fn install_dependency(
                     ));
                     // we know the folder exists because otherwise we would have gotten
                     // `Missing`
-                    delete_dependency_files(dependency, &deps).await?;
+                    delete_dependency_files(dependency, deps).await?;
                     debug!(dep:% = dependency; "removed dependency folder");
                     // we won't need to retrieve the version number so we mark it as done
                     progress.versions.send(dependency.into()).ok();
@@ -381,7 +380,7 @@ pub async fn install_dependency(
 
                     reset_git_dependency(
                         lock.as_git().expect("lock entry should be of type git"),
-                        &deps,
+                        deps,
                     )
                     .await?;
                     debug!(dep:% = dependency; "reset git dependency");
@@ -393,7 +392,7 @@ pub async fn install_dependency(
             },
             DependencyStatus::Missing => {
                 // make sure there is no existing directory for the dependency
-                if let Some(path) = dependency.install_path(&deps).await {
+                if let Some(path) = dependency.install_path(deps).await {
                     fs::remove_dir_all(&path)
                         .await
                         .map_err(|e| InstallError::IOError { path, source: e })?;
@@ -405,7 +404,7 @@ pub async fn install_dependency(
         }
         install_dependency_inner(
             &lock.clone().into(),
-            lock.install_path(&deps),
+            &lock.install_path(deps),
             recursive_deps,
             progress,
         )
@@ -414,7 +413,7 @@ pub async fn install_dependency(
         // no lockfile entry, install from config object
         debug!(dep:% = dependency; "no lockfile entry, installing based on config");
         // make sure there is no existing directory for the dependency
-        if let Some(path) = dependency.install_path(&deps).await {
+        if let Some(path) = dependency.install_path(deps).await {
             fs::remove_dir_all(&path)
                 .await
                 .map_err(|e| InstallError::IOError { path, source: e })?;
@@ -450,9 +449,9 @@ pub async fn install_dependency(
                 .build()
                 .into(),
         };
-        let install_path = format_install_path(dependency.name(), &version, &deps);
+        let install_path = format_install_path(dependency.name(), &version, deps);
         debug!(dep:% = dependency; "installing to path {install_path:?}");
-        install_dependency_inner(&info, install_path, recursive_deps, progress).await
+        install_dependency_inner(&info, &install_path, recursive_deps, progress).await
     }
 }
 
@@ -460,10 +459,7 @@ pub async fn install_dependency(
 ///
 /// If any file has changed in the dependency directory (except ignored files and any `.git`
 /// directory), the integrity check will fail.
-pub async fn check_dependency_integrity(
-    lock: &LockEntry,
-    deps: impl AsRef<Path>,
-) -> Result<DependencyStatus> {
+pub async fn check_dependency_integrity(lock: &LockEntry, deps: &Path) -> Result<DependencyStatus> {
     match lock {
         LockEntry::Http(lock) => check_http_dependency(lock, deps).await,
         LockEntry::Git(lock) => check_git_dependency(lock, deps).await,
@@ -473,8 +469,7 @@ pub async fn check_dependency_integrity(
 /// Ensure that the dependencies directory exists.
 ///
 /// If the directory does not exist, it will be created.
-pub fn ensure_dependencies_dir(path: impl AsRef<Path>) -> Result<()> {
-    let path = path.as_ref();
+pub fn ensure_dependencies_dir(path: &Path) -> Result<()> {
     if !path.exists() {
         debug!(path:?; "dependencies dir doesn't exist, creating it");
         std::fs::create_dir(path)
@@ -486,13 +481,12 @@ pub fn ensure_dependencies_dir(path: impl AsRef<Path>) -> Result<()> {
 /// Install a single dependency.
 async fn install_dependency_inner(
     dep: &InstallInfo,
-    path: impl AsRef<Path>,
+    path: &Path,
     subdependencies: bool,
     progress: InstallProgress,
 ) -> Result<LockEntry> {
     match dep {
         InstallInfo::Http(dep) => {
-            let path = path.as_ref();
             let zip_path = download_file(
                 &dep.url,
                 path.parent().expect("dependency install path should have a parent"),
@@ -503,7 +497,7 @@ async fn install_dependency_inner(
 
             let zip_integrity = tokio::task::spawn_blocking({
                 let zip_path = zip_path.clone();
-                move || hash_file(zip_path)
+                move || hash_file(&zip_path)
             })
             .await?
             .map_err(|e| InstallError::IOError { path: zip_path.clone(), source: e })?;
@@ -546,12 +540,12 @@ async fn install_dependency_inner(
         InstallInfo::Git(dep) => {
             // if the dependency was specified without a commit hash and we didn't have a lockfile,
             // clone the default branch
-            let commit = clone_repo(&dep.git, dep.identifier.as_ref(), &path).await?;
+            let commit = clone_repo(&dep.git, dep.identifier.as_ref(), path).await?;
             progress.downloads.send(dep.into()).ok();
 
             if subdependencies {
                 debug!(dep:% = dep; "installing subdependencies");
-                Box::pin(install_subdependencies(&path)).await?;
+                Box::pin(install_subdependencies(path)).await?;
                 debug!(dep:% = dep; "finished installing subdependencies");
             }
             progress.unzip.send(dep.into()).ok();
@@ -573,8 +567,8 @@ async fn install_dependency_inner(
 /// This function checks for a `.gitmodules` file in the dependency directory and clones the
 /// submodules if it exists. If a valid Soldeer config is found, the soldeer dependencies are
 /// installed.
-async fn install_subdependencies(path: impl AsRef<Path>) -> Result<()> {
-    let path = path.as_ref().to_path_buf();
+async fn install_subdependencies(path: &Path) -> Result<()> {
+    let path = path.to_path_buf();
     let gitmodules_path = path.join(".gitmodules");
     if fs::metadata(&gitmodules_path).await.is_ok() {
         debug!(path:?; "found .gitmodules, installing subdependencies with git");
@@ -587,7 +581,7 @@ async fn install_subdependencies(path: impl AsRef<Path>) -> Result<()> {
             for (_, submodule) in submodules {
                 let sub_path = path.join(submodule.path);
                 debug!(sub_path:?; "recursing into the git submodule");
-                Box::pin(install_subdependencies(sub_path)).await?;
+                Box::pin(install_subdependencies(&sub_path)).await?;
             }
         } else {
             debug!(path:?; "subdependency has git submodules configuration but is not a git repository");
@@ -596,7 +590,7 @@ async fn install_subdependencies(path: impl AsRef<Path>) -> Result<()> {
             // those are also installed
             for sub_path in submodule_paths {
                 debug!(sub_path:?; "recursing into the git submodule");
-                Box::pin(install_subdependencies(sub_path)).await?;
+                Box::pin(install_subdependencies(&sub_path)).await?;
             }
         }
     }
@@ -604,7 +598,7 @@ async fn install_subdependencies(path: impl AsRef<Path>) -> Result<()> {
     if detect_config_location(&path).is_some() {
         // install subdependencies
         debug!(path:?; "found soldeer config, installing subdependencies");
-        install_subdependencies_inner(Paths::from_root(path)?).await?;
+        install_subdependencies_inner(Paths::from_root(&path)?).await?;
     }
     Ok(())
 }
@@ -687,10 +681,7 @@ async fn reinit_submodules(path: &PathBuf) -> Result<Vec<PathBuf>> {
 ///
 /// This function hashes the contents of the dependency directory and compares it with the lockfile
 /// entry.
-async fn check_http_dependency(
-    lock: &HttpLockEntry,
-    deps: impl AsRef<Path>,
-) -> Result<DependencyStatus> {
+async fn check_http_dependency(lock: &HttpLockEntry, deps: &Path) -> Result<DependencyStatus> {
     let path = lock.install_path(deps);
     if fs::metadata(&path).await.is_err() {
         return Ok(DependencyStatus::Missing);
@@ -712,10 +703,7 @@ async fn check_http_dependency(
 ///
 /// This function checks that the dependency is a git repository and that the current commit is the
 /// one specified in the lockfile entry.
-async fn check_git_dependency(
-    lock: &GitLockEntry,
-    deps: impl AsRef<Path>,
-) -> Result<DependencyStatus> {
+async fn check_git_dependency(lock: &GitLockEntry, deps: &Path) -> Result<DependencyStatus> {
     let path = lock.install_path(deps);
     if fs::metadata(&path).await.is_err() {
         return Ok(DependencyStatus::Missing);
@@ -742,7 +730,7 @@ async fn check_git_dependency(
 
     let absolute_path = canonicalize(&path)
         .await
-        .map_err(|e| InstallError::IOError { path: path.clone(), source: e })?;
+        .map_err(|e| InstallError::IOError { path: path.to_path_buf(), source: e })?;
     if top_level.trim() != absolute_path.to_slash_lossy() {
         // the top level directory is not the install path, assume the directory is not a git
         // repository
@@ -763,7 +751,7 @@ async fn check_git_dependency(
 ///
 /// This function runs `git reset --hard <commit>` and `git clean -fd` in the git dependency's
 /// directory.
-async fn reset_git_dependency(lock: &GitLockEntry, deps: impl AsRef<Path>) -> Result<()> {
+async fn reset_git_dependency(lock: &GitLockEntry, deps: &Path) -> Result<()> {
     let path = lock.install_path(deps);
     run_git_command(&["reset", "--hard", &lock.rev], Some(&path)).await?;
     run_git_command(&["clean", "-fd"], Some(&path)).await?;
@@ -845,7 +833,7 @@ mod tests {
         // happy path
         let dir = testdir!();
         let path = &dir.join("test-repo-1.0.0");
-        let rev = clone_repo("https://github.com/beeb/test-repo.git", None, &path).await.unwrap();
+        let rev = clone_repo("https://github.com/beeb/test-repo.git", None, path).await.unwrap();
         let lock =
             GitLockEntry::builder().name("test-repo").version("1.0.0").git("").rev(rev).build();
         let res = check_git_dependency(&lock, &dir).await;
@@ -888,7 +876,7 @@ mod tests {
     async fn test_reset_git_dependency() {
         let dir = testdir!();
         let path = &dir.join("test-repo-1.0.0");
-        clone_repo("https://github.com/beeb/test-repo.git", None, &path).await.unwrap();
+        clone_repo("https://github.com/beeb/test-repo.git", None, path).await.unwrap();
         let lock = GitLockEntry::builder()
             .name("test-repo")
             .version("1.0.0")
@@ -1039,7 +1027,7 @@ mod tests {
             lock.checksum,
             "20fd008c7c69b6c737cc0284469d1c76497107bc3e004d8381f6d8781cb27980"
         );
-        let hash = hash_folder(lock.install_path(&dir)).unwrap();
+        let hash = hash_folder(&lock.install_path(&dir)).unwrap();
         assert_eq!(lock.integrity, hash.to_string());
     }
 
@@ -1060,7 +1048,7 @@ mod tests {
         assert_eq!(lock.version(), "1.9.2");
         let lock = lock.as_http().unwrap();
         assert_eq!(&lock.url, "https://soldeer-revisions.s3.amazonaws.com/forge-std/1_9_2_06-08-2024_17:31:25_forge-std-1.9.2.zip");
-        let hash = hash_folder(lock.install_path(&dir)).unwrap();
+        let hash = hash_folder(&lock.install_path(&dir)).unwrap();
         assert_eq!(lock.integrity, hash.to_string());
     }
 
@@ -1080,7 +1068,7 @@ mod tests {
             lock.checksum,
             "94a73dbe106f48179ea39b00d42e5d4dd96fdc6252caa3a89ce7efdaec0b9468"
         );
-        let hash = hash_folder(lock.install_path(&dir)).unwrap();
+        let hash = hash_folder(&lock.install_path(&dir)).unwrap();
         assert_eq!(lock.integrity, hash.to_string());
     }
 

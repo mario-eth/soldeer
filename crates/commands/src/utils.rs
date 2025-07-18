@@ -140,7 +140,7 @@ pub fn get_config_location(
 ) -> Result<soldeer_core::config::ConfigLocation> {
     Ok(match arg {
         Some(loc) => loc.into(),
-        None => match detect_config_location(Paths::get_root_path()) {
+        None => match detect_config_location(&Paths::get_root_path()) {
             Some(loc) => loc,
             None => prompt_config_location()?.into(),
         },

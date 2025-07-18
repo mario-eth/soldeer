@@ -177,7 +177,7 @@ pub fn hash_file(path: &Path) -> Result<IntegrityChecksum, std::io::Error> {
 /// The function output is parsed as a UTF-8 string and returned.
 pub async fn run_git_command<I, S>(
     args: I,
-    current_dir: Option<&PathBuf>,
+    current_dir: Option<&Path>,
 ) -> Result<String, DownloadError>
 where
     I: IntoIterator<Item = S> + Clone,
@@ -187,9 +187,10 @@ where
     git.args(args.clone()).env("GIT_TERMINAL_PROMPT", "0");
     if let Some(current_dir) = current_dir {
         git.current_dir(
-            canonicalize(current_dir)
-                .await
-                .map_err(|e| DownloadError::IOError { path: current_dir.clone(), source: e })?,
+            canonicalize(current_dir).await.map_err(|e| DownloadError::IOError {
+                path: current_dir.to_path_buf(),
+                source: e,
+            })?,
         );
     }
     let git = git.output().await.map_err(|e| DownloadError::GitError {
@@ -210,7 +211,7 @@ where
 /// The function output is parsed as a UTF-8 string and returned.
 pub async fn run_forge_command<I, S>(
     args: I,
-    current_dir: Option<&PathBuf>,
+    current_dir: Option<&Path>,
 ) -> Result<String, InstallError>
 where
     I: IntoIterator<Item = S>,
@@ -220,9 +221,10 @@ where
     forge.args(args);
     if let Some(current_dir) = current_dir {
         forge.current_dir(
-            canonicalize(current_dir)
-                .await
-                .map_err(|e| InstallError::IOError { path: current_dir.clone(), source: e })?,
+            canonicalize(current_dir).await.map_err(|e| InstallError::IOError {
+                path: current_dir.to_path_buf(),
+                source: e,
+            })?,
         );
     }
     let forge = forge.output().await.map_err(|e| InstallError::ForgeError(e.to_string()))?;
@@ -242,8 +244,7 @@ pub async fn remove_forge_lib(root: &Path) -> Result<(), InstallError> {
     let lib_dir = root.join("lib");
     let forge_std_dir = lib_dir.join("forge-std");
     if forge_std_dir.exists() {
-        run_git_command(&["rm", &forge_std_dir.to_string_lossy()], Some(&root.to_path_buf()))
-            .await?;
+        run_git_command(&["rm", &forge_std_dir.to_string_lossy()], Some(root)).await?;
         debug!("removed lib/forge-std");
     }
     if lib_dir.exists() {

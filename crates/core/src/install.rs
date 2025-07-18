@@ -625,7 +625,7 @@ async fn install_subdependencies_inner(paths: Paths) -> Result<()> {
 }
 
 /// Retrieve a map of git submodules for a path by looking at the `.gitmodules` file.
-async fn get_submodules(path: &PathBuf) -> Result<HashMap<String, Submodule>> {
+async fn get_submodules(path: &Path) -> Result<HashMap<String, Submodule>> {
     let submodules_config =
         run_git_command(&["config", "-f", ".gitmodules", "-l"], Some(path)).await?;
     let mut submodules = HashMap::<String, Submodule>::new();
@@ -651,7 +651,7 @@ async fn get_submodules(path: &PathBuf) -> Result<HashMap<String, Submodule>> {
 /// repo.
 ///
 /// The file is parsed, and each module is added again with `git submodule add`.
-async fn reinit_submodules(path: &PathBuf) -> Result<Vec<PathBuf>> {
+async fn reinit_submodules(path: &Path) -> Result<Vec<PathBuf>> {
     debug!(path:?; "running git init");
     run_git_command(&["init"], Some(path)).await?;
     let submodules = get_submodules(path).await?;

@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## `soldeer-core` - [0.6.1](https://github.com/mario-eth/soldeer/compare/soldeer-core-v0.6.0...soldeer-core-v0.6.1) - 2025-07-20
+
+### Other
+- remove bzip2 support ([#298](https://github.com/mario-eth/soldeer/pull/298))
+
 ## `soldeer` - [0.6.0](https://github.com/mario-eth/soldeer/compare/v0.5.4...v0.6.0) - 2025-07-10
 
 ### Other

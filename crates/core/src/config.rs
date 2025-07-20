@@ -123,8 +123,8 @@ impl Paths {
     /// The `SOLDEER_PROJECT_ROOT` environment variable is ignored.
     ///
     /// The paths are canonicalized.
-    pub fn from_root(root: impl AsRef<Path>) -> Result<Self> {
-        let root = dunce::canonicalize(root.as_ref())?;
+    pub fn from_root(root: &Path) -> Result<Self> {
+        let root = dunce::canonicalize(root)?;
         let config = Self::get_config_path(&root, None)?;
         let dependencies = root.join("dependencies");
         let lock = root.join("soldeer.lock");
@@ -162,12 +162,9 @@ impl Paths {
     /// try to auto-detect the location based on the existence of the `dependencies` entry in
     /// the foundry config file, or the existence of a `soldeer.toml` file. If no config can be
     /// found, `foundry.toml` is used by default.
-    fn get_config_path(
-        root: impl AsRef<Path>,
-        config_location: Option<ConfigLocation>,
-    ) -> Result<PathBuf> {
-        let foundry_path = root.as_ref().join("foundry.toml");
-        let soldeer_path = root.as_ref().join("soldeer.toml");
+    fn get_config_path(root: &Path, config_location: Option<ConfigLocation>) -> Result<PathBuf> {
+        let foundry_path = root.join("foundry.toml");
+        let soldeer_path = root.join("soldeer.toml");
         // use the user preference if available
         let location = config_location.or_else(|| {
             debug!("no preferred config location, trying to detect automatically");
@@ -509,13 +506,13 @@ impl Dependency {
     }
 
     /// Get the install path of the dependency (must exist already).
-    pub fn install_path_sync(&self, deps: impl AsRef<Path>) -> Option<PathBuf> {
+    pub fn install_path_sync(&self, deps: &Path) -> Option<PathBuf> {
         debug!(dep:% = self; "trying to find installation path of dependency (sync)");
         find_install_path_sync(self, deps)
     }
 
     /// Get the install path of the dependency in an async way (must exist already).
-    pub async fn install_path(&self, deps: impl AsRef<Path>) -> Option<PathBuf> {
+    pub async fn install_path(&self, deps: &Path) -> Option<PathBuf> {
         debug!(dep:% = self; "trying to find installation path of dependency (async)");
         find_install_path(self, deps).await
     }
@@ -714,9 +711,9 @@ impl From<Dependency> for ParsingResult {
 /// The function will try to auto-detect the location based on the existence of the
 /// `dependencies` entry in the foundry config file, or the existence of a `soldeer.toml` file.
 /// If no config can be found, `None` is returned.
-pub fn detect_config_location(root: impl AsRef<Path>) -> Option<ConfigLocation> {
-    let foundry_path = root.as_ref().join("foundry.toml");
-    let soldeer_path = root.as_ref().join("soldeer.toml");
+pub fn detect_config_location(root: &Path) -> Option<ConfigLocation> {
+    let foundry_path = root.join("foundry.toml");
+    let soldeer_path = root.join("soldeer.toml");
     if let Ok(contents) = fs::read_to_string(&foundry_path) {
         debug!(path:? = foundry_path; "found foundry.toml file");
         if let Ok(doc) = contents.parse::<DocumentMut>() {
@@ -749,8 +746,8 @@ pub fn detect_config_location(root: impl AsRef<Path>) -> Option<ConfigLocation> 
 ///   - `rev` (optional): the revision hash for git dependencies
 ///   - `branch` (optional): the branch name for git dependencies
 ///   - `tag` (optional): the tag name for git dependencies
-pub fn read_config_deps(path: impl AsRef<Path>) -> Result<(Vec<Dependency>, Vec<ParsingWarning>)> {
-    let contents = fs::read_to_string(&path)?;
+pub fn read_config_deps(path: &Path) -> Result<(Vec<Dependency>, Vec<ParsingWarning>)> {
+    let contents = fs::read_to_string(path)?;
     let doc: DocumentMut = contents.parse::<DocumentMut>()?;
     let Some(Some(data)) = doc.get("dependencies").map(|v| v.as_table()) else {
         warn!("no `dependencies` table in config file");
@@ -764,29 +761,29 @@ pub fn read_config_deps(path: impl AsRef<Path>) -> Result<(Vec<Dependency>, Vec<
         dependencies.push(res.dependency);
         warnings.append(&mut res.warnings);
     }
-    debug!(path:? = path.as_ref(); "found {} dependencies in config file", dependencies.len());
+    debug!(path:? = path; "found {} dependencies in config file", dependencies.len());
     Ok((dependencies, warnings))
 }
 
 /// Read the Soldeer config from the config file.
-pub fn read_soldeer_config(path: impl AsRef<Path>) -> Result<SoldeerConfig> {
+pub fn read_soldeer_config(path: &Path) -> Result<SoldeerConfig> {
     #[derive(Deserialize)]
     struct SoldeerConfigParsed {
         #[serde(default)]
         soldeer: SoldeerConfig,
     }
 
-    let contents = fs::read_to_string(&path)?;
+    let contents = fs::read_to_string(path)?;
 
     let config: SoldeerConfigParsed = toml_edit::de::from_str(&contents)?;
 
-    debug!(path:? = path.as_ref(); "parsed soldeer config from file");
+    debug!(path:? = path; "parsed soldeer config from file");
     Ok(config.soldeer)
 }
 
 /// Add a dependency to the config file.
-pub fn add_to_config(dependency: &Dependency, config_path: impl AsRef<Path>) -> Result<()> {
-    let contents = fs::read_to_string(&config_path)?;
+pub fn add_to_config(dependency: &Dependency, config_path: &Path) -> Result<()> {
+    let contents = fs::read_to_string(config_path)?;
     let mut doc: DocumentMut = contents.parse::<DocumentMut>()?;
 
     // in case we don't have the dependencies section defined in the config file, we add it
@@ -801,14 +798,14 @@ pub fn add_to_config(dependency: &Dependency, config_path: impl AsRef<Path>) -> 
         .expect("dependencies should be a table")
         .insert(&name, value);
 
-    fs::write(&config_path, doc.to_string())?;
-    debug!(dep:% = dependency, path:? = config_path.as_ref(); "added dependency to config file");
+    fs::write(config_path, doc.to_string())?;
+    debug!(dep:% = dependency, path:? = config_path; "added dependency to config file");
     Ok(())
 }
 
 /// Delete a dependency from the config file.
-pub fn delete_from_config(dependency_name: &str, path: impl AsRef<Path>) -> Result<Dependency> {
-    let contents = fs::read_to_string(&path)?;
+pub fn delete_from_config(dependency_name: &str, path: &Path) -> Result<Dependency> {
+    let contents = fs::read_to_string(path)?;
     let mut doc: DocumentMut = contents.parse::<DocumentMut>().expect("invalid doc");
 
     let Some(dependencies) = doc["dependencies"].as_table_mut() else {
@@ -822,15 +819,15 @@ pub fn delete_from_config(dependency_name: &str, path: impl AsRef<Path>) -> Resu
 
     let dependency = parse_dependency(dependency_name, &item_removed)?;
 
-    fs::write(&path, doc.to_string())?;
-    debug!(dep = dependency_name, path:? = path.as_ref(); "removed dependency from config file");
+    fs::write(path, doc.to_string())?;
+    debug!(dep = dependency_name, path:? = path; "removed dependency from config file");
     Ok(dependency.dependency)
 }
 
 /// Update the config file to add the `dependencies` folder as a source for libraries and the
 /// `[dependencies]` table if necessary.
-pub fn update_config_libs(foundry_config: impl AsRef<Path>) -> Result<()> {
-    let contents = fs::read_to_string(&foundry_config)?;
+pub fn update_config_libs(foundry_config: &Path) -> Result<()> {
+    let contents = fs::read_to_string(foundry_config)?;
     let mut doc: DocumentMut = contents.parse::<DocumentMut>()?;
 
     if !doc.contains_key("profile") {
@@ -866,8 +863,8 @@ pub fn update_config_libs(foundry_config: impl AsRef<Path>) -> Result<()> {
         doc.insert("dependencies", Item::Table(Table::default()));
     }
 
-    fs::write(&foundry_config, doc.to_string())?;
-    debug!(path:? = foundry_config.as_ref(); "config file updated");
+    fs::write(foundry_config, doc.to_string())?;
+    debug!(path:? = foundry_config; "config file updated");
     Ok(())
 }
 
@@ -884,8 +881,8 @@ pub fn update_config_libs(foundry_config: impl AsRef<Path>) -> Result<()> {
 ///
 /// Note that the version requirement string cannot contain the `=` symbol for git dependencies
 /// and HTTP dependencies with a custom URL.
-fn parse_dependency(name: impl Into<String>, value: &Item) -> Result<ParsingResult> {
-    let name: String = name.into();
+fn parse_dependency(name: &str, value: &Item) -> Result<ParsingResult> {
+    let name = name.to_string();
     if let Some(version_req) = value.as_str() {
         if version_req.is_empty() {
             return Err(ConfigError::EmptyVersion(name));
@@ -1051,12 +1048,11 @@ fn parse_dependency(name: impl Into<String>, value: &Item) -> Result<ParsingResu
 /// `[dependencies]` if necessary.
 fn create_or_modify_config(
     location: ConfigLocation,
-    foundry_path: impl AsRef<Path>,
-    soldeer_path: impl AsRef<Path>,
+    foundry_path: &Path,
+    soldeer_path: &Path,
 ) -> Result<PathBuf> {
     match location {
         ConfigLocation::Foundry => {
-            let foundry_path = foundry_path.as_ref();
             if foundry_path.exists() {
                 update_config_libs(foundry_path)?;
                 return Ok(foundry_path.to_path_buf());
@@ -1076,7 +1072,6 @@ libs = ["dependencies"]
             Ok(foundry_path.to_path_buf())
         }
         ConfigLocation::Soldeer => {
-            let soldeer_path = soldeer_path.as_ref();
             if soldeer_path.exists() {
                 return Ok(soldeer_path.to_path_buf());
             }
@@ -1340,7 +1335,7 @@ libs = ["dependencies"]
 libs = ["dependencies"]
 "#;
         let config_path = write_to_config(config_contents, "foundry.toml");
-        let res = read_soldeer_config(config_path);
+        let res = read_soldeer_config(&config_path);
         assert!(res.is_ok(), "{res:?}");
         assert_eq!(res.unwrap(), SoldeerConfig::default());
     }
@@ -1365,12 +1360,12 @@ recursive_deps = true
         };
 
         let config_path = write_to_config(config_contents, "soldeer.toml");
-        let res = read_soldeer_config(config_path);
+        let res = read_soldeer_config(&config_path);
         assert!(res.is_ok(), "{res:?}");
         assert_eq!(res.unwrap(), expected);
 
         let config_path = write_to_config(config_contents, "foundry.toml");
-        let res = read_soldeer_config(config_path);
+        let res = read_soldeer_config(&config_path);
         assert!(res.is_ok(), "{res:?}");
         assert_eq!(res.unwrap(), expected);
     }
@@ -1390,7 +1385,7 @@ libs = ["dependencies"]
 "lib7" = { version = "7.0.0", git = "https://example.com/repo.git", tag = "v7.0.0" }
 "#;
         let config_path = write_to_config(config_contents, "foundry.toml");
-        let res = read_config_deps(config_path);
+        let res = read_config_deps(&config_path);
         assert!(res.is_ok(), "{res:?}");
         let (result, _) = res.unwrap();
 
@@ -1464,7 +1459,7 @@ libs = ["dependencies"]
 "lib7" = { version = "7.0.0", git = "https://example.com/repo.git", tag = "v7.0.0" }
 "#;
         let config_path = write_to_config(config_contents, "soldeer.toml");
-        let res = read_config_deps(config_path);
+        let res = read_config_deps(&config_path);
         assert!(res.is_ok(), "{res:?}");
         let (result, _) = res.unwrap();
 
@@ -1537,7 +1532,7 @@ libs = ["dependencies"]
         ] {
             let config_contents = format!("[dependencies]\n{dep}");
             let config_path = write_to_config(&config_contents, "soldeer.toml");
-            let res = read_config_deps(config_path);
+            let res = read_config_deps(&config_path);
             assert!(matches!(res, Err(ConfigError::EmptyVersion(_))), "{res:?}");
         }
 
@@ -1548,7 +1543,7 @@ libs = ["dependencies"]
         ] {
             let config_contents = format!("[dependencies]\n{dep}");
             let config_path = write_to_config(&config_contents, "soldeer.toml");
-            let res = read_config_deps(config_path);
+            let res = read_config_deps(&config_path);
             assert!(matches!(res, Err(ConfigError::InvalidVersionReq(_))), "{res:?}");
         }
 
@@ -1559,7 +1554,7 @@ libs = ["dependencies"]
 "lib2" = { version = "asdf=" }
 "#;
         let config_path = write_to_config(config_contents, "soldeer.toml");
-        let res = read_config_deps(config_path);
+        let res = read_config_deps(&config_path);
         assert!(res.is_ok(), "{res:?}");
     }
 
@@ -1573,7 +1568,7 @@ libs = ["dependencies"]
         ] {
             let config_contents = format!("[dependencies]\n{dep}");
             let config_path = write_to_config(&config_contents, "soldeer.toml");
-            let res = read_config_deps(config_path);
+            let res = read_config_deps(&config_path);
             assert!(matches!(res, Err(ConfigError::GitIdentifierConflict(_))), "{res:?}");
         }
     }

@@ -35,20 +35,19 @@ pub type Result<T> = std::result::Result<T, PublishError>;
 pub async fn push_version(
     dependency_name: &str,
     dependency_version: &str,
-    root_directory_path: impl AsRef<Path>,
+    root_directory_path: &Path,
     files_to_copy: &[PathBuf],
     dry_run: bool,
 ) -> Result<Option<PathBuf>> {
-    let file_name =
-        root_directory_path.as_ref().file_name().expect("path should have a last component");
+    let file_name = root_directory_path.file_name().expect("path should have a last component");
 
-    let zip_archive = match zip_file(&root_directory_path, files_to_copy, file_name) {
+    let zip_archive = match zip_file(root_directory_path, files_to_copy, file_name.as_ref()) {
         Ok(zip) => zip,
         Err(err) => {
             return Err(err);
         }
     };
-    debug!(root:? = root_directory_path.as_ref(), zip_archive:?; "created zip file from folder");
+    debug!(root:? = root_directory_path, zip_archive:?; "created zip file from folder");
 
     if dry_run {
         debug!(zip_archive:?; "push dry run, zip file created but not uploading");
@@ -96,13 +95,11 @@ pub fn validate_version(version: &str) -> Result<()> {
 /// The zip file will be created in the root directory, with the provided name and the `.zip`
 /// extension. The function returns the path to the created zip file.
 pub fn zip_file(
-    root_directory_path: impl AsRef<Path>,
+    root_directory_path: &Path,
     files_to_copy: &[PathBuf],
-    file_name: impl Into<PathBuf>,
+    file_name: &Path,
 ) -> Result<PathBuf> {
-    let mut file_name: PathBuf = file_name.into();
-    file_name.set_extension("zip");
-    let zip_file_path = root_directory_path.as_ref().join(file_name);
+    let zip_file_path = root_directory_path.join(file_name.with_extension("zip"));
     let file = fs::File::create(&zip_file_path)
         .map_err(|e| PublishError::IOError { path: zip_file_path.clone(), source: e })?;
     debug!(path:? = zip_file_path; "zip file handle created");
@@ -123,7 +120,7 @@ pub fn zip_file(
         // This is the relative path, we basically get the relative path to the target folder
         // that we want to push and zip that as a name so we won't screw up the
         // file/dir hierarchy in the zip file.
-        let relative_file_path = file_path.strip_prefix(root_directory_path.as_ref())?;
+        let relative_file_path = file_path.strip_prefix(root_directory_path)?;
         debug!(relative_path:? = relative_file_path; "resolved relative file path for zip archive");
 
         // we add folders explicitly to the zip file, some tools might not handle this properly
@@ -160,7 +157,7 @@ pub fn zip_file(
 /// - `.soldeerignore`
 ///
 /// The `.git` folders are always skipped.
-pub fn filter_ignored_files(root_directory_path: impl AsRef<Path>) -> Vec<PathBuf> {
+pub fn filter_ignored_files(root_directory_path: &Path) -> Vec<PathBuf> {
     let (tx, rx) = mpsc::channel::<PathBuf>();
     let walker = WalkBuilder::new(root_directory_path)
         .add_custom_ignore_filename(".soldeerignore")
@@ -375,13 +372,13 @@ mod tests {
         fs::write(files.last().unwrap(), "test").unwrap();
         fs::create_dir(dir.join("empty")).unwrap();
 
-        let res = zip_file(&dir, &files, "test");
+        let res = zip_file(&dir, &files, "test".as_ref());
         assert!(res.is_ok(), "{res:?}");
 
         fs::copy(dir.join("test.zip"), testdir!().join("test.zip")).unwrap();
         fs::remove_dir_all(&dir).unwrap();
         fs::create_dir(&dir).unwrap();
-        unzip_file(testdir!().join("test.zip"), &dir).await.unwrap();
+        unzip_file(&testdir!().join("test.zip"), &dir).await.unwrap();
         for f in files {
             assert!(f.exists());
         }

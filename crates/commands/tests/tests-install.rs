@@ -18,11 +18,11 @@ fn check_install(dir: &Path, name: &str, version_req: &str) {
     if !config_path.exists() {
         config_path = dir.join("foundry.toml");
     }
-    let (deps, _) = read_config_deps(config_path).unwrap();
+    let (deps, _) = read_config_deps(&config_path).unwrap();
     assert_eq!(deps.first().unwrap().name(), name);
     let remappings = fs::read_to_string(dir.join("remappings.txt")).unwrap();
     assert!(remappings.contains(name));
-    let lock = read_lockfile(dir.join("soldeer.lock")).unwrap();
+    let lock = read_lockfile(&dir.join("soldeer.lock")).unwrap();
     assert_eq!(lock.entries.first().unwrap().name(), name);
     let version = lock.entries.first().unwrap().version();
     assert!(version.starts_with(version_req));
@@ -87,7 +87,7 @@ async fn test_install_custom_http() {
     .await;
     assert!(res.is_ok(), "{res:?}");
     check_install(&dir, "mylib", "1.0.0");
-    let lock = read_lockfile(dir.join("soldeer.lock")).unwrap();
+    let lock = read_lockfile(&dir.join("soldeer.lock")).unwrap();
     assert_eq!(
         lock.entries.first().unwrap().as_http().unwrap().url,
         "https://github.com/mario-eth/soldeer/archive/8585a7ec85a29889cec8d08f4770e15ec4795943.zip"
@@ -111,7 +111,7 @@ async fn test_install_git_main() {
     .await;
     assert!(res.is_ok(), "{res:?}");
     check_install(&dir, "mylib", "0.1.0");
-    let lock = read_lockfile(dir.join("soldeer.lock")).unwrap();
+    let lock = read_lockfile(&dir.join("soldeer.lock")).unwrap();
     assert_eq!(
         lock.entries.first().unwrap().as_git().unwrap().rev,
         "d5d72fa135d28b2e8307650b3ea79115183f2406"
@@ -136,7 +136,7 @@ async fn test_install_git_commit() {
     .await;
     assert!(res.is_ok(), "{res:?}");
     check_install(&dir, "mylib", "0.1.0");
-    let lock = read_lockfile(dir.join("soldeer.lock")).unwrap();
+    let lock = read_lockfile(&dir.join("soldeer.lock")).unwrap();
     assert_eq!(
         lock.entries.first().unwrap().as_git().unwrap().rev,
         "78c2f6a1a54db26bab6c3f501854a1564eb3707f"
@@ -161,7 +161,7 @@ async fn test_install_git_tag() {
     .await;
     assert!(res.is_ok(), "{res:?}");
     check_install(&dir, "mylib", "0.1.0");
-    let lock = read_lockfile(dir.join("soldeer.lock")).unwrap();
+    let lock = read_lockfile(&dir.join("soldeer.lock")).unwrap();
     assert_eq!(
         lock.entries.first().unwrap().as_git().unwrap().rev,
         "78c2f6a1a54db26bab6c3f501854a1564eb3707f"
@@ -186,7 +186,7 @@ async fn test_install_git_branch() {
     .await;
     assert!(res.is_ok(), "{res:?}");
     check_install(&dir, "mylib", "dev");
-    let lock = read_lockfile(dir.join("soldeer.lock")).unwrap();
+    let lock = read_lockfile(&dir.join("soldeer.lock")).unwrap();
     assert_eq!(
         lock.entries.first().unwrap().as_git().unwrap().rev,
         "8d903e557e8f1b6e62bde768aa456d4ddfca72c4"

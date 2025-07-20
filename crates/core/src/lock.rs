@@ -40,7 +40,7 @@ impl GitLockEntry {
     ///
     /// The directory does not need to exist. Since the lock entry contains the version,
     /// the install path can be calculated without needing to check the actual directory.
-    pub fn install_path(&self, deps: impl AsRef<Path>) -> PathBuf {
+    pub fn install_path(&self, deps: &Path) -> PathBuf {
         format_install_path(&self.name, &self.version, deps)
     }
 }
@@ -76,7 +76,7 @@ impl HttpLockEntry {
     ///
     /// The directory does not need to exist. Since the lock entry contains the version,
     /// the install path can be calculated without needing to check the actual directory.
-    pub fn install_path(&self, deps: impl AsRef<Path>) -> PathBuf {
+    pub fn install_path(&self, deps: &Path) -> PathBuf {
         format_install_path(&self.name, &self.version, deps)
     }
 }
@@ -210,7 +210,7 @@ impl LockEntry {
     }
 
     /// The install path of the dependency.
-    pub fn install_path(&self, deps: impl AsRef<Path>) -> PathBuf {
+    pub fn install_path(&self, deps: &Path) -> PathBuf {
         match self {
             Self::Git(lock) => lock.install_path(deps),
             Self::Http(lock) => lock.install_path(deps),
@@ -273,12 +273,12 @@ pub struct LockFile {
 }
 
 /// Read a lockfile from disk.
-pub fn read_lockfile(path: impl AsRef<Path>) -> Result<LockFile> {
-    if !path.as_ref().exists() {
-        debug!(path:? = path.as_ref(); "lockfile does not exist");
+pub fn read_lockfile(path: &Path) -> Result<LockFile> {
+    if !path.exists() {
+        debug!(path:? = path; "lockfile does not exist");
         return Ok(LockFile::default());
     }
-    let contents = fs::read_to_string(&path)?;
+    let contents = fs::read_to_string(path)?;
 
     let data: LockFileParsed = toml_edit::de::from_str(&contents)
         .inspect_err(|err| {
@@ -304,8 +304,8 @@ pub fn generate_lockfile_contents(mut entries: Vec<LockEntry>) -> String {
 ///
 /// If an entry with the same name already exists, it will be replaced.
 /// The entries are sorted by name before being written back to the file.
-pub fn add_to_lockfile(entry: LockEntry, path: impl AsRef<Path>) -> Result<()> {
-    let mut lockfile = read_lockfile(&path)?;
+pub fn add_to_lockfile(entry: LockEntry, path: &Path) -> Result<()> {
+    let mut lockfile = read_lockfile(path)?;
     if let Some(index) = lockfile.entries.iter().position(|e| e.name() == entry.name()) {
         debug!(name = entry.name(); "replacing existing lockfile entry");
         let _ = std::mem::replace(&mut lockfile.entries[index], entry);
@@ -314,16 +314,16 @@ pub fn add_to_lockfile(entry: LockEntry, path: impl AsRef<Path>) -> Result<()> {
         lockfile.entries.push(entry);
     }
     let new_contents = generate_lockfile_contents(lockfile.entries);
-    fs::write(&path, new_contents)?;
-    debug!(path:? = path.as_ref(); "lockfile modified");
+    fs::write(path, new_contents)?;
+    debug!(path:? = path; "lockfile modified");
     Ok(())
 }
 
 /// Remove a lock entry from a lockfile, matching on the name.
 ///
 /// If the entry is the last entry in the lockfile, the lockfile will be removed.
-pub fn remove_lock(dependency: &Dependency, path: impl AsRef<Path>) -> Result<()> {
-    let lockfile = read_lockfile(&path)?;
+pub fn remove_lock(dependency: &Dependency, path: &Path) -> Result<()> {
+    let lockfile = read_lockfile(path)?;
 
     let entries: Vec<_> = lockfile
         .entries
@@ -333,8 +333,8 @@ pub fn remove_lock(dependency: &Dependency, path: impl AsRef<Path>) -> Result<()
 
     if entries.is_empty() {
         // remove lock file if there are no deps left
-        debug!(path:? = path.as_ref(); "no remaining lockfile entry, deleting file");
-        let _ = fs::remove_file(&path);
+        debug!(path:? = path; "no remaining lockfile entry, deleting file");
+        let _ = fs::remove_file(path);
         return Ok(());
     }
 
@@ -342,16 +342,16 @@ pub fn remove_lock(dependency: &Dependency, path: impl AsRef<Path>) -> Result<()
         toml_edit::ser::to_string_pretty(&LockFileParsed { dependencies: entries })?;
 
     // replace contents of lockfile with new contents
-    fs::write(&path, file_contents)?;
-    debug!(path:? = path.as_ref(); "lockfile modified");
+    fs::write(path, file_contents)?;
+    debug!(path:? = path; "lockfile modified");
     Ok(())
 }
 
 /// Format the install path of a dependency.
 ///
 /// The folder name is sanitized to remove disallowed characters.
-pub fn format_install_path(name: &str, version: &str, deps: impl AsRef<Path>) -> PathBuf {
-    deps.as_ref().join(sanitize_filename(&format!("{name}-{version}")))
+pub fn format_install_path(name: &str, version: &str, deps: &Path) -> PathBuf {
+    deps.join(sanitize_filename(&format!("{name}-{version}")))
 }
 
 #[cfg(test)]

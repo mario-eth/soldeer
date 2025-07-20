@@ -22,7 +22,7 @@ pub type Result<T> = std::result::Result<T, DownloadError>;
 /// The filename for the zip file will be the provided base name with the ".zip" extension
 pub async fn download_file(
     url: impl IntoUrl,
-    folder_path: impl AsRef<Path>,
+    folder_path: &Path,
     base_name: &str,
 ) -> Result<PathBuf> {
     let url: Url = url.into_url()?;
@@ -30,7 +30,7 @@ pub async fn download_file(
     let resp = reqwest::get(url).await?;
     let mut resp = resp.error_for_status()?;
 
-    let zip_path = folder_path.as_ref().join(sanitize_filename(&format!("{base_name}.zip")));
+    let zip_path = folder_path.join(sanitize_filename(&format!("{base_name}.zip")));
     let mut file = tokio::fs::File::create(&zip_path)
         .await
         .map_err(|e| DownloadError::IOError { path: zip_path.clone(), source: e })?;
@@ -45,18 +45,18 @@ pub async fn download_file(
 }
 
 /// Unzip a file into a directory and then delete it.
-pub async fn unzip_file(path: impl AsRef<Path>, into: impl AsRef<Path>) -> Result<()> {
-    let path = path.as_ref().to_path_buf();
+pub async fn unzip_file(path: &Path, into: &Path) -> Result<()> {
+    let path = path.to_path_buf();
     let zip_contents = tokio::fs::read(&path)
         .await
         .map_err(|e| DownloadError::IOError { path: path.clone(), source: e })?;
 
     tokio::task::spawn_blocking({
-        let out_dir = into.as_ref().to_path_buf();
+        let out_dir = into.to_path_buf();
         move || zip_extract::extract(Cursor::new(zip_contents), &out_dir, true)
     })
     .await??;
-    debug!(file:? = path, dest:? = into.as_ref(); "unzipped file");
+    debug!(file:? = path, dest:? = into; "unzipped file");
 
     tokio::fs::remove_file(&path)
         .await
@@ -76,9 +76,9 @@ pub async fn unzip_file(path: impl AsRef<Path>, into: impl AsRef<Path>) -> Resul
 pub async fn clone_repo(
     url: &str,
     identifier: Option<&GitIdentifier>,
-    path: impl AsRef<Path>,
+    path: &Path,
 ) -> Result<String> {
-    let path = path.as_ref().to_path_buf();
+    let path = path.to_path_buf();
     run_git_command(
         &["clone", "--tags", "--filter=tree:0", url, path.to_string_lossy().as_ref()],
         None,
@@ -99,7 +99,7 @@ pub async fn clone_repo(
 ///
 /// This function should only be called in sync contexts. For a version that is safe to run in
 /// multithreaded async contexts, see [`delete_dependency_files`].
-pub fn delete_dependency_files_sync(dependency: &Dependency, deps: impl AsRef<Path>) -> Result<()> {
+pub fn delete_dependency_files_sync(dependency: &Dependency, deps: &Path) -> Result<()> {
     let Some(path) = find_install_path_sync(dependency, deps) else {
         return Err(DownloadError::DependencyNotFound(dependency.to_string()));
     };
@@ -113,11 +113,11 @@ pub fn delete_dependency_files_sync(dependency: &Dependency, deps: impl AsRef<Pa
 ///
 /// If a dependency version requirement string is a semver requirement, any folder which version
 /// matches the requirements is returned.
-pub fn find_install_path_sync(dependency: &Dependency, deps: impl AsRef<Path>) -> Option<PathBuf> {
-    let res = fs::read_dir(deps.as_ref())
+pub fn find_install_path_sync(dependency: &Dependency, deps: &Path) -> Option<PathBuf> {
+    let res = fs::read_dir(deps)
         .map(|read_dir| {
             read_dir.into_iter().find_map(|e| {
-                e.ok().filter(|e| install_path_matches(dependency, e.path())).map(|e| e.path())
+                e.ok().filter(|e| install_path_matches(dependency, &e.path())).map(|e| e.path())
             })
         })
         .ok()
@@ -134,9 +134,9 @@ pub fn find_install_path_sync(dependency: &Dependency, deps: impl AsRef<Path>) -
 ///
 /// If a dependency version requirement string is a semver requirement, any folder which version
 /// matches the requirements is returned.
-pub async fn find_install_path(dependency: &Dependency, deps: impl AsRef<Path>) -> Option<PathBuf> {
-    let Ok(mut read_dir) = tokio::fs::read_dir(deps.as_ref()).await else {
-        warn!(path:? = deps.as_ref(); "could not list files in deps folder");
+pub async fn find_install_path(dependency: &Dependency, deps: &Path) -> Option<PathBuf> {
+    let Ok(mut read_dir) = tokio::fs::read_dir(deps).await else {
+        warn!(path:? = deps; "could not list files in deps folder");
         return None;
     };
 
@@ -158,10 +158,7 @@ pub async fn find_install_path(dependency: &Dependency, deps: impl AsRef<Path>) 
 /// Remove the files for a dependency from the dependencies folder.
 ///
 /// A folder must exist for the dependency.
-pub async fn delete_dependency_files(
-    dependency: &Dependency,
-    deps: impl AsRef<Path>,
-) -> Result<()> {
+pub async fn delete_dependency_files(dependency: &Dependency, deps: &Path) -> Result<()> {
     let Some(path) = find_install_path(dependency, deps).await else {
         return Err(DownloadError::DependencyNotFound(dependency.to_string()));
     };
@@ -178,8 +175,7 @@ pub async fn delete_dependency_files(
 /// (sanitized). For dependencies with a semver-compliant version requirement, any folder with a
 /// version that matches will give a result of `true`. Otherwise, the folder name must contain the
 /// version requirement string after the dependency name.
-fn install_path_matches(dependency: &Dependency, path: impl AsRef<Path>) -> bool {
-    let path = path.as_ref();
+fn install_path_matches(dependency: &Dependency, path: &Path) -> bool {
     if !path.is_dir() {
         trace!(path:?; "path is not a directory");
         return false;

@@ -46,11 +46,11 @@ async fn test_uninstall_one() {
     )
     .await;
     assert!(res.is_ok(), "{res:?}");
-    let (deps, _) = read_config_deps(dir.join("soldeer.toml")).unwrap();
+    let (deps, _) = read_config_deps(&dir.join("soldeer.toml")).unwrap();
     assert!(!deps.iter().any(|d| d.name() == "solady"));
     let remappings = fs::read_to_string(dir.join("remappings.txt")).unwrap();
     assert!(!remappings.contains("solady"));
-    let lock = read_lockfile(dir.join("soldeer.lock")).unwrap();
+    let lock = read_lockfile(&dir.join("soldeer.lock")).unwrap();
     assert!(!lock.entries.iter().any(|d| d.name() == "solady"));
     assert!(!dir.join("dependencies").join("solady-0.0.238").exists());
 }
@@ -73,7 +73,7 @@ async fn test_uninstall_all() {
     .await;
     assert!(res.is_ok(), "{res:?}");
 
-    let (deps, _) = read_config_deps(dir.join("soldeer.toml")).unwrap();
+    let (deps, _) = read_config_deps(&dir.join("soldeer.toml")).unwrap();
     assert!(deps.is_empty());
     let remappings = fs::read_to_string(dir.join("remappings.txt")).unwrap();
     assert_eq!(remappings, "");
@@ -90,7 +90,7 @@ async fn test_uninstall_foundry_config() {
     )
     .await;
     assert!(res.is_ok(), "{res:?}");
-    let (deps, _) = read_config_deps(dir.join("foundry.toml")).unwrap();
+    let (deps, _) = read_config_deps(&dir.join("foundry.toml")).unwrap();
     assert!(!deps.iter().any(|d| d.name() == "solady"));
     let config = fs::read_to_string(dir.join("foundry.toml")).unwrap();
     assert!(!config.contains("solady"));

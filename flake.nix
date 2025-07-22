@@ -35,10 +35,10 @@
             buildInputs = with pkgs; [
               cargo-nextest
               foundry
+              nightlyToolchain
               openssl
               pkg-config
               toolchain
-              nightlyToolchain
             ];
 
             RUST_SRC_PATH = "${toolchain}/lib/rustlib/src/rust/library";

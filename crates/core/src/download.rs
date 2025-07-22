@@ -53,6 +53,7 @@ pub async fn unzip_file(path: impl AsRef<Path>, into: impl AsRef<Path>) -> Resul
 
     tokio::task::spawn_blocking({
         let out_dir = into.as_ref().to_path_buf();
+        #[allow(deprecated)] // until we can get rid of zip_extract
         move || zip_extract::extract(Cursor::new(zip_contents), &out_dir, true)
     })
     .await??;

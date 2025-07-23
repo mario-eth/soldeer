@@ -23,7 +23,6 @@ uninlined-format-args = "warn"
 use-self = "warn"
 redundant-clone = "warn"
 unwrap_used = "warn"
-rustdoc = "warn"
 
 [workspace.lints.rust]
 rust-2018-idioms = "warn"

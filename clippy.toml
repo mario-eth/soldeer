@@ -1,2 +1,1 @@
-msrv = "1.80"
 allow-unwrap-in-tests = true

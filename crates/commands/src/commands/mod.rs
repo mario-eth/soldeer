@@ -73,7 +73,7 @@ pub enum Command {
 pub struct Version {}
 
 fn validate_dependency(dep: &str) -> std::result::Result<String, String> {
-    if dep.split('~').count() > 2 {
+    if dep.split('~').count() != 2 {
         return Err("The dependency should be in the format <DEPENDENCY>[~<VERSION>]".to_string());
     }
     Ok(dep.to_string())

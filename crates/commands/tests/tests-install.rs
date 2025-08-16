@@ -58,6 +58,20 @@ async fn test_install_registry_wildcard() {
 }
 
 #[tokio::test]
+async fn test_install_registry_latest() {
+    let dir = testdir!();
+    fs::write(dir.join("soldeer.toml"), "[dependencies]\n").unwrap();
+    let cmd: Command = Install::builder().dependency("solady").build().into();
+    let res = async_with_vars(
+        [("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))],
+        run(cmd, Verbosity::default()),
+    )
+    .await;
+    assert!(res.is_ok(), "{res:?}");
+    check_install(&dir, "solady", "");
+}
+
+#[tokio::test]
 async fn test_install_registry_specific_version() {
     let dir = testdir!();
     fs::write(dir.join("soldeer.toml"), "[dependencies]\n").unwrap();

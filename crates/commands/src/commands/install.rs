@@ -1,4 +1,3 @@
-use super::validate_dependency;
 use crate::{
     utils::{remark, success, warning, Progress},
     ConfigLocation,
@@ -42,7 +41,7 @@ pub struct Install {
     /// The dependency name and optionally a version specifier separated by a tilde.
     ///
     /// If this argument is omitted, this command will install all dependencies.
-    #[arg(value_parser = validate_dependency, value_name = "DEPENDENCY[~VERSION]")]
+    #[arg(value_name = "DEPENDENCY[~VERSION]")]
     pub dependency: Option<String>,
 
     /// The URL to the dependency zip file.

@@ -96,6 +96,9 @@ pub enum ConfigError {
     #[error("error during config operation: {0}")]
     DownloadError(#[from] DownloadError),
 
+    #[error("error during registry operation: {0}")]
+    RegistryError(#[from] RegistryError),
+
     #[error("the version requirement string for {0} cannot contain the equal symbol for git dependencies and http dependencies with a custom URL")]
     InvalidVersionReq(String),
 

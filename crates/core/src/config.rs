@@ -2,6 +2,7 @@
 use crate::{
     download::{find_install_path, find_install_path_sync},
     errors::ConfigError,
+    registry::get_latest_version,
     remappings::RemappingsLocation,
 };
 use derive_more::derive::{Display, From, FromStr};
@@ -397,6 +398,11 @@ pub enum Dependency {
 }
 
 impl Dependency {
+    /// Create a new dependency from its name, using the latest version from the online registry.
+    pub async fn from_name(name: &str) -> Result<Self> {
+        get_latest_version(name).await.map_err(Into::into)
+    }
+
     /// Create a new dependency from a name and version requirement string.
     ///
     /// The string should be in the format `name~version_req`.

@@ -29,6 +29,7 @@ If used with arguments, a dependency will be added to the configuration. When us
 Examples:
 - Install all: soldeer install
 - Add from registry: soldeer install lib_name~2.3.0
+- Add latest version from registry: soldeer install lib_name
 - Add with custom URL: soldeer install lib_name~2.3.0 --url https://foo.bar/lib.zip
 - Add with git: soldeer install lib_name~2.3.0 --git git@github.com:foo/bar.git
 - Add with git (commit): soldeer install lib_name~2.3.0 --git git@github.com:foo/bar.git --rev 05f218fb6617932e56bf5388c3b389c3028a7b73
@@ -38,10 +39,10 @@ Examples:
 )]
 #[non_exhaustive]
 pub struct Install {
-    /// The dependency name and version, separated by a tilde. The version is always required.
+    /// The dependency name and optionally a version specifier separated by a tilde.
     ///
-    /// If not present, this command will install all dependencies which are missing.
-    #[arg(value_parser = validate_dependency, value_name = "DEPENDENCY~VERSION")]
+    /// If this argument is omitted, this command will install all dependencies.
+    #[arg(value_parser = validate_dependency, value_name = "DEPENDENCY[~VERSION]")]
     pub dependency: Option<String>,
 
     /// The URL to the dependency zip file.
@@ -151,7 +152,11 @@ pub(crate) async fn install_command(paths: &Paths, cmd: Install) -> Result<()> {
             };
             let url =
                 cmd.zip_url.as_ref().map(UrlType::http).or(cmd.git_url.as_ref().map(UrlType::git));
-            let mut dep = Dependency::from_name_version(dependency, url, identifier)?;
+            let mut dep = if dependency.split_once('~').is_some() || url.is_some() {
+                Dependency::from_name_version(dependency, url, identifier)?
+            } else {
+                Dependency::from_name(dependency).await?
+            };
             if dependencies
                 .iter()
                 .any(|d| d.name() == dep.name() && d.version_req() == dep.version_req())

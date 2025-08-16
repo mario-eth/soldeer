@@ -72,6 +72,19 @@ async fn test_install_registry_latest() {
 }
 
 #[tokio::test]
+async fn test_install_custom_url_missing_version() {
+    let dir = testdir!();
+    fs::write(dir.join("soldeer.toml"), "[dependencies]\n").unwrap();
+    let cmd: Command = Install::builder().dependency("mylib").zip_url("https://github.com/mario-eth/soldeer/archive/8585a7ec85a29889cec8d08f4770e15ec4795943.zip").build().into();
+    let res = async_with_vars(
+        [("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))],
+        run(cmd, Verbosity::default()),
+    )
+    .await;
+    assert!(res.is_err(), "{res:?}");
+}
+
+#[tokio::test]
 async fn test_install_registry_specific_version() {
     let dir = testdir!();
     fs::write(dir.join("soldeer.toml"), "[dependencies]\n").unwrap();

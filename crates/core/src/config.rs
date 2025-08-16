@@ -398,7 +398,7 @@ pub enum Dependency {
 }
 
 impl Dependency {
-    /// Create a new dependency from its name, using the latest version from the online registry.
+    /// Create a new dependency from its name, using the latest version from the registry.
     pub async fn from_name(name: &str) -> Result<Self> {
         get_latest_version(name).await.map_err(Into::into)
     }

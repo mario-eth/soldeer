@@ -164,7 +164,7 @@ pub async fn get_latest_version(dependency_name: &str) -> Result<Dependency> {
     debug!(dep = dependency_name, version = data.version; "latest version found");
     Ok(HttpDependency {
         name: dependency_name.to_string(),
-        version_req: data.clone().version,
+        version_req: data.version.clone(),
         url: None,
     }
     .into())

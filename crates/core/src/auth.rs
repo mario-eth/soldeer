@@ -1,7 +1,10 @@
 //! Registry authentication
 use crate::{errors::AuthError, registry::api_url, utils::login_file_path};
 use log::{debug, info};
-use reqwest::{Client, StatusCode};
+use reqwest::{
+    header::{HeaderMap, HeaderValue, AUTHORIZATION},
+    Client, StatusCode,
+};
 use serde::{Deserialize, Serialize};
 use std::{fs, path::PathBuf};
 
@@ -35,8 +38,53 @@ pub fn get_token() -> Result<String> {
     Ok(jwt)
 }
 
+/// Save an access token in the login file
+pub fn save_token(token: &str) -> Result<PathBuf> {
+    let token_path = login_file_path()?;
+    fs::write(&token_path, token)?;
+    Ok(token_path)
+}
+
+/// Retrieve user profile for the token to check its validity, returning the username
+pub async fn check_token(token: &str) -> Result<String> {
+    let client = Client::new();
+    let url = api_url("users/me", &[]);
+    let mut headers: HeaderMap = HeaderMap::new();
+    let header_value =
+        HeaderValue::from_str(&format!("Bearer {token}")).map_err(|_| AuthError::InvalidToken)?;
+    headers.insert(AUTHORIZATION, header_value);
+    let response = client.get(url).headers(headers).send().await?;
+    match response.status() {
+        s if s.is_success() => {
+            #[derive(Deserialize)]
+            struct User {
+                id: String,
+                username: String,
+            }
+            #[derive(Deserialize)]
+            struct UserData {
+                user: User,
+            }
+            #[derive(Deserialize)]
+            struct UserResponse {
+                data: UserData,
+            }
+            let res: UserResponse = response.json().await?;
+            debug!(
+                "token is valid for user {} with ID {}",
+                res.data.user.username, res.data.user.id
+            );
+            Ok(res.data.user.username)
+        }
+        StatusCode::UNAUTHORIZED => Err(AuthError::InvalidToken),
+        _ => Err(AuthError::HttpError(
+            response.error_for_status().expect_err("result should be an error"),
+        )),
+    }
+}
+
 /// Execute the login request and store the JWT token in the login file
-pub async fn execute_login(login: &Credentials) -> std::result::Result<PathBuf, AuthError> {
+pub async fn execute_login(login: &Credentials) -> Result<PathBuf> {
     let token_path = login_file_path()?;
     let url = api_url("auth/login", &[]);
     let client = Client::new();

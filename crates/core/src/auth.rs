@@ -48,7 +48,7 @@ pub fn save_token(token: &str) -> Result<PathBuf> {
 /// Retrieve user profile for the token to check its validity, returning the username
 pub async fn check_token(token: &str) -> Result<String> {
     let client = Client::new();
-    let url = api_url("users/me", &[]);
+    let url = api_url("auth/validate-cli-token", &[]);
     let mut headers: HeaderMap = HeaderMap::new();
     let header_value =
         HeaderValue::from_str(&format!("Bearer {token}")).map_err(|_| AuthError::InvalidToken)?;

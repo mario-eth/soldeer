@@ -107,7 +107,7 @@ pub async fn execute_login(login: &Credentials) -> Result<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use temp_env::async_with_vars;
+    use temp_env::{async_with_vars, with_var};
     use testdir::testdir;
 
     #[tokio::test]
@@ -224,5 +224,12 @@ mod tests {
         let res =
             async_with_vars([("SOLDEER_API_URL", Some(server.url()))], check_token("foobar")).await;
         assert!(res.is_err(), "{res:?}");
+    }
+
+    #[test]
+    fn test_get_token_env() {
+        let res = with_var("SOLDEER_API_TOKEN", Some("test"), get_token);
+        assert!(res.is_ok(), "{res:?}");
+        assert_eq!(res.unwrap(), "test");
     }
 }

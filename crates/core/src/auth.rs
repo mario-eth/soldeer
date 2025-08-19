@@ -6,7 +6,7 @@ use reqwest::{
     Client, StatusCode,
 };
 use serde::{Deserialize, Serialize};
-use std::{fs, path::PathBuf};
+use std::{env, fs, path::PathBuf};
 
 pub type Result<T> = std::result::Result<T, AuthError>;
 
@@ -25,8 +25,15 @@ pub struct LoginResponse {
     pub token: String,
 }
 
-/// Get the JWT token from the login file
+/// Get the JWT token from the environment or from the login file
+///
+/// Precedence is given to the `SOLDEER_API_TOKEN` environment variable.
 pub fn get_token() -> Result<String> {
+    if let Ok(token) = env::var("SOLDEER_API_TOKEN") {
+        if !token.is_empty() {
+            return Ok(token)
+        }
+    }
     let token_path = login_file_path()?;
     let jwt =
         fs::read_to_string(&token_path).map_err(|_| AuthError::MissingToken)?.trim().to_string();

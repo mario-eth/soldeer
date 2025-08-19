@@ -198,6 +198,7 @@ In order to push a new dependency to the repository, an account must first be cr
 website.
 
 Finally, the `[forge] soldeer login` command must be used to retrieve an access token for the API.
+Alternatively, you can provide a valid CLI token via the `SOLDEER_API_TOKEN` environment variable.
 
 Example:
 

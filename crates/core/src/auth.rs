@@ -62,19 +62,12 @@ pub async fn check_token(token: &str) -> Result<String> {
                 username: String,
             }
             #[derive(Deserialize)]
-            struct UserData {
-                user: User,
-            }
-            #[derive(Deserialize)]
             struct UserResponse {
-                data: UserData,
+                data: User,
             }
             let res: UserResponse = response.json().await?;
-            debug!(
-                "token is valid for user {} with ID {}",
-                res.data.user.username, res.data.user.id
-            );
-            Ok(res.data.user.username)
+            debug!("token is valid for user {} with ID {}", res.data.username, res.data.id);
+            Ok(res.data.username)
         }
         StatusCode::UNAUTHORIZED => Err(AuthError::InvalidToken),
         _ => Err(AuthError::HttpError(

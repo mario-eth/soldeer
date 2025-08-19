@@ -1,4 +1,4 @@
-use crate::utils::{info, remark, step, success};
+use crate::utils::{info, remark, step, success, warning};
 use clap::Parser;
 use email_address_parser::{EmailAddress, ParsingOptions};
 use path_slash::PathBufExt as _;
@@ -44,6 +44,8 @@ pub(crate) async fn login_command(cmd: Login) -> Result<()> {
         ));
         return Ok(());
     }
+
+    warning!("The option to login via email and password will be removed in a future version of Soldeer. Please update your usage by either using `soldeer login --token [YOUR CLI TOKEN]` or passing the `SOLDEER_API_TOKEN` environment variable to the `push` command.");
 
     let email: String = match cmd.email {
         Some(email) => {

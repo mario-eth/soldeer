@@ -1,6 +1,6 @@
 //! Registry authentication
 use crate::{errors::AuthError, registry::api_url, utils::login_file_path};
-use log::{debug, info};
+use log::{debug, info, warn};
 use reqwest::{
     header::{HeaderMap, HeaderValue, AUTHORIZATION},
     Client, StatusCode,
@@ -85,6 +85,8 @@ pub async fn check_token(token: &str) -> Result<String> {
 
 /// Execute the login request and store the JWT token in the login file
 pub async fn execute_login(login: &Credentials) -> Result<PathBuf> {
+    warn!("the option to login via email and password will be removed in a future version of Soldeer. Please update your usage by either using `soldeer login --token [YOUR CLI TOKEN]` or passing the `SOLDEER_API_TOKEN` environment variable to the `push` command.");
+
     let token_path = login_file_path()?;
     let url = api_url("auth/login", &[]);
     let client = Client::new();

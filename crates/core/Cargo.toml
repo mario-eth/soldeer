@@ -47,7 +47,7 @@ serde_json = "1.0.120"
 sha2 = "0.10.8"
 thiserror.workspace = true
 tokio.workspace = true
-toml_edit = { version = "0.22.15", features = ["serde"] }
+toml_edit = { version = "0.23.3", features = ["serde"] }
 uuid = { version = "1.10.0", features = ["serde", "v4"] }
 zip = { version = "4.0.0", default-features = false, features = ["deflate"] }
 zip-extract = { version = "0.4.0", default-features = false, features = [

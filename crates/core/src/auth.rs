@@ -182,4 +182,40 @@ mod tests {
         .await;
         assert!(matches!(res, Err(AuthError::HttpError(_))), "{res:?}");
     }
+
+    #[tokio::test]
+    async fn test_check_token_success() {
+        let mut server = mockito::Server::new_async().await;
+        server
+            .mock("GET", "/api/v1/auth/validate-cli-token")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(
+                r#"{"status":"success","data":{"created_at": "2024-08-04T14:21:31.622589Z","email": "test@test.net","id": "b6d56bf0-00a5-474f-b732-f416bef53e92","organization": "test","role": "owner","updated_at": "2024-08-04T14:21:31.622589Z","username": "test","verified": true}}"#,
+            )
+            .create_async()
+            .await;
+
+        let res =
+            async_with_vars([("SOLDEER_API_URL", Some(server.url()))], check_token("eyJ0..."))
+                .await;
+        assert!(res.is_ok(), "{res:?}");
+        assert_eq!(res.unwrap(), "test");
+    }
+
+    #[tokio::test]
+    async fn test_check_token_failure() {
+        let mut server = mockito::Server::new_async().await;
+        server
+            .mock("GET", "/api/v1/auth/validate-cli-token")
+            .with_status(401)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"status":"fail","message":"Invalid token"}"#)
+            .create_async()
+            .await;
+
+        let res =
+            async_with_vars([("SOLDEER_API_URL", Some(server.url()))], check_token("foobar")).await;
+        assert!(res.is_err(), "{res:?}");
+    }
 }

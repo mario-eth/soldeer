@@ -14,7 +14,10 @@ use std::{env, path::PathBuf, sync::atomic::Ordering};
 #[allow(clippy::duplicated_attributes)]
 #[builder(on(String, into), on(PathBuf, into))]
 #[clap(
-    long_about = "Push a Dependency to the Repository
+    long_about = "Push a dependency to the soldeer.xyz repository.
+
+You need to be logged in first (soldeer login) or provide the `SOLDEER_API_TOKEN` environment variable with a valid
+CLI token generated on soldeer.xyz.
 
 Examples:
 - Current directory: soldeer push mypkg~0.1.0

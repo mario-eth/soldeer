@@ -1,6 +1,6 @@
-use soldeer_commands::{commands::install::Install, run, Command, Verbosity};
+use soldeer_commands::{Command, Verbosity, commands::install::Install, run};
 use soldeer_core::{
-    config::{read_config_deps, ConfigLocation},
+    config::{ConfigLocation, read_config_deps},
     download::download_file,
     lock::read_lockfile,
 };

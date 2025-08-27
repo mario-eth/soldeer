@@ -1,5 +1,5 @@
 //! Soldeer is a package manager for Solidity projects
-use soldeer_commands::{commands::Parser as _, run, Args};
+use soldeer_commands::{Args, commands::Parser as _, run};
 use yansi::{Condition, Paint as _};
 
 const HAVE_COLOR: Condition = Condition(|| {

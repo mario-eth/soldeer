@@ -3,9 +3,9 @@ use clap::Parser;
 use email_address_parser::{EmailAddress, ParsingOptions};
 use path_slash::PathBufExt as _;
 use soldeer_core::{
-    auth::{check_token, execute_login, save_token, Credentials},
-    errors::AuthError,
     Result,
+    auth::{Credentials, check_token, execute_login, save_token},
+    errors::AuthError,
 };
 use std::path::PathBuf;
 
@@ -45,7 +45,9 @@ pub(crate) async fn login_command(cmd: Login) -> Result<()> {
         return Ok(());
     }
 
-    warning!("The option to login via email and password will be removed in a future version of Soldeer. Please update your usage by either using `soldeer login --token [YOUR CLI TOKEN]` or passing the `SOLDEER_API_TOKEN` environment variable to the `push` command.");
+    warning!(
+        "The option to login via email and password will be removed in a future version of Soldeer. Please update your usage by either using `soldeer login --token [YOUR CLI TOKEN]` or passing the `SOLDEER_API_TOKEN` environment variable to the `push` command."
+    );
 
     let email: String = match cmd.email {
         Some(email) => {

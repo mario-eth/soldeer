@@ -219,20 +219,12 @@ impl LockEntry {
 
     /// Get the underlying [`HttpLockEntry`] if this is an HTTP lock entry.
     pub fn as_http(&self) -> Option<&HttpLockEntry> {
-        if let Self::Http(l) = self {
-            Some(l)
-        } else {
-            None
-        }
+        if let Self::Http(l) = self { Some(l) } else { None }
     }
 
     /// Get the underlying [`GitLockEntry`] if this is a git lock entry.
     pub fn as_git(&self) -> Option<&GitLockEntry> {
-        if let Self::Git(l) = self {
-            Some(l)
-        } else {
-            None
-        }
+        if let Self::Git(l) = self { Some(l) } else { None }
     }
 }
 

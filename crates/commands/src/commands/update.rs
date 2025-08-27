@@ -1,16 +1,16 @@
 use crate::{
-    utils::{success, warning, Progress},
     ConfigLocation,
+    utils::{Progress, success, warning},
 };
 use clap::Parser;
 use soldeer_core::{
-    config::{read_config_deps, read_soldeer_config, Paths},
-    errors::LockError,
-    install::{ensure_dependencies_dir, InstallProgress},
-    lock::{generate_lockfile_contents, read_lockfile},
-    remappings::{edit_remappings, RemappingsAction},
-    update::update_dependencies,
     Result,
+    config::{Paths, read_config_deps, read_soldeer_config},
+    errors::LockError,
+    install::{InstallProgress, ensure_dependencies_dir},
+    lock::{generate_lockfile_contents, read_lockfile},
+    remappings::{RemappingsAction, edit_remappings},
+    update::update_dependencies,
 };
 use std::fs;
 

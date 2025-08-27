@@ -4,12 +4,12 @@
 //! lockfile. Dependencies can be installed in parallel.
 use crate::{
     config::{
-        detect_config_location, read_config_deps, read_soldeer_config, Dependency, GitIdentifier,
-        Paths,
+        Dependency, GitIdentifier, Paths, detect_config_location, read_config_deps,
+        read_soldeer_config,
     },
     download::{clone_repo, delete_dependency_files, download_file, unzip_file},
     errors::InstallError,
-    lock::{format_install_path, read_lockfile, GitLockEntry, HttpLockEntry, LockEntry},
+    lock::{GitLockEntry, HttpLockEntry, LockEntry, format_install_path, read_lockfile},
     registry::{get_dependency_url_remote, get_latest_supported_version},
     utils::{canonicalize, hash_file, hash_folder, run_git_command},
 };
@@ -180,7 +180,7 @@ struct HttpInstallInfo {
 impl fmt::Display for HttpInstallInfo {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}-{}", self.name, self.version) // since the version is an exact version number,
-                                                    // we use a dash and not a tilde
+        // we use a dash and not a tilde
     }
 }
 
@@ -922,7 +922,10 @@ mod tests {
         assert_eq!(lock.name(), "test");
         assert_eq!(lock.version(), "1.0.0");
         let lock = lock.as_http().unwrap();
-        assert_eq!(lock.url, "https://github.com/mario-eth/soldeer/archive/8585a7ec85a29889cec8d08f4770e15ec4795943.zip");
+        assert_eq!(
+            lock.url,
+            "https://github.com/mario-eth/soldeer/archive/8585a7ec85a29889cec8d08f4770e15ec4795943.zip"
+        );
         assert_eq!(
             lock.checksum,
             "94a73dbe106f48179ea39b00d42e5d4dd96fdc6252caa3a89ce7efdaec0b9468"
@@ -1034,7 +1037,10 @@ mod tests {
         assert_eq!(lock.name(), dep.name());
         assert_eq!(lock.version(), dep.version_req());
         let lock = lock.as_http().unwrap();
-        assert_eq!(&lock.url, "https://soldeer-revisions.s3.amazonaws.com/forge-std/1_9_2_06-08-2024_17:31:25_forge-std-1.9.2.zip");
+        assert_eq!(
+            &lock.url,
+            "https://soldeer-revisions.s3.amazonaws.com/forge-std/1_9_2_06-08-2024_17:31:25_forge-std-1.9.2.zip"
+        );
         assert_eq!(
             lock.checksum,
             "20fd008c7c69b6c737cc0284469d1c76497107bc3e004d8381f6d8781cb27980"
@@ -1059,7 +1065,10 @@ mod tests {
         assert_eq!(lock.name(), dep.name());
         assert_eq!(lock.version(), "1.9.2");
         let lock = lock.as_http().unwrap();
-        assert_eq!(&lock.url, "https://soldeer-revisions.s3.amazonaws.com/forge-std/1_9_2_06-08-2024_17:31:25_forge-std-1.9.2.zip");
+        assert_eq!(
+            &lock.url,
+            "https://soldeer-revisions.s3.amazonaws.com/forge-std/1_9_2_06-08-2024_17:31:25_forge-std-1.9.2.zip"
+        );
         let hash = hash_folder(lock.install_path(&dir)).unwrap();
         assert_eq!(lock.integrity, hash.to_string());
     }

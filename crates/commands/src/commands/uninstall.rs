@@ -1,11 +1,11 @@
 use crate::utils::success;
 use clap::Parser;
 use soldeer_core::{
-    config::{delete_from_config, read_soldeer_config, Paths},
+    Result, SoldeerError,
+    config::{Paths, delete_from_config, read_soldeer_config},
     download::delete_dependency_files_sync,
     lock::remove_lock,
-    remappings::{edit_remappings, RemappingsAction},
-    Result, SoldeerError,
+    remappings::{RemappingsAction, edit_remappings},
 };
 
 /// Uninstall a dependency

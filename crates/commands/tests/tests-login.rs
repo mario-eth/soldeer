@@ -1,7 +1,7 @@
 use std::{fs, path::PathBuf};
 
 use mockito::{Matcher, Mock, ServerGuard};
-use soldeer_commands::{commands::login::Login, run, Command, Verbosity};
+use soldeer_commands::{Command, Verbosity, commands::login::Login, run};
 use temp_env::async_with_vars;
 use testdir::testdir;
 
@@ -35,7 +35,10 @@ async fn mock_api_server_token() -> (ServerGuard, Mock) {
 async fn test_login_without_prompt_err_400() {
     let cmd: Command = Login::builder().email("test@test.com").password("111111").build().into();
     let res = run(cmd, Verbosity::default()).await;
-    assert_eq!(res.unwrap_err().to_string(), "error during login: http error during login: HTTP status client error (400 Bad Request) for url (https://api.soldeer.xyz/api/v1/auth/login)");
+    assert_eq!(
+        res.unwrap_err().to_string(),
+        "error during login: http error during login: HTTP status client error (400 Bad Request) for url (https://api.soldeer.xyz/api/v1/auth/login)"
+    );
 }
 
 #[tokio::test]

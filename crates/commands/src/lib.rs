@@ -2,11 +2,11 @@
 #![cfg_attr(docsrs, feature(doc_cfg, doc_auto_cfg))]
 pub use crate::commands::{Args, Command};
 use clap::builder::PossibleValue;
-use clap_verbosity_flag::log::Level;
 pub use clap_verbosity_flag::Verbosity;
+use clap_verbosity_flag::log::Level;
 use commands::CustomLevel;
 use derive_more::derive::FromStr;
-use soldeer_core::{config::Paths, Result};
+use soldeer_core::{Result, config::Paths};
 use std::{
     env,
     sync::atomic::{AtomicBool, Ordering},

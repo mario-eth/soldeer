@@ -197,7 +197,10 @@ In order to push a new dependency to the repository, an account must first be cr
 [https://soldeer.xyz](https://soldeer.xyz). Then, a project with the dependency name must be created through the
 website.
 
-Finally, the `[forge] soldeer login` command must be used to retrieve an access token for the API.
+Finally, the `[forge] soldeer login` command must be used to retrieve or provide an access token for the API.
+CLI tokens can be generated on soldeer.xyz and should be preferred over using the email and password in the CLI,
+because email login will be removed in a future version of Soldeer.
+Alternatively, you can provide a valid CLI token via the `SOLDEER_API_TOKEN` environment variable.
 
 Example:
 

@@ -22,9 +22,9 @@ fn setup_project(dotfile: bool) -> (PathBuf, PathBuf) {
 
 async fn mock_api_server(status_code: Option<StatusCode>) -> (ServerGuard, Mock) {
     let mut server = mockito::Server::new_async().await;
-    let body = r#"{"data":[{"created_at":"2024-02-27T19:19:23.938837Z","deleted":false,"description":"","downloads":67634,"github_url":"","id":"37adefe5-9bc6-4777-aaf2-e56277d1f30b","image":"","long_description":"","name":"mock","updated_at":"2024-02-27T19:19:23.938837Z","user_id":"96228bb5-f777-4c19-ba72-363d14b8beed"}],"status":"success"}"#;
+    let body = r#"{"data":[{"created_at":"2024-02-27T19:19:23.938837Z","created_by":"96228bb5-f777-4c19-ba72-363d14b8beed","deleted":false,"deprecated":false,"description":"","downloads":648041,"github_url":"","id":"37adefe5-9bc6-4777-aaf2-e56277d1f30b","image":"","latest_version":"1.10.0","long_description":"","name":"mock","organization_id":"ff9c0d8e-9275-4f6f-a1b7-2e822450a7ba","organization_name":"","organization_verified":true,"updated_at":"2024-02-27T19:19:23.938837Z"}],"status":"success"}"#;
     server
-        .mock("GET", "/api/v1/project")
+        .mock("GET", "/api/v2/project")
         .match_query(Matcher::Any)
         .with_header("content-type", "application/json")
         .with_body(body)

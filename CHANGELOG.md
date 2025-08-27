@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## `soldeer` - [0.6.2](https://github.com/mario-eth/soldeer/compare/v0.6.1...v0.6.2) - 2025-08-27
+
+### Other
+- update Cargo.lock dependencies
+
+## `soldeer-commands` - [0.6.2](https://github.com/mario-eth/soldeer/compare/soldeer-commands-v0.6.1...soldeer-commands-v0.6.2) - 2025-08-27
+
+### Added
+- add support for CLI tokens ([#311](https://github.com/mario-eth/soldeer/pull/311))
+
+### Fixed
+- *(cmd)* avoid panicking if logger was already initialized ([#312](https://github.com/mario-eth/soldeer/pull/312))
+
+## `soldeer-core` - [0.6.2](https://github.com/mario-eth/soldeer/compare/soldeer-core-v0.6.1...soldeer-core-v0.6.2) - 2025-08-27
+
+### Added
+- add support for CLI tokens ([#311](https://github.com/mario-eth/soldeer/pull/311))
+
+### Fixed
+- *(cmd)* avoid panicking if logger was already initialized ([#312](https://github.com/mario-eth/soldeer/pull/312))
+
 ## `soldeer-core` - [0.6.1](https://github.com/mario-eth/soldeer/compare/soldeer-core-v0.6.0...soldeer-core-v0.6.1) - 2025-07-23
 
 ### Other

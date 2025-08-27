@@ -28,12 +28,12 @@ path.
 ### From the Soldeer Registry
 
 ```bash
-[forge] soldeer install <NAME>~<VERSION>
+[forge] soldeer install <NAME>[~<VERSION>]
 ```
 
 This command searches the Soldeer registry at [https://soldeer.xyz](https://soldeer.xyz) for the specified dependency
-by name and version. If a match is found, a ZIP file containing the package source will be downloaded and unzipped into
-the `dependencies` directory.
+by name and optional version. If a match is found, a ZIP file containing the package source will be downloaded and
+unzipped into the `dependencies` directory. If the tilde and version are omitted, the latest version is used.
 
 The command also adds the dependency to the project's config file and creates the necessary
 [remappings](https://book.getfoundry.sh/projects/dependencies#remapping-dependencies) if configured to do so.

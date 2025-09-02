@@ -55,7 +55,7 @@ pub fn save_token(token: &str) -> Result<PathBuf> {
 /// Retrieve user profile for the token to check its validity, returning the username
 pub async fn check_token(token: &str) -> Result<String> {
     let client = Client::new();
-    let url = api_url("auth/validate-cli-token", &[]);
+    let url = api_url("v1", "auth/validate-cli-token", &[]);
     let mut headers: HeaderMap = HeaderMap::new();
     let header_value =
         HeaderValue::from_str(&format!("Bearer {token}")).map_err(|_| AuthError::InvalidToken)?;
@@ -90,7 +90,7 @@ pub async fn execute_login(login: &Credentials) -> Result<PathBuf> {
     );
 
     let token_path = login_file_path()?;
-    let url = api_url("auth/login", &[]);
+    let url = api_url("v1", "auth/login", &[]);
     let client = Client::new();
     let res = client.post(url).json(login).send().await?;
     match res.status() {

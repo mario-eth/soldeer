@@ -58,16 +58,22 @@ pub struct Project {
     pub github_url: String,
 
     /// The unique ID for the owner of the project.
-    pub user_id: uuid::Uuid,
+    pub created_by: uuid::Uuid,
 
     /// Whether this project has been deleted.
     pub deleted: Option<bool>,
 
-    /// The project's creation datetime.
+    /// Other metadata below
+    pub downloads: Option<i64>,
+    pub image: Option<String>,
+    pub long_description: Option<String>,
     pub created_at: Option<DateTime<Utc>>,
-
-    /// The project's last update datetime.
     pub updated_at: Option<DateTime<Utc>>,
+    pub organization_id: Option<uuid::Uuid>,
+    pub latest_version: Option<String>,
+    pub deprecated: Option<bool>,
+    pub organization_name: Option<String>,
+    pub organization_verified: Option<bool>,
 }
 
 /// The response from the revision endpoint.
@@ -102,17 +108,20 @@ pub struct ProjectResponse {
 ///
 /// ```
 /// # use soldeer_core::registry::api_url;
-/// let url =
-///     api_url("revision", &[("project_name", "forge-std"), ("offset", "0"), ("limit", "1")]);
+/// let url = api_url(
+///     "v1",
+///     "revision",
+///     &[("project_name", "forge-std"), ("offset", "0"), ("limit", "1")],
+/// );
 /// assert_eq!(
 ///     url.as_str(),
 ///     "https://api.soldeer.xyz/api/v1/revision?project_name=forge-std&offset=0&limit=1"
 /// );
 /// ```
-pub fn api_url(path: &str, params: &[(&str, &str)]) -> Url {
+pub fn api_url(version: &str, path: &str, params: &[(&str, &str)]) -> Url {
     let url = env::var("SOLDEER_API_URL").unwrap_or("https://api.soldeer.xyz".to_string());
     let mut url = Url::parse(&url).expect("SOLDEER_API_URL is invalid");
-    url.set_path(&format!("api/v1/{path}"));
+    url.set_path(&format!("api/{version}/{path}"));
     if params.is_empty() {
         return url;
     }
@@ -123,8 +132,11 @@ pub fn api_url(path: &str, params: &[(&str, &str)]) -> Url {
 /// Get the download URL for a dependency at a specific version.
 pub async fn get_dependency_url_remote(dependency: &Dependency, version: &str) -> Result<String> {
     debug!(dep:% = dependency; "retrieving URL for dependency");
-    let url =
-        api_url("revision-cli", &[("project_name", dependency.name()), ("revision", version)]);
+    let url = api_url(
+        "v1",
+        "revision-cli",
+        &[("project_name", dependency.name()), ("revision", version)],
+    );
 
     let res = reqwest::get(url).await?;
     let res = res.error_for_status()?;
@@ -139,7 +151,7 @@ pub async fn get_dependency_url_remote(dependency: &Dependency, version: &str) -
 /// Get the unique ID for a project by name.
 pub async fn get_project_id(dependency_name: &str) -> Result<String> {
     debug!(name = dependency_name; "retrieving project ID");
-    let url = api_url("project", &[("project_name", dependency_name)]);
+    let url = api_url("v2", "project", &[("project_name", dependency_name)]);
     let res = reqwest::get(url).await?;
     let res = res.error_for_status()?;
     let project: ProjectResponse = res.json().await?;
@@ -153,8 +165,11 @@ pub async fn get_project_id(dependency_name: &str) -> Result<String> {
 /// Get the latest version of a dependency.
 pub async fn get_latest_version(dependency_name: &str) -> Result<Dependency> {
     debug!(dep = dependency_name; "retrieving latest version for dependency");
-    let url =
-        api_url("revision", &[("project_name", dependency_name), ("offset", "0"), ("limit", "1")]);
+    let url = api_url(
+        "v1",
+        "revision",
+        &[("project_name", dependency_name), ("offset", "0"), ("limit", "1")],
+    );
     let res = reqwest::get(url).await?;
     let res = res.error_for_status()?;
     let revision: RevisionResponse = res.json().await?;
@@ -194,6 +209,7 @@ pub async fn get_all_versions_descending(dependency_name: &str) -> Result<Versio
     // and only returns the version strings
     debug!(dep = dependency_name; "retrieving all dependency versions");
     let url = api_url(
+        "v1",
         "revision",
         &[("project_name", dependency_name), ("offset", "0"), ("limit", "10000")],
     );
@@ -354,9 +370,9 @@ mod tests {
     #[tokio::test]
     async fn test_get_project_id() {
         let mut server = Server::new_async().await;
-        let data = r#"{"data":[{"created_at":"2024-02-27T19:19:23.938837Z","deleted":false,"description":"Forge Standard Library is a collection of helpful contracts and libraries for use with Forge and Foundry.","downloads":67634,"github_url":"https://github.com/foundry-rs/forge-std","id":"37adefe5-9bc6-4777-aaf2-e56277d1f30b","image":"https://soldeer-resources.s3.amazonaws.com/default_icon.png","long_description":"Forge Standard Library is a collection of helpful contracts and libraries for use with Forge and Foundry. It leverages Forge's cheatcodes to make writing tests easier and faster, while improving the UX of cheatcodes.","name":"forge-std","updated_at":"2024-02-27T19:19:23.938837Z","user_id":"96228bb5-f777-4c19-ba72-363d14b8beed"}],"status":"success"}"#;
+        let data = r#"{"data":[{"created_at":"2024-02-27T19:19:23.938837Z","created_by":"96228bb5-f777-4c19-ba72-363d14b8beed","deleted":false,"deprecated":false,"description":"Forge Standard Library is a collection of helpful contracts and libraries for use with Forge and Foundry.","downloads":648041,"github_url":"https://github.com/foundry-rs/forge-std","id":"37adefe5-9bc6-4777-aaf2-e56277d1f30b","image":"https://soldeer-resources.s3.amazonaws.com/default_icon.png","latest_version":"1.10.0","long_description":"Description","name":"forge-std","organization_id":"ff9c0d8e-9275-4f6f-a1b7-2e822450a7ba","organization_name":"Soldeer","organization_verified":true,"updated_at":"2024-02-27T19:19:23.938837Z"}],"status":"success"}"#;
         server
-            .mock("GET", "/api/v1/project")
+            .mock("GET", "/api/v2/project")
             .match_query(Matcher::Any)
             .with_header("content-type", "application/json")
             .with_body(data)
@@ -374,7 +390,7 @@ mod tests {
         let mut server = Server::new_async().await;
         let data = r#"{"data":[],"status":"success"}"#;
         server
-            .mock("GET", "/api/v1/project")
+            .mock("GET", "/api/v2/project")
             .match_query(Matcher::Any)
             .with_header("content-type", "application/json")
             .with_body(data)

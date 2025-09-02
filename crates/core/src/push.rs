@@ -212,7 +212,7 @@ async fn push_to_repo(
     let token = get_token()?;
     let client = Client::new();
 
-    let url = api_url("revision/upload", &[]);
+    let url = api_url("v1", "revision/upload", &[]);
 
     let mut headers: HeaderMap = HeaderMap::new();
 

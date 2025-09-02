@@ -1,7 +1,7 @@
 use mockito::{Matcher, Mock, ServerGuard};
 use reqwest::StatusCode;
-use soldeer_commands::{commands::push::Push, run, Verbosity};
-use soldeer_core::{errors::PublishError, SoldeerError};
+use soldeer_commands::{Verbosity, commands::push::Push, run};
+use soldeer_core::{SoldeerError, errors::PublishError};
 use std::{env, fs, path::PathBuf};
 use temp_env::async_with_vars;
 use testdir::testdir;

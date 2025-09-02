@@ -1,6 +1,7 @@
 use soldeer_commands::{
+    Command, Verbosity,
     commands::{install::Install, uninstall::Uninstall},
-    run, Command, Verbosity,
+    run,
 };
 use soldeer_core::{config::read_config_deps, lock::read_lockfile};
 use std::{fs, path::PathBuf};

@@ -6,14 +6,14 @@ resolver = "2"
 authors = ["m4rio"]
 categories = ["development-tools"]
 description = "A minimal Solidity package manager written in Rust, best used with Foundry"
-edition = "2021"
+edition = "2024"
 exclude = ["tests/"]
 homepage = "https://soldeer.xyz"
 keywords = ["solidity", "package-manager", "foundry"]
 license = "MIT"
 readme = "./README.md"
 repository = "https://github.com/mario-eth/soldeer"
-rust-version = "1.83"
+rust-version = "1.88"
 version = "0.6.1"
 
 [workspace.lints.clippy]

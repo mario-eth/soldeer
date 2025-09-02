@@ -3,11 +3,11 @@
 use std::fmt;
 
 use crate::ConfigLocation;
-use cliclack::{multi_progress, progress_bar, select, MultiProgress, ProgressBar};
+use cliclack::{MultiProgress, ProgressBar, multi_progress, progress_bar, select};
 use soldeer_core::{
-    config::{detect_config_location, Paths},
-    install::InstallMonitoring,
     Result,
+    config::{Paths, detect_config_location},
+    install::InstallMonitoring,
 };
 
 /// Template for the progress bars.

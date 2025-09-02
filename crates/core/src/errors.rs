@@ -99,7 +99,9 @@ pub enum ConfigError {
     #[error("error during config operation: {0}")]
     DownloadError(#[from] DownloadError),
 
-    #[error("the version requirement string for {0} cannot contain the equal symbol for git dependencies and http dependencies with a custom URL")]
+    #[error(
+        "the version requirement string for {0} cannot contain the equal symbol for git dependencies and http dependencies with a custom URL"
+    )]
     InvalidVersionReq(String),
 
     #[error("dependency specifier {0} cannot be parsed as name~version")]
@@ -211,7 +213,9 @@ pub enum PublishError {
     #[error("registry error during publishing: {0}")]
     DownloadError(#[from] RegistryError),
 
-    #[error("Project not found. Make sure you send the right dependency name. The dependency name is the project name you created on https://soldeer.xyz")]
+    #[error(
+        "Project not found. Make sure you send the right dependency name. The dependency name is the project name you created on https://soldeer.xyz"
+    )]
     ProjectNotFound,
 
     #[error("dependency already exists")]
@@ -223,7 +227,9 @@ pub enum PublishError {
     #[error("http error during publishing: {0}")]
     HttpError(#[from] reqwest::Error),
 
-    #[error("invalid package name, only alphanumeric characters, `-` and `@` are allowed. Length must be between 3 and 100 characters")]
+    #[error(
+        "invalid package name, only alphanumeric characters, `-` and `@` are allowed. Length must be between 3 and 100 characters"
+    )]
     InvalidName,
 
     #[error("package version cannot be empty")]
@@ -245,7 +251,9 @@ pub enum RegistryError {
     #[error("could not get the dependency URL for {0}")]
     URLNotFound(String),
 
-    #[error("project {0} not found, please check the dependency name (project name) or create a new project on https://soldeer.xyz")]
+    #[error(
+        "project {0} not found, please check the dependency name (project name) or create a new project on https://soldeer.xyz"
+    )]
     ProjectNotFound(String),
 
     #[error("package {0} has no version")]

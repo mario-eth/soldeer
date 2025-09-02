@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## `soldeer` - [0.7.0](https://github.com/mario-eth/soldeer/compare/v0.6.1...v0.7.0) - 2025-09-02
+
+### Other
+- rust edition 2024 ([#319](https://github.com/mario-eth/soldeer/pull/319))
+
+## `soldeer-commands` - [0.7.0](https://github.com/mario-eth/soldeer/compare/soldeer-commands-v0.6.1...soldeer-commands-v0.7.0) - 2025-09-02
+
+### Added
+- *(registry)* use new API endpoints ([#318](https://github.com/mario-eth/soldeer/pull/318))
+- add support for CLI tokens ([#311](https://github.com/mario-eth/soldeer/pull/311))
+
+### Fixed
+- *(cmd)* avoid panicking if logger was already initialized ([#312](https://github.com/mario-eth/soldeer/pull/312))
+
+### Other
+- rust edition 2024 ([#319](https://github.com/mario-eth/soldeer/pull/319))
+
+## `soldeer-core` - [0.7.0](https://github.com/mario-eth/soldeer/compare/soldeer-core-v0.6.1...soldeer-core-v0.7.0) - 2025-09-02
+
+### Added
+- *(registry)* use new API endpoints ([#318](https://github.com/mario-eth/soldeer/pull/318))
+- add support for CLI tokens ([#311](https://github.com/mario-eth/soldeer/pull/311))
+
+### Fixed
+- *(cmd)* avoid panicking if logger was already initialized ([#312](https://github.com/mario-eth/soldeer/pull/312))
+
+### Other
+- rust edition 2024 ([#319](https://github.com/mario-eth/soldeer/pull/319))
+
 ## `soldeer-core` - [0.6.1](https://github.com/mario-eth/soldeer/compare/soldeer-core-v0.6.0...soldeer-core-v0.6.1) - 2025-07-23
 
 ### Other

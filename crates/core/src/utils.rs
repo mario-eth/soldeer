@@ -18,7 +18,7 @@ use std::{
     fs,
     io::Read,
     path::{Path, PathBuf},
-    sync::{mpsc, Arc},
+    sync::{Arc, mpsc},
 };
 use tokio::process::Command;
 
@@ -36,11 +36,11 @@ pub struct IntegrityChecksum(pub String);
 ///
 /// The path can be overridden by setting the `SOLDEER_LOGIN_FILE` environment variable.
 pub fn login_file_path() -> Result<PathBuf, std::io::Error> {
-    if let Ok(file_path) = env::var("SOLDEER_LOGIN_FILE") {
-        if !file_path.is_empty() {
-            debug!("using soldeer login file defined in environment variable");
-            return Ok(file_path.into());
-        }
+    if let Ok(file_path) = env::var("SOLDEER_LOGIN_FILE") &&
+        !file_path.is_empty()
+    {
+        debug!("using soldeer login file defined in environment variable");
+        return Ok(file_path.into());
     }
 
     // if home dir cannot be found, use the current dir

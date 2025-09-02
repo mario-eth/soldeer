@@ -11,7 +11,7 @@ use std::{
     env, fmt, fs,
     path::{Path, PathBuf},
 };
-use toml_edit::{value, Array, DocumentMut, InlineTable, Item, Table};
+use toml_edit::{Array, DocumentMut, InlineTable, Item, Table, value};
 
 pub type Result<T> = std::result::Result<T, ConfigError>;
 
@@ -590,20 +590,12 @@ impl Dependency {
 
     /// Cast to a HTTP dependency if it is one.
     pub fn as_http(&self) -> Option<&HttpDependency> {
-        if let Self::Http(v) = self {
-            Some(v)
-        } else {
-            None
-        }
+        if let Self::Http(v) = self { Some(v) } else { None }
     }
 
     /// Cast to a mutable HTTP dependency if it is one.
     pub fn as_http_mut(&mut self) -> Option<&mut HttpDependency> {
-        if let Self::Http(v) = self {
-            Some(v)
-        } else {
-            None
-        }
+        if let Self::Http(v) = self { Some(v) } else { None }
     }
 
     /// Check if the dependency is a git dependency.
@@ -613,20 +605,12 @@ impl Dependency {
 
     /// Cast to a git dependency if it is one.
     pub fn as_git(&self) -> Option<&GitDependency> {
-        if let Self::Git(v) = self {
-            Some(v)
-        } else {
-            None
-        }
+        if let Self::Git(v) = self { Some(v) } else { None }
     }
 
     /// Cast to a mutable git dependency if it is one.
     pub fn as_git_mut(&mut self) -> Option<&mut GitDependency> {
-        if let Self::Git(v) = self {
-            Some(v)
-        } else {
-            None
-        }
+        if let Self::Git(v) = self { Some(v) } else { None }
     }
 }
 

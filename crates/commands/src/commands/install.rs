@@ -1,19 +1,19 @@
 use super::validate_dependency;
 use crate::{
-    utils::{remark, success, warning, Progress},
     ConfigLocation,
+    utils::{Progress, remark, success, warning},
 };
 use clap::Parser;
 use soldeer_core::{
+    Result,
     config::{
-        add_to_config, read_config_deps, read_soldeer_config, Dependency, GitIdentifier, Paths,
-        UrlType,
+        Dependency, GitIdentifier, Paths, UrlType, add_to_config, read_config_deps,
+        read_soldeer_config,
     },
     errors::{InstallError, LockError},
-    install::{ensure_dependencies_dir, install_dependencies, install_dependency, InstallProgress},
+    install::{InstallProgress, ensure_dependencies_dir, install_dependencies, install_dependency},
     lock::{add_to_lockfile, generate_lockfile_contents, read_lockfile},
-    remappings::{edit_remappings, RemappingsAction},
-    Result,
+    remappings::{RemappingsAction, edit_remappings},
 };
 use std::fs;
 
@@ -134,7 +134,9 @@ pub(crate) async fn install_command(paths: &Paths, cmd: Install) -> Result<()> {
             bars.stop_all();
             let new_lockfile_content = generate_lockfile_contents(new_locks);
             if !lockfile.raw.is_empty() && new_lockfile_content != lockfile.raw {
-                warning!("Warning: the lock file is out of sync with the dependencies. Consider running `soldeer update` to re-generate the lockfile.");
+                warning!(
+                    "Warning: the lock file is out of sync with the dependencies. Consider running `soldeer update` to re-generate the lockfile."
+                );
             } else if lockfile.raw.is_empty() {
                 fs::write(&paths.lock, new_lockfile_content).map_err(LockError::IOError)?;
             }
@@ -184,12 +186,12 @@ pub(crate) async fn install_command(paths: &Paths, cmd: Install) -> Result<()> {
             bars.stop_all();
             // for git deps, we need to add the commit hash before adding them to the
             // config, unless a branch/tag was specified
-            if let Some(git_dep) = dep.as_git_mut() {
-                if git_dep.identifier.is_none() {
-                    git_dep.identifier = Some(GitIdentifier::from_rev(
-                        &lock.as_git().expect("lock entry should be of type git").rev,
-                    ));
-                }
+            if let Some(git_dep) = dep.as_git_mut() &&
+                git_dep.identifier.is_none()
+            {
+                git_dep.identifier = Some(GitIdentifier::from_rev(
+                    &lock.as_git().expect("lock entry should be of type git").rev,
+                ));
             }
             add_to_config(&dep, &paths.config)?;
             success!("Dependency added to config");

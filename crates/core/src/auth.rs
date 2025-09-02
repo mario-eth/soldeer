@@ -2,8 +2,8 @@
 use crate::{errors::AuthError, registry::api_url, utils::login_file_path};
 use log::{debug, info, warn};
 use reqwest::{
-    header::{HeaderMap, HeaderValue, AUTHORIZATION},
     Client, StatusCode,
+    header::{AUTHORIZATION, HeaderMap, HeaderValue},
 };
 use serde::{Deserialize, Serialize};
 use std::{env, fs, path::PathBuf};
@@ -29,10 +29,10 @@ pub struct LoginResponse {
 ///
 /// Precedence is given to the `SOLDEER_API_TOKEN` environment variable.
 pub fn get_token() -> Result<String> {
-    if let Ok(token) = env::var("SOLDEER_API_TOKEN") {
-        if !token.is_empty() {
-            return Ok(token)
-        }
+    if let Ok(token) = env::var("SOLDEER_API_TOKEN") &&
+        !token.is_empty()
+    {
+        return Ok(token)
     }
     let token_path = login_file_path()?;
     let jwt =
@@ -85,7 +85,9 @@ pub async fn check_token(token: &str) -> Result<String> {
 
 /// Execute the login request and store the JWT token in the login file
 pub async fn execute_login(login: &Credentials) -> Result<PathBuf> {
-    warn!("the option to login via email and password will be removed in a future version of Soldeer. Please update your usage by either using `soldeer login --token [YOUR CLI TOKEN]` or passing the `SOLDEER_API_TOKEN` environment variable to the `push` command.");
+    warn!(
+        "the option to login via email and password will be removed in a future version of Soldeer. Please update your usage by either using `soldeer login --token [YOUR CLI TOKEN]` or passing the `SOLDEER_API_TOKEN` environment variable to the `push` command."
+    );
 
     let token_path = login_file_path()?;
     let url = api_url("v1", "auth/login", &[]);

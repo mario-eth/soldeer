@@ -2,8 +2,8 @@
 use crate::{
     config::{Dependency, GitIdentifier},
     errors::UpdateError,
-    install::{install_dependency, InstallProgress},
-    lock::{format_install_path, GitLockEntry, LockEntry},
+    install::{InstallProgress, install_dependency},
+    lock::{GitLockEntry, LockEntry, format_install_path},
     registry::get_latest_supported_version,
     utils::run_git_command,
 };
@@ -77,9 +77,7 @@ pub async fn update_dependency(
     progress: InstallProgress,
 ) -> Result<LockEntry> {
     match dependency {
-        Dependency::Git(ref dep)
-            if matches!(dep.identifier, None | Some(GitIdentifier::Branch(_))) =>
-        {
+        Dependency::Git(dep) if matches!(dep.identifier, None | Some(GitIdentifier::Branch(_))) => {
             // we handle the git case in a special way because we don't need to re-clone the repo
             // update to the latest commit (git pull)
             debug!(dep:% = dependency; "updating git dependency based on a branch");
@@ -141,7 +139,7 @@ pub async fn update_dependency(
 
             Ok(new_lock)
         }
-        Dependency::Git(ref dep) if dep.identifier.is_some() => {
+        Dependency::Git(dep) if dep.identifier.is_some() => {
             // check integrity against the existing version since we can't update to a new rev
             debug!(dep:% = dependency; "checking git repo integrity against required rev (can't update)");
             let lock = match lock {

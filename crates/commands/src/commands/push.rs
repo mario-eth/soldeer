@@ -2,10 +2,10 @@ use super::validate_dependency;
 use crate::utils::{info, remark, success, warning};
 use clap::Parser;
 use soldeer_core::{
+    Result,
     errors::PublishError,
     push::{filter_ignored_files, push_version, validate_name, validate_version},
     utils::{canonicalize_sync, check_dotfiles},
-    Result,
 };
 use std::{env, path::PathBuf, sync::atomic::Ordering};
 
@@ -94,7 +94,9 @@ pub(crate) async fn push_command(cmd: Push) -> Result<()> {
 // Function to prompt the user for confirmation
 fn prompt_user_for_confirmation() -> Result<bool> {
     remark!("You are about to include some sensitive files in this version");
-    info!("If you are not sure which files will be included, you can run the command with `--dry-run`and inspect the generated zip file.");
+    info!(
+        "If you are not sure which files will be included, you can run the command with `--dry-run`and inspect the generated zip file."
+    );
 
     if crate::TUI_ENABLED.load(Ordering::Relaxed) {
         cliclack::confirm("Do you want to continue?")

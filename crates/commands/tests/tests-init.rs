@@ -1,6 +1,6 @@
-use soldeer_commands::{commands::init::Init, run, Command, Verbosity};
+use soldeer_commands::{Command, Verbosity, commands::init::Init, run};
 use soldeer_core::{
-    config::{read_config_deps, ConfigLocation},
+    config::{ConfigLocation, read_config_deps},
     lock::read_lockfile,
     registry::get_latest_version,
     utils::run_git_command,

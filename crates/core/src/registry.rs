@@ -339,7 +339,10 @@ mod tests {
         )
         .await;
         assert!(res.is_ok(), "{res:?}");
-        assert_eq!(res.unwrap(), "https://soldeer-revisions.s3.amazonaws.com/forge-std/1_9_2_06-08-2024_17:31:25_forge-std-1.9.2.zip");
+        assert_eq!(
+            res.unwrap(),
+            "https://soldeer-revisions.s3.amazonaws.com/forge-std/1_9_2_06-08-2024_17:31:25_forge-std-1.9.2.zip"
+        );
     }
 
     #[tokio::test]

@@ -1,6 +1,6 @@
 //! Remappings management.
 use crate::{
-    config::{read_config_deps, Dependency, Paths, SoldeerConfig},
+    config::{Dependency, Paths, SoldeerConfig, read_config_deps},
     errors::RemappingsError,
     utils::path_matches,
 };
@@ -14,7 +14,7 @@ use std::{
     io::Write as _,
     path::PathBuf,
 };
-use toml_edit::{value, Array, DocumentMut};
+use toml_edit::{Array, DocumentMut, value};
 
 pub type Result<T> = std::result::Result<T, RemappingsError>;
 
@@ -264,7 +264,9 @@ fn generate_remappings(
                 // This is where we end up in the `update` command if we don't want to re-generate
                 // all remappings. We need to merge existing remappings with the full list of deps.
                 // We generate all remappings from the dependencies, then replace existing items.
-                debug!("updating remappings, merging existing ones with the ones generated from config");
+                debug!(
+                    "updating remappings, merging existing ones with the ones generated from config"
+                );
                 let (dependencies, _) = read_config_deps(&paths.config)?;
                 let new_remappings_info =
                     remappings_from_deps(&dependencies, paths, soldeer_config)?;

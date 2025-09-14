@@ -3,12 +3,13 @@
 //! The registry client is responsible for fetching information about packages from the Soldeer
 //! registry at <https://soldeer.xyz>.
 use crate::{
+    auth::get_auth_headers,
     config::{Dependency, HttpDependency},
     errors::RegistryError,
 };
 use chrono::{DateTime, Utc};
 use log::{debug, warn};
-use reqwest::Url;
+use reqwest::{Client, Url};
 use semver::{Version, VersionReq};
 use serde::Deserialize;
 use std::env;
@@ -138,7 +139,7 @@ pub async fn get_dependency_url_remote(dependency: &Dependency, version: &str) -
         &[("project_name", dependency.name()), ("revision", version)],
     );
 
-    let res = reqwest::get(url).await?;
+    let res = Client::new().get(url).headers(get_auth_headers()?).send().await?;
     let res = res.error_for_status()?;
     let revision: RevisionResponse = res.json().await?;
     let Some(r) = revision.data.first() else {

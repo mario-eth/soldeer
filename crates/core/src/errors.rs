@@ -256,6 +256,9 @@ pub enum RegistryError {
     )]
     ProjectNotFound(String),
 
+    #[error("auth error: {0}")]
+    AuthError(#[from] AuthError),
+
     #[error("package {0} has no version")]
     NoVersion(String),
 

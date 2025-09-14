@@ -4,12 +4,12 @@
 //! lockfile. Dependencies can be installed in parallel.
 use crate::{
     config::{
-        Dependency, GitIdentifier, Paths, detect_config_location, read_config_deps,
+        Dependency, GitIdentifier, HttpDependency, Paths, detect_config_location, read_config_deps,
         read_soldeer_config,
     },
     download::{clone_repo, delete_dependency_files, download_file, unzip_file},
-    errors::InstallError,
-    lock::{GitLockEntry, HttpLockEntry, LockEntry, format_install_path, read_lockfile},
+    errors::{InstallError, LockError},
+    lock::{GitLockEntry, HttpLockEntry, Integrity, LockEntry, format_install_path, read_lockfile},
     registry::{get_dependency_url_remote, get_latest_supported_version},
     utils::{canonicalize, hash_file, hash_folder, run_git_command},
 };
@@ -170,7 +170,7 @@ struct HttpInstallInfo {
     /// version.
     version: String,
 
-    /// THe URL from which the zip file will be downloaded.
+    /// The URL from which the zip file will be downloaded.
     url: String,
 
     /// The checksum of the downloaded zip file, if available (e.g. from the lockfile)
@@ -233,23 +233,42 @@ impl From<GitInstallInfo> for InstallInfo {
     }
 }
 
-impl From<LockEntry> for InstallInfo {
-    fn from(lock: LockEntry) -> Self {
+impl InstallInfo {
+    async fn from_lock(lock: LockEntry) -> Result<Self> {
         match lock {
-            LockEntry::Http(lock) => HttpInstallInfo {
+            LockEntry::Http(lock) => Ok(HttpInstallInfo {
                 name: lock.name,
                 version: lock.version,
                 url: lock.url,
                 checksum: Some(lock.checksum),
             }
-            .into(),
-            LockEntry::Git(lock) => GitInstallInfo {
+            .into()),
+            LockEntry::Git(lock) => Ok(GitInstallInfo {
                 name: lock.name,
                 version: lock.version,
                 git: lock.git,
                 identifier: Some(GitIdentifier::from_rev(lock.rev)),
             }
-            .into(),
+            .into()),
+            LockEntry::Private(lock) => {
+                // need to retrieve a signed download URL from the registry
+                let url = get_dependency_url_remote(
+                    &HttpDependency::builder()
+                        .name(&lock.name)
+                        .version_req(&lock.version)
+                        .build()
+                        .into(),
+                    &lock.version,
+                )
+                .await?;
+                Ok(HttpInstallInfo {
+                    name: lock.name,
+                    version: lock.version,
+                    url,
+                    checksum: Some(lock.checksum),
+                }
+                .into())
+            }
         }
     }
 }
@@ -404,7 +423,7 @@ pub async fn install_dependency(
             }
         }
         install_dependency_inner(
-            &lock.clone().into(),
+            &InstallInfo::from_lock(lock.clone()).await?,
             lock.install_path(&deps),
             recursive_deps,
             progress,
@@ -466,6 +485,7 @@ pub async fn check_dependency_integrity(
 ) -> Result<DependencyStatus> {
     match lock {
         LockEntry::Http(lock) => check_http_dependency(lock, deps).await,
+        LockEntry::Private(lock) => check_http_dependency(lock, deps).await,
         LockEntry::Git(lock) => check_git_dependency(lock, deps).await,
     }
 }
@@ -688,7 +708,7 @@ async fn reinit_submodules(path: &PathBuf) -> Result<Vec<PathBuf>> {
 /// This function hashes the contents of the dependency directory and compares it with the lockfile
 /// entry.
 async fn check_http_dependency(
-    lock: &HttpLockEntry,
+    lock: &impl Integrity,
     deps: impl AsRef<Path>,
 ) -> Result<DependencyStatus> {
     let path = lock.install_path(deps);
@@ -701,8 +721,15 @@ async fn check_http_dependency(
     })
     .await?
     .map_err(|e| InstallError::IOError { path: path.to_path_buf(), source: e })?;
-    if current_hash.to_string() != lock.integrity {
-        debug!(path:?, expected = lock.integrity, computed = current_hash.0; "integrity checksum mismatch");
+    let Some(integrity) = lock.integrity() else {
+        return Err(LockError::MissingField {
+            field: "integrity".to_string(),
+            dep: path.to_string_lossy().to_string(),
+        }
+        .into())
+    };
+    if &current_hash.to_string() != integrity {
+        debug!(path:?, expected = integrity, computed = current_hash.0; "integrity checksum mismatch");
         return Ok(DependencyStatus::FailedIntegrity);
     }
     Ok(DependencyStatus::Installed)

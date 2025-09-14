@@ -9,9 +9,12 @@ use crate::{
     },
     download::{clone_repo, delete_dependency_files, download_file, unzip_file},
     errors::{InstallError, LockError},
-    lock::{GitLockEntry, HttpLockEntry, Integrity, LockEntry, format_install_path, read_lockfile},
+    lock::{
+        GitLockEntry, HttpLockEntry, Integrity, LockEntry, PrivateLockEntry, format_install_path,
+        read_lockfile,
+    },
     registry::{get_dependency_url_remote, get_latest_supported_version},
-    utils::{canonicalize, hash_file, hash_folder, run_git_command},
+    utils::{IntegrityChecksum, canonicalize, hash_file, hash_folder, run_git_command},
 };
 use derive_more::derive::Display;
 use log::{debug, info, warn};
@@ -179,8 +182,8 @@ struct HttpInstallInfo {
 
 impl fmt::Display for HttpInstallInfo {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}-{}", self.name, self.version) // since the version is an exact version number,
-        // we use a dash and not a tilde
+        // since the version is an exact version number, we use a dash and not a tilde
+        write!(f, "{}-{}", self.name, self.version)
     }
 }
 
@@ -219,6 +222,9 @@ enum InstallInfo {
 
     /// Installation information for a git dependency.
     Git(GitInstallInfo),
+
+    /// Installation information for a private dependency.
+    Private(HttpInstallInfo),
 }
 
 impl From<HttpInstallInfo> for InstallInfo {
@@ -261,13 +267,12 @@ impl InstallInfo {
                     &lock.version,
                 )
                 .await?;
-                Ok(HttpInstallInfo {
+                Ok(Self::Private(HttpInstallInfo {
                     name: lock.name,
                     version: lock.version,
                     url,
                     checksum: Some(lock.checksum),
-                }
-                .into())
+                }))
             }
         }
     }
@@ -512,52 +517,23 @@ async fn install_dependency_inner(
 ) -> Result<LockEntry> {
     match dep {
         InstallInfo::Http(dep) => {
-            let path = path.as_ref();
-            let zip_path = download_file(
-                &dep.url,
-                path.parent().expect("dependency install path should have a parent"),
-                &format!("{}-{}", dep.name, dep.version),
-            )
-            .await?;
-            progress.downloads.send(dep.into()).ok();
-
-            let zip_integrity = tokio::task::spawn_blocking({
-                let zip_path = zip_path.clone();
-                move || hash_file(zip_path)
-            })
-            .await?
-            .map_err(|e| InstallError::IOError { path: zip_path.clone(), source: e })?;
-            if let Some(checksum) = &dep.checksum {
-                if checksum != &zip_integrity.to_string() {
-                    return Err(InstallError::ZipIntegrityError {
-                        path: zip_path.clone(),
-                        expected: checksum.to_string(),
-                        actual: zip_integrity.to_string(),
-                    });
-                }
-                debug!(zip_path:?; "archive integrity check successful");
-            } else {
-                debug!(zip_path:?; "no checksum available for archive integrity check");
-            }
-            unzip_file(&zip_path, path).await?;
-            progress.unzip.send(dep.into()).ok();
-
-            if subdependencies {
-                debug!(dep:% = dep; "installing subdependencies");
-                Box::pin(install_subdependencies(path)).await?;
-                debug!(dep:% = dep; "finished installing subdependencies");
-            }
-            progress.subdependencies.send(dep.into()).ok();
-
-            let integrity = hash_folder(path)
-                .map_err(|e| InstallError::IOError { path: path.to_path_buf(), source: e })?;
-            debug!(dep:% = dep, checksum = integrity.0; "integrity checksum computed");
-            progress.integrity.send(dep.into()).ok();
-
+            let (zip_integrity, integrity) =
+                install_http_dependency(dep, path, subdependencies, progress).await?;
             Ok(HttpLockEntry::builder()
                 .name(&dep.name)
                 .version(&dep.version)
                 .url(&dep.url)
+                .checksum(zip_integrity.to_string())
+                .integrity(integrity.to_string())
+                .build()
+                .into())
+        }
+        InstallInfo::Private(dep) => {
+            let (zip_integrity, integrity) =
+                install_http_dependency(dep, path, subdependencies, progress).await?;
+            Ok(PrivateLockEntry::builder()
+                .name(&dep.name)
+                .version(&dep.version)
                 .checksum(zip_integrity.to_string())
                 .integrity(integrity.to_string())
                 .build()
@@ -648,6 +624,57 @@ async fn install_subdependencies_inner(paths: Paths) -> Result<()> {
     )
     .await?;
     Ok(())
+}
+
+/// Download and unzip an HTTP dependency
+async fn install_http_dependency(
+    dep: &HttpInstallInfo,
+    path: impl AsRef<Path>,
+    subdependencies: bool,
+    progress: InstallProgress,
+) -> Result<(IntegrityChecksum, IntegrityChecksum)> {
+    let path = path.as_ref();
+    let zip_path = download_file(
+        &dep.url,
+        path.parent().expect("dependency install path should have a parent"),
+        &format!("{}-{}", dep.name, dep.version),
+    )
+    .await?;
+    progress.downloads.send(dep.into()).ok();
+
+    let zip_integrity = tokio::task::spawn_blocking({
+        let zip_path = zip_path.clone();
+        move || hash_file(zip_path)
+    })
+    .await?
+    .map_err(|e| InstallError::IOError { path: zip_path.clone(), source: e })?;
+    if let Some(checksum) = &dep.checksum {
+        if checksum != &zip_integrity.to_string() {
+            return Err(InstallError::ZipIntegrityError {
+                path: zip_path.clone(),
+                expected: checksum.to_string(),
+                actual: zip_integrity.to_string(),
+            });
+        }
+        debug!(zip_path:?; "archive integrity check successful");
+    } else {
+        debug!(zip_path:?; "no checksum available for archive integrity check");
+    }
+    unzip_file(&zip_path, path).await?;
+    progress.unzip.send(dep.into()).ok();
+
+    if subdependencies {
+        debug!(dep:% = dep; "installing subdependencies");
+        Box::pin(install_subdependencies(path)).await?;
+        debug!(dep:% = dep; "finished installing subdependencies");
+    }
+    progress.subdependencies.send(dep.into()).ok();
+
+    let integrity = hash_folder(path)
+        .map_err(|e| InstallError::IOError { path: path.to_path_buf(), source: e })?;
+    debug!(dep:% = dep, checksum = integrity.0; "integrity checksum computed");
+    progress.integrity.send(dep.into()).ok();
+    Ok((zip_integrity, integrity))
 }
 
 /// Retrieve a map of git submodules for a path by looking at the `.gitmodules` file.

@@ -241,20 +241,22 @@ impl TryFrom<TomlLockEntry> for LockEntry {
                 })?)
                 .integrity(value.integrity.ok_or(LockError::MissingField {
                     field: "integrity".to_string(),
-                    dep: value.name.clone(),
+                    dep: value.name,
                 })?)
                 .build()
                 .into()),
-            (None, Some(git)) => Ok(GitLockEntry::builder()
-                .name(&value.name)
-                .version(value.version)
-                .git(git)
-                .rev(value.rev.ok_or(LockError::MissingField {
-                    field: "rev".to_string(),
-                    dep: value.name.clone(),
-                })?)
-                .build()
-                .into()),
+            (None, Some(git)) => {
+                Ok(GitLockEntry::builder()
+                    .name(&value.name)
+                    .version(value.version)
+                    .git(git)
+                    .rev(value.rev.ok_or(LockError::MissingField {
+                        field: "rev".to_string(),
+                        dep: value.name,
+                    })?)
+                    .build()
+                    .into())
+            }
             (Some(url), None) => Ok(HttpLockEntry::builder()
                 .name(&value.name)
                 .version(value.version)
@@ -265,11 +267,11 @@ impl TryFrom<TomlLockEntry> for LockEntry {
                 })?)
                 .integrity(value.integrity.ok_or(LockError::MissingField {
                     field: "integrity".to_string(),
-                    dep: value.name.clone(),
+                    dep: value.name,
                 })?)
                 .build()
                 .into()),
-            (Some(_), Some(_)) => Err(LockError::TypeMismatch),
+            (Some(_), Some(_)) => Err(LockError::InvalidLockEntry),
         }
     }
 }
@@ -525,7 +527,7 @@ mod tests {
     }
 
     #[test]
-    fn test_toml_lock_entry_bad_git() {
+    fn test_toml_lock_entry_bad_private() {
         let toml_entry = TomlLockEntry {
             name: "test".to_string(),
             version: "1.0.0".to_string(),
@@ -537,9 +539,24 @@ mod tests {
         };
         let entry: Result<LockEntry> = toml_entry.try_into();
         assert!(
-            matches!(entry, Err(LockError::MissingField { ref field, dep: _ }) if field == "git"),
+            matches!(entry, Err(LockError::MissingField { ref field, dep: _ }) if field == "checksum"),
             "{entry:?}"
         );
+    }
+
+    #[test]
+    fn test_toml_lock_entry_bad_git() {
+        let toml_entry = TomlLockEntry {
+            name: "test".to_string(),
+            version: "1.0.0".to_string(),
+            git: Some("git@github.com:test/test.git".to_string()),
+            url: Some("https://example.com/zip.zip".to_string()),
+            rev: None,
+            checksum: None,
+            integrity: None,
+        };
+        let entry: Result<LockEntry> = toml_entry.try_into();
+        assert!(matches!(entry, Err(LockError::InvalidLockEntry)), "{entry:?}");
 
         let toml_entry = TomlLockEntry {
             name: "test".to_string(),

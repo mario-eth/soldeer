@@ -185,8 +185,8 @@ pub enum LockError {
     #[error("error generating soldeer.lock contents: {0}")]
     SerializeError(#[from] toml_edit::ser::Error),
 
-    #[error("lock entry does not match expected type")]
-    TypeMismatch,
+    #[error("lock entry does not match a valid format")]
+    InvalidLockEntry,
 
     #[error("missing `{field}` field in lock entry for {dep}")]
     MissingField { field: String, dep: String },

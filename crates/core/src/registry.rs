@@ -153,7 +153,7 @@ pub async fn get_dependency_url_remote(dependency: &Dependency, version: &str) -
 pub async fn get_project_id(dependency_name: &str) -> Result<String> {
     debug!(name = dependency_name; "retrieving project ID");
     let url = api_url("v2", "project", &[("project_name", dependency_name)]);
-    let res = reqwest::get(url).await?;
+    let res = Client::new().get(url).headers(get_auth_headers()?).send().await?;
     let res = res.error_for_status()?;
     let project: ProjectResponse = res.json().await?;
     let Some(p) = project.data.first() else {
@@ -171,7 +171,7 @@ pub async fn get_latest_version(dependency_name: &str) -> Result<Dependency> {
         "revision",
         &[("project_name", dependency_name), ("offset", "0"), ("limit", "1")],
     );
-    let res = reqwest::get(url).await?;
+    let res = Client::new().get(url).headers(get_auth_headers()?).send().await?;
     let res = res.error_for_status()?;
     let revision: RevisionResponse = res.json().await?;
     let Some(data) = revision.data.first() else {
@@ -214,7 +214,7 @@ pub async fn get_all_versions_descending(dependency_name: &str) -> Result<Versio
         "revision",
         &[("project_name", dependency_name), ("offset", "0"), ("limit", "10000")],
     );
-    let res = reqwest::get(url).await?;
+    let res = Client::new().get(url).headers(get_auth_headers()?).send().await?;
     let res = res.error_for_status()?;
     let revision: RevisionResponse = res.json().await?;
     if revision.data.is_empty() {

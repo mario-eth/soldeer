@@ -252,7 +252,7 @@ pub enum RegistryError {
     URLNotFound(String),
 
     #[error(
-        "project {0} not found, please check the dependency name (project name) or create a new project on https://soldeer.xyz"
+        "project {0} not found. Private projects require to log in before install. Please check the dependency name (project name) or create a new project on https://soldeer.xyz"
     )]
     ProjectNotFound(String),
 

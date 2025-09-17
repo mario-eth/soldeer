@@ -13,7 +13,7 @@ use crate::{
         GitLockEntry, HttpLockEntry, Integrity, LockEntry, PrivateLockEntry, format_install_path,
         read_lockfile,
     },
-    registry::{get_dependency_url_remote, get_latest_supported_version},
+    registry::{DownloadUrl, get_dependency_url_remote, get_latest_supported_version},
     utils::{IntegrityChecksum, canonicalize, hash_file, hash_folder, run_git_command},
 };
 use derive_more::derive::Display;
@@ -258,7 +258,7 @@ impl InstallInfo {
             .into()),
             LockEntry::Private(lock) => {
                 // need to retrieve a signed download URL from the registry
-                let url = get_dependency_url_remote(
+                let download = get_dependency_url_remote(
                     &HttpDependency::builder()
                         .name(&lock.name)
                         .version_req(&lock.version)
@@ -270,7 +270,7 @@ impl InstallInfo {
                 Ok(Self::Private(HttpInstallInfo {
                     name: lock.name,
                     version: lock.version,
-                    url,
+                    url: download.url,
                     checksum: Some(lock.checksum),
                 }))
             }
@@ -444,11 +444,14 @@ pub async fn install_dependency(
                 .map_err(|e| InstallError::IOError { path, source: e })?;
         }
 
-        let (url, version) = match dependency.url() {
+        let (download, version) = match dependency.url() {
             // for git dependencies and http dependencies which have a custom url, we use the
             // version requirement string as version, because in that case a version requirement has
             // little sense (we can't automatically bump the version)
-            Some(url) => (url.clone(), dependency.version_req().to_string()),
+            Some(url) => (
+                DownloadUrl { url: url.clone(), private: false },
+                dependency.version_req().to_string(),
+            ),
             None => {
                 let version = match force_version {
                     Some(v) => v,
@@ -458,18 +461,33 @@ pub async fn install_dependency(
             }
         };
         debug!(dep:% = dependency, version; "resolved version");
-        debug!(dep:% = dependency, url; "resolved download URL");
+        debug!(dep:% = dependency, url:? = download; "resolved download URL");
         // indicate that we have retrieved the version number
         progress.versions.send(dependency.into()).ok();
 
         let info = match &dependency {
             Dependency::Http(dep) => {
-                HttpInstallInfo::builder().name(&dep.name).version(&version).url(url).build().into()
+                if download.private {
+                    InstallInfo::Private(
+                        HttpInstallInfo::builder()
+                            .name(&dep.name)
+                            .version(&version)
+                            .url(download.url)
+                            .build(),
+                    )
+                } else {
+                    HttpInstallInfo::builder()
+                        .name(&dep.name)
+                        .version(&version)
+                        .url(download.url)
+                        .build()
+                        .into()
+                }
             }
             Dependency::Git(dep) => GitInstallInfo::builder()
                 .name(&dep.name)
                 .version(&version)
-                .git(url)
+                .git(download.url)
                 .maybe_identifier(dep.identifier.clone())
                 .build()
                 .into(),

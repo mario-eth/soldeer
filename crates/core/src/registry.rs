@@ -40,6 +40,9 @@ pub struct Revision {
 
     /// Creation date for the revision.
     pub created_at: Option<DateTime<Utc>>,
+
+    /// Whether the revision is private.
+    pub private: Option<bool>,
 }
 
 /// A project (package) in the registry.
@@ -63,6 +66,9 @@ pub struct Project {
 
     /// Whether this project has been deleted.
     pub deleted: Option<bool>,
+
+    /// Whether the project is private.
+    pub private: Option<bool>,
 
     /// Other metadata below
     pub downloads: Option<i64>,
@@ -99,6 +105,17 @@ pub struct ProjectResponse {
     status: String,
 }
 
+/// A download URL for a revision.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+pub struct DownloadUrl {
+    /// The download URL.
+    pub url: String,
+
+    /// Whether this revision is private.
+    pub private: bool,
+}
+
 /// Construct a URL for the Soldeer API.
 ///
 /// The URL is constructed from the `SOLDEER_API_URL` environment variable, or defaults to
@@ -131,7 +148,10 @@ pub fn api_url(version: &str, path: &str, params: &[(&str, &str)]) -> Url {
 }
 
 /// Get the download URL for a dependency at a specific version.
-pub async fn get_dependency_url_remote(dependency: &Dependency, version: &str) -> Result<String> {
+pub async fn get_dependency_url_remote(
+    dependency: &Dependency,
+    version: &str,
+) -> Result<DownloadUrl> {
     debug!(dep:% = dependency; "retrieving URL for dependency");
     let url = api_url(
         "v1",
@@ -146,7 +166,7 @@ pub async fn get_dependency_url_remote(dependency: &Dependency, version: &str) -
         return Err(RegistryError::URLNotFound(dependency.to_string()));
     };
     debug!(dep:% = dependency, url = r.url; "URL for dependency was found");
-    Ok(r.url.clone())
+    Ok(DownloadUrl { url: r.url.clone(), private: r.private.unwrap_or_default() })
 }
 
 /// Get the unique ID for a project by name.
@@ -341,7 +361,7 @@ mod tests {
         .await;
         assert!(res.is_ok(), "{res:?}");
         assert_eq!(
-            res.unwrap(),
+            res.unwrap().url,
             "https://soldeer-revisions.s3.amazonaws.com/forge-std/1_9_2_06-08-2024_17:31:25_forge-std-1.9.2.zip"
         );
     }

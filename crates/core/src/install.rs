@@ -666,9 +666,7 @@ async fn reinit_submodules(path: &PathBuf) -> Result<Vec<PathBuf>> {
     for (submodule_name, submodule) in submodules {
         // make sure to remove the path if it already exists
         let dest_path = path.join(&submodule.path);
-        fs::remove_dir_all(&dest_path)
-            .await
-            .map_err(|e| InstallError::IOError { path: dest_path, source: e })?;
+        fs::remove_dir_all(&dest_path).await.ok(); // ignore error if folder doesn't exist
         let mut args = vec!["submodule", "add", "-f", "--name", &submodule_name];
         if let Some(branch) = &submodule.branch {
             args.push("-b");

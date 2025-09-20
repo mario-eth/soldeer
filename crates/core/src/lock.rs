@@ -16,6 +16,15 @@ use std::{
 
 pub type Result<T> = std::result::Result<T, LockError>;
 
+/// A trait implemented by lockfile entries to provide the install path
+pub trait Integrity {
+    /// Returns the install path of the dependency.
+    fn install_path(&self, deps: impl AsRef<Path>) -> PathBuf;
+
+    /// Returns the integrity checksum if relevant.
+    fn integrity(&self) -> Option<&String>;
+}
+
 /// A lock entry for a git dependency.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, bon::Builder)]
 #[builder(on(String, into))]
@@ -35,13 +44,18 @@ pub struct GitLockEntry {
     pub rev: String,
 }
 
-impl GitLockEntry {
+impl Integrity for GitLockEntry {
     /// Returns the install path of the dependency.
     ///
     /// The directory does not need to exist. Since the lock entry contains the version,
     /// the install path can be calculated without needing to check the actual directory.
-    pub fn install_path(&self, deps: impl AsRef<Path>) -> PathBuf {
+    fn install_path(&self, deps: impl AsRef<Path>) -> PathBuf {
         format_install_path(&self.name, &self.version, deps)
+    }
+
+    /// There is no integrity checksum for git lock entries
+    fn integrity(&self) -> Option<&String> {
+        None
     }
 }
 
@@ -71,13 +85,59 @@ pub struct HttpLockEntry {
     pub integrity: String,
 }
 
-impl HttpLockEntry {
+impl Integrity for HttpLockEntry {
     /// Returns the install path of the dependency.
     ///
     /// The directory does not need to exist. Since the lock entry contains the version,
     /// the install path can be calculated without needing to check the actual directory.
-    pub fn install_path(&self, deps: impl AsRef<Path>) -> PathBuf {
+    fn install_path(&self, deps: impl AsRef<Path>) -> PathBuf {
         format_install_path(&self.name, &self.version, deps)
+    }
+
+    /// Returns the integrity checksum
+    fn integrity(&self) -> Option<&String> {
+        Some(&self.integrity)
+    }
+}
+
+/// A lock entry for a private dependency.
+///
+/// The link is not stored in the lockfile as it must be fetched from the registry with a valid
+/// token before each download.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, bon::Builder)]
+#[builder(on(String, into))]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[non_exhaustive]
+pub struct PrivateLockEntry {
+    /// The name of the dependency.
+    pub name: String,
+
+    /// The resolved version of the dependency (not necessarily matches the version requirement of
+    /// the dependency).
+    ///
+    /// If the version req is a semver range, then this will be the exact version that was
+    /// resolved.
+    pub version: String,
+
+    /// The checksum of the downloaded zip file.
+    pub checksum: String,
+
+    /// The integrity hash of the downloaded zip file after extraction.
+    pub integrity: String,
+}
+
+impl Integrity for PrivateLockEntry {
+    /// Returns the install path of the dependency.
+    ///
+    /// The directory does not need to exist. Since the lock entry contains the version,
+    /// the install path can be calculated without needing to check the actual directory.
+    fn install_path(&self, deps: impl AsRef<Path>) -> PathBuf {
+        format_install_path(&self.name, &self.version, deps)
+    }
+
+    /// Returns the integrity checksum
+    fn integrity(&self) -> Option<&String> {
+        Some(&self.integrity)
     }
 }
 
@@ -109,6 +169,9 @@ pub enum LockEntry {
 
     /// A lock entry for a git dependency.
     Git(GitLockEntry),
+
+    /// A lock entry for a git dependency.
+    Private(PrivateLockEntry),
 }
 
 /// A TOML representation of a lock entry, which merges all fields from the two variants of
@@ -150,6 +213,15 @@ impl From<LockEntry> for TomlLockEntry {
                 checksum: None,
                 integrity: None,
             },
+            LockEntry::Private(lock) => Self {
+                name: lock.name,
+                version: lock.version,
+                git: None,
+                url: None,
+                rev: None,
+                checksum: Some(lock.checksum),
+                integrity: Some(lock.integrity),
+            },
         }
     }
 }
@@ -159,8 +231,33 @@ impl TryFrom<TomlLockEntry> for LockEntry {
 
     /// Convert a [`TomlLockEntry`] into a [`LockEntry`] if possible.
     fn try_from(value: TomlLockEntry) -> std::result::Result<Self, Self::Error> {
-        if let Some(url) = value.url {
-            Ok(HttpLockEntry::builder()
+        match (value.url, value.git) {
+            (None, None) => Ok(PrivateLockEntry::builder()
+                .name(&value.name)
+                .version(value.version)
+                .checksum(value.checksum.ok_or(LockError::MissingField {
+                    field: "checksum".to_string(),
+                    dep: value.name.clone(),
+                })?)
+                .integrity(value.integrity.ok_or(LockError::MissingField {
+                    field: "integrity".to_string(),
+                    dep: value.name,
+                })?)
+                .build()
+                .into()),
+            (None, Some(git)) => {
+                Ok(GitLockEntry::builder()
+                    .name(&value.name)
+                    .version(value.version)
+                    .git(git)
+                    .rev(value.rev.ok_or(LockError::MissingField {
+                        field: "rev".to_string(),
+                        dep: value.name,
+                    })?)
+                    .build()
+                    .into())
+            }
+            (Some(url), None) => Ok(HttpLockEntry::builder()
                 .name(&value.name)
                 .version(value.version)
                 .url(url)
@@ -170,24 +267,11 @@ impl TryFrom<TomlLockEntry> for LockEntry {
                 })?)
                 .integrity(value.integrity.ok_or(LockError::MissingField {
                     field: "integrity".to_string(),
-                    dep: value.name.clone(),
+                    dep: value.name,
                 })?)
                 .build()
-                .into())
-        } else {
-            Ok(GitLockEntry::builder()
-                .name(&value.name)
-                .version(value.version)
-                .git(value.git.ok_or(LockError::MissingField {
-                    field: "git".to_string(),
-                    dep: value.name.clone(),
-                })?)
-                .rev(value.rev.ok_or(LockError::MissingField {
-                    field: "rev".to_string(),
-                    dep: value.name.clone(),
-                })?)
-                .build()
-                .into())
+                .into()),
+            (Some(_), Some(_)) => Err(LockError::InvalidLockEntry),
         }
     }
 }
@@ -198,6 +282,7 @@ impl LockEntry {
         match self {
             Self::Git(lock) => &lock.name,
             Self::Http(lock) => &lock.name,
+            Self::Private(lock) => &lock.name,
         }
     }
 
@@ -206,6 +291,7 @@ impl LockEntry {
         match self {
             Self::Git(lock) => &lock.version,
             Self::Http(lock) => &lock.version,
+            Self::Private(lock) => &lock.version,
         }
     }
 
@@ -214,6 +300,7 @@ impl LockEntry {
         match self {
             Self::Git(lock) => lock.install_path(deps),
             Self::Http(lock) => lock.install_path(deps),
+            Self::Private(lock) => lock.install_path(deps),
         }
     }
 
@@ -225,6 +312,11 @@ impl LockEntry {
     /// Get the underlying [`GitLockEntry`] if this is a git lock entry.
     pub fn as_git(&self) -> Option<&GitLockEntry> {
         if let Self::Git(l) = self { Some(l) } else { None }
+    }
+
+    /// Get the underlying [`PrivateLockEntry`] if this is a private package lock entry.
+    pub fn as_private(&self) -> Option<&PrivateLockEntry> {
+        if let Self::Private(l) = self { Some(l) } else { None }
     }
 }
 
@@ -239,6 +331,13 @@ impl From<GitLockEntry> for LockEntry {
     /// Wrap a [`GitLockEntry`] in a [`LockEntry`].
     fn from(value: GitLockEntry) -> Self {
         Self::Git(value)
+    }
+}
+
+impl From<PrivateLockEntry> for LockEntry {
+    /// Wrap a [`PrivateLockEntry`] in a [`LockEntry`].
+    fn from(value: PrivateLockEntry) -> Self {
+        Self::Private(value)
     }
 }
 
@@ -428,7 +527,7 @@ mod tests {
     }
 
     #[test]
-    fn test_toml_lock_entry_bad_git() {
+    fn test_toml_lock_entry_bad_private() {
         let toml_entry = TomlLockEntry {
             name: "test".to_string(),
             version: "1.0.0".to_string(),
@@ -440,9 +539,24 @@ mod tests {
         };
         let entry: Result<LockEntry> = toml_entry.try_into();
         assert!(
-            matches!(entry, Err(LockError::MissingField { ref field, dep: _ }) if field == "git"),
+            matches!(entry, Err(LockError::MissingField { ref field, dep: _ }) if field == "checksum"),
             "{entry:?}"
         );
+    }
+
+    #[test]
+    fn test_toml_lock_entry_bad_git() {
+        let toml_entry = TomlLockEntry {
+            name: "test".to_string(),
+            version: "1.0.0".to_string(),
+            git: Some("git@github.com:test/test.git".to_string()),
+            url: Some("https://example.com/zip.zip".to_string()),
+            rev: None,
+            checksum: None,
+            integrity: None,
+        };
+        let entry: Result<LockEntry> = toml_entry.try_into();
+        assert!(matches!(entry, Err(LockError::InvalidLockEntry)), "{entry:?}");
 
         let toml_entry = TomlLockEntry {
             name: "test".to_string(),

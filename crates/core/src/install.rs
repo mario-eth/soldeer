@@ -871,6 +871,27 @@ mod tests {
         server
     }
 
+    async fn mock_api_private() -> ServerGuard {
+        let mut server = Server::new_async().await;
+        let data = r#"{"data":[{"created_at":"2025-09-28T12:36:09.526660Z","deleted":false,"downloads":0,"file_size":65083,"id":"0440c261-8cdf-4738-9139-c4dc7b0c7f3e","internal_name":"test-private/0_1_0_28-09-2025_12:36:08_test-private.zip","private":true,"project_id":"14f419e7-2d64-49e4-86b9-b44b36627786","uploader":"bf8e75f4-0c36-4bcb-a23b-2682df92f176","url":"https://github.com/mario-eth/soldeer/archive/8585a7ec85a29889cec8d08f4770e15ec4795943.zip","version":"0.1.0"}],"status":"success"}"#;
+        server
+            .mock("GET", "/api/v1/revision")
+            .match_query(Matcher::Any)
+            .with_header("content-type", "application/json")
+            .with_body(data)
+            .create_async()
+            .await;
+        let data2 = r#"{"data":[{"created_at":"2025-09-28T12:36:09.526660Z","deleted":false,"id":"0440c261-8cdf-4738-9139-c4dc7b0c7f3e","internal_name":"test-private/0_1_0_28-09-2025_12:36:08_test-private.zip","private":true,"project_id":"14f419e7-2d64-49e4-86b9-b44b36627786","url":"https://github.com/mario-eth/soldeer/archive/8585a7ec85a29889cec8d08f4770e15ec4795943.zip","version":"0.1.0"}],"status":"success"}"#;
+        server
+            .mock("GET", "/api/v1/revision-cli")
+            .match_query(Matcher::Any)
+            .with_header("content-type", "application/json")
+            .with_body(data2)
+            .create_async()
+            .await;
+        server
+    }
+
     #[tokio::test]
     async fn test_check_http_dependency() {
         let lock = HttpLockEntry::builder()
@@ -1183,5 +1204,30 @@ mod tests {
         let lock = lock.as_git().unwrap();
         assert_eq!(&lock.git, dep.url().unwrap());
         assert_eq!(lock.rev, "d5d72fa135d28b2e8307650b3ea79115183f2406");
+    }
+
+    #[tokio::test]
+    async fn test_install_dependency_private() {
+        let server = mock_api_private().await;
+        let dir = testdir!();
+        let dep =
+            HttpDependency::builder().name("test-private").version_req("0.1.0").build().into();
+        let (progress, _) = InstallProgress::new();
+        let res = async_with_vars(
+            [("SOLDEER_API_URL", Some(server.url()))],
+            install_dependency(&dep, None, &dir, None, false, progress),
+        )
+        .await;
+        assert!(res.is_ok(), "{res:?}");
+        let lock = res.unwrap();
+        assert_eq!(lock.name(), dep.name());
+        assert_eq!(lock.version(), dep.version_req());
+        let lock = lock.as_private().unwrap();
+        assert_eq!(
+            lock.checksum,
+            "94a73dbe106f48179ea39b00d42e5d4dd96fdc6252caa3a89ce7efdaec0b9468"
+        );
+        let hash = hash_folder(lock.install_path(&dir)).unwrap();
+        assert_eq!(lock.integrity, hash.to_string());
     }
 }

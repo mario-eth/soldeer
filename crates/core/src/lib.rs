@@ -1,5 +1,5 @@
 //! Low-level library for interacting with Soldeer registries and files
-#![cfg_attr(docsrs, feature(doc_cfg, doc_auto_cfg))]
+#![cfg_attr(docsrs, feature(doc_cfg))]
 pub use errors::SoldeerError;
 
 pub type Result<T> = std::result::Result<T, SoldeerError>;

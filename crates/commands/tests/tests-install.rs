@@ -1,3 +1,4 @@
+use mockito::Matcher;
 use soldeer_commands::{Command, Verbosity, commands::install::Install, run};
 use soldeer_core::{
     config::{ConfigLocation, read_config_deps},
@@ -325,6 +326,68 @@ integrity = "f3c628f3e9eae4db14fe14f9ab29e49a0107c47b8ee956e4cee57b616b493fc2"
     .await;
     assert!(res.is_ok(), "{res:?}");
     mock.assert(); // download link was not called a second time
+}
+
+#[tokio::test]
+async fn test_install_private_second_time() {
+    let dir = testdir!();
+    let contents = r#"[dependencies]
+test-private = "0.1.0"
+"#;
+    fs::write(dir.join("soldeer.toml"), contents).unwrap();
+
+    // get zip file locally for mock
+    let zip_file = download_file(
+        "https://github.com/mario-eth/soldeer/archive/8585a7ec85a29889cec8d08f4770e15ec4795943.zip",
+        &dir,
+        "tmp",
+    )
+    .await
+    .unwrap();
+
+    // serve the file with mock server
+    let mut server = mockito::Server::new_async().await;
+    let data = format!(
+        r#"{{"data":[{{"created_at":"2025-09-28T12:36:09.526660Z","deleted":false,"id":"0440c261-8cdf-4738-9139-c4dc7b0c7f3e","internal_name":"test-private/0_1_0_28-09-2025_12:36:08_test-private.zip","private":true,"project_id":"14f419e7-2d64-49e4-86b9-b44b36627786","url":"{}/file.zip","version":"0.1.0"}}],"status":"success"}}"#,
+        server.url()
+    );
+    server.mock("GET", "/file.zip").with_body_from_file(zip_file).create_async().await;
+    server
+        .mock("GET", "/api/v1/revision-cli")
+        .match_query(Matcher::Any)
+        .with_header("content-type", "application/json")
+        .with_body(data)
+        .create_async()
+        .await;
+
+    let lock = r#"[[dependencies]]
+name = "test-private"
+version = "0.1.0"
+checksum = "94a73dbe106f48179ea39b00d42e5d4dd96fdc6252caa3a89ce7efdaec0b9468"
+integrity = "f3c628f3e9eae4db14fe14f9ab29e49a0107c47b8ee956e4cee57b616b493fc2"
+"#;
+    fs::write(dir.join("soldeer.lock"), lock).unwrap();
+    let cmd: Command = Install::builder().build().into();
+    let res = async_with_vars(
+        [
+            ("SOLDEER_API_URL", Some(server.url().as_str())),
+            ("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref())),
+        ],
+        run(cmd.clone(), Verbosity::default()),
+    )
+    .await;
+    assert!(res.is_ok(), "{res:?}");
+
+    // second install
+    let res = async_with_vars(
+        [
+            ("SOLDEER_API_URL", Some(server.url().as_str())),
+            ("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref())),
+        ],
+        run(cmd, Verbosity::default()),
+    )
+    .await;
+    assert!(res.is_ok(), "{res:?}");
 }
 
 #[tokio::test]

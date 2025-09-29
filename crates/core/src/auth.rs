@@ -45,6 +45,18 @@ pub fn get_token() -> Result<String> {
     Ok(jwt)
 }
 
+/// Get a header map with the bearer token set up if it exists
+pub fn get_auth_headers() -> Result<HeaderMap> {
+    let mut headers: HeaderMap = HeaderMap::new();
+    let Ok(token) = get_token() else {
+        return Ok(headers);
+    };
+    let header_value =
+        HeaderValue::from_str(&format!("Bearer {token}")).map_err(|_| AuthError::InvalidToken)?;
+    headers.insert(AUTHORIZATION, header_value);
+    Ok(headers)
+}
+
 /// Save an access token in the login file
 pub fn save_token(token: &str) -> Result<PathBuf> {
     let token_path = login_file_path()?;

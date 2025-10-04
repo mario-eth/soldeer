@@ -154,8 +154,12 @@ impl Paths {
     /// If `SOLDEER_PROJECT` root is present in the environment, this is the returned value. Else,
     /// we search for the root of the project with [`find_project_root`].
     pub fn get_root_path() -> PathBuf {
-        let res = env::var("SOLDEER_PROJECT_ROOT")
-            .map(|p| {
+        let res = env::var("SOLDEER_PROJECT_ROOT").map_or_else(
+            |_| {
+                debug!("SOLDEER_PROJECT_ROOT not defined, searching for project root");
+                find_project_root(None::<PathBuf>).expect("could not find project root")
+            },
+            |p| {
                 if p.is_empty() {
                     debug!("SOLDEER_PROJECT_ROOT exists but is empty, searching for project root");
                     find_project_root(None::<PathBuf>).expect("could not find project root")
@@ -163,11 +167,8 @@ impl Paths {
                     debug!(path = p; "root set by SOLDEER_PROJECT_ROOT");
                     PathBuf::from(p)
                 }
-            })
-            .unwrap_or_else(|_| {
-                debug!("SOLDEER_PROJECT_ROOT not defined, searching for project root");
-                find_project_root(None::<PathBuf>).expect("could not find project root")
-            });
+            },
+        );
         debug!(path:? = res; "found project root");
         res
     }

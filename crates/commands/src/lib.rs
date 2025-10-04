@@ -78,14 +78,9 @@ pub async fn run(command: Command, verbosity: Verbosity<CustomLevel>) -> Result<
             step!("Initialize Foundry project to use Soldeer");
             // for init, we always use the current dir as root, unless specified by env
             let root = env::var("SOLDEER_PROJECT_ROOT")
-                .map(|p| {
-                    if p.is_empty() {
-                        env::current_dir().expect("could not determine current directory")
-                    } else {
-                        PathBuf::from(p)
-                    }
-                })
-                .unwrap_or(env::current_dir()?);
+                .ok()
+                .filter(|p| !p.is_empty())
+                .map_or(env::current_dir()?, PathBuf::from);
             let paths = Paths::with_root_and_config(
                 &root,
                 Some(get_config_location(&root, cmd.config_location)?),

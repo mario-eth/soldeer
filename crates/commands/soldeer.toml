@@ -1,0 +1,2 @@
+[dependencies]
+forge-std = "1.10.0"

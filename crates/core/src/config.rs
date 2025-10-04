@@ -1873,4 +1873,106 @@ libs = ["dependencies"]
             assert!(res.warnings[0].message.ends_with("is ignored if no `git` URL is provided"));
         }
     }
+
+    #[test]
+    fn test_find_git_root() {
+        let test_dir = testdir!();
+        let git_dir = test_dir.join(".git");
+        fs::create_dir(&git_dir).unwrap();
+
+        let result = find_git_root(&test_dir);
+        assert!(result.is_ok(), "{result:?}");
+        assert_eq!(result.unwrap(), Some(test_dir.clone()));
+
+        // test with a subdirectory
+        let sub_dir = test_dir.join("subdir");
+        fs::create_dir(&sub_dir).unwrap();
+
+        let result = find_git_root(&sub_dir);
+        assert!(result.is_ok(), "{result:?}");
+        assert_eq!(result.unwrap(), Some(test_dir));
+
+        // test outside of a git folder
+        let temp_dir = std::env::temp_dir().join("soldeer_test_no_git");
+        if !temp_dir.exists() {
+            fs::create_dir(&temp_dir).unwrap();
+        }
+
+        let result = find_git_root(&temp_dir);
+        assert_eq!(result.unwrap(), None);
+
+        // clean up
+        fs::remove_dir(&temp_dir).unwrap();
+    }
+
+    #[test]
+    fn test_find_git_root_nested() {
+        // test nested git repositories
+        let outer_dir = testdir!();
+        fs::create_dir(outer_dir.join(".git")).unwrap();
+
+        let inner_dir = outer_dir.join("inner");
+        fs::create_dir(&inner_dir).unwrap();
+        fs::create_dir(inner_dir.join(".git")).unwrap();
+
+        // should find the inner git root when starting from inner directory
+        let result = find_git_root(&inner_dir);
+        assert!(result.is_ok(), "{result:?}");
+        assert_eq!(result.unwrap(), Some(inner_dir));
+
+        // should find the outer git root when starting from outer directory
+        let result = find_git_root(&outer_dir);
+        assert!(result.is_ok(), "{result:?}");
+        assert_eq!(result.unwrap(), Some(outer_dir));
+    }
+
+    #[test]
+    fn test_find_project_root_with_foundry_toml() {
+        let test_dir = testdir!();
+        let foundry_toml = test_dir.join("foundry.toml");
+        fs::write(&foundry_toml, "[dependencies]\n").unwrap();
+
+        let result = find_project_root(Some(&test_dir));
+        assert!(result.is_ok(), "{result:?}");
+        assert_eq!(result.unwrap(), test_dir);
+    }
+
+    #[test]
+    fn test_find_project_root_with_soldeer_toml() {
+        let test_dir = testdir!();
+        let soldeer_toml = test_dir.join("soldeer.toml");
+        fs::write(&soldeer_toml, "[dependencies]\n").unwrap();
+
+        let result = find_project_root(Some(&test_dir));
+        assert!(result.is_ok(), "{result:?}");
+        assert_eq!(result.unwrap(), test_dir);
+    }
+
+    #[test]
+    fn test_find_project_root_in_subdirectory() {
+        let test_dir = testdir!();
+        let foundry_toml = test_dir.join("foundry.toml");
+        fs::write(&foundry_toml, "[dependencies]\n").unwrap();
+
+        let sub_dir = test_dir.join("src");
+        fs::create_dir(&sub_dir).unwrap();
+
+        let result = find_project_root(Some(&sub_dir));
+        assert!(result.is_ok(), "{result:?}");
+        assert_eq!(result.unwrap(), test_dir);
+    }
+
+    #[test]
+    fn test_find_project_root_git_boundary() {
+        let test_dir = testdir!();
+        let git_folder = test_dir.join(".git");
+        fs::create_dir(&git_folder).unwrap();
+
+        let sub_dir = test_dir.join("src");
+        fs::create_dir(&sub_dir).unwrap();
+
+        let result = find_project_root(Some(&sub_dir));
+        assert!(result.is_ok(), "{result:?}");
+        assert_eq!(result.unwrap(), test_dir);
+    }
 }

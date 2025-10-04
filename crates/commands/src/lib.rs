@@ -75,7 +75,11 @@ pub async fn run(command: Command, verbosity: Verbosity<CustomLevel>) -> Result<
         Command::Init(cmd) => {
             intro!("🦌 Soldeer Init 🦌");
             step!("Initialize Foundry project to use Soldeer");
-            let paths = Paths::with_config(Some(get_config_location(cmd.config_location)?))?;
+            let root = env::current_dir()?; // for init, we always use the current dir as root
+            let paths = Paths::with_root_and_config(
+                &root,
+                Some(get_config_location(&root, cmd.config_location)?),
+            )?;
             commands::init::init_command(&paths, cmd).await.inspect_err(|_| {
                 outro_cancel!("An error occurred during initialization");
             })?;
@@ -83,7 +87,11 @@ pub async fn run(command: Command, verbosity: Verbosity<CustomLevel>) -> Result<
         }
         Command::Install(cmd) => {
             intro!("🦌 Soldeer Install 🦌");
-            let paths = Paths::with_config(Some(get_config_location(cmd.config_location)?))?;
+            let root = Paths::get_root_path();
+            let paths = Paths::with_root_and_config(
+                &root,
+                Some(get_config_location(&root, cmd.config_location)?),
+            )?;
             commands::install::install_command(&paths, cmd).await.inspect_err(|_| {
                 outro_cancel!("An error occurred during install");
             })?;
@@ -91,7 +99,11 @@ pub async fn run(command: Command, verbosity: Verbosity<CustomLevel>) -> Result<
         }
         Command::Update(cmd) => {
             intro!("🦌 Soldeer Update 🦌");
-            let paths = Paths::with_config(Some(get_config_location(cmd.config_location)?))?;
+            let root = Paths::get_root_path();
+            let paths = Paths::with_root_and_config(
+                &root,
+                Some(get_config_location(&root, cmd.config_location)?),
+            )?;
             commands::update::update_command(&paths, cmd).await.inspect_err(|_| {
                 outro_cancel!("An error occurred during the update");
             })?;
@@ -99,7 +111,9 @@ pub async fn run(command: Command, verbosity: Verbosity<CustomLevel>) -> Result<
         }
         Command::Uninstall(cmd) => {
             intro!("🦌 Soldeer Uninstall 🦌");
-            let paths = Paths::with_config(Some(get_config_location(None)?))?;
+            let root = Paths::get_root_path();
+            let paths =
+                Paths::with_root_and_config(&root, Some(get_config_location(&root, None)?))?;
             commands::uninstall::uninstall_command(&paths, &cmd).inspect_err(|_| {
                 outro_cancel!("An error occurred during uninstall");
             })?;

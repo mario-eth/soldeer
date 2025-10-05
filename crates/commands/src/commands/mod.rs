@@ -2,6 +2,7 @@ pub use clap::{Parser, Subcommand};
 use clap_verbosity_flag::{LogLevel, VerbosityFilter};
 use derive_more::derive::From;
 
+pub mod clean;
 pub mod init;
 pub mod install;
 pub mod login;
@@ -64,6 +65,7 @@ pub enum Command {
     Login(login::Login),
     Push(push::Push),
     Uninstall(uninstall::Uninstall),
+    Clean(clean::Clean),
     Version(Version),
 }
 

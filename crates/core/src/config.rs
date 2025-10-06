@@ -102,7 +102,7 @@ impl Paths {
     ///
     /// The root path is automatically detected (by traversing the path) but can be overridden with
     /// the `SOLDEER_PROJECT_ROOT` environment variable.
-    /// Alternatively, the [`Paths::with_config_and_root`] constructor can be used.
+    /// Alternatively, the [`Paths::with_root_and_config`] constructor can be used.
     ///
     /// If a config location is provided, it bypasses auto-detection and uses that. If `None`, then
     /// the location is auto-detected or if impossible, the `foundry.toml` file is used. If the
@@ -152,7 +152,7 @@ impl Paths {
     /// Get the root directory path.
     ///
     /// If `SOLDEER_PROJECT` root is present in the environment, this is the returned value. Else,
-    /// we search for the root of the project with [`find_project_root`].
+    /// we search for the root of the project with `find_project_root`.
     pub fn get_root_path() -> PathBuf {
         let res = env::var("SOLDEER_PROJECT_ROOT").map_or_else(
             |_| {

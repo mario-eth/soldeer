@@ -105,6 +105,14 @@ pub async fn run(command: Command, verbosity: Verbosity<CustomLevel>) -> Result<
             })?;
             outro!("Done uninstalling!");
         }
+        Command::Clean(cmd) => {
+            intro!("🦌 Soldeer Clean 🦌");
+            let paths = Paths::with_config(Some(get_config_location(None)?))?;
+            commands::clean::clean_command(&paths, &cmd).inspect_err(|_| {
+                outro_cancel!("An error occurred during clean");
+            })?;
+            outro!("Done cleaning!");
+        }
         Command::Login(cmd) => {
             intro!("🦌 Soldeer Login 🦌");
             commands::login::login_command(cmd).await.inspect_err(|_| {

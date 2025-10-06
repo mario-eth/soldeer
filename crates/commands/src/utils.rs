@@ -1,14 +1,10 @@
 #![allow(unused_macros)]
 //! Utils for the commands crate
-use std::fmt;
+use std::{fmt, path::Path};
 
 use crate::ConfigLocation;
 use cliclack::{MultiProgress, ProgressBar, multi_progress, progress_bar, select};
-use soldeer_core::{
-    Result,
-    config::{Paths, detect_config_location},
-    install::InstallMonitoring,
-};
+use soldeer_core::{Result, config::detect_config_location, install::InstallMonitoring};
 
 /// Template for the progress bars.
 pub const PROGRESS_TEMPLATE: &str = "[{elapsed_precise}] {bar:30.magenta} ({pos}/{len}) {msg}";
@@ -136,11 +132,12 @@ impl Progress {
 
 /// Auto-detect config location or prompt the user for preference.
 pub fn get_config_location(
+    root: impl AsRef<Path>,
     arg: Option<ConfigLocation>,
 ) -> Result<soldeer_core::config::ConfigLocation> {
     Ok(match arg {
         Some(loc) => loc.into(),
-        None => match detect_config_location(Paths::get_root_path()) {
+        None => match detect_config_location(root) {
             Some(loc) => loc,
             None => prompt_config_location()?.into(),
         },

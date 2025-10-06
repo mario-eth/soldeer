@@ -32,7 +32,6 @@ fn check_artifacts_exist(dir: &Path) {
     assert!(dir.join("dependencies").exists(), "Dependencies folder should exist");
     assert!(dir.join("soldeer.lock").exists(), "Lock file should exist");
 
-
     let lock = read_lockfile(dir.join("soldeer.lock")).unwrap();
     assert_eq!(lock.entries.len(), 2, "Lock file should have 2 entries");
     let deps_dir = dir.join("dependencies");

@@ -19,11 +19,5 @@ pub(crate) fn clean_command(paths: &Paths, _cmd: &Clean) -> Result<()> {
         success!("Dependencies folder removed");
     }
 
-    // Remove lock file if it exists
-    if paths.lock.exists() {
-        fs::remove_file(&paths.lock)?;
-        success!("Lock file removed");
-    }
-
     Ok(())
 }

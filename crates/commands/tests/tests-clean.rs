@@ -16,7 +16,6 @@ use testdir::testdir;
 #[allow(clippy::unwrap_used)]
 fn check_clean_success(dir: &Path, config_filename: &str) {
     assert!(!dir.join("dependencies").exists(), "Dependencies folder should be removed");
-    assert!(!dir.join("soldeer.lock").exists(), "Lock file should be removed");
 
     let config_path = dir.join(config_filename);
     assert!(config_path.exists(), "Config file should be preserved");
@@ -72,8 +71,6 @@ async fn test_clean_basic() {
     let dir = setup_project_with_dependencies("soldeer.toml").await;
 
     assert!(dir.join("dependencies").exists());
-    assert!(dir.join("soldeer.lock").exists());
-
     let cmd: Command = Clean::builder().build().into();
     let res = async_with_vars(
         [("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))],
@@ -128,9 +125,8 @@ async fn test_clean_restores_with_install() {
     )
     .await;
     assert!(res.is_ok(), "{res:?}");
-
     assert!(!dir.join("dependencies").exists());
-    assert!(!dir.join("soldeer.lock").exists());
+    assert!(dir.join("soldeer.lock").exists(), "Lock file should remain after clean");
 
     let cmd: Command = Install::default().into();
     let res = async_with_vars(
@@ -139,9 +135,7 @@ async fn test_clean_restores_with_install() {
     )
     .await;
     assert!(res.is_ok(), "{res:?}");
-
     assert!(dir.join("dependencies").exists());
-    assert!(dir.join("soldeer.lock").exists());
 
     let dependencies_dir = dir.join("dependencies");
     let entries: Vec<_> =
@@ -216,25 +210,6 @@ async fn test_clean_permission_error() {
         .await;
         assert!(res.is_ok(), "{res:?}");
     }
-}
-
-#[tokio::test]
-async fn test_clean_partial_failure() {
-    let dir = setup_project_with_dependencies("soldeer.toml").await;
-
-    fs::remove_file(dir.join("soldeer.lock")).unwrap();
-
-    let cmd: Command = Clean::builder().build().into();
-    let res = async_with_vars(
-        [("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))],
-        run(cmd, Verbosity::default()),
-    )
-    .await;
-
-    assert!(res.is_ok(), "{res:?}");
-    assert!(!dir.join("dependencies").exists());
-    assert!(!dir.join("soldeer.lock").exists());
-    assert!(dir.join("soldeer.toml").exists());
 }
 
 #[tokio::test]

@@ -126,7 +126,9 @@ pub async fn run(command: Command, verbosity: Verbosity<CustomLevel>) -> Result<
         }
         Command::Clean(cmd) => {
             intro!("🦌 Soldeer Clean 🦌");
-            let paths = Paths::with_config(Some(get_config_location(None)?))?;
+            let root = Paths::get_root_path();
+            let paths =
+                Paths::with_root_and_config(&root, Some(get_config_location(&root, None)?))?;
             commands::clean::clean_command(&paths, &cmd).inspect_err(|_| {
                 outro_cancel!("An error occurred during clean");
             })?;

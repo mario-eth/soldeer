@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## `soldeer-commands` - [0.9.0](https://github.com/mario-eth/soldeer/compare/soldeer-commands-v0.8.0...soldeer-commands-v0.9.0) - 2025-10-13
+
+### Added
+- detect project root ([#333](https://github.com/mario-eth/soldeer/pull/333))
+- *(commands)* add `soldeer clean` command ([#332](https://github.com/mario-eth/soldeer/pull/332))
+
+## `soldeer-core` - [0.9.0](https://github.com/mario-eth/soldeer/compare/soldeer-core-v0.8.0...soldeer-core-v0.9.0) - 2025-10-13
+
+### Added
+- detect project root ([#333](https://github.com/mario-eth/soldeer/pull/333))
+
 ## `soldeer-commands` - [0.8.0](https://github.com/mario-eth/soldeer/compare/soldeer-commands-v0.7.1...soldeer-commands-v0.8.0) - 2025-09-29
 
 ### Added

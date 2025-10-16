@@ -2138,7 +2138,7 @@ dependencies = [
 
 [[package]]
 name = "soldeer"
-version = "0.8.0"
+version = "0.9.0"
 dependencies = [
  "soldeer-commands",
  "tokio",
@@ -2147,7 +2147,7 @@ dependencies = [
 
 [[package]]
 name = "soldeer-commands"
-version = "0.8.0"
+version = "0.9.0"
 dependencies = [
  "bon",
  "clap",
@@ -2168,7 +2168,7 @@ dependencies = [
 
 [[package]]
 name = "soldeer-core"
-version = "0.8.0"
+version = "0.9.0"
 dependencies = [
  "bon",
  "chrono",

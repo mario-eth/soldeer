@@ -202,6 +202,7 @@ pub async fn get_latest_version(dependency_name: &str) -> Result<Dependency> {
         name: dependency_name.to_string(),
         version_req: data.clone().version,
         url: None,
+        project_root: None,
     }
     .into())
 }

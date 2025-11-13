@@ -345,8 +345,14 @@ pub struct GitDependency {
 
     /// The git identifier (revision, branch or tag).
     ///
-    /// If omitted, the main branch is used.
+    /// If omitted, the default branch is used.
     pub identifier: Option<GitIdentifier>,
+
+    /// An optional relative path to the project's root within the repository.
+    ///
+    /// The project root is where the soldeer.toml or foundry.toml resides. If no path is provided,
+    /// then the repo's root must contain a Soldeer config.
+    pub project_root: Option<PathBuf>,
 }
 
 impl fmt::Display for GitDependency {
@@ -379,6 +385,12 @@ pub struct HttpDependency {
     /// If omitted, the registry will be contacted to get the download URL for that dependency (by
     /// name).
     pub url: Option<String>,
+
+    /// An optional relative path to the project's root within the zip file.
+    ///
+    /// The project root is where the soldeer.toml or foundry.toml resides. If no path is provided,
+    /// then the zip's root must contain a Soldeer config.
+    pub project_root: Option<PathBuf>,
 }
 
 impl fmt::Display for HttpDependency {
@@ -482,12 +494,14 @@ impl Dependency {
                         version_req: dependency_version_req.to_string(),
                         git: url,
                         identifier,
+                        project_root: None,
                     }
                     .into(),
                     UrlType::Http(url) => HttpDependency {
                         name: dependency_name.to_string(),
                         version_req: dependency_version_req.to_string(),
                         url: Some(url),
+                        project_root: None,
                     }
                     .into(),
                 }
@@ -496,6 +510,7 @@ impl Dependency {
                 name: dependency_name.to_string(),
                 version_req: dependency_version_req.to_string(),
                 url: None,
+                project_root: None,
             }
             .into(),
         })
@@ -555,6 +570,14 @@ impl Dependency {
                             "url",
                             value(url).into_value().expect("url should be a valid toml value"),
                         );
+                        if let Some(path) = dep.project_root.as_ref() {
+                            table.insert(
+                                "project_root",
+                                value(path.to_string_lossy().into_owned())
+                                    .into_value()
+                                    .expect("project_root should be a valid toml value"),
+                            );
+                        }
                         value(table)
                     }
                     None => value(&dep.version_req),
@@ -594,6 +617,14 @@ impl Dependency {
                         );
                     }
                     None => {}
+                }
+                if let Some(path) = dep.project_root.as_ref() {
+                    table.insert(
+                        "project_root",
+                        value(path.to_string_lossy().into_owned())
+                            .into_value()
+                            .expect("project_root should be a valid toml value"),
+                    );
                 }
                 (dep.name.clone(), value(table))
             }
@@ -750,6 +781,7 @@ pub fn detect_config_location(root: impl AsRef<Path>) -> Option<ConfigLocation> 
 ///   - `rev` (optional): the revision hash for git dependencies
 ///   - `branch` (optional): the branch name for git dependencies
 ///   - `tag` (optional): the tag name for git dependencies
+///   - `project_root` (optional): relative path to the folder containing the config file
 pub fn read_config_deps(path: impl AsRef<Path>) -> Result<(Vec<Dependency>, Vec<ParsingWarning>)> {
     let contents = fs::read_to_string(&path)?;
     let doc: DocumentMut = contents.parse::<DocumentMut>()?;
@@ -917,6 +949,7 @@ fn find_project_root(cwd: Option<impl AsRef<Path>>) -> Result<PathBuf> {
 /// - `rev` (optional): the revision hash for git dependencies
 /// - `branch` (optional): the branch name for git dependencies
 /// - `tag` (optional): the tag name for git dependencies
+/// - `project_root` (optional): relative path to the folder containing the config file
 ///
 /// Note that the version requirement string cannot contain the `=` symbol for git dependencies
 /// and HTTP dependencies with a custom URL.
@@ -927,7 +960,13 @@ fn parse_dependency(name: impl Into<String>, value: &Item) -> Result<ParsingResu
             return Err(ConfigError::EmptyVersion(name));
         }
         // this function does not retrieve the url
-        return Ok(HttpDependency { name, version_req: version_req.to_string(), url: None }.into());
+        return Ok(HttpDependency {
+            name,
+            version_req: version_req.to_string(),
+            url: None,
+            project_root: None,
+        }
+        .into());
     }
 
     // we should have a table or inline table
@@ -949,7 +988,7 @@ fn parse_dependency(name: impl Into<String>, value: &Item) -> Result<ParsingResu
 
     // check for unsupported fields
     warnings.extend(table.iter().filter_map(|(k, _)| {
-        if !["version", "url", "git", "rev", "branch", "tag"].contains(&k) {
+        if !["version", "url", "git", "rev", "branch", "tag", "project_root"].contains(&k) {
             warn!(dependency = name; "toml parsing: `{k}` is not a valid dependency option");
             Some(ParsingWarning {
                 dependency_name: name.clone(),
@@ -975,6 +1014,16 @@ fn parse_dependency(name: impl Into<String>, value: &Item) -> Result<ParsingResu
         return Err(ConfigError::EmptyVersion(name));
     }
 
+    // both types of dependency definition can have the `project_root` field.
+    let project_root = match table.get("project_root").map(|v| v.as_str()) {
+        Some(Some(path)) => Some(path.into()),
+        Some(None) => {
+            debug!(dep = name; "dependency's `project_root` field is not a string");
+            return Err(ConfigError::InvalidField { field: "project_root".to_string(), dep: name });
+        }
+        None => None,
+    };
+
     // check if it's a git dependency
     match table.get("git").map(|v| v.as_str()) {
         Some(None) => {
@@ -988,7 +1037,7 @@ fn parse_dependency(name: impl Into<String>, value: &Item) -> Result<ParsingResu
                     field: "url".to_string(),
                     conflicts_with: "git".to_string(),
                     dep: name,
-                })
+                });
             }
 
             // for git dependencies, the version requirement string is going to be used as part of
@@ -1035,8 +1084,14 @@ fn parse_dependency(name: impl Into<String>, value: &Item) -> Result<ParsingResu
                 }
             };
             return Ok(ParsingResult {
-                dependency: GitDependency { name, git: git.to_string(), version_req, identifier }
-                    .into(),
+                dependency: GitDependency {
+                    name,
+                    git: git.to_string(),
+                    version_req,
+                    identifier,
+                    project_root,
+                }
+                .into(),
                 warnings,
             });
         }
@@ -1064,7 +1119,7 @@ fn parse_dependency(name: impl Into<String>, value: &Item) -> Result<ParsingResu
             Err(ConfigError::InvalidField { field: "url".to_string(), dep: name })
         }
         None => Ok(ParsingResult {
-            dependency: HttpDependency { name, version_req, url: None }.into(),
+            dependency: HttpDependency { name, version_req, url: None, project_root }.into(),
             warnings,
         }),
         Some(Some(url)) => {
@@ -1076,7 +1131,13 @@ fn parse_dependency(name: impl Into<String>, value: &Item) -> Result<ParsingResu
                 return Err(ConfigError::InvalidVersionReq(name));
             }
             Ok(ParsingResult {
-                dependency: HttpDependency { name, version_req, url: Some(url.to_string()) }.into(),
+                dependency: HttpDependency {
+                    name,
+                    version_req,
+                    url: Some(url.to_string()),
+                    project_root,
+                }
+                .into(),
                 warnings,
             })
         }

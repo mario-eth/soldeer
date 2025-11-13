@@ -554,6 +554,14 @@ impl Dependency {
         find_install_path(self, deps).await
     }
 
+    /// Get the relative path to the project root (config file location).
+    pub fn project_root(&self) -> Option<PathBuf> {
+        match self {
+            Self::Http(dep) => dep.project_root.clone(),
+            Self::Git(dep) => dep.project_root.clone(),
+        }
+    }
+
     /// Convert the dependency to a TOML value for saving to the config file.
     pub fn to_toml_value(&self) -> (String, Item) {
         match self {

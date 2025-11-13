@@ -106,6 +106,9 @@ pub enum ConfigError {
 
     #[error("dependency specifier {0} cannot be parsed as name~version")]
     InvalidNameAndVersion(String),
+
+    #[error("invalid project root path in {dep_path}: {project_root}")]
+    InvalidProjectRoot { project_root: PathBuf, dep_path: PathBuf },
 }
 
 #[derive(Error, Debug)]

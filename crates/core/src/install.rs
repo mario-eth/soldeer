@@ -8,7 +8,7 @@ use crate::{
         read_soldeer_config,
     },
     download::{clone_repo, delete_dependency_files, download_file, unzip_file},
-    errors::{InstallError, LockError},
+    errors::{ConfigError, InstallError, LockError},
     lock::{
         GitLockEntry, HttpLockEntry, Integrity, LockEntry, PrivateLockEntry, format_install_path,
         read_lockfile,
@@ -178,6 +178,12 @@ struct HttpInstallInfo {
 
     /// The checksum of the downloaded zip file, if available (e.g. from the lockfile)
     checksum: Option<String>,
+
+    /// An optional relative path to the project's root within the zip file.
+    ///
+    /// The project root is where the soldeer.toml or foundry.toml resides. If no path is provided,
+    /// then the zip's root must contain a Soldeer config.
+    project_root: Option<PathBuf>,
 }
 
 impl fmt::Display for HttpInstallInfo {
@@ -203,6 +209,12 @@ struct GitInstallInfo {
     /// The identifier of the git dependency (e.g. a commit hash, branch name, or tag name). If
     /// `None` is provided, the default branch is used.
     identifier: Option<GitIdentifier>,
+
+    /// An optional relative path to the project's root within the repository.
+    ///
+    /// The project root is where the soldeer.toml or foundry.toml resides. If no path is provided,
+    /// then the repo's root must contain a Soldeer config.
+    project_root: Option<PathBuf>,
 }
 
 impl fmt::Display for GitInstallInfo {
@@ -240,13 +252,14 @@ impl From<GitInstallInfo> for InstallInfo {
 }
 
 impl InstallInfo {
-    async fn from_lock(lock: LockEntry) -> Result<Self> {
+    async fn from_lock(lock: LockEntry, project_root: Option<PathBuf>) -> Result<Self> {
         match lock {
             LockEntry::Http(lock) => Ok(HttpInstallInfo {
                 name: lock.name,
                 version: lock.version,
                 url: lock.url,
                 checksum: Some(lock.checksum),
+                project_root,
             }
             .into()),
             LockEntry::Git(lock) => Ok(GitInstallInfo {
@@ -254,6 +267,7 @@ impl InstallInfo {
                 version: lock.version,
                 git: lock.git,
                 identifier: Some(GitIdentifier::from_rev(lock.rev)),
+                project_root,
             }
             .into()),
             LockEntry::Private(lock) => {
@@ -272,6 +286,7 @@ impl InstallInfo {
                     version: lock.version,
                     url: download.url,
                     checksum: Some(lock.checksum),
+                    project_root,
                 }))
             }
         }
@@ -428,7 +443,7 @@ pub async fn install_dependency(
             }
         }
         install_dependency_inner(
-            &InstallInfo::from_lock(lock.clone()).await?,
+            &InstallInfo::from_lock(lock.clone(), dependency.project_root()).await?,
             lock.install_path(&deps),
             recursive_deps,
             progress,
@@ -565,7 +580,7 @@ async fn install_dependency_inner(
 
             if subdependencies {
                 debug!(dep:% = dep; "installing subdependencies");
-                Box::pin(install_subdependencies(&path)).await?;
+                Box::pin(install_subdependencies(&path, dep.project_root.as_ref())).await?;
                 debug!(dep:% = dep; "finished installing subdependencies");
             }
             progress.unzip.send(dep.into()).ok();
@@ -585,9 +600,12 @@ async fn install_dependency_inner(
 /// Install subdependencies of a dependency.
 ///
 /// This function checks for a `.gitmodules` file in the dependency directory and clones the
-/// submodules if it exists. If a valid Soldeer config is found, the soldeer dependencies are
-/// installed.
-async fn install_subdependencies(path: impl AsRef<Path>) -> Result<()> {
+/// submodules if it exists. If a valid Soldeer config is found at the project root (optionally a
+/// sub-dir of the dependency folder), the soldeer dependencies are installed.
+async fn install_subdependencies(
+    path: impl AsRef<Path>,
+    project_root: Option<&PathBuf>,
+) -> Result<()> {
     let path = path.as_ref().to_path_buf();
     let gitmodules_path = path.join(".gitmodules");
     if fs::metadata(&gitmodules_path).await.is_ok() {
@@ -601,7 +619,7 @@ async fn install_subdependencies(path: impl AsRef<Path>) -> Result<()> {
             for (_, submodule) in submodules {
                 let sub_path = path.join(submodule.path);
                 debug!(sub_path:?; "recursing into the git submodule");
-                Box::pin(install_subdependencies(sub_path)).await?;
+                Box::pin(install_subdependencies(sub_path, None)).await?;
             }
         } else {
             debug!(path:?; "subdependency has git submodules configuration but is not a git repository");
@@ -610,11 +628,30 @@ async fn install_subdependencies(path: impl AsRef<Path>) -> Result<()> {
             // those are also installed
             for sub_path in submodule_paths {
                 debug!(sub_path:?; "recursing into the git submodule");
-                Box::pin(install_subdependencies(sub_path)).await?;
+                Box::pin(install_subdependencies(sub_path, None)).await?;
             }
         }
     }
     // if there's a suitable soldeer config, install the soldeer deps
+    let path = match project_root {
+        Some(relative_root) => {
+            let tentative_path = path.join(relative_root).canonicalize().map_err(|_| {
+                InstallError::ConfigError(ConfigError::InvalidProjectRoot {
+                    project_root: relative_root.to_owned(),
+                    dep_path: path.clone(),
+                })
+            })?;
+            // final path must be below the dependency's folder
+            if !tentative_path.starts_with(&path) {
+                return Err(InstallError::ConfigError(ConfigError::InvalidProjectRoot {
+                    project_root: relative_root.to_owned(),
+                    dep_path: path.clone(),
+                }));
+            }
+            tentative_path
+        }
+        None => path,
+    };
     if detect_config_location(&path).is_some() {
         // install subdependencies
         debug!(path:?; "found soldeer config, installing subdependencies");
@@ -683,7 +720,7 @@ async fn install_http_dependency(
 
     if subdependencies {
         debug!(dep:% = dep; "installing subdependencies");
-        Box::pin(install_subdependencies(path)).await?;
+        Box::pin(install_subdependencies(path, dep.project_root.as_ref())).await?;
         debug!(dep:% = dep; "finished installing subdependencies");
     }
     progress.subdependencies.send(dep.into()).ok();

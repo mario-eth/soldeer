@@ -8,6 +8,7 @@ use soldeer_core::{
     errors::InstallError,
     lock::read_lockfile,
     push::zip_file,
+    utils::hash_file,
 };
 use std::{
     fs::{self},
@@ -591,6 +592,7 @@ integrity = "e629088e5b74df78f116a24c328a64fd002b4e42449607b6ca78f9afb799374d"
 async fn test_install_recursive_project_root_invalid_path() {
     let dir = testdir!();
     let zip_path = create_zip_monorepo(&dir);
+    let checksum = hash_file(&zip_path).unwrap();
 
     // directory traversal is forbidden
     let contents = r#"[dependencies]
@@ -609,7 +611,7 @@ recursive_deps = true
 name = "mylib"
 version = "1.0.0"
 url = "{}/file.zip"
-checksum = "7c38e8c60000be4724f2ad39f05b0a8f3758e9fec008ceb315a0f24b2aa98295"
+checksum = "{checksum}"
 integrity = "e629088e5b74df78f116a24c328a64fd002b4e42449607b6ca78f9afb799374d"
 "#,
         server.url()

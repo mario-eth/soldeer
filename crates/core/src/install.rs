@@ -633,26 +633,7 @@ async fn install_subdependencies(
         }
     }
     // if there's a suitable soldeer config, install the soldeer deps
-    let path = match project_root {
-        Some(relative_root) => {
-            let tentative_path = canonicalize(path.join(relative_root)).await.map_err(|_| {
-                InstallError::ConfigError(ConfigError::InvalidProjectRoot {
-                    project_root: relative_root.to_owned(),
-                    dep_path: path.clone(),
-                })
-            })?;
-            // final path must be below the dependency's folder
-            let path_with_slashes = path.to_slash_lossy().into_owned();
-            if !tentative_path.to_slash_lossy().starts_with(&path_with_slashes) {
-                return Err(InstallError::ConfigError(ConfigError::InvalidProjectRoot {
-                    project_root: relative_root.to_owned(),
-                    dep_path: path.clone(),
-                }));
-            }
-            tentative_path
-        }
-        None => path,
-    };
+    let path = get_subdependency_root(path, project_root).await?;
     if detect_config_location(&path).is_some() {
         // install subdependencies
         debug!(path:?; "found soldeer config, installing subdependencies");
@@ -876,6 +857,38 @@ async fn reset_git_dependency(lock: &GitLockEntry, deps: impl AsRef<Path>) -> Re
     run_git_command(&["reset", "--hard", &lock.rev], Some(&path)).await?;
     run_git_command(&["clean", "-fd"], Some(&path)).await?;
     Ok(())
+}
+
+/// Normalize and check the path to a subdependency's project root.
+///
+/// The combination of the subdependency path with the relative path to the root must be at or below
+/// the level of the subdependency, to avoid directory traversal.
+async fn get_subdependency_root(
+    subdependency_path: PathBuf,
+    relative_root: Option<&PathBuf>,
+) -> Result<PathBuf> {
+    let path = match relative_root {
+        Some(relative_root) => {
+            let tentative_path =
+                canonicalize(subdependency_path.join(relative_root)).await.map_err(|_| {
+                    InstallError::ConfigError(ConfigError::InvalidProjectRoot {
+                        project_root: relative_root.to_owned(),
+                        dep_path: subdependency_path.clone(),
+                    })
+                })?;
+            // final path must be below the dependency's folder
+            let path_with_slashes = subdependency_path.to_slash_lossy().into_owned();
+            if !tentative_path.to_slash_lossy().starts_with(&path_with_slashes) {
+                return Err(InstallError::ConfigError(ConfigError::InvalidProjectRoot {
+                    project_root: relative_root.to_owned(),
+                    dep_path: subdependency_path.clone(),
+                }));
+            }
+            tentative_path
+        }
+        None => subdependency_path,
+    };
+    Ok(path)
 }
 
 #[cfg(test)]

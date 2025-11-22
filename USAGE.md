@@ -138,7 +138,8 @@ mydep = { version = "1.0.0", project_root = "contracts" }
 recursive_deps = true
 ```
 
-The path is a relative path, starting from the root of the dependency, to the folder containing the config file.
+The path is a relative path, starting from the root of the dependency, to the folder containing the config file. You
+should use forward slashes (`/`) as separator on all platforms.
 
 #### Note on Sub-Dependencies
 

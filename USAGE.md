@@ -318,6 +318,7 @@ For those who want an extra layer of security, the `soldeer.lock` file saves a `
 file and the corresponding unzipped folder (see `soldeer_core::utils::hash_folder` to see how it gets generated). These
 can be compared with the official releases to ensure the files were not manipulated.
 
-**For Project Maintainers** If you want to move your project from the Soldeer organization and take care of pushing the
-versions to Soldeer yourself, please open an issue on GitHub or contact m4rio.eth on
-[X (formerly Twitter)](https://twitter.com/m4rio_eth).
+**For Project Maintainers**
+
+If you want to move your project from the Soldeer organization and take care of pushing the versions to Soldeer
+yourself, please open an issue on GitHub or contact m4rio.eth on [X (formerly Twitter)](https://twitter.com/m4rio_eth).

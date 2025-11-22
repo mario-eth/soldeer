@@ -635,14 +635,15 @@ async fn install_subdependencies(
     // if there's a suitable soldeer config, install the soldeer deps
     let path = match project_root {
         Some(relative_root) => {
-            let tentative_path = path.join(relative_root).canonicalize().map_err(|_| {
+            let tentative_path = canonicalize(path.join(relative_root)).await.map_err(|_| {
                 InstallError::ConfigError(ConfigError::InvalidProjectRoot {
                     project_root: relative_root.to_owned(),
                     dep_path: path.clone(),
                 })
             })?;
             // final path must be below the dependency's folder
-            if !tentative_path.starts_with(&path) {
+            let path_with_slashes = path.to_slash_lossy().into_owned();
+            if !tentative_path.to_slash_lossy().starts_with(&path_with_slashes) {
                 return Err(InstallError::ConfigError(ConfigError::InvalidProjectRoot {
                     project_root: relative_root.to_owned(),
                     dep_path: path.clone(),

@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## `soldeer-core` - [0.10.0](https://github.com/mario-eth/soldeer/compare/soldeer-core-v0.9.0...soldeer-core-v0.10.0) - 2025-12-03
+
+### Added
+- *(config)* [**breaking**] allow to specify the project root path for dependencies ([#341](https://github.com/mario-eth/soldeer/pull/341))
+
 ## `soldeer` - [0.9.0](https://github.com/mario-eth/soldeer/compare/v0.8.0...v0.9.0) - 2025-10-16
 
 ### Other

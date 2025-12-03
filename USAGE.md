@@ -31,9 +31,9 @@ path.
 [forge] soldeer install <NAME>~<VERSION>
 ```
 
-This command searches the Soldeer registry at [https://soldeer.xyz](https://soldeer.xyz) for the specified dependency
-by name and version. If a match is found, a ZIP file containing the package source will be downloaded and unzipped into
-the `dependencies` directory.
+This command searches the Soldeer registry at [https://soldeer.xyz](https://soldeer.xyz) for the specified dependency by
+name and version. If a match is found, a ZIP file containing the package source will be downloaded and unzipped into the
+`dependencies` directory.
 
 The command also adds the dependency to the project's config file and creates the necessary
 [remappings](https://book.getfoundry.sh/projects/dependencies#remapping-dependencies) if configured to do so.
@@ -75,7 +75,7 @@ that a version must still be provided, but it can be freely chosen.
 [forge] soldeer install <NAME>~<VERSION> --git <GIT_URL>
 ```
 
-If the URL to a git repository is provided, then the repository will be cloned into the `dependencies` folder with the 
+If the URL to a git repository is provided, then the repository will be cloned into the `dependencies` folder with the
 `git` CLI available on the system. HTTPS and SSH-style URLs are supported (see examples below).
 
 Cloning a specific identifier can be done with the `--rev <COMMIT>`, `--branch <BRANCH>` or `--tag <TAG>` arguments. If
@@ -111,14 +111,35 @@ When invoked without arguments, the `install` command installs the project's exi
 configuration file (`soldeer.toml`/`foundry.toml`) and lockfile `soldeer.lock` if present.
 
 Dependencies which are already present inside the `dependencies` folder are not downloaded again. For dependencies with
-a version range specified in the config file, the exact version that is written in the lockfile is used, even if a
-newer version exists on the registry. To update the lockfile to use the latest supported version, use `soldeer update`.
+a version range specified in the config file, the exact version that is written in the lockfile is used, even if a newer
+version exists on the registry. To update the lockfile to use the latest supported version, use `soldeer update`.
 
 ### Recursive Installation
 
-With the `--recursive-deps` flag, Soldeer will install the dependencies of each installed dependency, recursively.
-This is done internally by running `git submodule update --init --recursive` and/or `soldeer install` inside of the
-dependency's folder. This behavior can also be enabled permanently via the config file.
+With the `--recursive-deps` flag, Soldeer will install the dependencies of each installed dependency, recursively. This
+is done internally by running `git submodule update --init --recursive` and/or installing Soldeer dependencies inside of
+the dependency's folder. This behavior can also be enabled permanently via the config file.
+
+#### Specifying the Project Root for a Dependency
+
+If recursive installation is enabled, Soldeer must find a `foundry.toml` or `soldeer.toml` config file within the
+dependency's directory to know which subdependencies to install.
+
+In case that config file is not located at the root of the dependency's directory (meaning at the root of a git
+repository or at the root of the zip file), then the path to the folder containing that file must be specified with
+`project_root`:
+
+```toml
+# foundry.toml
+[dependencies]
+mydep = { version = "1.0.0", project_root = "contracts" }
+
+[soldeer]
+recursive_deps = true
+```
+
+The path is a relative path, starting from the root of the dependency, to the folder containing the config file. You
+should use forward slashes (`/`) as separator on all platforms.
 
 #### Note on Sub-Dependencies
 
@@ -139,8 +160,8 @@ A contract inside `my-project` has the following import:
 ```
 
 However, `dependency~1` also depends on `openzeppelin`, but it uses version `4.9.2` (with remapping
-`@openzeppelin/contracts/=dependencies/openzeppelin-4.9.2/`). The contract inside `dependency-1`
-has the same import path because they chose to use the same remappings path as `my-project`:
+`@openzeppelin/contracts/=dependencies/openzeppelin-4.9.2/`). The contract inside `dependency-1` has the same import
+path because they chose to use the same remappings path as `my-project`:
 
 ```solidity
 @openzeppelin/contracts/token/ERC20/ERC20.sol
@@ -197,10 +218,10 @@ In order to push a new dependency to the repository, an account must first be cr
 [https://soldeer.xyz](https://soldeer.xyz). Then, a project with the dependency name must be created through the
 website.
 
-Finally, the `[forge] soldeer login` command must be used to retrieve or provide an access token for the API.
-CLI tokens can be generated on soldeer.xyz and should be preferred over using the email and password in the CLI,
-because email login will be removed in a future version of Soldeer.
-Alternatively, you can provide a valid CLI token via the `SOLDEER_API_TOKEN` environment variable.
+Finally, the `[forge] soldeer login` command must be used to retrieve or provide an access token for the API. CLI tokens
+can be generated on soldeer.xyz and should be preferred over using the email and password in the CLI, because email
+login will be removed in a future version of Soldeer. Alternatively, you can provide a valid CLI token via the
+`SOLDEER_API_TOKEN` environment variable.
 
 Example:
 
@@ -240,8 +261,8 @@ We recommend that everyone runs a dry-run before pushing a new dependency to avo
 You are at risk to push sensitive files to the central repository that then can be seen by everyone. Make sure to
 exclude sensitive files in the `.soldeerignore` or `.gitignore` file.
 
-Furthermore, we've implemented a warning that gets triggered if the package contains any dotfile (a file with a
-name starting with `.`). This warning can be ignored with `--skip-warnings`.
+Furthermore, we've implemented a warning that gets triggered if the package contains any dotfile (a file with a name
+starting with `.`). This warning can be ignored with `--skip-warnings`.
 
 ## Configuration
 
@@ -293,10 +314,11 @@ repository by relying on their npmjs or GitHub versions. We are using
 [an open-source crawler tool](https://github.com/mario-eth/soldeer-crawler) to crawl and push the dependencies under the
 `soldeer` organization.
 
-For those who want an extra layer of security, the `soldeer.lock` file saves a `SHA-256` hash for each downloaded
-ZIP file and the corresponding unzipped folder (see `soldeer_core::utils::hash_folder` to see how it gets generated).
-These can be compared with the official releases to ensure the files were not manipulated.
+For those who want an extra layer of security, the `soldeer.lock` file saves a `SHA-256` hash for each downloaded ZIP
+file and the corresponding unzipped folder (see `soldeer_core::utils::hash_folder` to see how it gets generated). These
+can be compared with the official releases to ensure the files were not manipulated.
 
 **For Project Maintainers**
+
 If you want to move your project from the Soldeer organization and take care of pushing the versions to Soldeer
 yourself, please open an issue on GitHub or contact m4rio.eth on [X (formerly Twitter)](https://twitter.com/m4rio_eth).

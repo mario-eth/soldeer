@@ -1,18 +1,22 @@
+#![allow(clippy::unwrap_used)]
 use mockito::Matcher;
 use soldeer_commands::{Command, Verbosity, commands::install::Install, run};
 use soldeer_core::{
+    SoldeerError,
     config::{ConfigLocation, read_config_deps},
     download::download_file,
+    errors::InstallError,
     lock::read_lockfile,
+    push::zip_file,
+    utils::hash_file,
 };
 use std::{
     fs::{self},
-    path::Path,
+    path::{Path, PathBuf},
 };
 use temp_env::async_with_vars;
 use testdir::testdir;
 
-#[allow(clippy::unwrap_used)]
 fn check_install(dir: &Path, name: &str, version_req: &str) {
     assert!(dir.join("dependencies").exists());
     let mut config_path = dir.join("soldeer.toml");
@@ -28,6 +32,37 @@ fn check_install(dir: &Path, name: &str, version_req: &str) {
     let version = lock.entries.first().unwrap().version();
     assert!(version.starts_with(version_req));
     assert!(dir.join("dependencies").join(format!("{name}-{version}")).exists());
+}
+
+fn create_zip_monorepo(testdir: &Path) -> PathBuf {
+    let root = testdir.join("monorepo");
+    fs::create_dir(&root).unwrap();
+    let contracts = root.join("contracts");
+    fs::create_dir(&contracts).unwrap();
+    let mut files = Vec::new();
+    files.push(root.join("README.md"));
+    fs::write(
+        files.last().unwrap(),
+        "Root of the repo is here, foundry project is under `contracts`",
+    )
+    .unwrap();
+    files.push(contracts.join("foundry.toml"));
+    fs::write(
+        files.last().unwrap(),
+        r#"[profile.default]
+libs = ["dependencies"]
+remappings = ["forge-std/=dependencies/forge-std-1.11.0/src/"]
+
+[dependencies]
+forge-std = "1.11.0"
+
+[soldeer]
+remappings_location = "config"
+recursive_deps = true"#,
+    )
+    .unwrap();
+
+    zip_file(&root, &files, "test").unwrap() // zip is inside the `monorepo` folder
 }
 
 #[tokio::test]
@@ -511,6 +546,91 @@ async fn test_install_recursive_deps_nested() {
         let dep_path = dir.join("dependencies").join(path);
         assert!(dep_path.exists());
     }
+}
+
+#[tokio::test]
+async fn test_install_recursive_project_root() {
+    let dir = testdir!();
+    let zip_path = create_zip_monorepo(&dir);
+    let checksum = hash_file(&zip_path).unwrap();
+
+    let contents = r#"[dependencies]
+mylib = { version = "1.0.0", project_root = "contracts" }
+
+[soldeer]
+recursive_deps = true
+"#;
+
+    // serve the dependency which uses foundry in a `contracts` subfolder
+    let mut server = mockito::Server::new_async().await;
+    server.mock("GET", "/file.zip").with_body_from_file(zip_path).create_async().await;
+    fs::write(dir.join("soldeer.toml"), contents).unwrap();
+    let lock = format!(
+        r#"[[dependencies]]
+name = "mylib"
+version = "1.0.0"
+url = "{}/file.zip"
+checksum = "{checksum}"
+integrity = "e629088e5b74df78f116a24c328a64fd002b4e42449607b6ca78f9afb799374d"
+"#,
+        server.url()
+    );
+    fs::write(dir.join("soldeer.lock"), lock).unwrap();
+
+    let cmd: Command = Install::builder().build().into();
+    let res = async_with_vars(
+        [("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))],
+        run(cmd.clone(), Verbosity::default()),
+    )
+    .await;
+    assert!(res.is_ok(), "{res:?}");
+
+    // check that we recursively installed all deps
+    assert!(dir.join("dependencies/mylib-1.0.0/contracts/dependencies/forge-std-1.11.0").is_dir());
+}
+
+#[tokio::test]
+async fn test_install_recursive_project_root_invalid_path() {
+    let dir = testdir!();
+    let zip_path = create_zip_monorepo(&dir);
+    let checksum = hash_file(&zip_path).unwrap();
+
+    // directory traversal is forbidden
+    let contents = r#"[dependencies]
+mylib = { version = "1.0.0", project_root = "../../../contracts" }
+
+[soldeer]
+recursive_deps = true
+"#;
+
+    // serve the dependency which uses foundry in a `contracts` subfolder
+    let mut server = mockito::Server::new_async().await;
+    server.mock("GET", "/file.zip").with_body_from_file(zip_path).create_async().await;
+    fs::write(dir.join("soldeer.toml"), contents).unwrap();
+    let lock = format!(
+        r#"[[dependencies]]
+name = "mylib"
+version = "1.0.0"
+url = "{}/file.zip"
+checksum = "{checksum}"
+integrity = "e629088e5b74df78f116a24c328a64fd002b4e42449607b6ca78f9afb799374d"
+"#,
+        server.url()
+    );
+    fs::write(dir.join("soldeer.lock"), lock).unwrap();
+
+    let cmd: Command = Install::builder().build().into();
+    let res = async_with_vars(
+        [("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))],
+        run(cmd.clone(), Verbosity::default()),
+    )
+    .await;
+    assert!(matches!(
+        res.unwrap_err(),
+        SoldeerError::InstallError(InstallError::ConfigError(
+            soldeer_core::errors::ConfigError::InvalidProjectRoot { .. }
+        ))
+    ));
 }
 
 #[tokio::test]

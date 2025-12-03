@@ -325,7 +325,8 @@ impl GitIdentifier {
 ///
 /// This struct is used to represent a git dependency from the config file.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, bon::Builder)]
-#[builder(on(String, into))]
+#[allow(clippy::duplicated_attributes)]
+#[builder(on(String, into), on(PathBuf, into))]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, Deserialize))]
 pub struct GitDependency {
     /// The name of the dependency (user-defined).
@@ -345,8 +346,14 @@ pub struct GitDependency {
 
     /// The git identifier (revision, branch or tag).
     ///
-    /// If omitted, the main branch is used.
+    /// If omitted, the default branch is used.
     pub identifier: Option<GitIdentifier>,
+
+    /// An optional relative path to the project's root within the repository.
+    ///
+    /// The project root is where the soldeer.toml or foundry.toml resides. If no path is provided,
+    /// then the repo's root must contain a Soldeer config.
+    pub project_root: Option<PathBuf>,
 }
 
 impl fmt::Display for GitDependency {
@@ -359,7 +366,8 @@ impl fmt::Display for GitDependency {
 ///
 /// This struct is used to represent an HTTP dependency from the config file.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, bon::Builder)]
-#[builder(on(String, into))]
+#[allow(clippy::duplicated_attributes)]
+#[builder(on(String, into), on(PathBuf, into))]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, Deserialize))]
 pub struct HttpDependency {
     /// The name of the dependency (user-defined).
@@ -379,6 +387,12 @@ pub struct HttpDependency {
     /// If omitted, the registry will be contacted to get the download URL for that dependency (by
     /// name).
     pub url: Option<String>,
+
+    /// An optional relative path to the project's root within the zip file.
+    ///
+    /// The project root is where the soldeer.toml or foundry.toml resides. If no path is provided,
+    /// then the zip's root must contain a Soldeer config.
+    pub project_root: Option<PathBuf>,
 }
 
 impl fmt::Display for HttpDependency {
@@ -482,12 +496,14 @@ impl Dependency {
                         version_req: dependency_version_req.to_string(),
                         git: url,
                         identifier,
+                        project_root: None,
                     }
                     .into(),
                     UrlType::Http(url) => HttpDependency {
                         name: dependency_name.to_string(),
                         version_req: dependency_version_req.to_string(),
                         url: Some(url),
+                        project_root: None,
                     }
                     .into(),
                 }
@@ -496,6 +512,7 @@ impl Dependency {
                 name: dependency_name.to_string(),
                 version_req: dependency_version_req.to_string(),
                 url: None,
+                project_root: None,
             }
             .into(),
         })
@@ -537,6 +554,14 @@ impl Dependency {
         find_install_path(self, deps).await
     }
 
+    /// Get the relative path to the project root (config file location).
+    pub fn project_root(&self) -> Option<PathBuf> {
+        match self {
+            Self::Http(dep) => dep.project_root.clone(),
+            Self::Git(dep) => dep.project_root.clone(),
+        }
+    }
+
     /// Convert the dependency to a TOML value for saving to the config file.
     pub fn to_toml_value(&self) -> (String, Item) {
         match self {
@@ -555,6 +580,14 @@ impl Dependency {
                             "url",
                             value(url).into_value().expect("url should be a valid toml value"),
                         );
+                        if let Some(path) = dep.project_root.as_ref() {
+                            table.insert(
+                                "project_root",
+                                value(path.to_string_lossy().into_owned())
+                                    .into_value()
+                                    .expect("project_root should be a valid toml value"),
+                            );
+                        }
                         value(table)
                     }
                     None => value(&dep.version_req),
@@ -594,6 +627,14 @@ impl Dependency {
                         );
                     }
                     None => {}
+                }
+                if let Some(path) = dep.project_root.as_ref() {
+                    table.insert(
+                        "project_root",
+                        value(path.to_string_lossy().into_owned())
+                            .into_value()
+                            .expect("project_root should be a valid toml value"),
+                    );
                 }
                 (dep.name.clone(), value(table))
             }
@@ -750,6 +791,7 @@ pub fn detect_config_location(root: impl AsRef<Path>) -> Option<ConfigLocation> 
 ///   - `rev` (optional): the revision hash for git dependencies
 ///   - `branch` (optional): the branch name for git dependencies
 ///   - `tag` (optional): the tag name for git dependencies
+///   - `project_root` (optional): relative path to the folder containing the config file
 pub fn read_config_deps(path: impl AsRef<Path>) -> Result<(Vec<Dependency>, Vec<ParsingWarning>)> {
     let contents = fs::read_to_string(&path)?;
     let doc: DocumentMut = contents.parse::<DocumentMut>()?;
@@ -917,6 +959,7 @@ fn find_project_root(cwd: Option<impl AsRef<Path>>) -> Result<PathBuf> {
 /// - `rev` (optional): the revision hash for git dependencies
 /// - `branch` (optional): the branch name for git dependencies
 /// - `tag` (optional): the tag name for git dependencies
+/// - `project_root` (optional): relative path to the folder containing the config file
 ///
 /// Note that the version requirement string cannot contain the `=` symbol for git dependencies
 /// and HTTP dependencies with a custom URL.
@@ -927,7 +970,13 @@ fn parse_dependency(name: impl Into<String>, value: &Item) -> Result<ParsingResu
             return Err(ConfigError::EmptyVersion(name));
         }
         // this function does not retrieve the url
-        return Ok(HttpDependency { name, version_req: version_req.to_string(), url: None }.into());
+        return Ok(HttpDependency {
+            name,
+            version_req: version_req.to_string(),
+            url: None,
+            project_root: None,
+        }
+        .into());
     }
 
     // we should have a table or inline table
@@ -949,7 +998,7 @@ fn parse_dependency(name: impl Into<String>, value: &Item) -> Result<ParsingResu
 
     // check for unsupported fields
     warnings.extend(table.iter().filter_map(|(k, _)| {
-        if !["version", "url", "git", "rev", "branch", "tag"].contains(&k) {
+        if !["version", "url", "git", "rev", "branch", "tag", "project_root"].contains(&k) {
             warn!(dependency = name; "toml parsing: `{k}` is not a valid dependency option");
             Some(ParsingWarning {
                 dependency_name: name.clone(),
@@ -975,6 +1024,16 @@ fn parse_dependency(name: impl Into<String>, value: &Item) -> Result<ParsingResu
         return Err(ConfigError::EmptyVersion(name));
     }
 
+    // both types of dependency definition can have the `project_root` field.
+    let project_root = match table.get("project_root").map(|v| v.as_str()) {
+        Some(Some(path)) => Some(path.into()),
+        Some(None) => {
+            debug!(dep = name; "dependency's `project_root` field is not a string");
+            return Err(ConfigError::InvalidField { field: "project_root".to_string(), dep: name });
+        }
+        None => None,
+    };
+
     // check if it's a git dependency
     match table.get("git").map(|v| v.as_str()) {
         Some(None) => {
@@ -988,7 +1047,7 @@ fn parse_dependency(name: impl Into<String>, value: &Item) -> Result<ParsingResu
                     field: "url".to_string(),
                     conflicts_with: "git".to_string(),
                     dep: name,
-                })
+                });
             }
 
             // for git dependencies, the version requirement string is going to be used as part of
@@ -1035,8 +1094,14 @@ fn parse_dependency(name: impl Into<String>, value: &Item) -> Result<ParsingResu
                 }
             };
             return Ok(ParsingResult {
-                dependency: GitDependency { name, git: git.to_string(), version_req, identifier }
-                    .into(),
+                dependency: GitDependency {
+                    name,
+                    git: git.to_string(),
+                    version_req,
+                    identifier,
+                    project_root,
+                }
+                .into(),
                 warnings,
             });
         }
@@ -1064,7 +1129,7 @@ fn parse_dependency(name: impl Into<String>, value: &Item) -> Result<ParsingResu
             Err(ConfigError::InvalidField { field: "url".to_string(), dep: name })
         }
         None => Ok(ParsingResult {
-            dependency: HttpDependency { name, version_req, url: None }.into(),
+            dependency: HttpDependency { name, version_req, url: None, project_root }.into(),
             warnings,
         }),
         Some(Some(url)) => {
@@ -1076,7 +1141,13 @@ fn parse_dependency(name: impl Into<String>, value: &Item) -> Result<ParsingResu
                 return Err(ConfigError::InvalidVersionReq(name));
             }
             Ok(ParsingResult {
-                dependency: HttpDependency { name, version_req, url: Some(url.to_string()) }.into(),
+                dependency: HttpDependency {
+                    name,
+                    version_req,
+                    url: Some(url.to_string()),
+                    project_root,
+                }
+                .into(),
                 warnings,
             })
         }
@@ -1424,6 +1495,8 @@ libs = ["dependencies"]
 "lib5" = { version = "5.0.0", git = "https://example.com/repo.git", rev = "123456" }
 "lib6" = { version = "6.0.0", git = "https://example.com/repo.git", branch = "dev" }
 "lib7" = { version = "7.0.0", git = "https://example.com/repo.git", tag = "v7.0.0" }
+"lib8" = { version = "8.0.0", url = "https://example.com", project_root = "foo/bar" }
+"lib9" = { version = "9.0.0", git = "https://example.com/repo.git", project_root = "test/test2" }
 "#;
         let config_path = write_to_config(config_contents, "foundry.toml");
         let res = read_config_deps(config_path);
@@ -1486,6 +1559,26 @@ libs = ["dependencies"]
                 .build()
                 .into()
         );
+        assert_eq!(
+            result[7],
+            HttpDependency::builder()
+                .name("lib8")
+                .version_req("8.0.0")
+                .url("https://example.com")
+                .project_root("foo/bar")
+                .build()
+                .into()
+        );
+        assert_eq!(
+            result[8],
+            GitDependency::builder()
+                .name("lib9")
+                .version_req("9.0.0")
+                .git("https://example.com/repo.git")
+                .project_root("test/test2")
+                .build()
+                .into()
+        );
     }
 
     #[test]
@@ -1498,6 +1591,8 @@ libs = ["dependencies"]
 "lib5" = { version = "5.0.0", git = "https://example.com/repo.git", rev = "123456" }
 "lib6" = { version = "6.0.0", git = "https://example.com/repo.git", branch = "dev" }
 "lib7" = { version = "7.0.0", git = "https://example.com/repo.git", tag = "v7.0.0" }
+"lib8" = { version = "8.0.0", url = "https://example.com", project_root = "foo/bar" }
+"lib9" = { version = "9.0.0", git = "https://example.com/repo.git", project_root = "test/test2" }
 "#;
         let config_path = write_to_config(config_contents, "soldeer.toml");
         let res = read_config_deps(config_path);
@@ -1557,6 +1652,26 @@ libs = ["dependencies"]
                 .version_req("7.0.0")
                 .git("https://example.com/repo.git")
                 .identifier(GitIdentifier::from_tag("v7.0.0"))
+                .build()
+                .into()
+        );
+        assert_eq!(
+            result[7],
+            HttpDependency::builder()
+                .name("lib8")
+                .version_req("8.0.0")
+                .url("https://example.com")
+                .project_root("foo/bar")
+                .build()
+                .into()
+        );
+        assert_eq!(
+            result[8],
+            GitDependency::builder()
+                .name("lib9")
+                .version_req("9.0.0")
+                .git("https://example.com/repo.git")
+                .project_root("test/test2")
                 .build()
                 .into()
         );
@@ -1626,6 +1741,13 @@ libs = ["dependencies"]
                 .url("https://test.com/test.zip")
                 .build()
                 .into(),
+            HttpDependency::builder()
+                .name("lib21")
+                .version_req("1.0.0")
+                .url("https://test.com/test.zip")
+                .project_root("foo/bar")
+                .build()
+                .into(),
             GitDependency::builder()
                 .name("lib3")
                 .version_req("1.0.0")
@@ -1651,6 +1773,13 @@ libs = ["dependencies"]
                 .version_req("1.0.0")
                 .git("https://example.com/repo.git")
                 .identifier(GitIdentifier::from_tag("v1.0.0"))
+                .build()
+                .into(),
+            GitDependency::builder()
+                .name("lib7")
+                .version_req("1.0.0")
+                .git("https://example.com/repo.git")
+                .project_root("foo/bar")
                 .build()
                 .into(),
         ];
@@ -1685,41 +1814,53 @@ libs = ["dependencies"]
 "lib5" = { version = "5.0.0", git = "https://example.com/repo.git", rev = "123456" }
 "lib6" = { version = "6.0.0", git = "https://example.com/repo.git", branch = "dev" }
 "lib7" = { version = "7.0.0", git = "https://example.com/repo.git", tag = "v7.0.0" }
+"lib8" = { version = "8.0.0", url = "https://example.com", project_root = "foo/bar" }
+"lib9" = { version = "9.0.0", git = "https://example.com/repo.git", project_root = "foo/bar" }
         "#;
         let config_path = write_to_config(config_contents, "soldeer.toml");
         let res = delete_from_config("lib1", &config_path);
         assert!(res.is_ok(), "{res:?}");
         assert_eq!(res.unwrap().name(), "lib1");
-        assert_eq!(read_config_deps(&config_path).unwrap().0.len(), 6);
+        assert_eq!(read_config_deps(&config_path).unwrap().0.len(), 8);
 
         let res = delete_from_config("lib2", &config_path);
         assert!(res.is_ok(), "{res:?}");
         assert_eq!(res.unwrap().name(), "lib2");
-        assert_eq!(read_config_deps(&config_path).unwrap().0.len(), 5);
+        assert_eq!(read_config_deps(&config_path).unwrap().0.len(), 7);
 
         let res = delete_from_config("lib3", &config_path);
         assert!(res.is_ok(), "{res:?}");
         assert_eq!(res.unwrap().name(), "lib3");
-        assert_eq!(read_config_deps(&config_path).unwrap().0.len(), 4);
+        assert_eq!(read_config_deps(&config_path).unwrap().0.len(), 6);
 
         let res = delete_from_config("lib4", &config_path);
         assert!(res.is_ok(), "{res:?}");
         assert_eq!(res.unwrap().name(), "lib4");
-        assert_eq!(read_config_deps(&config_path).unwrap().0.len(), 3);
+        assert_eq!(read_config_deps(&config_path).unwrap().0.len(), 5);
 
         let res = delete_from_config("lib5", &config_path);
         assert!(res.is_ok(), "{res:?}");
         assert_eq!(res.unwrap().name(), "lib5");
-        assert_eq!(read_config_deps(&config_path).unwrap().0.len(), 2);
+        assert_eq!(read_config_deps(&config_path).unwrap().0.len(), 4);
 
         let res = delete_from_config("lib6", &config_path);
         assert!(res.is_ok(), "{res:?}");
         assert_eq!(res.unwrap().name(), "lib6");
-        assert_eq!(read_config_deps(&config_path).unwrap().0.len(), 1);
+        assert_eq!(read_config_deps(&config_path).unwrap().0.len(), 3);
 
         let res = delete_from_config("lib7", &config_path);
         assert!(res.is_ok(), "{res:?}");
         assert_eq!(res.unwrap().name(), "lib7");
+        assert_eq!(read_config_deps(&config_path).unwrap().0.len(), 2);
+
+        let res = delete_from_config("lib8", &config_path);
+        assert!(res.is_ok(), "{res:?}");
+        assert_eq!(res.unwrap().name(), "lib8");
+        assert_eq!(read_config_deps(&config_path).unwrap().0.len(), 1);
+
+        let res = delete_from_config("lib9", &config_path);
+        assert!(res.is_ok(), "{res:?}");
+        assert_eq!(res.unwrap().name(), "lib9");
         assert!(read_config_deps(&config_path).unwrap().0.is_empty());
     }
 
@@ -1804,6 +1945,8 @@ libs = ["dependencies"]
 "lib5" = { version = "5.0.0", git = "https://example.com/repo.git", rev = "123456" }
 "lib6" = { version = "6.0.0", git = "https://example.com/repo.git", branch = "dev" }
 "lib7" = { version = "7.0.0", git = "https://example.com/repo.git", tag = "v7.0.0" }
+"lib8" = { version = "8.0.0", url = "https://example.com", project_root = "foo/bar" }
+"lib9" = { version = "9.0.0", git = "https://example.com/repo.git", project_root = "foo/bar" }
 "#;
         let doc: DocumentMut = config_contents.parse::<DocumentMut>().unwrap();
         let data = doc.get("dependencies").map(|v| v.as_table()).unwrap().unwrap();

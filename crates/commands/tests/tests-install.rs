@@ -6,7 +6,7 @@ use soldeer_core::{
     config::{ConfigLocation, read_config_deps},
     download::download_file,
     errors::InstallError,
-    lock::read_lockfile,
+    lock::{SOLDEER_LOCK, read_lockfile},
     push::zip_file,
     utils::hash_file,
 };
@@ -27,7 +27,7 @@ fn check_install(dir: &Path, name: &str, version_req: &str) {
     assert_eq!(deps.first().unwrap().name(), name);
     let remappings = fs::read_to_string(dir.join("remappings.txt")).unwrap();
     assert!(remappings.contains(name));
-    let lock = read_lockfile(dir.join("soldeer.lock")).unwrap();
+    let lock = read_lockfile(dir.join(SOLDEER_LOCK)).unwrap();
     assert_eq!(lock.entries.first().unwrap().name(), name);
     let version = lock.entries.first().unwrap().version();
     assert!(version.starts_with(version_req));
@@ -123,7 +123,7 @@ async fn test_install_custom_http() {
     .await;
     assert!(res.is_ok(), "{res:?}");
     check_install(&dir, "mylib", "1.0.0");
-    let lock = read_lockfile(dir.join("soldeer.lock")).unwrap();
+    let lock = read_lockfile(dir.join(SOLDEER_LOCK)).unwrap();
     assert_eq!(
         lock.entries.first().unwrap().as_http().unwrap().url,
         "https://github.com/mario-eth/soldeer/archive/8585a7ec85a29889cec8d08f4770e15ec4795943.zip"
@@ -147,7 +147,7 @@ async fn test_install_git_main() {
     .await;
     assert!(res.is_ok(), "{res:?}");
     check_install(&dir, "mylib", "0.1.0");
-    let lock = read_lockfile(dir.join("soldeer.lock")).unwrap();
+    let lock = read_lockfile(dir.join(SOLDEER_LOCK)).unwrap();
     assert_eq!(
         lock.entries.first().unwrap().as_git().unwrap().rev,
         "d5d72fa135d28b2e8307650b3ea79115183f2406"
@@ -172,7 +172,7 @@ async fn test_install_git_commit() {
     .await;
     assert!(res.is_ok(), "{res:?}");
     check_install(&dir, "mylib", "0.1.0");
-    let lock = read_lockfile(dir.join("soldeer.lock")).unwrap();
+    let lock = read_lockfile(dir.join(SOLDEER_LOCK)).unwrap();
     assert_eq!(
         lock.entries.first().unwrap().as_git().unwrap().rev,
         "78c2f6a1a54db26bab6c3f501854a1564eb3707f"
@@ -197,7 +197,7 @@ async fn test_install_git_tag() {
     .await;
     assert!(res.is_ok(), "{res:?}");
     check_install(&dir, "mylib", "0.1.0");
-    let lock = read_lockfile(dir.join("soldeer.lock")).unwrap();
+    let lock = read_lockfile(dir.join(SOLDEER_LOCK)).unwrap();
     assert_eq!(
         lock.entries.first().unwrap().as_git().unwrap().rev,
         "78c2f6a1a54db26bab6c3f501854a1564eb3707f"
@@ -222,7 +222,7 @@ async fn test_install_git_branch() {
     .await;
     assert!(res.is_ok(), "{res:?}");
     check_install(&dir, "mylib", "dev");
-    let lock = read_lockfile(dir.join("soldeer.lock")).unwrap();
+    let lock = read_lockfile(dir.join(SOLDEER_LOCK)).unwrap();
     assert_eq!(
         lock.entries.first().unwrap().as_git().unwrap().rev,
         "8d903e557e8f1b6e62bde768aa456d4ddfca72c4"
@@ -300,7 +300,7 @@ url = "https://github.com/mario-eth/soldeer/archive/8585a7ec85a29889cec8d08f4770
 checksum = "94a73dbe106f48179ea39b00d42e5d4dd96fdc6252caa3a89ce7efdaec0b9468"
 integrity = "f3c628f3e9eae4db14fe14f9ab29e49a0107c47b8ee956e4cee57b616b493fc2"
 "#;
-    fs::write(dir.join("soldeer.lock"), lock).unwrap();
+    fs::write(dir.join(SOLDEER_LOCK), lock).unwrap();
     let cmd: Command = Install::builder().build().into();
     let res = async_with_vars(
         [("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))],
@@ -343,7 +343,7 @@ integrity = "f3c628f3e9eae4db14fe14f9ab29e49a0107c47b8ee956e4cee57b616b493fc2"
 "#,
         server.url()
     );
-    fs::write(dir.join("soldeer.lock"), lock).unwrap();
+    fs::write(dir.join(SOLDEER_LOCK), lock).unwrap();
     let cmd: Command = Install::builder().build().into();
     let res = async_with_vars(
         [("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))],
@@ -401,7 +401,7 @@ version = "0.1.0"
 checksum = "94a73dbe106f48179ea39b00d42e5d4dd96fdc6252caa3a89ce7efdaec0b9468"
 integrity = "f3c628f3e9eae4db14fe14f9ab29e49a0107c47b8ee956e4cee57b616b493fc2"
 "#;
-    fs::write(dir.join("soldeer.lock"), lock).unwrap();
+    fs::write(dir.join(SOLDEER_LOCK), lock).unwrap();
     let cmd: Command = Install::builder().build().into();
     let res = async_with_vars(
         [
@@ -442,7 +442,7 @@ async fn test_install_add_existing_reinstall() {
 
     // remove dependencies folder and lockfile
     fs::remove_dir_all(dir.join("dependencies")).unwrap();
-    fs::remove_file(dir.join("soldeer.lock")).unwrap();
+    fs::remove_file(dir.join(SOLDEER_LOCK)).unwrap();
 
     // re-add the same dep, should re-install it
     let cmd: Command =
@@ -575,7 +575,7 @@ integrity = "e629088e5b74df78f116a24c328a64fd002b4e42449607b6ca78f9afb799374d"
 "#,
         server.url()
     );
-    fs::write(dir.join("soldeer.lock"), lock).unwrap();
+    fs::write(dir.join(SOLDEER_LOCK), lock).unwrap();
 
     let cmd: Command = Install::builder().build().into();
     let res = async_with_vars(
@@ -617,7 +617,7 @@ integrity = "e629088e5b74df78f116a24c328a64fd002b4e42449607b6ca78f9afb799374d"
 "#,
         server.url()
     );
-    fs::write(dir.join("soldeer.lock"), lock).unwrap();
+    fs::write(dir.join(SOLDEER_LOCK), lock).unwrap();
 
     let cmd: Command = Install::builder().build().into();
     let res = async_with_vars(

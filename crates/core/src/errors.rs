@@ -193,6 +193,12 @@ pub enum LockError {
 
     #[error("missing `{field}` field in lock entry for {dep}")]
     MissingField { field: String, dep: String },
+
+    #[error("foundry.lock is missing")]
+    FoundryLockMissing,
+
+    #[error("error parsing lockfile contents: {0}")]
+    DeserializeError(#[from] serde_json::Error),
 }
 
 #[derive(Error, Debug)]

@@ -14,6 +14,10 @@ use std::{
     path::{Path, PathBuf},
 };
 
+pub mod forge;
+
+pub const SOLDEER_LOCK: &str = "soldeer.lock";
+
 pub type Result<T> = std::result::Result<T, LockError>;
 
 /// A trait implemented by lockfile entries to provide the install path
@@ -577,7 +581,7 @@ mod tests {
     #[test]
     fn test_read_lockfile() {
         let dir = testdir!();
-        let file_path = dir.join("soldeer.lock");
+        let file_path = dir.join(SOLDEER_LOCK);
         // last entry is invalid and should be skipped
         let content = r#"[[dependencies]]
 name = "test"
@@ -618,7 +622,7 @@ version = "1.0.0"
     #[test]
     fn test_generate_lockfile_content() {
         let dir = testdir!();
-        let file_path = dir.join("soldeer.lock");
+        let file_path = dir.join(SOLDEER_LOCK);
         let content = r#"[[dependencies]]
 name = "test"
 version = "1.0.0"
@@ -641,7 +645,7 @@ integrity = "beef"
     #[test]
     fn test_add_to_lockfile() {
         let dir = testdir!();
-        let file_path = dir.join("soldeer.lock");
+        let file_path = dir.join(SOLDEER_LOCK);
         let content = r#"[[dependencies]]
 name = "test"
 version = "1.0.0"
@@ -667,7 +671,7 @@ rev = "123456"
     #[test]
     fn test_replace_in_lockfile() {
         let dir = testdir!();
-        let file_path = dir.join("soldeer.lock");
+        let file_path = dir.join(SOLDEER_LOCK);
         let content = r#"[[dependencies]]
 name = "test"
 version = "1.0.0"
@@ -693,7 +697,7 @@ rev = "123456"
     #[test]
     fn test_remove_lock() {
         let dir = testdir!();
-        let file_path = dir.join("soldeer.lock");
+        let file_path = dir.join(SOLDEER_LOCK);
         let content = r#"[[dependencies]]
 name = "test"
 version = "1.0.0"
@@ -719,7 +723,7 @@ integrity = "beef"
     #[test]
     fn test_remove_lock_empty() {
         let dir = testdir!();
-        let file_path = dir.join("soldeer.lock");
+        let file_path = dir.join(SOLDEER_LOCK);
         let content = r#"[[dependencies]]
 name = "test"
 version = "1.0.0"

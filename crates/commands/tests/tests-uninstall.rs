@@ -3,7 +3,10 @@ use soldeer_commands::{
     commands::{install::Install, uninstall::Uninstall},
     run,
 };
-use soldeer_core::{config::read_config_deps, lock::read_lockfile};
+use soldeer_core::{
+    config::read_config_deps,
+    lock::{SOLDEER_LOCK, read_lockfile},
+};
 use std::{fs, path::PathBuf};
 use temp_env::async_with_vars;
 use testdir::testdir;
@@ -51,7 +54,7 @@ async fn test_uninstall_one() {
     assert!(!deps.iter().any(|d| d.name() == "solady"));
     let remappings = fs::read_to_string(dir.join("remappings.txt")).unwrap();
     assert!(!remappings.contains("solady"));
-    let lock = read_lockfile(dir.join("soldeer.lock")).unwrap();
+    let lock = read_lockfile(dir.join(SOLDEER_LOCK)).unwrap();
     assert!(!lock.entries.iter().any(|d| d.name() == "solady"));
     assert!(!dir.join("dependencies").join("solady-0.0.238").exists());
 }
@@ -78,7 +81,7 @@ async fn test_uninstall_all() {
     assert!(deps.is_empty());
     let remappings = fs::read_to_string(dir.join("remappings.txt")).unwrap();
     assert_eq!(remappings, "");
-    assert!(!dir.join("soldeer.lock").exists());
+    assert!(!dir.join(SOLDEER_LOCK).exists());
 }
 
 #[tokio::test]

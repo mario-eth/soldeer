@@ -2,6 +2,7 @@
 use crate::{
     download::{find_install_path, find_install_path_sync},
     errors::ConfigError,
+    lock::SOLDEER_LOCK,
     remappings::RemappingsLocation,
 };
 use derive_more::derive::{Display, From, FromStr};
@@ -128,7 +129,7 @@ impl Paths {
         let root = root.as_ref();
         let config = Self::get_config_path(root, config_location)?;
         let dependencies = root.join("dependencies");
-        let lock = root.join("soldeer.lock");
+        let lock = root.join(SOLDEER_LOCK);
         let remappings = root.join("remappings.txt");
 
         Ok(Self { root: root.to_path_buf(), config, dependencies, lock, remappings })
@@ -143,7 +144,7 @@ impl Paths {
         let root = dunce::canonicalize(root.as_ref())?;
         let config = Self::get_config_path(&root, None)?;
         let dependencies = root.join("dependencies");
-        let lock = root.join("soldeer.lock");
+        let lock = root.join(SOLDEER_LOCK);
         let remappings = root.join("remappings.txt");
 
         Ok(Self { root, config, dependencies, lock, remappings })

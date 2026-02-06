@@ -10,8 +10,8 @@ use crate::{
     download::{clone_repo, delete_dependency_files, download_file, unzip_file},
     errors::{ConfigError, InstallError, LockError},
     lock::{
-        GitLockEntry, HttpLockEntry, Integrity, LockEntry, PrivateLockEntry, format_install_path,
-        read_lockfile,
+        GitLockEntry, HttpLockEntry, Integrity, LockEntry, PrivateLockEntry, forge,
+        format_install_path, read_lockfile,
     },
     registry::{DownloadUrl, get_dependency_url_remote, get_latest_supported_version},
     utils::{IntegrityChecksum, canonicalize, hash_file, hash_folder, run_git_command},
@@ -746,6 +746,10 @@ async fn reinit_submodules(path: &PathBuf) -> Result<Vec<PathBuf>> {
     run_git_command(&["init"], Some(path)).await?;
     let submodules = get_submodules(path).await?;
     debug!(submodules:?, path:?; "got submodules config");
+    let mut foundry_lock = forge::Lockfile::new(path);
+    if foundry_lock.read().is_ok() {
+        debug!(path:?; "foundry lockfile exists");
+    }
     let mut out = Vec::new();
     for (submodule_name, submodule) in submodules {
         // make sure to remove the path if it already exists
@@ -759,6 +763,17 @@ async fn reinit_submodules(path: &PathBuf) -> Result<Vec<PathBuf>> {
         args.push(&submodule.url);
         args.push(&submodule.path);
         run_git_command(args, Some(path)).await?;
+        if let Some(
+            forge::DepIdentifier::Branch { rev, .. } |
+            forge::DepIdentifier::Tag { rev, .. } |
+            forge::DepIdentifier::Rev { rev },
+        ) = foundry_lock.get(Path::new(&submodule.path))
+        {
+            debug!(submodule_name, path:?; "found corresponding item in foundry lockfile");
+            run_git_command(["checkout", rev], Some(&dest_path)).await?;
+            debug!(submodule_name, path:?; "submodule checked out at {rev}");
+            run_git_command(["add", &submodule.path], Some(path)).await?;
+        }
         debug!(submodule_name, path:?; "added submodule");
         out.push(path.join(submodule.path));
     }

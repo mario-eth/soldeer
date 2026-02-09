@@ -772,7 +772,6 @@ async fn reinit_submodules(path: &PathBuf) -> Result<Vec<PathBuf>> {
             debug!(submodule_name, path:?; "found corresponding item in foundry lockfile");
             run_git_command(["checkout", rev], Some(&dest_path)).await?;
             debug!(submodule_name, path:?; "submodule checked out at {rev}");
-            run_git_command(["add", &submodule.path], Some(path)).await?;
         }
         debug!(submodule_name, path:?; "added submodule");
         out.push(path.join(submodule.path));

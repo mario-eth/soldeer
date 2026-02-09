@@ -35,7 +35,7 @@ impl Lockfile {
     ///
     /// `project_root` is the absolute path to the project root.
     ///
-    /// You will need to call [`Lockfile::read`] or [`Lockfile::sync`] to load the lockfile.
+    /// You will need to call [`Lockfile::read`] to load the lockfile.
     pub fn new(project_root: &Path) -> Self {
         Self { deps: HashMap::default(), lockfile_path: project_root.join(FOUNDRY_LOCK) }
     }

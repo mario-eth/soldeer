@@ -1,7 +1,7 @@
 use soldeer_commands::{Command, Verbosity, commands::init::Init, run};
 use soldeer_core::{
     config::{ConfigLocation, read_config_deps},
-    lock::read_lockfile,
+    lock::{SOLDEER_LOCK, read_lockfile},
     registry::get_latest_version,
     utils::run_git_command,
 };
@@ -32,7 +32,7 @@ async fn test_init_clean() {
     assert!(dir.join("dependencies").exists());
     let (deps, _) = read_config_deps(dir.join("soldeer.toml")).unwrap();
     assert_eq!(deps.first().unwrap().name(), "forge-std");
-    let lock = read_lockfile(dir.join("soldeer.lock")).unwrap();
+    let lock = read_lockfile(dir.join(SOLDEER_LOCK)).unwrap();
     assert_eq!(lock.entries.first().unwrap().name(), "forge-std");
     let remappings = fs::read_to_string(dir.join("remappings.txt")).unwrap();
     assert!(remappings.contains("forge-std"));
@@ -64,7 +64,7 @@ async fn test_init_no_clean() {
     assert!(dir.join("dependencies").exists());
     let (deps, _) = read_config_deps(dir.join("soldeer.toml")).unwrap();
     assert_eq!(deps.first().unwrap().name(), "forge-std");
-    let lock = read_lockfile(dir.join("soldeer.lock")).unwrap();
+    let lock = read_lockfile(dir.join(SOLDEER_LOCK)).unwrap();
     assert_eq!(lock.entries.first().unwrap().name(), "forge-std");
     let remappings = fs::read_to_string(dir.join("remappings.txt")).unwrap();
     assert!(remappings.contains("forge-std"));

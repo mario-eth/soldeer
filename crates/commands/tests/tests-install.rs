@@ -6,7 +6,7 @@ use soldeer_core::{
     config::{ConfigLocation, read_config_deps},
     download::download_file,
     errors::InstallError,
-    lock::read_lockfile,
+    lock::{SOLDEER_LOCK, read_lockfile},
     push::zip_file,
     utils::hash_file,
 };
@@ -27,7 +27,7 @@ fn check_install(dir: &Path, name: &str, version_req: &str) {
     assert_eq!(deps.first().unwrap().name(), name);
     let remappings = fs::read_to_string(dir.join("remappings.txt")).unwrap();
     assert!(remappings.contains(name));
-    let lock = read_lockfile(dir.join("soldeer.lock")).unwrap();
+    let lock = read_lockfile(dir.join(SOLDEER_LOCK)).unwrap();
     assert_eq!(lock.entries.first().unwrap().name(), name);
     let version = lock.entries.first().unwrap().version();
     assert!(version.starts_with(version_req));
@@ -63,6 +63,63 @@ recursive_deps = true"#,
     .unwrap();
 
     zip_file(&root, &files, "test").unwrap() // zip is inside the `monorepo` folder
+}
+
+fn create_zip_with_foundry_lock(testdir: &Path, branch: Option<&str>) -> PathBuf {
+    let root = testdir.join("foundry_lock_project");
+    fs::create_dir(&root).unwrap();
+    let lib = root.join("lib");
+    fs::create_dir(&lib).unwrap();
+    let mut files = Vec::new();
+    files.push(root.join("foundry.toml"));
+    fs::write(
+        files.last().unwrap(),
+        r#"[profile.default]
+src = "src"
+out = "out"
+libs = ["lib"]
+"#,
+    )
+    .unwrap();
+    files.push(root.join(".gitmodules"));
+    let gitmodules_content = if let Some(branch) = branch {
+        format!(
+            r#"[submodule "lib/forge-std"]
+	path = lib/forge-std
+	url = https://github.com/foundry-rs/forge-std
+	branch = {branch}
+"#
+        )
+    } else {
+        r#"[submodule "lib/forge-std"]
+	path = lib/forge-std
+	url = https://github.com/foundry-rs/forge-std
+"#
+        .to_string()
+    };
+    fs::write(files.last().unwrap(), gitmodules_content).unwrap();
+    files.push(root.join("foundry.lock"));
+    let foundry_lock_content = if let Some(branch) = branch {
+        format!(
+            r#"{{
+    "lib/forge-std": {{
+        "branch": {{
+            "name": "{branch}",
+            "rev": "c29afdd40a82db50a3d3709d324416be50050e5e"
+        }}
+    }}
+}}"#
+        )
+    } else {
+        r#"{
+    "lib/forge-std": {
+        "rev": "c29afdd40a82db50a3d3709d324416be50050e5e"
+    }
+}"#
+        .to_string()
+    };
+    fs::write(files.last().unwrap(), foundry_lock_content).unwrap();
+    zip_file(&root, &files, "test").unwrap()
 }
 
 #[tokio::test]
@@ -123,7 +180,7 @@ async fn test_install_custom_http() {
     .await;
     assert!(res.is_ok(), "{res:?}");
     check_install(&dir, "mylib", "1.0.0");
-    let lock = read_lockfile(dir.join("soldeer.lock")).unwrap();
+    let lock = read_lockfile(dir.join(SOLDEER_LOCK)).unwrap();
     assert_eq!(
         lock.entries.first().unwrap().as_http().unwrap().url,
         "https://github.com/mario-eth/soldeer/archive/8585a7ec85a29889cec8d08f4770e15ec4795943.zip"
@@ -147,7 +204,7 @@ async fn test_install_git_main() {
     .await;
     assert!(res.is_ok(), "{res:?}");
     check_install(&dir, "mylib", "0.1.0");
-    let lock = read_lockfile(dir.join("soldeer.lock")).unwrap();
+    let lock = read_lockfile(dir.join(SOLDEER_LOCK)).unwrap();
     assert_eq!(
         lock.entries.first().unwrap().as_git().unwrap().rev,
         "d5d72fa135d28b2e8307650b3ea79115183f2406"
@@ -172,7 +229,7 @@ async fn test_install_git_commit() {
     .await;
     assert!(res.is_ok(), "{res:?}");
     check_install(&dir, "mylib", "0.1.0");
-    let lock = read_lockfile(dir.join("soldeer.lock")).unwrap();
+    let lock = read_lockfile(dir.join(SOLDEER_LOCK)).unwrap();
     assert_eq!(
         lock.entries.first().unwrap().as_git().unwrap().rev,
         "78c2f6a1a54db26bab6c3f501854a1564eb3707f"
@@ -197,7 +254,7 @@ async fn test_install_git_tag() {
     .await;
     assert!(res.is_ok(), "{res:?}");
     check_install(&dir, "mylib", "0.1.0");
-    let lock = read_lockfile(dir.join("soldeer.lock")).unwrap();
+    let lock = read_lockfile(dir.join(SOLDEER_LOCK)).unwrap();
     assert_eq!(
         lock.entries.first().unwrap().as_git().unwrap().rev,
         "78c2f6a1a54db26bab6c3f501854a1564eb3707f"
@@ -222,7 +279,7 @@ async fn test_install_git_branch() {
     .await;
     assert!(res.is_ok(), "{res:?}");
     check_install(&dir, "mylib", "dev");
-    let lock = read_lockfile(dir.join("soldeer.lock")).unwrap();
+    let lock = read_lockfile(dir.join(SOLDEER_LOCK)).unwrap();
     assert_eq!(
         lock.entries.first().unwrap().as_git().unwrap().rev,
         "8d903e557e8f1b6e62bde768aa456d4ddfca72c4"
@@ -300,7 +357,7 @@ url = "https://github.com/mario-eth/soldeer/archive/8585a7ec85a29889cec8d08f4770
 checksum = "94a73dbe106f48179ea39b00d42e5d4dd96fdc6252caa3a89ce7efdaec0b9468"
 integrity = "f3c628f3e9eae4db14fe14f9ab29e49a0107c47b8ee956e4cee57b616b493fc2"
 "#;
-    fs::write(dir.join("soldeer.lock"), lock).unwrap();
+    fs::write(dir.join(SOLDEER_LOCK), lock).unwrap();
     let cmd: Command = Install::builder().build().into();
     let res = async_with_vars(
         [("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))],
@@ -343,7 +400,7 @@ integrity = "f3c628f3e9eae4db14fe14f9ab29e49a0107c47b8ee956e4cee57b616b493fc2"
 "#,
         server.url()
     );
-    fs::write(dir.join("soldeer.lock"), lock).unwrap();
+    fs::write(dir.join(SOLDEER_LOCK), lock).unwrap();
     let cmd: Command = Install::builder().build().into();
     let res = async_with_vars(
         [("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))],
@@ -401,7 +458,7 @@ version = "0.1.0"
 checksum = "94a73dbe106f48179ea39b00d42e5d4dd96fdc6252caa3a89ce7efdaec0b9468"
 integrity = "f3c628f3e9eae4db14fe14f9ab29e49a0107c47b8ee956e4cee57b616b493fc2"
 "#;
-    fs::write(dir.join("soldeer.lock"), lock).unwrap();
+    fs::write(dir.join(SOLDEER_LOCK), lock).unwrap();
     let cmd: Command = Install::builder().build().into();
     let res = async_with_vars(
         [
@@ -442,7 +499,7 @@ async fn test_install_add_existing_reinstall() {
 
     // remove dependencies folder and lockfile
     fs::remove_dir_all(dir.join("dependencies")).unwrap();
-    fs::remove_file(dir.join("soldeer.lock")).unwrap();
+    fs::remove_file(dir.join(SOLDEER_LOCK)).unwrap();
 
     // re-add the same dep, should re-install it
     let cmd: Command =
@@ -575,7 +632,7 @@ integrity = "e629088e5b74df78f116a24c328a64fd002b4e42449607b6ca78f9afb799374d"
 "#,
         server.url()
     );
-    fs::write(dir.join("soldeer.lock"), lock).unwrap();
+    fs::write(dir.join(SOLDEER_LOCK), lock).unwrap();
 
     let cmd: Command = Install::builder().build().into();
     let res = async_with_vars(
@@ -617,7 +674,7 @@ integrity = "e629088e5b74df78f116a24c328a64fd002b4e42449607b6ca78f9afb799374d"
 "#,
         server.url()
     );
-    fs::write(dir.join("soldeer.lock"), lock).unwrap();
+    fs::write(dir.join(SOLDEER_LOCK), lock).unwrap();
 
     let cmd: Command = Install::builder().build().into();
     let res = async_with_vars(
@@ -850,4 +907,110 @@ async fn test_install_new_soldeer_no_dependency_tag() {
 "@openzeppelin-contracts" = "5"
 "#;
     assert_eq!(config, content);
+}
+
+#[tokio::test]
+async fn test_install_recursive_deps_with_foundry_lock() {
+    let dir = testdir!();
+    let zip_path = create_zip_with_foundry_lock(&dir, None);
+    let checksum = hash_file(&zip_path).unwrap();
+
+    let contents = r#"[dependencies]
+mylib = "1.0.0"
+
+[soldeer]
+recursive_deps = true
+"#;
+
+    // Serve the dependency via mock server
+    let mut server = mockito::Server::new_async().await;
+    server.mock("GET", "/file.zip").with_body_from_file(&zip_path).create_async().await;
+    fs::write(dir.join("soldeer.toml"), contents).unwrap();
+
+    let lock = format!(
+        r#"[[dependencies]]
+name = "mylib"
+version = "1.0.0"
+url = "{}/file.zip"
+checksum = "{checksum}"
+integrity = "placeholder"
+"#,
+        server.url()
+    );
+    fs::write(dir.join(SOLDEER_LOCK), lock).unwrap();
+
+    let cmd: Command = Install::builder().build().into();
+    let res = async_with_vars(
+        [("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))],
+        run(cmd.clone(), Verbosity::default()),
+    )
+    .await;
+    assert!(res.is_ok(), "{res:?}");
+
+    // Verify the submodule exists
+    let forge_std_path = dir.join("dependencies/mylib-1.0.0/lib/forge-std");
+    assert!(forge_std_path.exists());
+
+    // Verify it's checked out at the specific revision from foundry.lock
+    let output = std::process::Command::new("git")
+        .args(["rev-parse", "HEAD"])
+        .current_dir(&forge_std_path)
+        .output()
+        .expect("failed to run git rev-parse");
+
+    let current_rev = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    assert_eq!(current_rev, "c29afdd40a82db50a3d3709d324416be50050e5e");
+}
+
+#[tokio::test]
+async fn test_install_recursive_deps_with_foundry_lock_branch() {
+    let dir = testdir!();
+    let zip_path = create_zip_with_foundry_lock(&dir, Some("master"));
+    let checksum = hash_file(&zip_path).unwrap();
+
+    let contents = r#"[dependencies]
+mylib = "1.0.0"
+
+[soldeer]
+recursive_deps = true
+"#;
+
+    // Serve the dependency via mock server
+    let mut server = mockito::Server::new_async().await;
+    server.mock("GET", "/file.zip").with_body_from_file(&zip_path).create_async().await;
+    fs::write(dir.join("soldeer.toml"), contents).unwrap();
+
+    let lock = format!(
+        r#"[[dependencies]]
+name = "mylib"
+version = "1.0.0"
+url = "{}/file.zip"
+checksum = "{checksum}"
+integrity = "placeholder"
+"#,
+        server.url()
+    );
+    fs::write(dir.join(SOLDEER_LOCK), lock).unwrap();
+
+    let cmd: Command = Install::builder().build().into();
+    let res = async_with_vars(
+        [("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))],
+        run(cmd.clone(), Verbosity::default()),
+    )
+    .await;
+    assert!(res.is_ok(), "{res:?}");
+
+    // Verify the submodule exists
+    let forge_std_path = dir.join("dependencies/mylib-1.0.0/lib/forge-std");
+    assert!(forge_std_path.exists());
+
+    // Verify it's checked out at the specific revision from foundry.lock
+    let output = std::process::Command::new("git")
+        .args(["rev-parse", "HEAD"])
+        .current_dir(&forge_std_path)
+        .output()
+        .expect("failed to run git rev-parse");
+
+    let current_rev = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    assert_eq!(current_rev, "c29afdd40a82db50a3d3709d324416be50050e5e",);
 }

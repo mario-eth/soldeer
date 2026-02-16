@@ -3,7 +3,10 @@ use soldeer_commands::{
     commands::{clean::Clean, install::Install},
     run,
 };
-use soldeer_core::{config::read_config_deps, lock::read_lockfile};
+use soldeer_core::{
+    config::read_config_deps,
+    lock::{SOLDEER_LOCK, read_lockfile},
+};
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 use std::{
@@ -29,9 +32,9 @@ fn check_clean_success(dir: &Path, config_filename: &str) {
 #[allow(clippy::unwrap_used)]
 fn check_artifacts_exist(dir: &Path) {
     assert!(dir.join("dependencies").exists(), "Dependencies folder should exist");
-    assert!(dir.join("soldeer.lock").exists(), "Lock file should exist");
+    assert!(dir.join(SOLDEER_LOCK).exists(), "Lock file should exist");
 
-    let lock = read_lockfile(dir.join("soldeer.lock")).unwrap();
+    let lock = read_lockfile(dir.join(SOLDEER_LOCK)).unwrap();
     assert_eq!(lock.entries.len(), 2, "Lock file should have 2 entries");
     let deps_dir = dir.join("dependencies");
     let entries: Vec<_> = fs::read_dir(&deps_dir).unwrap().collect::<Result<Vec<_>, _>>().unwrap();
@@ -126,7 +129,7 @@ async fn test_clean_restores_with_install() {
     .await;
     assert!(res.is_ok(), "{res:?}");
     assert!(!dir.join("dependencies").exists());
-    assert!(dir.join("soldeer.lock").exists(), "Lock file should remain after clean");
+    assert!(dir.join(SOLDEER_LOCK).exists(), "Lock file should remain after clean");
 
     let cmd: Command = Install::default().into();
     let res = async_with_vars(

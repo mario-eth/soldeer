@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## `soldeer-core` - [0.10.1](https://github.com/mario-eth/soldeer/compare/soldeer-core-v0.10.0...soldeer-core-v0.10.1) - 2026-02-16
+
+### Added
+- *(core)* support foundry.lock file ([#347](https://github.com/mario-eth/soldeer/pull/347))
+
 ## `soldeer-core` - [0.10.0](https://github.com/mario-eth/soldeer/compare/soldeer-core-v0.9.0...soldeer-core-v0.10.0) - 2025-12-03
 
 ### Added

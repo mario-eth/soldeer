@@ -25,7 +25,7 @@ derive_more.workspace = true
 email-address-parser = "2.0.0"
 path-slash.workspace = true
 rayon.workspace = true
-soldeer-core = { path = "../core", version = "0.10.1" }
+soldeer-core = { path = "../core", version = "0.10.2" }
 tokio.workspace = true
 
 [dev-dependencies]

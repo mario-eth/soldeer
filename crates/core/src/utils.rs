@@ -2,6 +2,7 @@
 use crate::{
     config::Dependency,
     errors::{DownloadError, InstallError},
+    git,
     registry::parse_version_req,
 };
 use derive_more::derive::{Display, From};
@@ -242,11 +243,7 @@ pub async fn remove_forge_lib(root: impl AsRef<Path>) -> Result<(), InstallError
     let lib_dir = root.as_ref().join("lib");
     let forge_std_dir = lib_dir.join("forge-std");
     if forge_std_dir.exists() {
-        run_git_command(
-            &["rm", &forge_std_dir.to_string_lossy()],
-            Some(&root.as_ref().to_path_buf()),
-        )
-        .await?;
+        git::remove_from_index(&root, &forge_std_dir).await?;
         debug!("removed lib/forge-std");
     }
     if lib_dir.exists() {

@@ -157,6 +157,9 @@ pub enum InstallError {
     #[error("error during git command: {0}")]
     GitError(String),
 
+    #[error("error during git operation: {0}")]
+    GitErrorNew(#[from] GitError),
+
     #[error("error during dependency installation: {0}")]
     DownloadError(#[from] DownloadError),
 
@@ -321,4 +324,10 @@ pub enum GitError {
 
     #[error("unborn git HEAD in {0}")]
     UnbornHead(PathBuf),
+
+    #[error("invalid path: {0}")]
+    InvalidPath(PathBuf),
+
+    #[error("path not in index: {0}")]
+    PathNotInIndex(PathBuf),
 }

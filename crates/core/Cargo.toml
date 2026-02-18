@@ -29,6 +29,7 @@ dunce = "1.0.5"
 gix = { version = "0.79.0", default-features = false, features = [
     "basic",
     "max-performance-safe",
+    "status",
 ] }
 home = "0.5.9"
 ignore = { version = "0.4.24", features = ["simd-accel"] }

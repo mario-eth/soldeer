@@ -839,12 +839,11 @@ async fn check_git_dependency(
         return Ok(DependencyStatus::Missing);
     }
     // for git dependencies, the `rev` field holds the commit hash
-    match run_git_command(&["diff", "--exit-code", &lock.rev], Some(&path)).await {
-        Ok(_) => Ok(DependencyStatus::Installed),
-        Err(_) => {
-            debug!(path:?, rev = lock.rev; "git repo has non-empty diff compared to lockfile rev");
-            Ok(DependencyStatus::FailedIntegrity)
-        }
+    if let Ok(false) = git::has_diff(&path, &lock.rev).await {
+        Ok(DependencyStatus::Installed)
+    } else {
+        debug!(path:?, rev = lock.rev; "git repo has non-empty diff compared to lockfile rev");
+        Ok(DependencyStatus::FailedIntegrity)
     }
 }
 

@@ -5,7 +5,7 @@
 
 use crate::errors::GitError;
 use gix::{
-    bstr::BStr,
+    bstr::{BStr, BString},
     error::Error as GixError,
     path::{into_bstr, to_unix_separators_on_windows},
 };
@@ -80,6 +80,46 @@ pub async fn get_toplevel(path: impl AsRef<Path>) -> Option<PathBuf> {
     .await
     .ok()
     .flatten()
+}
+
+/// Check if there are any differences between the working tree and a specific revision.
+///
+/// This is equivalent to `git diff --exit-code <rev>`. Returns `true` if there are
+/// differences, `false` if the working tree matches the revision.
+///
+/// As for git, untracked files are ignored.
+pub async fn has_diff(repo_path: impl AsRef<Path>, rev: impl Into<String>) -> Result<bool> {
+    let repo_path = repo_path.as_ref().to_path_buf();
+    let rev: String = rev.into();
+    tokio::task::spawn_blocking(move || {
+        let repo = gix::open(&repo_path).gix_err()?;
+
+        // Resolve the revision to a tree OID
+        let tree_id = repo
+            .rev_parse_single(rev.as_bytes())
+            .gix_err()?
+            .object()
+            .gix_err()?
+            .peel_to_tree()
+            .gix_err()?
+            .id;
+
+        // Compare the rev's tree against the index and worktree
+        let has_changes = repo
+            .status(gix::progress::Discard)
+            .gix_err()?
+            .head_tree(tree_id)
+            .index_worktree_options_mut(|opts| {
+                opts.dirwalk_options = None; // skip untracked files
+            })
+            .into_iter(None::<BString>)
+            .gix_err()?
+            .next()
+            .is_some();
+
+        Ok(has_changes)
+    })
+    .await?
 }
 
 /// Create a BStr from a path, which is what gix expects.

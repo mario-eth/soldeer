@@ -45,13 +45,12 @@ pub async fn remove_from_index(
             path_to_remove
                 .strip_prefix(&repo_path)
                 .map_err(|_| GitError::InvalidPath(path_to_remove.clone()))?
-                .to_path_buf()
         } else {
-            path_to_remove.clone()
+            path_to_remove.as_path()
         };
 
         let entry_idx = index
-            .entry_index_by_path(&make_path_bstr(&relative_path))
+            .entry_index_by_path(&make_path_bstr(relative_path))
             .map_err(|_| GitError::PathNotInIndex(path_to_remove))?;
 
         index.remove_entry_at_index(entry_idx);

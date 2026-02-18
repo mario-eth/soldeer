@@ -4,7 +4,7 @@
 //! git operations without requiring an external git binary.
 
 use crate::errors::GitError;
-use gix::{bstr::BStr, error::Error as GixError, index};
+use gix::{bstr::BStr, error::Error as GixError};
 use std::{
     borrow::Cow,
     path::{Path, PathBuf},
@@ -38,11 +38,7 @@ pub async fn remove_from_index(
 
     tokio::task::spawn_blocking(move || {
         let repo = gix::open(&repo_path).gix_err()?;
-
-        // Get the index file path and load it
-        let index_path = repo.index_path();
-        let mut index = index::File::at(&index_path, repo.object_hash(), false, Default::default())
-            .gix_err()?;
+        let mut index = repo.open_index().gix_err()?;
 
         // Convert the path to be relative to the repository root
         let relative_path = if path_to_remove.is_absolute() {
@@ -89,7 +85,7 @@ pub fn make_path_bstr(path: &Path) -> Cow<'_, BStr> {
     gix::path::to_unix_separators_on_windows(bstr)
 }
 
-/// Extension trait to ergonomically convert an error into a [`GixError`].
+/// Extension trait to ergonomically convert an error into a [`gix::error::Error`](GixError).
 trait GixErr<T> {
     fn gix_err(self) -> std::result::Result<T, GixError>;
 }

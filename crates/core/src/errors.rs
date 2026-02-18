@@ -305,6 +305,9 @@ pub enum UpdateError {
 
     #[error("error during async operation: {0}")]
     AsyncError(#[from] tokio::task::JoinError),
+
+    #[error("error during git operation: {0}")]
+    GitError(#[from] GitError),
 }
 
 #[derive(Error, Debug)]

@@ -29,9 +29,8 @@ pub async fn get_head_commit(repo_path: impl AsRef<Path>) -> Result<String> {
         let head_id = repo
             .head()
             .map_err(GixError::from_error)?
-            .try_peel_to_id()
-            .map_err(GixError::from_error)?
-            .ok_or_else(|| GitError::UnbornHead(repo_path))?;
+            .into_peeled_id()
+            .map_err(GixError::from_error)?;
 
         Ok(head_id.to_string())
     })

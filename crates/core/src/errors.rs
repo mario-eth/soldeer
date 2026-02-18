@@ -322,9 +322,6 @@ pub enum GitError {
     #[error("gix error: {0}")]
     GixError(#[from] gix::error::Error),
 
-    #[error("unborn git HEAD in {0}")]
-    UnbornHead(PathBuf),
-
     #[error("invalid path: {0}")]
     InvalidPath(PathBuf),
 

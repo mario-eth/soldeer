@@ -8,10 +8,16 @@ use gix::{
     bstr::{BStr, BString},
     error::Error as GixError,
     path::{into_bstr, to_unix_separators_on_windows},
+    refs::{
+        Target,
+        transaction::{Change, LogChange, PreviousValue, RefEdit, RefLog},
+    },
+    worktree::{stack::state::attributes::Source, state},
 };
 use std::{
     borrow::Cow,
     path::{Path, PathBuf},
+    sync::atomic::AtomicBool,
 };
 
 pub type Result<T> = std::result::Result<T, GitError>;
@@ -118,6 +124,96 @@ pub async fn has_diff(repo_path: impl AsRef<Path>, rev: impl Into<String>) -> Re
             .is_some();
 
         Ok(has_changes)
+    })
+    .await?
+}
+
+/// Check out a specific ref (branch, tag, or commit) in a repository.
+///
+/// This is equivalent to `git checkout <identifier>`. The worktree and index
+/// are updated to match the target commit's tree, and HEAD is set to a detached
+/// state pointing to the resolved commit.
+pub async fn checkout(repo_path: impl AsRef<Path>, identifier: &str) -> Result<()> {
+    let repo_path = repo_path.as_ref().to_path_buf();
+    let identifier = identifier.to_string();
+    tokio::task::spawn_blocking(move || {
+        let repo = gix::open(&repo_path).gix_err()?;
+
+        // Resolve identifier (branch/tag/commit) to a commit.
+        // Fall back to `origin/<identifier>` for remote tracking branches, mirroring
+        // git checkout's DWIM behavior in freshly cloned repos.
+        let commit = repo
+            .rev_parse_single(identifier.as_bytes())
+            .or_else(|_| repo.rev_parse_single(format!("origin/{identifier}").as_bytes()))
+            .gix_err()?
+            .object()
+            .gix_err()?
+            .peel_to_commit()
+            .gix_err()?;
+        let commit_id = commit.id;
+        let tree_id = commit.tree_id().gix_err()?.detach();
+
+        let workdir = repo.workdir().ok_or(GitError::BareRepository)?.to_path_buf();
+
+        // Clear the worktree (everything except .git) to prepare for checkout
+        for entry in std::fs::read_dir(&workdir)
+            .map_err(|e| GitError::IOError { path: workdir.clone(), source: e })?
+        {
+            let Ok(entry) = entry else {
+                continue;
+            };
+            if entry.file_name() == ".git" {
+                continue;
+            }
+            let path = entry.path();
+            if path.is_dir() {
+                std::fs::remove_dir_all(&path)
+                    .map_err(|e| GitError::IOError { path: path.clone(), source: e })?;
+            } else {
+                std::fs::remove_file(&path)
+                    .map_err(|e| GitError::IOError { path: path.clone(), source: e })?;
+            }
+        }
+
+        // Build index from the target tree
+        let mut index = repo.index_from_tree(&tree_id).gix_err()?;
+
+        // Checkout the tree to the worktree
+        let mut opts = repo.checkout_options(Source::IdMapping).gix_err()?;
+        opts.destination_is_initially_empty = true;
+
+        let should_interrupt = AtomicBool::new(false);
+        state::checkout(
+            &mut index,
+            &workdir,
+            repo.objects.clone().into_arc().gix_err()?,
+            &gix::progress::Discard,
+            &gix::progress::Discard,
+            &should_interrupt,
+            opts,
+        )
+        .gix_err()?;
+
+        // Write the updated index to disk
+        index.write(Default::default()).gix_err()?;
+
+        // Update HEAD to point to the checked-out commit (detached)
+        repo.edit_reference(RefEdit {
+            change: Change::Update {
+                log: LogChange {
+                    mode: RefLog::AndReference,
+                    force_create_reflog: false,
+                    message: format!("checkout: moving to {identifier}").into(),
+                },
+                expected: PreviousValue::Any,
+                new: Target::Object(commit_id),
+            },
+            name: "HEAD".try_into().expect("HEAD is a valid ref name"),
+            deref: false,
+        })
+        .gix_err()?;
+
+        Ok(())
     })
     .await?
 }

@@ -69,11 +69,7 @@ pub async fn unzip_file(path: impl AsRef<Path>, into: impl AsRef<Path>) -> Resul
 
 /// Clone a git repo into the given path, optionally checking out a reference.
 ///
-/// The repository is cloned without trees, which can speed up cloning when the full history is not
-/// needed. Contrary to a shallow clone, it's possible to checkout any ref and the missing trees
-/// will be retrieved as they are needed.
-///
-/// This function returns the commit hash corresponding to  the checked out reference (branch, tag,
+/// This function returns the commit hash corresponding to the checked out reference (branch, tag,
 /// commit).
 pub async fn clone_repo(
     url: &str,
@@ -81,14 +77,10 @@ pub async fn clone_repo(
     path: impl AsRef<Path>,
 ) -> Result<String> {
     let path = path.as_ref().to_path_buf();
-    run_git_command(
-        &["clone", "--tags", "--filter=tree:0", url, path.to_string_lossy().as_ref()],
-        None,
-    )
-    .await?;
+    run_git_command(&["clone", "--tags", url, path.to_string_lossy().as_ref()], None).await?;
     debug!(repo:? = path; "git repo cloned");
     if let Some(identifier) = identifier {
-        run_git_command(&["checkout", &identifier.to_string()], Some(&path)).await?;
+        git::checkout(&path, &identifier.to_string()).await?;
         debug!(ref:? = identifier, repo:? = path; "checked out ref");
     }
     let commit = git::get_head_commit(&path).await?;

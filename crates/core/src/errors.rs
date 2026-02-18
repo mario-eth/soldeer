@@ -327,4 +327,10 @@ pub enum GitError {
 
     #[error("path not in index: {0}")]
     PathNotInIndex(PathBuf),
+
+    #[error("operation not supported on bare repositories")]
+    BareRepository,
+
+    #[error("error during IO operation for {path:?}: {source}")]
+    IOError { path: PathBuf, source: io::Error },
 }

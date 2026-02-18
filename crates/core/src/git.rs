@@ -4,15 +4,9 @@
 //! git operations without requiring an external git binary.
 
 use crate::errors::GitError;
-use gix::{
-    bstr::{BStr, ByteSlice as _},
-    error::Error as GixError,
-    hash, index,
-    path::to_unix_separators_on_windows,
-};
+use gix::{bstr::BStr, error::Error as GixError, index};
 use std::{
     borrow::Cow,
-    os::unix::ffi::OsStrExt as _,
     path::{Path, PathBuf},
 };
 
@@ -24,14 +18,8 @@ pub type Result<T> = std::result::Result<T, GitError>;
 pub async fn get_head_commit(repo_path: impl AsRef<Path>) -> Result<String> {
     let repo_path = repo_path.as_ref().to_path_buf();
     tokio::task::spawn_blocking(move || {
-        let repo = gix::open(&repo_path).map_err(GixError::from_error)?;
-
-        let head_id = repo
-            .head()
-            .map_err(GixError::from_error)?
-            .into_peeled_id()
-            .map_err(GixError::from_error)?;
-
+        let repo = gix::open(&repo_path).gix_err()?;
+        let head_id = repo.head().gix_err()?.into_peeled_id().gix_err()?;
         Ok(head_id.to_string())
     })
     .await?
@@ -49,12 +37,12 @@ pub async fn remove_from_index(
     let path_to_remove = path_to_remove.as_ref().to_path_buf();
 
     tokio::task::spawn_blocking(move || {
-        let repo = gix::open(&repo_path).map_err(GixError::from_error)?;
+        let repo = gix::open(&repo_path).gix_err()?;
 
         // Get the index file path and load it
         let index_path = repo.index_path();
-        let mut index = index::File::at(&index_path, hash::Kind::Sha1, false, Default::default())
-            .map_err(GixError::from_error)?;
+        let mut index = index::File::at(&index_path, repo.object_hash(), false, Default::default())
+            .gix_err()?;
 
         // Convert the path to be relative to the repository root
         let relative_path = if path_to_remove.is_absolute() {
@@ -71,7 +59,7 @@ pub async fn remove_from_index(
             .map_err(|_| GitError::PathNotInIndex(path_to_remove))?;
 
         index.remove_entry_at_index(entry_idx);
-        index.write(Default::default()).map_err(GixError::from_error)?;
+        index.write(Default::default()).gix_err()?;
         Ok(())
     })
     .await?
@@ -96,7 +84,19 @@ pub async fn get_toplevel(path: impl AsRef<Path>) -> Option<PathBuf> {
 }
 
 /// Create a BStr from a path, which is what gix expects.
-pub fn make_path_bstr<'a>(path: &'a Path) -> Cow<'a, BStr> {
-    let path = path.as_os_str().as_bytes();
-    to_unix_separators_on_windows(path.as_bstr())
+pub fn make_path_bstr(path: &Path) -> Cow<'_, BStr> {
+    let bstr = gix::path::into_bstr(path);
+    gix::path::to_unix_separators_on_windows(bstr)
+}
+
+/// Extension trait to ergonomically convert an error into a [`GixError`].
+trait GixErr<T> {
+    fn gix_err(self) -> std::result::Result<T, GixError>;
+}
+
+impl<T, E: std::error::Error + Send + Sync + 'static> GixErr<T> for std::result::Result<T, E> {
+    #[track_caller]
+    fn gix_err(self) -> std::result::Result<T, GixError> {
+        self.map_err(GixError::from_error)
+    }
 }

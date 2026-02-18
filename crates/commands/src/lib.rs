@@ -54,23 +54,14 @@ impl From<soldeer_core::config::ConfigLocation> for ConfigLocation {
 }
 
 pub async fn run(command: Command, verbosity: Verbosity<CustomLevel>) -> Result<()> {
-    if env::var("RUST_LOG").is_ok() {
-        env_logger::builder().try_init().ok(); // init logger if possible (not already initialized)
-        TUI_ENABLED.store(false, Ordering::Relaxed);
+    if let Some(level) = verbosity.log_level() &&
+        level <= Level::Error &&
+        env::var("RUST_LOG").is_err()
+    {
+        // enable TUI if no `-v` flag and no RUST_LOG is provided
+        TUI_ENABLED.store(true, Ordering::Relaxed);
     } else {
-        match verbosity.log_level() {
-            Some(level) if level > Level::Error => {
-                // the user requested structure logging (-v[v*])
-                // init logger if possible (not already initialized)
-                env_logger::Builder::new()
-                    .filter_level(verbosity.log_level_filter())
-                    .try_init()
-                    .ok();
-                TUI_ENABLED.store(false, Ordering::Relaxed);
-            }
-            Some(_) => TUI_ENABLED.store(true, Ordering::Relaxed),
-            _ => TUI_ENABLED.store(false, Ordering::Relaxed),
-        }
+        TUI_ENABLED.store(false, Ordering::Relaxed);
     }
     match command {
         Command::Init(cmd) => {

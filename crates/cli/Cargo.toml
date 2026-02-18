@@ -21,6 +21,8 @@ name = "soldeer"
 path = "src/main.rs"
 
 [dependencies]
+env_logger = { version = "0.11.9", features = ["unstable-kv"] }
+log.workspace = true
 soldeer-commands = { path = "../commands", version = "0.10.1" }
 tokio.workspace = true
 yansi = { version = "1.0.1", features = ["detect-tty", "detect-env"] }

@@ -10,7 +10,11 @@ use gix::{
     hash, index,
     path::to_unix_separators_on_windows,
 };
-use std::{borrow::Cow, os::unix::ffi::OsStrExt as _, path::Path};
+use std::{
+    borrow::Cow,
+    os::unix::ffi::OsStrExt as _,
+    path::{Path, PathBuf},
+};
 
 pub type Result<T> = std::result::Result<T, GitError>;
 
@@ -72,6 +76,24 @@ pub async fn remove_from_index(
         Ok(())
     })
     .await?
+}
+
+/// Get the top-level directory (worktree root) of a git repository.
+///
+/// This is equivalent to `git rev-parse --show-toplevel`. It discovers the repository
+/// at or above the given path and returns the canonicalized worktree root path.
+///
+/// Returns `None` if the path is not inside a git repository.
+pub async fn get_toplevel(path: impl AsRef<Path>) -> Option<PathBuf> {
+    let path = path.as_ref().to_path_buf();
+    tokio::task::spawn_blocking(move || {
+        let repo = gix::discover(&path).ok()?;
+        let work_dir = repo.workdir()?;
+        dunce::canonicalize(work_dir).ok()
+    })
+    .await
+    .ok()
+    .flatten()
 }
 
 /// Create a BStr from a path, which is what gix expects.

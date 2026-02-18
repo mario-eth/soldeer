@@ -9,6 +9,7 @@ use crate::{
     },
     download::{clone_repo, delete_dependency_files, download_file, unzip_file},
     errors::{ConfigError, InstallError, LockError},
+    git,
     lock::{
         GitLockEntry, HttpLockEntry, Integrity, LockEntry, PrivateLockEntry, forge,
         format_install_path, read_lockfile,
@@ -823,30 +824,15 @@ async fn check_git_dependency(
     if fs::metadata(&path).await.is_err() {
         return Ok(DependencyStatus::Missing);
     }
-    // check that the location is a git repository
-    let top_level = match run_git_command(
-        &["rev-parse", "--show-toplevel", path.to_string_lossy().as_ref()],
-        Some(&path),
-    )
-    .await
-    {
-        Ok(top_level) => {
-            // stdout contains the path twice, we only keep the first item
-            PathBuf::from(top_level.split_whitespace().next().unwrap_or_default())
-        }
-        Err(_) => {
-            // error getting the top level directory, assume the directory is not a git repository
-            debug!(path:?; "`git rev-parse --show-toplevel` failed");
-            return Ok(DependencyStatus::Missing);
-        }
+    // check that the location is a git repository with its root at the install path
+    let Some(top_level) = git::get_toplevel(&path).await else {
+        debug!(path:?; "could not discover git repo at dependency path");
+        return Ok(DependencyStatus::Missing);
     };
-    let top_level = top_level.to_slash_lossy();
-    // compare the top level directory to the install path
-
     let absolute_path = canonicalize(&path)
         .await
         .map_err(|e| InstallError::IOError { path: path.clone(), source: e })?;
-    if top_level.trim() != absolute_path.to_slash_lossy() {
+    if top_level != absolute_path {
         // the top level directory is not the install path, assume the directory is not a git
         // repository
         debug!(path:?; "dependency's toplevel dir is outside of dependency folder: not a git repo");

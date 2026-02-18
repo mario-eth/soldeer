@@ -2,6 +2,7 @@
 use crate::{
     config::{Dependency, GitIdentifier},
     errors::DownloadError,
+    git,
     utils::{path_matches, run_git_command, sanitize_filename},
 };
 use log::{debug, trace, warn};
@@ -90,8 +91,7 @@ pub async fn clone_repo(
         run_git_command(&["checkout", &identifier.to_string()], Some(&path)).await?;
         debug!(ref:? = identifier, repo:? = path; "checked out ref");
     }
-    let commit =
-        run_git_command(&["rev-parse", "--verify", "HEAD"], Some(&path)).await?.trim().to_string();
+    let commit = git::get_head_commit(&path).await?;
     debug!(repo:? = path; "checked out commit is {commit}");
     Ok(commit)
 }

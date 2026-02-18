@@ -123,6 +123,9 @@ pub enum DownloadError {
     #[error("error during git command {args:?}: {message}")]
     GitError { message: String, args: Vec<String> },
 
+    #[error("error during git operation: {0}")]
+    GitErrorNew(#[from] GitError),
+
     #[error("error during IO operation for {path:?}: {source}")]
     IOError { path: PathBuf, source: io::Error },
 
@@ -302,4 +305,17 @@ pub enum UpdateError {
 
     #[error("error during async operation: {0}")]
     AsyncError(#[from] tokio::task::JoinError),
+}
+
+#[derive(Error, Debug)]
+#[non_exhaustive]
+pub enum GitError {
+    #[error("error during async operation: {0}")]
+    AsyncError(#[from] tokio::task::JoinError),
+
+    #[error("gix error: {0}")]
+    GixError(#[from] gix::error::Error),
+
+    #[error("unborn git HEAD in {0}")]
+    UnbornHead(PathBuf),
 }

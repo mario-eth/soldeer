@@ -8,6 +8,7 @@ pub mod auth;
 pub mod config;
 pub mod download;
 pub mod errors;
+pub mod git;
 pub mod install;
 pub mod lock;
 pub mod push;

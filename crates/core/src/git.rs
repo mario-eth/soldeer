@@ -4,7 +4,11 @@
 //! git operations without requiring an external git binary.
 
 use crate::errors::GitError;
-use gix::{bstr::BStr, error::Error as GixError};
+use gix::{
+    bstr::BStr,
+    error::Error as GixError,
+    path::{into_bstr, to_unix_separators_on_windows},
+};
 use std::{
     borrow::Cow,
     path::{Path, PathBuf},
@@ -80,8 +84,8 @@ pub async fn get_toplevel(path: impl AsRef<Path>) -> Option<PathBuf> {
 
 /// Create a BStr from a path, which is what gix expects.
 pub fn make_path_bstr(path: &Path) -> Cow<'_, BStr> {
-    let bstr = gix::path::into_bstr(path);
-    gix::path::to_unix_separators_on_windows(bstr)
+    let bstr = into_bstr(path);
+    to_unix_separators_on_windows(bstr)
 }
 
 /// Extension trait to ergonomically convert an error into a [`gix::error::Error`](GixError).

@@ -5,11 +5,12 @@
 
 use crate::errors::GitError;
 use gix::{
+    ObjectId,
     bstr::{BStr, BString},
     error::Error as GixError,
     path::{into_bstr, to_unix_separators_on_windows},
     refs::{
-        Target,
+        FullName, Target,
         transaction::{Change, LogChange, PreviousValue, RefEdit, RefLog},
     },
     remote,
@@ -17,6 +18,8 @@ use gix::{
 };
 use std::{
     borrow::Cow,
+    fs::File,
+    io::Write as _,
     path::{Path, PathBuf},
     sync::atomic::AtomicBool,
 };
@@ -131,63 +134,25 @@ pub async fn has_diff(repo_path: impl AsRef<Path>, rev: impl Into<String>) -> Re
 
 /// Check out a specific ref (branch, tag, or commit) in a repository.
 ///
-/// This is equivalent to `git checkout <identifier>`. The worktree and index
-/// are updated to match the target commit's tree, and HEAD is set to a detached
-/// state pointing to the resolved commit.
-pub async fn checkout(repo_path: impl AsRef<Path>, identifier: &str) -> Result<()> {
+/// This is equivalent to `git checkout <identifier>`. The worktree and index are updated to match
+/// the target commit's tree. HEAD handling mirrors git's behavior:
+/// - Local branch name: HEAD becomes a symbolic ref to the branch
+/// - Remote tracking branch (no local): creates a local tracking branch, HEAD points to it
+/// - Tag, SHA, or other rev: HEAD is detached at the resolved commit
+pub async fn checkout(repo_path: impl AsRef<Path>, identifier: impl Into<String>) -> Result<()> {
     let repo_path = repo_path.as_ref().to_path_buf();
-    let identifier = identifier.to_string();
+    let identifier: String = identifier.into();
     tokio::task::spawn_blocking(move || {
-        let repo = gix::open(&repo_path).gix_err()?;
-
-        // Resolve identifier (branch/tag/commit) to a commit.
-        // Fall back to `<remote>/<identifier>` for remote tracking branches, mirroring
-        // git checkout's DWIM behavior in freshly cloned repos.
-        let commit = repo
-            .rev_parse_single(identifier.as_bytes())
-            .or_else(|e| {
-                let Ok(remote) = find_remote_name(&repo) else {
-                    return Err(e);
-                };
-                repo.rev_parse_single(format!("{remote}/{identifier}").as_bytes())
-            })
-            .gix_err()?
-            .object()
-            .gix_err()?
-            .peel_to_commit()
-            .gix_err()?;
-        let commit_id = commit.id;
-        let tree_id = commit.tree_id().gix_err()?.detach();
-
+        let mut repo = gix::open(&repo_path).gix_err()?;
         let workdir = repo.workdir().ok_or(GitError::BareRepository)?.to_path_buf();
 
-        // Clear the worktree (everything except .git) to prepare for checkout
-        for entry in std::fs::read_dir(&workdir)
-            .map_err(|e| GitError::IOError { path: workdir.clone(), source: e })?
-        {
-            let Ok(entry) = entry else {
-                continue;
-            };
-            if entry.file_name() == ".git" {
-                continue;
-            }
-            let path = entry.path();
-            if path.is_dir() {
-                std::fs::remove_dir_all(&path)
-                    .map_err(|e| GitError::IOError { path: path.clone(), source: e })?;
-            } else {
-                std::fs::remove_file(&path)
-                    .map_err(|e| GitError::IOError { path: path.clone(), source: e })?;
-            }
-        }
+        let target = resolve_checkout_target(&mut repo, &identifier)?;
 
-        // Build index from the target tree
-        let mut index = repo.index_from_tree(&tree_id).gix_err()?;
-
-        // Checkout the tree to the worktree
+        // Clear the worktree (everything except .git) and checkout the target tree
+        clear_worktree(&workdir)?;
+        let mut index = repo.index_from_tree(&target.tree_id).gix_err()?;
         let mut opts = repo.checkout_options(Source::IdMapping).gix_err()?;
         opts.destination_is_initially_empty = true;
-
         let should_interrupt = AtomicBool::new(false);
         state::checkout(
             &mut index,
@@ -199,11 +164,9 @@ pub async fn checkout(repo_path: impl AsRef<Path>, identifier: &str) -> Result<(
             opts,
         )
         .gix_err()?;
-
-        // Write the updated index to disk
         index.write(Default::default()).gix_err()?;
 
-        // Update HEAD to point to the checked-out commit (detached)
+        // Update HEAD
         repo.edit_reference(RefEdit {
             change: Change::Update {
                 log: LogChange {
@@ -212,7 +175,7 @@ pub async fn checkout(repo_path: impl AsRef<Path>, identifier: &str) -> Result<(
                     message: format!("checkout: moving to {identifier}").into(),
                 },
                 expected: PreviousValue::Any,
-                new: Target::Object(commit_id),
+                new: target.target,
             },
             name: "HEAD".try_into().expect("HEAD is a valid ref name"),
             deref: false,
@@ -222,6 +185,135 @@ pub async fn checkout(repo_path: impl AsRef<Path>, identifier: &str) -> Result<(
         Ok(())
     })
     .await?
+}
+
+#[derive(Debug)]
+struct CheckoutTarget {
+    tree_id: ObjectId,
+    target: Target,
+}
+
+/// Resolve the checkout target following git's rules.
+///
+/// Resolution order:
+/// 1. Local branch (`refs/heads/<identifier>`)
+/// 2. Remote tracking branch: creates local tracking branch + config
+/// 3. General rev via `rev_parse_single` (tag, SHA, etc.): detached
+fn resolve_checkout_target(repo: &mut gix::Repository, identifier: &str) -> Result<CheckoutTarget> {
+    // 1. Local branch
+    if let Some(mut reference) =
+        repo.try_find_reference(&format!("heads/{identifier}")).gix_err()?
+    {
+        let tree_id = reference.peel_to_tree().gix_err()?.id;
+        return Ok(CheckoutTarget {
+            tree_id,
+            target: Target::Symbolic(
+                format!("refs/heads/{identifier}").try_into().expect("valid ref name"),
+            ),
+        });
+    }
+
+    // 2. Remote tracking branch: create local branch with tracking config
+    // Skip for "HEAD": refs/remotes/<remote>/HEAD is a symbolic ref, not a tracking branch
+    if identifier != "HEAD" &&
+        let Ok(remote_name) = find_remote_name(repo) &&
+        let Some(mut reference) = repo
+            .try_find_reference(format!("refs/remotes/{remote_name}/{identifier}").as_str())
+            .gix_err()?
+    {
+        let (commit_id, tree_id) = {
+            let commit = reference.peel_to_commit().gix_err()?;
+            (commit.id, commit.tree_id().gix_err()?.detach())
+        };
+
+        // Create local branch ref pointing to the same commit
+        let full_name: FullName =
+            format!("refs/heads/{identifier}").try_into().expect("valid ref name");
+        repo.edit_reference(RefEdit {
+            change: Change::Update {
+                log: LogChange {
+                    mode: RefLog::AndReference,
+                    force_create_reflog: false,
+                    message: "branch: created from remote tracking branch".into(),
+                },
+                expected: PreviousValue::Any,
+                new: Target::Object(commit_id),
+            },
+            name: full_name.clone(),
+            deref: false,
+        })
+        .gix_err()?;
+
+        // Set up tracking config
+        write_branch_config(repo, identifier, &remote_name.to_string())?;
+
+        return Ok(CheckoutTarget { tree_id, target: Target::Symbolic(full_name) });
+    }
+
+    // 3. General rev (tag, SHA, etc.)
+    let commit = repo
+        .rev_parse_single(identifier)
+        .gix_err()?
+        .object()
+        .gix_err()?
+        .peel_to_commit()
+        .gix_err()?;
+    let commit_id = commit.id;
+    let tree_id = commit.tree_id().gix_err()?.detach();
+    Ok(CheckoutTarget { tree_id, target: Target::Object(commit_id) })
+}
+
+/// Write branch tracking config (`branch.<name>.remote` and `branch.<name>.merge`) to the local
+/// `.git/config` file.
+fn write_branch_config(
+    repo: &mut gix::Repository,
+    branch_name: &str,
+    remote_name: &str,
+) -> Result<()> {
+    let mut config = repo.config_snapshot_mut();
+    let mut section = config
+        .new_section("branch", Some(Cow::Owned(branch_name.into())))
+        .expect("valid section name");
+    section.push("remote".try_into().expect("valid key"), Some(remote_name.into()));
+    let merge_value = format!("refs/heads/{branch_name}");
+    section.push("merge".try_into().expect("valid key"), Some(merge_value.as_str().into()));
+    // Persist to the local config file on disk
+    let config_path = config.meta().path.as_deref().expect("local config has a path");
+    let mut file = File::options()
+        .create(false)
+        .write(true)
+        .open(config_path)
+        .map_err(|e| GitError::IOError { path: config_path.to_path_buf(), source: e })?;
+    file.write_all(config.detect_newline_style())
+        .map_err(|e| GitError::IOError { path: config_path.to_path_buf(), source: e })?;
+    config
+        .write_to_filter(&mut file, |s| s.meta().source == gix::config::Source::Local)
+        .map_err(|e| GitError::IOError { path: config_path.to_path_buf(), source: e })?;
+    config.commit().gix_err()?;
+    Ok(())
+}
+
+/// Remove all files and directories from the worktree, except `.git`.
+fn clear_worktree(workdir: &Path) -> Result<()> {
+    for entry in std::fs::read_dir(workdir)
+        .map_err(|e| GitError::IOError { path: workdir.to_path_buf(), source: e })?
+    {
+        let Ok(entry) = entry else {
+            continue;
+        };
+        if entry.file_name() == ".git" {
+            continue;
+        }
+        let path = entry.path();
+        if path.is_dir() {
+            std::fs::remove_dir_all(&path)
+                .map_err(|e| GitError::IOError { path: path.clone(), source: e })?;
+        } else {
+            std::fs::remove_file(&path)
+                .map_err(|e| GitError::IOError { path: path.clone(), source: e })?;
+        }
+    }
+    Ok(())
 }
 
 /// Get the default branch name for the default remote.

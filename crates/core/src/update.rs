@@ -105,8 +105,8 @@ pub async fn update_dependency(
                 branch
             };
 
-            // checkout via CLI so HEAD tracks the branch (needed for pull)
-            run_git_command(&["checkout", &branch], Some(&path)).await?;
+            // checkout the branch so HEAD tracks it (needed for pull)
+            git::checkout(&path, &branch).await?;
             // pull the latest commits
             debug!(dep:% = dependency; "running git pull");
             run_git_command(&["pull"], Some(&path)).await?;

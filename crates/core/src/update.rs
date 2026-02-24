@@ -2,7 +2,7 @@
 use crate::{
     config::{Dependency, GitIdentifier},
     errors::UpdateError,
-    git::get_head_commit,
+    git,
     install::{InstallProgress, install_dependency},
     lock::{GitLockEntry, LockEntry, format_install_path},
     registry::get_latest_supported_version,
@@ -90,7 +90,7 @@ pub async fn update_dependency(
             };
             run_git_command(&["reset", "--hard", "HEAD"], Some(&path)).await?;
             run_git_command(&["clean", "-fd"], Some(&path)).await?;
-            let old_commit = get_head_commit(&path).await?;
+            let old_commit = git::get_head_commit(&path).await?;
             debug!(dep:% = dependency; "old commit was {old_commit}");
 
             if let Some(GitIdentifier::Branch(ref branch)) = dep.identifier {
@@ -115,7 +115,7 @@ pub async fn update_dependency(
             // pull the latest commits
             debug!(dep:% = dependency; "running git pull");
             run_git_command(&["pull"], Some(&path)).await?;
-            let commit = get_head_commit(&path).await?;
+            let commit = git::get_head_commit(&path).await?;
             debug!(dep:% = dependency; "new commit is {commit}");
             if commit != old_commit {
                 debug!(dep:% = dependency, old_commit, new_commit = commit; "updated dependency");

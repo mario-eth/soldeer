@@ -771,7 +771,7 @@ async fn reinit_submodules(path: &PathBuf) -> Result<Vec<PathBuf>> {
         ) = foundry_lock.get(Path::new(&submodule.path))
         {
             debug!(submodule_name, path:?; "found corresponding item in foundry lockfile");
-            run_git_command(["checkout", rev], Some(&dest_path)).await?;
+            git::checkout(&dest_path, rev).await?;
             debug!(submodule_name, path:?; "submodule checked out at {rev}");
         }
         debug!(submodule_name, path:?; "added submodule");
@@ -849,12 +849,11 @@ async fn check_git_dependency(
 
 /// Reset a git dependency to the commit specified in the lockfile entry.
 ///
-/// This function runs `git reset --hard <commit>` and `git clean -fd` in the git dependency's
-/// directory.
+/// This resets the index and worktree to match the target revision, equivalent to
+/// `git reset --hard <commit>` followed by `git clean -fd`.
 async fn reset_git_dependency(lock: &GitLockEntry, deps: impl AsRef<Path>) -> Result<()> {
     let path = lock.install_path(deps);
-    run_git_command(&["reset", "--hard", &lock.rev], Some(&path)).await?;
-    run_git_command(&["clean", "-fd"], Some(&path)).await?;
+    git::checkout(&path, &lock.rev).await?;
     Ok(())
 }
 

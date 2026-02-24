@@ -12,6 +12,7 @@ use gix::{
         Target,
         transaction::{Change, LogChange, PreviousValue, RefEdit, RefLog},
     },
+    remote,
     worktree::{stack::state::attributes::Source, state},
 };
 use std::{
@@ -140,11 +141,16 @@ pub async fn checkout(repo_path: impl AsRef<Path>, identifier: &str) -> Result<(
         let repo = gix::open(&repo_path).gix_err()?;
 
         // Resolve identifier (branch/tag/commit) to a commit.
-        // Fall back to `origin/<identifier>` for remote tracking branches, mirroring
+        // Fall back to `<remote>/<identifier>` for remote tracking branches, mirroring
         // git checkout's DWIM behavior in freshly cloned repos.
         let commit = repo
             .rev_parse_single(identifier.as_bytes())
-            .or_else(|_| repo.rev_parse_single(format!("origin/{identifier}").as_bytes()))
+            .or_else(|e| {
+                let Ok(remote) = find_remote_name(&repo) else {
+                    return Err(e);
+                };
+                repo.rev_parse_single(format!("{remote}/{identifier}").as_bytes())
+            })
             .gix_err()?
             .object()
             .gix_err()?
@@ -216,6 +222,36 @@ pub async fn checkout(repo_path: impl AsRef<Path>, identifier: &str) -> Result<(
         Ok(())
     })
     .await?
+}
+
+/// Get the default branch name for the default remote.
+///
+/// This is equivalent to `git symbolic-ref refs/remotes/[default_remote]/HEAD --short`.
+pub async fn get_default_branch(repo_path: impl AsRef<Path>) -> Result<String> {
+    let repo_path = repo_path.as_ref().to_path_buf();
+    tokio::task::spawn_blocking(move || {
+        let repo = gix::open(&repo_path).gix_err()?;
+        let remote_name = find_remote_name(&repo)?;
+        let ref_name = format!("{remote_name}/HEAD");
+        let reference = repo.find_reference(&ref_name).gix_err()?;
+        let target = reference.target();
+        let target_name = target.try_name().ok_or_else(|| {
+            GixError::from_error(std::io::Error::other(format!(
+                "{ref_name} is not a symbolic reference"
+            )))
+        })?;
+        let shortened = target_name.shorten().to_string();
+        Ok(shortened.strip_prefix(&format!("{remote_name}/")).unwrap_or(&shortened).to_string())
+    })
+    .await?
+}
+
+/// Find the name of the default fetch remote for a repository.
+///
+/// Uses gix's `remote_default_name` which prefers the only remote if there's just one,
+/// or falls back to `origin` when it's defined and multiple remotes exist.
+pub fn find_remote_name(repo: &gix::Repository) -> Result<Cow<'_, BStr>> {
+    repo.remote_default_name(remote::Direction::Fetch).ok_or(GitError::NoRemote)
 }
 
 /// Create a BStr from a path, which is what gix expects.

@@ -331,6 +331,9 @@ pub enum GitError {
     #[error("operation not supported on bare repositories")]
     BareRepository,
 
+    #[error("no remote configured for repository")]
+    NoRemote,
+
     #[error("error during IO operation for {path:?}: {source}")]
     IOError { path: PathBuf, source: io::Error },
 }

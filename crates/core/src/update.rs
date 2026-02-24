@@ -88,30 +88,25 @@ pub async fn update_dependency(
                     format_install_path(dependency.name(), dependency.version_req(), &deps)
                 }),
             };
-            run_git_command(&["reset", "--hard", "HEAD"], Some(&path)).await?;
-            run_git_command(&["clean", "-fd"], Some(&path)).await?;
+            // reset worktree to a clean state
+            git::checkout(&path, "HEAD").await?;
             let old_commit = git::get_head_commit(&path).await?;
             debug!(dep:% = dependency; "old commit was {old_commit}");
 
-            if let Some(GitIdentifier::Branch(ref branch)) = dep.identifier {
-                // checkout the desired branch
-                debug!(dep:% = dependency, branch; "checking out required branch");
-                run_git_command(&["checkout", branch], Some(&path)).await?;
+            let branch = if let Some(GitIdentifier::Branch(ref branch)) = dep.identifier {
+                debug!(dep:% = dependency, branch; "updating from required branch");
+                branch.clone()
             } else {
                 // necessarily `None` because of the match above
-                // checkout the default branch
-                debug!(dep:% = dependency; "checking out default branch");
-                let branch = run_git_command(
-                    &["symbolic-ref", "refs/remotes/origin/HEAD", "--short"],
-                    Some(&path),
-                )
-                .await?
-                .trim_start_matches("origin/")
-                .trim()
-                .to_string();
+                // determine the default branch
+                debug!(dep:% = dependency; "determining default branch");
+                let branch = git::get_default_branch(&path).await?;
                 debug!(dep:% = dependency; "default branch is {branch}");
-                run_git_command(&["checkout", &branch], Some(&path)).await?;
-            }
+                branch
+            };
+
+            // checkout via CLI so HEAD tracks the branch (needed for pull)
+            run_git_command(&["checkout", &branch], Some(&path)).await?;
             // pull the latest commits
             debug!(dep:% = dependency; "running git pull");
             run_git_command(&["pull"], Some(&path)).await?;

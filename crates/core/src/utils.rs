@@ -243,7 +243,7 @@ pub async fn remove_forge_lib(root: impl AsRef<Path>) -> Result<(), InstallError
     let lib_dir = root.as_ref().join("lib");
     let forge_std_dir = lib_dir.join("forge-std");
     if forge_std_dir.exists() {
-        git::remove_from_index(&root, &forge_std_dir).await?;
+        git::remove_from_index(&root, &forge_std_dir)?;
         debug!("removed lib/forge-std");
     }
     if lib_dir.exists() {

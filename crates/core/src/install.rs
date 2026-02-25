@@ -771,7 +771,7 @@ async fn reinit_submodules(path: &PathBuf) -> Result<Vec<PathBuf>> {
         ) = foundry_lock.get(Path::new(&submodule.path))
         {
             debug!(submodule_name, path:?; "found corresponding item in foundry lockfile");
-            git::checkout(&dest_path, rev).await?;
+            git::checkout(&dest_path, rev)?;
             debug!(submodule_name, path:?; "submodule checked out at {rev}");
         }
         debug!(submodule_name, path:?; "added submodule");
@@ -825,7 +825,7 @@ async fn check_git_dependency(
         return Ok(DependencyStatus::Missing);
     }
     // check that the location is a git repository with its root at the install path
-    let Some(top_level) = git::get_toplevel(&path).await else {
+    let Some(top_level) = git::get_toplevel(&path) else {
         debug!(path:?; "could not discover git repo at dependency path");
         return Ok(DependencyStatus::Missing);
     };
@@ -839,7 +839,7 @@ async fn check_git_dependency(
         return Ok(DependencyStatus::Missing);
     }
     // for git dependencies, the `rev` field holds the commit hash
-    if let Ok(false) = git::has_diff(&path, &lock.rev).await {
+    if let Ok(false) = git::has_diff(&path, &lock.rev) {
         Ok(DependencyStatus::Installed)
     } else {
         debug!(path:?, rev = lock.rev; "git repo has non-empty diff compared to lockfile rev");
@@ -853,7 +853,7 @@ async fn check_git_dependency(
 /// `git reset --hard <commit>` followed by `git clean -fd`.
 async fn reset_git_dependency(lock: &GitLockEntry, deps: impl AsRef<Path>) -> Result<()> {
     let path = lock.install_path(deps);
-    git::checkout(&path, &lock.rev).await?;
+    git::checkout(&path, &lock.rev)?;
     Ok(())
 }
 

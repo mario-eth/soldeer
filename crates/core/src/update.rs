@@ -89,8 +89,8 @@ pub async fn update_dependency(
                 }),
             };
             // reset worktree to a clean state
-            git::checkout(&path, "HEAD").await?;
-            let old_commit = git::get_head_commit(&path).await?;
+            git::checkout(&path, "HEAD")?;
+            let old_commit = git::get_head_commit(&path)?;
             debug!(dep:% = dependency; "old commit was {old_commit}");
 
             let branch = if let Some(GitIdentifier::Branch(ref branch)) = dep.identifier {
@@ -100,17 +100,17 @@ pub async fn update_dependency(
                 // necessarily `None` because of the match above
                 // determine the default branch
                 debug!(dep:% = dependency; "determining default branch");
-                let branch = git::get_default_branch(&path).await?;
+                let branch = git::get_default_branch(&path)?;
                 debug!(dep:% = dependency; "default branch is {branch}");
                 branch
             };
 
             // checkout the branch so HEAD tracks it (needed for pull)
-            git::checkout(&path, &branch).await?;
+            git::checkout(&path, &branch)?;
             // pull the latest commits
             debug!(dep:% = dependency; "running git pull");
             run_git_command(&["pull"], Some(&path)).await?;
-            let commit = git::get_head_commit(&path).await?;
+            let commit = git::get_head_commit(&path)?;
             debug!(dep:% = dependency; "new commit is {commit}");
             if commit != old_commit {
                 debug!(dep:% = dependency, old_commit, new_commit = commit; "updated dependency");

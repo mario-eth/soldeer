@@ -23,8 +23,10 @@ use path_slash::PathBufExt as _;
 use std::{
     collections::HashMap,
     fmt,
+    future::Future,
     ops::Deref,
     path::{Path, PathBuf},
+    pin::Pin,
 };
 use tokio::{fs, sync::mpsc, task::JoinSet};
 
@@ -581,7 +583,7 @@ async fn install_dependency_inner(
 
             if subdependencies {
                 debug!(dep:% = dep; "installing subdependencies");
-                Box::pin(install_subdependencies(&path, dep.project_root.as_ref())).await?;
+                install_subdependencies(&path, dep.project_root.as_ref()).await?;
                 debug!(dep:% = dep; "finished installing subdependencies");
             }
             progress.unzip.send(dep.into()).ok();
@@ -603,44 +605,54 @@ async fn install_dependency_inner(
 /// This function checks for a `.gitmodules` file in the dependency directory and clones the
 /// submodules if it exists. If a valid Soldeer config is found at the project root (optionally a
 /// sub-dir of the dependency folder), the soldeer dependencies are installed.
-async fn install_subdependencies(
+fn install_subdependencies(
     path: impl AsRef<Path>,
     project_root: Option<&PathBuf>,
-) -> Result<()> {
+) -> Pin<Box<dyn Future<Output = Result<()>> + Send + '_>> {
     let path = path.as_ref().to_path_buf();
-    let gitmodules_path = path.join(".gitmodules");
-    if fs::metadata(&gitmodules_path).await.is_ok() {
-        debug!(path:?; "found .gitmodules, installing subdependencies with git");
-        if fs::metadata(path.join(".git")).await.is_ok() {
-            debug!(path:?; "subdependency contains .git directory, cloning submodules");
-            run_git_command(&["submodule", "update", "--init"], Some(&path)).await?;
-            // we need to recurse into each of the submodules to ensure any soldeer sub-deps of
-            // those are also installed
-            let submodules = get_submodules(&path).await?;
-            for (_, submodule) in submodules {
-                let sub_path = path.join(submodule.path);
-                debug!(sub_path:?; "recursing into the git submodule");
-                Box::pin(install_subdependencies(sub_path, None)).await?;
-            }
-        } else {
-            debug!(path:?; "subdependency has git submodules configuration but is not a git repository");
-            let submodule_paths = reinit_submodules(&path).await?;
-            // we need to recurse into each of the submodules to ensure any soldeer sub-deps of
-            // those are also installed
-            for sub_path in submodule_paths {
-                debug!(sub_path:?; "recursing into the git submodule");
-                Box::pin(install_subdependencies(sub_path, None)).await?;
+    Box::pin(async move {
+        let gitmodules_path = path.join(".gitmodules");
+        if fs::metadata(&gitmodules_path).await.is_ok() {
+            debug!(path:?; "found .gitmodules, installing subdependencies with git");
+            if fs::metadata(path.join(".git")).await.is_ok() {
+                debug!(path:?; "subdependency contains .git directory, cloning submodules");
+                run_git_command(&["submodule", "update", "--init"], Some(&path)).await?;
+                // we need to recurse into each of the submodules to ensure any soldeer sub-deps of
+                // those are also installed
+                let submodules = get_submodules(&path).await?;
+                let mut set = JoinSet::new();
+                for (_, submodule) in submodules {
+                    let sub_path = path.join(submodule.path);
+                    debug!(sub_path:?; "recursing into the git submodule");
+                    set.spawn(async move { install_subdependencies(sub_path, None).await });
+                }
+                while let Some(res) = set.join_next().await {
+                    res??;
+                }
+            } else {
+                debug!(path:?; "subdependency has git submodules configuration but is not a git repository");
+                let submodule_paths = reinit_submodules(&path).await?;
+                // we need to recurse into each of the submodules to ensure any soldeer sub-deps of
+                // those are also installed
+                let mut set = JoinSet::new();
+                for sub_path in submodule_paths {
+                    debug!(sub_path:?; "recursing into the git submodule");
+                    set.spawn(async move { install_subdependencies(sub_path, None).await });
+                }
+                while let Some(res) = set.join_next().await {
+                    res??;
+                }
             }
         }
-    }
-    // if there's a suitable soldeer config, install the soldeer deps
-    let path = get_subdependency_root(path, project_root).await?;
-    if detect_config_location(&path).is_some() {
-        // install subdependencies
-        debug!(path:?; "found soldeer config, installing subdependencies");
-        install_subdependencies_inner(Paths::from_root(path)?).await?;
-    }
-    Ok(())
+        // if there's a suitable soldeer config, install the soldeer deps
+        let path = get_subdependency_root(path, project_root).await?;
+        if detect_config_location(&path).is_some() {
+            // install subdependencies
+            debug!(path:?; "found soldeer config, installing subdependencies");
+            install_subdependencies_inner(Paths::from_root(path)?).await?;
+        }
+        Ok(())
+    })
 }
 
 /// Inner logic for installing subdependencies at a given path.
@@ -653,7 +665,7 @@ async fn install_subdependencies_inner(paths: Paths) -> Result<()> {
     let (dependencies, _) = read_config_deps(&paths.config)?;
     let lockfile = read_lockfile(&paths.lock)?;
     let (progress, _) = InstallProgress::new(); // not used at the moment
-    let _ = install_dependencies_sequential(
+    let _ = install_dependencies(
         &dependencies,
         &lockfile.entries,
         &paths.dependencies,
@@ -703,7 +715,7 @@ async fn install_http_dependency(
 
     if subdependencies {
         debug!(dep:% = dep; "installing subdependencies");
-        Box::pin(install_subdependencies(path, dep.project_root.as_ref())).await?;
+        install_subdependencies(path, dep.project_root.as_ref()).await?;
         debug!(dep:% = dep; "finished installing subdependencies");
     }
     progress.subdependencies.send(dep.into()).ok();

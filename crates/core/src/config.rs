@@ -322,16 +322,6 @@ impl GitIdentifier {
     }
 }
 
-impl From<GitIdentifier> for String {
-    fn from(val: GitIdentifier) -> Self {
-        match val {
-            GitIdentifier::Rev(inner) |
-            GitIdentifier::Branch(inner) |
-            GitIdentifier::Tag(inner) => inner,
-        }
-    }
-}
-
 /// A git dependency config item.
 ///
 /// This struct is used to represent a git dependency from the config file.

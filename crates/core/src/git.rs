@@ -29,42 +29,49 @@ pub type Result<T> = std::result::Result<T, GitError>;
 /// Get the current HEAD commit hash.
 ///
 /// This is equivalent to `git rev-parse --verify HEAD`.
-pub fn get_head_commit(repo_path: impl AsRef<Path>) -> Result<String> {
-    let repo = gix::open(repo_path.as_ref()).gix_err()?;
-    let head_id = repo.head().gix_err()?.into_peeled_id().gix_err()?;
-    Ok(head_id.to_string())
+pub async fn get_head_commit(repo_path: impl AsRef<Path>) -> Result<String> {
+    let repo_path = repo_path.as_ref().to_path_buf();
+    tokio::task::spawn_blocking(move || {
+        let repo = gix::open(&repo_path).gix_err()?;
+        let head_id = repo.head().gix_err()?.into_peeled_id().gix_err()?;
+        Ok(head_id.to_string())
+    })
+    .await?
 }
 
 /// Remove a path from the git index.
 ///
 /// This is equivalent to `git rm --cached <path>` (without removing the file from disk).
 /// The caller is responsible for removing the file from the filesystem if needed.
-pub fn remove_from_index(
+pub async fn remove_from_index(
     repo_path: impl AsRef<Path>,
     path_to_remove: impl AsRef<Path>,
 ) -> Result<()> {
-    let repo_path = repo_path.as_ref();
-    let path_to_remove = path_to_remove.as_ref();
+    let repo_path = repo_path.as_ref().to_path_buf();
+    let path_to_remove = path_to_remove.as_ref().to_path_buf();
 
-    let repo = gix::open(repo_path).gix_err()?;
-    let mut index = repo.open_index().gix_err()?;
+    tokio::task::spawn_blocking(move || {
+        let repo = gix::open(&repo_path).gix_err()?;
+        let mut index = repo.open_index().gix_err()?;
 
-    // Convert the path to be relative to the repository root
-    let relative_path = if path_to_remove.is_absolute() {
-        path_to_remove
-            .strip_prefix(repo_path)
-            .map_err(|_| GitError::InvalidPath(path_to_remove.to_path_buf()))?
-    } else {
-        path_to_remove
-    };
+        // Convert the path to be relative to the repository root
+        let relative_path = if path_to_remove.is_absolute() {
+            path_to_remove
+                .strip_prefix(&repo_path)
+                .map_err(|_| GitError::InvalidPath(path_to_remove.clone()))?
+        } else {
+            path_to_remove.as_path()
+        };
 
-    let entry_idx = index
-        .entry_index_by_path(&make_path_bstr(relative_path))
-        .map_err(|_| GitError::PathNotInIndex(path_to_remove.to_path_buf()))?;
+        let entry_idx = index
+            .entry_index_by_path(&make_path_bstr(relative_path))
+            .map_err(|_| GitError::PathNotInIndex(path_to_remove))?;
 
-    index.remove_entry_at_index(entry_idx);
-    index.write(Default::default()).gix_err()?;
-    Ok(())
+        index.remove_entry_at_index(entry_idx);
+        index.write(Default::default()).gix_err()?;
+        Ok(())
+    })
+    .await?
 }
 
 /// Get the top-level directory (worktree root) of a git repository.
@@ -73,10 +80,16 @@ pub fn remove_from_index(
 /// at or above the given path and returns the canonicalized worktree root path.
 ///
 /// Returns `None` if the path is not inside a git repository.
-pub fn get_toplevel(path: impl AsRef<Path>) -> Option<PathBuf> {
-    let repo = gix::discover(path).ok()?;
-    let work_dir = repo.workdir()?;
-    dunce::canonicalize(work_dir).ok()
+pub async fn get_toplevel(path: impl AsRef<Path>) -> Option<PathBuf> {
+    let path = path.as_ref().to_path_buf();
+    tokio::task::spawn_blocking(move || {
+        let repo = gix::discover(&path).ok()?;
+        let work_dir = repo.workdir()?;
+        dunce::canonicalize(work_dir).ok()
+    })
+    .await
+    .ok()
+    .flatten()
 }
 
 /// Check if there are any differences between the working tree and a specific revision.
@@ -85,34 +98,38 @@ pub fn get_toplevel(path: impl AsRef<Path>) -> Option<PathBuf> {
 /// differences, `false` if the working tree matches the revision.
 ///
 /// As for git, untracked files are ignored.
-pub fn has_diff(repo_path: impl AsRef<Path>, rev: impl Into<String>) -> Result<bool> {
+pub async fn has_diff(repo_path: impl AsRef<Path>, rev: impl Into<String>) -> Result<bool> {
+    let repo_path = repo_path.as_ref().to_path_buf();
     let rev: String = rev.into();
-    let repo = gix::open(repo_path.as_ref()).gix_err()?;
+    tokio::task::spawn_blocking(move || {
+        let repo = gix::open(&repo_path).gix_err()?;
 
-    // Resolve the revision to a tree OID
-    let tree_id = repo
-        .rev_parse_single(rev.as_bytes())
-        .gix_err()?
-        .object()
-        .gix_err()?
-        .peel_to_tree()
-        .gix_err()?
-        .id;
+        // Resolve the revision to a tree OID
+        let tree_id = repo
+            .rev_parse_single(rev.as_bytes())
+            .gix_err()?
+            .object()
+            .gix_err()?
+            .peel_to_tree()
+            .gix_err()?
+            .id;
 
-    // Compare the rev's tree against the index and worktree
-    let has_changes = repo
-        .status(gix::progress::Discard)
-        .gix_err()?
-        .head_tree(tree_id)
-        .index_worktree_options_mut(|opts| {
-            opts.dirwalk_options = None; // skip untracked files
-        })
-        .into_iter(None::<BString>)
-        .gix_err()?
-        .next()
-        .is_some();
+        // Compare the rev's tree against the index and worktree
+        let has_changes = repo
+            .status(gix::progress::Discard)
+            .gix_err()?
+            .head_tree(tree_id)
+            .index_worktree_options_mut(|opts| {
+                opts.dirwalk_options = None; // skip untracked files
+            })
+            .into_iter(None::<BString>)
+            .gix_err()?
+            .next()
+            .is_some();
 
-    Ok(has_changes)
+        Ok(has_changes)
+    })
+    .await?
 }
 
 /// Check out a specific ref (branch, tag, or commit) in a repository.
@@ -122,48 +139,52 @@ pub fn has_diff(repo_path: impl AsRef<Path>, rev: impl Into<String>) -> Result<b
 /// - Local branch name: HEAD becomes a symbolic ref to the branch
 /// - Remote tracking branch (no local): creates a local tracking branch, HEAD points to it
 /// - Tag, SHA, or other rev: HEAD is detached at the resolved commit
-pub fn checkout(repo_path: impl AsRef<Path>, identifier: impl Into<String>) -> Result<()> {
+pub async fn checkout(repo_path: impl AsRef<Path>, identifier: impl Into<String>) -> Result<()> {
+    let repo_path = repo_path.as_ref().to_path_buf();
     let identifier: String = identifier.into();
-    let mut repo = gix::open(repo_path.as_ref()).gix_err()?;
-    let workdir = repo.workdir().ok_or(GitError::BareRepository)?.to_path_buf();
+    tokio::task::spawn_blocking(move || {
+        let mut repo = gix::open(&repo_path).gix_err()?;
+        let workdir = repo.workdir().ok_or(GitError::BareRepository)?.to_path_buf();
 
-    let target = resolve_checkout_target(&mut repo, &identifier)?;
+        let target = resolve_checkout_target(&mut repo, &identifier)?;
 
-    // Clear the worktree (everything except .git) and checkout the target tree
-    clear_worktree(&workdir)?;
-    let mut index = repo.index_from_tree(&target.tree_id).gix_err()?;
-    let mut opts = repo.checkout_options(Source::IdMapping).gix_err()?;
-    opts.destination_is_initially_empty = true;
-    let should_interrupt = AtomicBool::new(false);
-    state::checkout(
-        &mut index,
-        &workdir,
-        repo.objects.clone().into_arc().gix_err()?,
-        &gix::progress::Discard,
-        &gix::progress::Discard,
-        &should_interrupt,
-        opts,
-    )
-    .gix_err()?;
-    index.write(Default::default()).gix_err()?;
+        // Clear the worktree (everything except .git) and checkout the target tree
+        clear_worktree(&workdir)?;
+        let mut index = repo.index_from_tree(&target.tree_id).gix_err()?;
+        let mut opts = repo.checkout_options(Source::IdMapping).gix_err()?;
+        opts.destination_is_initially_empty = true;
+        let should_interrupt = AtomicBool::new(false);
+        state::checkout(
+            &mut index,
+            &workdir,
+            repo.objects.clone().into_arc().gix_err()?,
+            &gix::progress::Discard,
+            &gix::progress::Discard,
+            &should_interrupt,
+            opts,
+        )
+        .gix_err()?;
+        index.write(Default::default()).gix_err()?;
 
-    // Update HEAD
-    repo.edit_reference(RefEdit {
-        change: Change::Update {
-            log: LogChange {
-                mode: RefLog::AndReference,
-                force_create_reflog: false,
-                message: format!("checkout: moving to {identifier}").into(),
+        // Update HEAD
+        repo.edit_reference(RefEdit {
+            change: Change::Update {
+                log: LogChange {
+                    mode: RefLog::AndReference,
+                    force_create_reflog: false,
+                    message: format!("checkout: moving to {identifier}").into(),
+                },
+                expected: PreviousValue::Any,
+                new: target.target,
             },
-            expected: PreviousValue::Any,
-            new: target.target,
-        },
-        name: "HEAD".try_into().expect("HEAD is a valid ref name"),
-        deref: false,
-    })
-    .gix_err()?;
+            name: "HEAD".try_into().expect("HEAD is a valid ref name"),
+            deref: false,
+        })
+        .gix_err()?;
 
-    Ok(())
+        Ok(())
+    })
+    .await?
 }
 
 #[derive(Debug)]
@@ -298,20 +319,23 @@ fn clear_worktree(workdir: &Path) -> Result<()> {
 /// Get the default branch name for the default remote.
 ///
 /// This is equivalent to `git symbolic-ref refs/remotes/[default_remote]/HEAD --short`.
-pub fn get_default_branch(repo_path: impl AsRef<Path>) -> Result<String> {
+pub async fn get_default_branch(repo_path: impl AsRef<Path>) -> Result<String> {
     let repo_path = repo_path.as_ref().to_path_buf();
-    let repo = gix::open(&repo_path).gix_err()?;
-    let remote_name = find_remote_name(&repo)?;
-    let ref_name = format!("{remote_name}/HEAD");
-    let reference = repo.find_reference(&ref_name).gix_err()?;
-    let target = reference.target();
-    let target_name = target.try_name().ok_or_else(|| {
-        GixError::from_error(std::io::Error::other(format!(
-            "{ref_name} is not a symbolic reference"
-        )))
-    })?;
-    let shortened = target_name.shorten().to_string();
-    Ok(shortened.strip_prefix(&format!("{remote_name}/")).unwrap_or(&shortened).to_string())
+    tokio::task::spawn_blocking(move || {
+        let repo = gix::open(&repo_path).gix_err()?;
+        let remote_name = find_remote_name(&repo)?;
+        let ref_name = format!("{remote_name}/HEAD");
+        let reference = repo.find_reference(&ref_name).gix_err()?;
+        let target = reference.target();
+        let target_name = target.try_name().ok_or_else(|| {
+            GixError::from_error(std::io::Error::other(format!(
+                "{ref_name} is not a symbolic reference"
+            )))
+        })?;
+        let shortened = target_name.shorten().to_string();
+        Ok(shortened.strip_prefix(&format!("{remote_name}/")).unwrap_or(&shortened).to_string())
+    })
+    .await?
 }
 
 /// Find the name of the default fetch remote for a repository.

@@ -80,10 +80,10 @@ pub async fn clone_repo(
     run_git_command(&["clone", "--tags", url, path.to_string_lossy().as_ref()], None).await?;
     debug!(repo:? = path; "git repo cloned");
     if let Some(identifier) = identifier {
-        git::checkout(&path, identifier.clone())?;
+        git::checkout(&path, &identifier.to_string()).await?;
         debug!(ref:? = identifier, repo:? = path; "checked out ref");
     }
-    let commit = git::get_head_commit(&path)?;
+    let commit = git::get_head_commit(&path).await?;
     debug!(repo:? = path; "checked out commit is {commit}");
     Ok(commit)
 }

@@ -7,7 +7,6 @@ use crate::errors::GitError;
 use gix::{
     ObjectId,
     bstr::{BStr, BString},
-    config::file::Metadata,
     error::Error as GixError,
     path::{into_bstr, to_unix_separators_on_windows},
     refs::{

@@ -614,34 +614,24 @@ fn install_subdependencies(
         let gitmodules_path = path.join(".gitmodules");
         if fs::metadata(&gitmodules_path).await.is_ok() {
             debug!(path:?; "found .gitmodules, installing subdependencies with git");
-            if fs::metadata(path.join(".git")).await.is_ok() {
+            let submodule_paths = if fs::metadata(path.join(".git")).await.is_ok() {
                 debug!(path:?; "subdependency contains .git directory, cloning submodules");
                 run_git_command(&["submodule", "update", "--init"], Some(&path)).await?;
-                // we need to recurse into each of the submodules to ensure any soldeer sub-deps of
-                // those are also installed
                 let submodules = get_submodules(&path).await?;
-                let mut set = JoinSet::new();
-                for (_, submodule) in submodules {
-                    let sub_path = path.join(submodule.path);
-                    debug!(sub_path:?; "recursing into the git submodule");
-                    set.spawn(async move { install_subdependencies(sub_path, None).await });
-                }
-                while let Some(res) = set.join_next().await {
-                    res??;
-                }
+                submodules.into_values().map(|submodule| path.join(submodule.path)).collect()
             } else {
                 debug!(path:?; "subdependency has git submodules configuration but is not a git repository");
-                let submodule_paths = reinit_submodules(&path).await?;
-                // we need to recurse into each of the submodules to ensure any soldeer sub-deps of
-                // those are also installed
-                let mut set = JoinSet::new();
-                for sub_path in submodule_paths {
-                    debug!(sub_path:?; "recursing into the git submodule");
-                    set.spawn(async move { install_subdependencies(sub_path, None).await });
-                }
-                while let Some(res) = set.join_next().await {
-                    res??;
-                }
+                reinit_submodules(&path).await?
+            };
+            // we need to recurse into each of the submodules to ensure any soldeer sub-deps of
+            // those are also installed
+            let mut set = JoinSet::new();
+            for sub_path in submodule_paths {
+                debug!(sub_path:?; "recursing into the git submodule");
+                set.spawn(async move { install_subdependencies(sub_path, None).await });
+            }
+            while let Some(res) = set.join_next().await {
+                res??;
             }
         }
         // if there's a suitable soldeer config, install the soldeer deps
@@ -720,8 +710,12 @@ async fn install_http_dependency(
     }
     progress.subdependencies.send(dep.into()).ok();
 
-    let integrity = hash_folder(path)
-        .map_err(|e| InstallError::IOError { path: path.to_path_buf(), source: e })?;
+    let integrity = tokio::task::spawn_blocking({
+        let path = path.to_path_buf();
+        move || hash_folder(&path)
+    })
+    .await?
+    .map_err(|e| InstallError::IOError { path: path.to_path_buf(), source: e })?;
     debug!(dep:% = dep, checksum = integrity.0; "integrity checksum computed");
     progress.integrity.send(dep.into()).ok();
     Ok((zip_integrity, integrity))

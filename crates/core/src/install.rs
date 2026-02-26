@@ -614,14 +614,17 @@ fn install_subdependencies(
         let gitmodules_path = path.join(".gitmodules");
         if fs::metadata(&gitmodules_path).await.is_ok() {
             debug!(path:?; "found .gitmodules, installing subdependencies with git");
-            let submodule_paths = if fs::metadata(path.join(".git")).await.is_ok() {
+            let submodule_paths: Box<dyn Iterator<Item = _>> = if fs::metadata(path.join(".git"))
+                .await
+                .is_ok()
+            {
                 debug!(path:?; "subdependency contains .git directory, cloning submodules");
                 run_git_command(&["submodule", "update", "--init"], Some(&path)).await?;
                 let submodules = get_submodules(&path).await?;
-                submodules.into_values().map(|submodule| path.join(submodule.path)).collect()
+                Box::new(submodules.into_values().map(|submodule| path.join(submodule.path)))
             } else {
                 debug!(path:?; "subdependency has git submodules configuration but is not a git repository");
-                reinit_submodules(&path).await?
+                Box::new(reinit_submodules(&path).await?.into_iter())
             };
             // we need to recurse into each of the submodules to ensure any soldeer sub-deps of
             // those are also installed

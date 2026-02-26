@@ -21,7 +21,6 @@ use derive_more::derive::Display;
 use log::{debug, info, warn};
 use path_slash::PathBufExt as _;
 use std::{
-    collections::HashMap,
     fmt,
     future::Future,
     ops::Deref,
@@ -294,14 +293,6 @@ impl InstallInfo {
             }
         }
     }
-}
-
-/// Git submodule information
-#[derive(Debug, Default, Clone, PartialEq, Eq, Hash)]
-struct Submodule {
-    url: String,
-    path: String,
-    branch: Option<String>,
 }
 
 /// Install a list of dependencies in parallel.
@@ -620,7 +611,7 @@ fn install_subdependencies(
             {
                 debug!(path:?; "subdependency contains .git directory, cloning submodules");
                 run_git_command(&["submodule", "update", "--init"], Some(&path)).await?;
-                let submodules = get_submodules(&path).await?;
+                let submodules = git::get_submodules(&path).await?;
                 Box::new(submodules.into_values().map(|submodule| path.join(submodule.path)))
             } else {
                 debug!(path:?; "subdependency has git submodules configuration but is not a git repository");
@@ -724,29 +715,6 @@ async fn install_http_dependency(
     Ok((zip_integrity, integrity))
 }
 
-/// Retrieve a map of git submodules for a path by looking at the `.gitmodules` file.
-async fn get_submodules(path: &PathBuf) -> Result<HashMap<String, Submodule>> {
-    let submodules_config =
-        run_git_command(&["config", "-f", ".gitmodules", "-l"], Some(path)).await?;
-    let mut submodules = HashMap::<String, Submodule>::new();
-    for config_line in submodules_config.trim().lines() {
-        let (item, value) = config_line.split_once('=').expect("config format should be valid");
-        let Some(item) = item.strip_prefix("submodule.") else {
-            continue;
-        };
-        let (submodule_name, item_name) =
-            item.rsplit_once('.').expect("config format should be valid");
-        let entry = submodules.entry(submodule_name.to_string()).or_default();
-        match item_name {
-            "path" => entry.path = value.to_string(),
-            "url" => entry.url = value.to_string(),
-            "branch" => entry.branch = Some(value.to_string()),
-            _ => {}
-        }
-    }
-    Ok(submodules)
-}
-
 /// Re-add submodules found in a `.gitmodules` when the folder has to be re-initialized as a git
 /// repo.
 ///
@@ -754,7 +722,7 @@ async fn get_submodules(path: &PathBuf) -> Result<HashMap<String, Submodule>> {
 async fn reinit_submodules(path: &PathBuf) -> Result<Vec<PathBuf>> {
     debug!(path:?; "running git init");
     run_git_command(&["init"], Some(path)).await?;
-    let submodules = get_submodules(path).await?;
+    let submodules = git::get_submodules(path).await?;
     debug!(submodules:?, path:?; "got submodules config");
     let mut foundry_lock = forge::Lockfile::new(path);
     if foundry_lock.read().is_ok() {

@@ -7,6 +7,7 @@ use crate::errors::GitError;
 use gix::{
     ObjectId,
     bstr::{BStr, BString},
+    config::file::Metadata,
     error::Error as GixError,
     path::{into_bstr, to_unix_separators_on_windows},
     refs::{
@@ -14,10 +15,12 @@ use gix::{
         transaction::{Change, LogChange, PreviousValue, RefEdit, RefLog},
     },
     remote,
+    submodule::config::Branch,
     worktree::{stack::state::attributes::Source, state},
 };
 use std::{
     borrow::Cow,
+    collections::HashMap,
     fs::File,
     io::Write as _,
     path::{Path, PathBuf},
@@ -350,6 +353,38 @@ fn clear_worktree(workdir: &Path) -> Result<()> {
 /// or falls back to `origin` when it's defined and multiple remotes exist.
 fn find_remote_name(repo: &gix::Repository) -> Result<Cow<'_, BStr>> {
     repo.remote_default_name(remote::Direction::Fetch).ok_or(GitError::NoRemote)
+}
+
+/// A git submodule entry from `.gitmodules`.
+#[derive(Debug, Default, Clone, PartialEq, Eq, Hash)]
+pub struct Submodule {
+    pub url: String,
+    pub path: String,
+    pub branch: Option<String>,
+}
+
+/// Parse `.gitmodules` at the given path and return submodule entries keyed by name.
+pub async fn get_submodules(path: impl AsRef<Path>) -> Result<HashMap<String, Submodule>> {
+    let gitmodules_path = path.as_ref().join(".gitmodules");
+    tokio::task::spawn_blocking(move || {
+        let bytes = std::fs::read(&gitmodules_path)
+            .map_err(|e| GitError::IOError { path: gitmodules_path.clone(), source: e })?;
+        let modules =
+            gix::submodule::File::from_bytes(&bytes, Some(gitmodules_path), &Default::default())
+                .gix_err()?;
+        let mut submodules = HashMap::new();
+        for name in modules.names() {
+            let path = modules.path(name).gix_err()?.to_string();
+            let url = modules.url(name).gix_err()?.to_bstring().to_string();
+            let branch = modules.branch(name).gix_err()?.map(|b| match b {
+                Branch::Name(n) => n.to_string(),
+                Branch::CurrentInSuperproject => ".".to_string(),
+            });
+            submodules.insert(name.to_string(), Submodule { url, path, branch });
+        }
+        Ok(submodules)
+    })
+    .await?
 }
 
 /// Extension trait to ergonomically convert an error into a [`gix::error::Error`](GixError).

@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## `soldeer` - [0.10.2](https://github.com/mario-eth/soldeer/compare/v0.10.1...v0.10.2) - 2026-02-26
+
+### Fixed
+- *(commands)* do not init logging backend in the library crate ([#350](https://github.com/mario-eth/soldeer/pull/350))
+
+## `soldeer-commands` - [0.10.2](https://github.com/mario-eth/soldeer/compare/soldeer-commands-v0.10.1...soldeer-commands-v0.10.2) - 2026-02-26
+
+### Fixed
+- *(commands)* do not init logging backend in the library crate ([#350](https://github.com/mario-eth/soldeer/pull/350))
+
+## `soldeer-core` - [0.10.2](https://github.com/mario-eth/soldeer/compare/soldeer-core-v0.10.1...soldeer-core-v0.10.2) - 2026-02-26
+
+### Other
+- *(install)* concurrent subdependencies install ([#352](https://github.com/mario-eth/soldeer/pull/352))
+
 ## `soldeer-core` - [0.10.1](https://github.com/mario-eth/soldeer/compare/soldeer-core-v0.10.0...soldeer-core-v0.10.1) - 2026-02-16
 
 ### Added

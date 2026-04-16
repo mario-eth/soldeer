@@ -2246,7 +2246,7 @@ dependencies = [
 
 [[package]]
 name = "soldeer"
-version = "0.10.1"
+version = "0.11.0"
 dependencies = [
  "env_logger",
  "log",
@@ -2257,7 +2257,7 @@ dependencies = [
 
 [[package]]
 name = "soldeer-commands"
-version = "0.10.1"
+version = "0.11.0"
 dependencies = [
  "bon",
  "clap",
@@ -2277,7 +2277,7 @@ dependencies = [
 
 [[package]]
 name = "soldeer-core"
-version = "0.10.1"
+version = "0.11.0"
 dependencies = [
  "bon",
  "chrono",

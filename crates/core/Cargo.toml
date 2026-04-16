@@ -32,14 +32,7 @@ log = { workspace = true, features = ["kv_std"] }
 path-slash.workspace = true
 rayon.workspace = true
 regex = "1.10.5"
-reqwest = { workspace = true, features = [
-    "http2",                      # default
-    "charset",                    # default
-    "macos-system-configuration", # default
-    "json",
-    "multipart",
-    "stream",
-] }
+reqwest = { workspace = true, features = ["json", "multipart", "stream"] }
 sanitize-filename = "0.6.0"
 semver = "1.0.23"
 serde = { version = "1.0.204", features = ["derive"] }
@@ -47,7 +40,7 @@ serde_json = "1.0.120"
 sha2 = "0.10.8"
 thiserror.workspace = true
 tokio.workspace = true
-toml_edit = { version = "0.23.3", features = ["serde"] }
+toml_edit = { version = "0.25.11", features = ["serde"] }
 uuid = { version = "1.10.0", features = ["serde", "v4"] }
 zip = { version = "4.0.0", default-features = false, features = ["deflate"] }
 zip-extract = { version = "0.4.0", default-features = false, features = [
@@ -60,7 +53,4 @@ temp-env.workspace = true
 testdir.workspace = true
 
 [features]
-default = ["rustls"]
-rustls = ["reqwest/rustls-tls"]
-default-tls = ["reqwest/default-tls"]
 serde = []

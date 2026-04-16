@@ -324,7 +324,7 @@ pub fn parse_version_req(version_req: &str) -> Option<VersionReq> {
     // parsed result has the same number of comparators as the original string
 
     if orig_items.len() == req.comparators.len() {
-        for (comparator, orig) in req.comparators.iter_mut().zip(orig_items.into_iter()) {
+        for (comparator, orig) in req.comparators.iter_mut().zip(orig_items) {
             if comparator.op == semver::Op::Caret && !orig.trim_start_matches(' ').starts_with('^')
             {
                 debug!(comparator:% = comparator; "adding exact operator for comparator");

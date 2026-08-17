@@ -98,7 +98,19 @@ pub async fn update_dependency(
             if let Some(GitIdentifier::Branch(ref branch)) = dep.identifier {
                 // checkout the desired branch
                 debug!(dep:% = dependency, branch; "checking out required branch");
-                run_git_command(&["checkout", branch], Some(&path)).await?;
+                // a tag with the same name would shadow the branch during a plain checkout, so
+                // the local branch is created explicitly from the remote-tracking ref
+                run_git_command(
+                    &[
+                        "checkout",
+                        "--track",
+                        "-B",
+                        branch,
+                        &format!("refs/remotes/origin/{branch}"),
+                    ],
+                    Some(&path),
+                )
+                .await?;
             } else {
                 // necessarily `None` because of the match above
                 // checkout the default branch

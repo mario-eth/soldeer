@@ -2,6 +2,7 @@
 use crate::{
     config::{Dependency, Paths, SoldeerConfig, read_config_deps},
     errors::RemappingsError,
+    lock::read_lockfile,
     utils::path_matches,
 };
 use derive_more::derive::From;
@@ -361,11 +362,14 @@ fn remappings_from_deps(
 /// # Errors
 /// If the there is no folder in the dependencies folder corresponding to the dependency
 fn get_install_dir_relative(dependency: &Dependency, paths: &Paths) -> Result<String> {
-    let path = dunce::canonicalize(
-        dependency
-            .install_path_sync(&paths.dependencies)
-            .ok_or(RemappingsError::DependencyNotFound(dependency.to_string()))?,
-    )?;
+    let locked_path = read_lockfile(&paths.lock).ok().and_then(|lockfile| {
+        lockfile.entries.into_iter().find(|entry| entry.name() == dependency.name())
+    });
+    let path = locked_path
+        .map(|entry| entry.install_path(&paths.dependencies))
+        .or_else(|| dependency.install_path_sync(&paths.dependencies))
+        .ok_or(RemappingsError::DependencyNotFound(dependency.to_string()))?;
+    let path = dunce::canonicalize(path)?;
     Ok(path
         .strip_prefix(&paths.root) // already canonicalized
         .map_err(|_| RemappingsError::DependencyNotFound(dependency.to_string()))?
@@ -444,6 +448,33 @@ mod tests {
         let dependency = HttpDependency::builder().name("dep3").version_req("3.0.0").build().into();
         let res = get_install_dir_relative(&dependency, &paths);
         assert!(res.is_err(), "{res:?}");
+    }
+
+    #[test]
+    fn test_get_install_dir_relative_uses_locked_version() {
+        let dir = testdir!();
+        fs::write(dir.join("soldeer.toml"), "[dependencies]\n").unwrap();
+        let paths = Paths::from_root(&dir).unwrap();
+        fs::create_dir_all(paths.dependencies.join("dep1-1.1.1")).unwrap();
+        fs::create_dir_all(paths.dependencies.join("dep1-1.2.0")).unwrap();
+        fs::write(
+            &paths.lock,
+            r#"[[dependencies]]
+name = "dep1"
+version = "1.2.0"
+url = "https://example.com/dep1.zip"
+checksum = "checksum"
+integrity = "integrity"
+"#,
+        )
+        .unwrap();
+        let dependency =
+            HttpDependency::builder().name("dep1").version_req("^1.0.0").build().into();
+
+        assert_eq!(
+            get_install_dir_relative(&dependency, &paths).unwrap(),
+            "dependencies/dep1-1.2.0"
+        );
     }
 
     #[test]

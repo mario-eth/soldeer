@@ -199,6 +199,9 @@ pub enum LockError {
 
     #[error("error parsing lockfile contents: {0}")]
     DeserializeError(#[from] serde_json::Error),
+
+    #[error("error parsing lockfile TOML contents: {0}")]
+    TomlDeserializeError(#[from] toml_edit::de::Error),
 }
 
 #[derive(Error, Debug)]

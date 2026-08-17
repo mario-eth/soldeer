@@ -115,6 +115,11 @@ pub fn zip_file(
 
     for file_path in files_to_copy {
         let path = file_path.as_path();
+        let metadata = fs::symlink_metadata(path)
+            .map_err(|e| PublishError::IOError { path: path.to_path_buf(), source: e })?;
+        if metadata.file_type().is_symlink() {
+            return Err(PublishError::Symlink(path.to_path_buf()));
+        }
         if !path.is_file() {
             debug!(path:?; "skipping non-file entry");
             continue;
@@ -178,6 +183,13 @@ pub fn filter_ignored_files(root_directory_path: impl AsRef<Path>) -> Vec<PathBu
                 return WalkState::Continue;
             };
             let path = entry.path();
+            if fs::symlink_metadata(path)
+                .map(|metadata| metadata.file_type().is_symlink())
+                .unwrap_or(true)
+            {
+                debug!(path:?; "ignoring symlink entry");
+                return WalkState::Continue;
+            }
             if path.is_dir() {
                 debug!(path:?; "ignoring dir entry");
                 return WalkState::Continue;
@@ -386,5 +398,34 @@ mod tests {
         for f in files {
             assert!(f.exists());
         }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_zip_file_rejects_symlink() {
+        use std::os::unix::fs::symlink;
+
+        let dir = testdir!();
+        let target = dir.join("secret.txt");
+        let link = dir.join("visible.txt");
+        fs::write(&target, "secret").unwrap();
+        symlink(&target, &link).unwrap();
+
+        let res = zip_file(&dir, &[link], "package");
+        assert!(matches!(res, Err(PublishError::Symlink(path)) if path.ends_with("visible.txt")));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_filter_files_to_copy_skips_symlink() {
+        use std::os::unix::fs::symlink;
+
+        let dir = testdir!();
+        let target = dir.join("secret.txt");
+        let link = dir.join("visible.txt");
+        fs::write(&target, "secret").unwrap();
+        symlink(&target, &link).unwrap();
+
+        assert!(!filter_ignored_files(&dir).contains(&link));
     }
 }

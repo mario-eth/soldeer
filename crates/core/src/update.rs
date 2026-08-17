@@ -2,7 +2,7 @@
 use crate::{
     config::{Dependency, GitIdentifier},
     errors::UpdateError,
-    install::{InstallProgress, install_dependency},
+    install::{InstallProgress, install_dependency, validate_dependency_path_collisions},
     lock::{GitLockEntry, LockEntry, format_install_path},
     registry::get_latest_supported_version,
     utils::run_git_command,
@@ -35,6 +35,7 @@ pub async fn update_dependencies(
     recursive_deps: bool,
     progress: InstallProgress,
 ) -> Result<Vec<LockEntry>> {
+    validate_dependency_path_collisions(dependencies)?;
     let mut set = JoinSet::new();
     for dep in dependencies {
         debug!(dep:% = dep; "spawning task to update dependency");

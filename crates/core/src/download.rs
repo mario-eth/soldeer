@@ -51,6 +51,18 @@ pub async fn unzip_file(path: impl AsRef<Path>, into: impl AsRef<Path>) -> Resul
         .await
         .map_err(|e| DownloadError::IOError { path: path.clone(), source: e })?;
 
+    let mut archive = zip::ZipArchive::new(Cursor::new(zip_contents.as_slice()))
+        .map_err(|e| DownloadError::InvalidArchiveEntry(e.to_string()))?;
+    for index in 0..archive.len() {
+        let entry = archive
+            .by_index(index)
+            .map_err(|e| DownloadError::InvalidArchiveEntry(e.to_string()))?;
+        if entry.name().split(['/', '\\']).any(|component| component.eq_ignore_ascii_case(".git")) {
+            return Err(DownloadError::InvalidArchiveEntry(entry.name().to_string()));
+        }
+    }
+    drop(archive);
+
     tokio::task::spawn_blocking({
         let out_dir = into.as_ref().to_path_buf();
         #[allow(deprecated)] // until we can get rid of zip_extract
@@ -225,6 +237,27 @@ mod tests {
         let file_path = out_dir.join("file.txt");
         assert!(file_path.exists());
         assert!(!zip_path.exists());
+    }
+
+    #[tokio::test]
+    async fn test_unzip_file_rejects_git_metadata() {
+        use std::io::Write as _;
+        use zip::{ZipWriter, write::SimpleFileOptions};
+
+        let dir = testdir!();
+        let zip_path = dir.join("metadata.zip");
+        let file = fs::File::create(&zip_path).unwrap();
+        let mut zip = ZipWriter::new(file);
+        zip.start_file(".git/config", SimpleFileOptions::default()).unwrap();
+        zip.write_all(b"[submodule]\n").unwrap();
+        zip.finish().unwrap();
+
+        let out_dir = dir.join("out");
+        let res = unzip_file(&zip_path, &out_dir).await;
+        assert!(
+            matches!(res, Err(DownloadError::InvalidArchiveEntry(entry)) if entry == ".git/config")
+        );
+        assert!(!out_dir.exists());
     }
 
     #[tokio::test]

@@ -120,6 +120,9 @@ pub enum DownloadError {
     #[error("error extracting dependency: {0}")]
     UnzipError(#[from] zip_extract::ZipExtractError),
 
+    #[error("downloaded archive contains a forbidden entry: {0}")]
+    InvalidArchiveEntry(String),
+
     #[error("error during git command {args:?}: {message}")]
     GitError { message: String, args: Vec<String> },
 

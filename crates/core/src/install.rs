@@ -28,6 +28,7 @@ use std::{
     pin::Pin,
 };
 use tokio::{fs, sync::mpsc, task::JoinSet};
+use uuid::Uuid;
 
 pub type Result<T> = std::result::Result<T, InstallError>;
 
@@ -683,51 +684,87 @@ async fn install_http_dependency(
     progress: InstallProgress,
 ) -> Result<(IntegrityChecksum, IntegrityChecksum)> {
     let path = path.as_ref();
-    let zip_path = download_file(
-        &dep.url,
-        path.parent().expect("dependency install path should have a parent"),
-        &format!("{}-{}", dep.name, dep.version),
-    )
-    .await?;
-    progress.downloads.send(dep.into()).ok();
+    let parent = path.parent().expect("dependency install path should have a parent");
+    // short deterministic name derived from the zip's checksum when available, so a leftover
+    // staging directory from an interrupted install can be identified and replaced
+    let staging_suffix = match &dep.checksum {
+        Some(checksum) => checksum.chars().take(8).collect::<String>(),
+        None => Uuid::new_v4().simple().to_string().chars().take(8).collect::<String>(),
+    };
+    let staging_path = parent.join(format!(".soldeer-temp-{staging_suffix}"));
+    if fs::try_exists(&staging_path).await.unwrap_or(false) {
+        fs::remove_dir_all(&staging_path)
+            .await
+            .map_err(|e| InstallError::IOError { path: staging_path.clone(), source: e })?;
+    }
+    fs::create_dir(&staging_path)
+        .await
+        .map_err(|e| InstallError::IOError { path: staging_path.clone(), source: e })?;
+    let mut zip_path = None;
+    let result = async {
+        let downloaded_zip = download_file(
+            &dep.url,
+            parent,
+            &format!("{}-{}", dep.name, dep.version),
+        )
+        .await?;
+        zip_path = Some(downloaded_zip.clone());
+        progress.downloads.send(dep.into()).ok();
 
-    let zip_integrity = tokio::task::spawn_blocking({
-        let zip_path = zip_path.clone();
-        move || hash_file(zip_path)
-    })
-    .await?
-    .map_err(|e| InstallError::IOError { path: zip_path.clone(), source: e })?;
-    if let Some(checksum) = &dep.checksum {
-        if checksum != &zip_integrity.to_string() {
-            return Err(InstallError::ZipIntegrityError {
-                path: zip_path.clone(),
-                expected: checksum.to_string(),
-                actual: zip_integrity.to_string(),
-            });
+        let zip_integrity = tokio::task::spawn_blocking({
+            let zip_path = downloaded_zip.clone();
+            move || hash_file(zip_path)
+        })
+        .await?
+        .map_err(|e| InstallError::IOError { path: downloaded_zip.clone(), source: e })?;
+        if let Some(checksum) = &dep.checksum {
+            if checksum != &zip_integrity.to_string() {
+                return Err(InstallError::ZipIntegrityError {
+                    path: downloaded_zip.clone(),
+                    expected: checksum.to_string(),
+                    actual: zip_integrity.to_string(),
+                });
+            }
+            debug!(zip_path:? = downloaded_zip; "archive integrity check successful");
+        } else {
+            debug!(zip_path:? = downloaded_zip; "no checksum available for archive integrity check");
         }
-        debug!(zip_path:?; "archive integrity check successful");
-    } else {
-        debug!(zip_path:?; "no checksum available for archive integrity check");
-    }
-    unzip_file(&zip_path, path).await?;
-    progress.unzip.send(dep.into()).ok();
+        unzip_file(&downloaded_zip, &staging_path).await?;
+        progress.unzip.send(dep.into()).ok();
 
-    if subdependencies {
-        debug!(dep:% = dep; "installing subdependencies");
-        install_subdependencies(path, dep.project_root.as_ref()).await?;
-        debug!(dep:% = dep; "finished installing subdependencies");
-    }
-    progress.subdependencies.send(dep.into()).ok();
+        if subdependencies {
+            debug!(dep:% = dep; "installing subdependencies");
+            install_subdependencies(&staging_path, dep.project_root.as_ref()).await?;
+            debug!(dep:% = dep; "finished installing subdependencies");
+        }
+        progress.subdependencies.send(dep.into()).ok();
 
-    let integrity = tokio::task::spawn_blocking({
-        let path = path.to_path_buf();
-        move || hash_folder(&path)
-    })
-    .await?
-    .map_err(|e| InstallError::IOError { path: path.to_path_buf(), source: e })?;
-    debug!(dep:% = dep, checksum = integrity.0; "integrity checksum computed");
-    progress.integrity.send(dep.into()).ok();
-    Ok((zip_integrity, integrity))
+        let integrity = tokio::task::spawn_blocking({
+            let path = staging_path.clone();
+            move || hash_folder(&path)
+        })
+        .await?
+        .map_err(|e| InstallError::IOError { path: staging_path.clone(), source: e })?;
+        debug!(dep:% = dep, checksum = integrity.0; "integrity checksum computed");
+        progress.integrity.send(dep.into()).ok();
+        Ok((zip_integrity, integrity))
+    }
+    .await;
+
+    let result = match result {
+        Ok(result) => fs::rename(&staging_path, path)
+            .await
+            .map(|()| result)
+            .map_err(|e| InstallError::IOError { path: path.to_path_buf(), source: e }),
+        Err(error) => Err(error),
+    };
+    if result.is_err() {
+        let _ = fs::remove_dir_all(&staging_path).await;
+        if let Some(zip_path) = zip_path {
+            let _ = fs::remove_file(zip_path).await;
+        }
+    }
+    result
 }
 
 /// Retrieve a map of git submodules for a path by looking at the `.gitmodules` file.
@@ -926,8 +963,10 @@ mod tests {
     use super::*;
     use crate::config::{GitDependency, HttpDependency};
     use mockito::{Matcher, Server, ServerGuard};
+    use std::io::Write as _;
     use temp_env::async_with_vars;
     use testdir::testdir;
+    use zip::{ZipWriter, write::SimpleFileOptions};
 
     async fn mock_api_server() -> ServerGuard {
         let mut server = Server::new_async().await;
@@ -1104,6 +1143,40 @@ mod tests {
         );
         let hash = hash_folder(&dir).unwrap();
         assert_eq!(lock.integrity, hash.to_string());
+    }
+
+    #[tokio::test]
+    async fn test_install_http_dependency_cleans_partial_tree_on_extract_error() {
+        let dir = testdir!();
+        let archive = dir.join("archive.zip");
+        let file = fs::File::create(&archive).await.unwrap().into_std().await;
+        let mut zip = ZipWriter::new(file);
+        zip.start_file("src/Contract.sol", SimpleFileOptions::default()).unwrap();
+        zip.write_all(b"contract Contract {}\n").unwrap();
+        zip.start_file("src/Contract.sol/nested", SimpleFileOptions::default()).unwrap();
+        zip.write_all(b"invalid").unwrap();
+        zip.finish().unwrap();
+
+        let mut server = Server::new_async().await;
+        server.mock("GET", "/file.zip").with_body_from_file(&archive).create_async().await;
+        let dep = HttpInstallInfo::builder()
+            .name("foo")
+            .version("2.0.0")
+            .url(format!("{}/file.zip", server.url()))
+            .build();
+        let install_path = dir.join("foo-2.0.0");
+        let (progress, _) = InstallProgress::new();
+
+        let res = install_http_dependency(&dep, &install_path, false, progress).await;
+        assert!(res.is_err(), "{res:?}");
+        assert!(!install_path.exists());
+        assert!(!dir.join("foo-2.0.0.zip").exists());
+        let mut entries = fs::read_dir(&dir).await.unwrap();
+        let mut has_partial = false;
+        while let Some(entry) = entries.next_entry().await.unwrap() {
+            has_partial |= entry.file_name().to_string_lossy().starts_with(".soldeer-temp-");
+        }
+        assert!(!has_partial);
     }
 
     #[tokio::test]

@@ -5,7 +5,7 @@ use crate::{
     utils::path_matches,
 };
 use derive_more::derive::From;
-use log::debug;
+use log::{debug, info};
 use path_slash::PathExt as _;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -168,6 +168,10 @@ pub fn edit_remappings(
                 }
                 RemappingsLocation::Config => {
                     debug!("updating foundry.toml remappings according to config option");
+                    if paths.remappings.exists() {
+                        fs::remove_file(&paths.remappings)?;
+                        info!(path:? = paths.remappings; "removed inactive remappings.txt file");
+                    }
                     remappings_foundry(action, paths, config)?;
                 }
             }
@@ -841,6 +845,29 @@ lib1 = "1.0.0"
         assert!(res.is_ok(), "{res:?}");
         let contents = fs::read_to_string(&paths.remappings).unwrap();
         assert_eq!(contents, "lib1-1.0.0/=dependencies/lib1-1.0.0/\n");
+    }
+
+    #[test]
+    fn test_edit_remappings_config_removes_legacy_file() {
+        let dir = testdir!();
+        let contents = r#"[profile.default]
+remappings = []
+
+[dependencies]
+lib1 = "1.0.0"
+"#;
+        fs::write(dir.join("foundry.toml"), contents).unwrap();
+        let paths = Paths::from_root(&dir).unwrap();
+        fs::create_dir_all(paths.dependencies.join("lib1-1.0.0")).unwrap();
+        fs::write(&paths.remappings, "lib1/=dependencies/lib1-old/\n").unwrap();
+        let config =
+            SoldeerConfig { remappings_location: RemappingsLocation::Config, ..Default::default() };
+
+        edit_remappings(&RemappingsAction::Update, &config, &paths).unwrap();
+
+        assert!(!paths.remappings.exists());
+        let foundry = fs::read_to_string(&paths.config).unwrap();
+        assert!(foundry.contains("lib1-1.0.0/=dependencies/lib1-1.0.0/"));
     }
 
     #[test]

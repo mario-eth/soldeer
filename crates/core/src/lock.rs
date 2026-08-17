@@ -369,6 +369,17 @@ pub struct LockFile {
 
 /// Read a lockfile from disk.
 pub fn read_lockfile(path: impl AsRef<Path>) -> Result<LockFile> {
+    if path
+        .as_ref()
+        .symlink_metadata()
+        .map(|metadata| metadata.file_type().is_symlink())
+        .unwrap_or(false)
+    {
+        return Err(LockError::IOError(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "soldeer.lock must not be a symlink",
+        )));
+    }
     if !path.as_ref().exists() {
         debug!(path:? = path.as_ref(); "lockfile does not exist");
         return Ok(LockFile::default());
@@ -409,6 +420,17 @@ pub fn add_to_lockfile(entry: LockEntry, path: impl AsRef<Path>) -> Result<()> {
         lockfile.entries.push(entry);
     }
     let new_contents = generate_lockfile_contents(lockfile.entries);
+    if path
+        .as_ref()
+        .symlink_metadata()
+        .map(|metadata| metadata.file_type().is_symlink())
+        .unwrap_or(false)
+    {
+        return Err(LockError::IOError(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "soldeer.lock must not be a symlink",
+        )));
+    }
     fs::write(&path, new_contents)?;
     debug!(path:? = path.as_ref(); "lockfile modified");
     Ok(())
@@ -735,5 +757,29 @@ rev = "123456"
         let res = remove_lock(&dep, &file_path);
         assert!(res.is_ok(), "{res:?}");
         assert!(!file_path.exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_lockfile_symlink_is_rejected() {
+        use std::os::unix::fs::symlink;
+
+        let dir = testdir!();
+        let target = dir.join("trusted.lock");
+        let link = dir.join(SOLDEER_LOCK);
+        fs::write(&target, "trusted").unwrap();
+        symlink(&target, &link).unwrap();
+
+        assert!(matches!(read_lockfile(&link), Err(LockError::IOError(_))));
+        let entry: LockEntry = HttpLockEntry::builder()
+            .name("test")
+            .version("1.0.0")
+            .url("https://example.com/zip.zip")
+            .checksum("123456")
+            .integrity("beef")
+            .build()
+            .into();
+        assert!(matches!(add_to_lockfile(entry, &link), Err(LockError::IOError(_))));
+        assert_eq!(fs::read_to_string(target).unwrap(), "trusted");
     }
 }

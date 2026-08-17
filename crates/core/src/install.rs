@@ -186,6 +186,16 @@ struct HttpInstallInfo {
     /// The project root is where the soldeer.toml or foundry.toml resides. If no path is provided,
     /// then the zip's root must contain a Soldeer config.
     project_root: Option<PathBuf>,
+
+    /// Whether a single wrapping root directory should be stripped from the zip archive during
+    /// extraction.
+    ///
+    /// This is `true` for custom URL dependencies, which typically point to source archives
+    /// wrapping the contents in a root folder (e.g. GitHub-generated zips), and `false` for
+    /// registry packages, where the archive contains the published files directly and any
+    /// top-level directory is part of the package's layout.
+    #[builder(default = true)]
+    zip_strip_root: bool,
 }
 
 impl fmt::Display for HttpInstallInfo {
@@ -254,7 +264,11 @@ impl From<GitInstallInfo> for InstallInfo {
 }
 
 impl InstallInfo {
-    async fn from_lock(lock: LockEntry, project_root: Option<PathBuf>) -> Result<Self> {
+    async fn from_lock(
+        lock: LockEntry,
+        project_root: Option<PathBuf>,
+        zip_strip_root: bool,
+    ) -> Result<Self> {
         match lock {
             LockEntry::Http(lock) => Ok(HttpInstallInfo {
                 name: lock.name,
@@ -262,6 +276,7 @@ impl InstallInfo {
                 url: lock.url,
                 checksum: Some(lock.checksum),
                 project_root,
+                zip_strip_root,
             }
             .into()),
             LockEntry::Git(lock) => Ok(GitInstallInfo {
@@ -289,6 +304,9 @@ impl InstallInfo {
                     url: download.url,
                     checksum: Some(lock.checksum),
                     project_root,
+                    // private dependencies always come from the registry, where archives never
+                    // have a wrapping root directory
+                    zip_strip_root: false,
                 }))
             }
         }
@@ -445,7 +463,14 @@ pub async fn install_dependency(
             }
         }
         install_dependency_inner(
-            &InstallInfo::from_lock(lock.clone(), dependency.project_root()).await?,
+            &InstallInfo::from_lock(
+                lock.clone(),
+                dependency.project_root(),
+                // custom URLs point to source archives which may wrap the contents in a root
+                // folder; registry archives never do
+                dependency.url().is_some(),
+            )
+            .await?,
             lock.install_path(&deps),
             recursive_deps,
             progress,
@@ -482,6 +507,9 @@ pub async fn install_dependency(
         // indicate that we have retrieved the version number
         progress.versions.send(dependency.into()).ok();
 
+        // custom URLs point to source archives which may wrap the contents in a root folder;
+        // registry archives never do
+        let zip_strip_root = dependency.url().is_some();
         let info = match &dependency {
             Dependency::Http(dep) => {
                 if download.private {
@@ -490,6 +518,7 @@ pub async fn install_dependency(
                             .name(&dep.name)
                             .version(&version)
                             .url(download.url)
+                            .zip_strip_root(zip_strip_root)
                             .build(),
                     )
                 } else {
@@ -497,6 +526,7 @@ pub async fn install_dependency(
                         .name(&dep.name)
                         .version(&version)
                         .url(download.url)
+                        .zip_strip_root(zip_strip_root)
                         .build()
                         .into()
                 }
@@ -709,7 +739,7 @@ async fn install_http_dependency(
     } else {
         debug!(zip_path:?; "no checksum available for archive integrity check");
     }
-    unzip_file(&zip_path, path).await?;
+    unzip_file(&zip_path, path, dep.zip_strip_root).await?;
     progress.unzip.send(dep.into()).ok();
 
     if subdependencies {

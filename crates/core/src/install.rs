@@ -24,7 +24,7 @@ use std::{
     fmt,
     future::Future,
     ops::Deref,
-    path::{Path, PathBuf},
+    path::{Component, Path, PathBuf},
     pin::Pin,
 };
 use tokio::{fs, sync::mpsc, task::JoinSet};
@@ -768,8 +768,9 @@ async fn reinit_submodules(path: &PathBuf) -> Result<Vec<PathBuf>> {
     }
     let mut out = Vec::new();
     for (submodule_name, submodule) in submodules {
+        let submodule_path = validate_submodule_path(&submodule.path)?;
         // make sure to remove the path if it already exists
-        let dest_path = path.join(&submodule.path);
+        let dest_path = path.join(&submodule_path);
         fs::remove_dir_all(&dest_path).await.ok(); // ignore error if folder doesn't exist
         let mut args = vec!["submodule", "add", "-f", "--name", &submodule_name];
         if let Some(branch) = &submodule.branch {
@@ -777,22 +778,40 @@ async fn reinit_submodules(path: &PathBuf) -> Result<Vec<PathBuf>> {
             args.push(branch);
         }
         args.push(&submodule.url);
-        args.push(&submodule.path);
+        let submodule_path = submodule_path.to_string_lossy().to_string();
+        args.push(&submodule_path);
         run_git_command(args, Some(path)).await?;
         if let Some(
             forge::DepIdentifier::Branch { rev, .. } |
             forge::DepIdentifier::Tag { rev, .. } |
             forge::DepIdentifier::Rev { rev },
-        ) = foundry_lock.get(Path::new(&submodule.path))
+        ) = foundry_lock.get(Path::new(&submodule_path))
         {
             debug!(submodule_name, path:?; "found corresponding item in foundry lockfile");
             run_git_command(["checkout", rev], Some(&dest_path)).await?;
             debug!(submodule_name, path:?; "submodule checked out at {rev}");
         }
         debug!(submodule_name, path:?; "added submodule");
-        out.push(path.join(submodule.path));
+        out.push(path.join(submodule_path));
     }
     Ok(out)
+}
+
+fn validate_submodule_path(path: &str) -> Result<PathBuf> {
+    let path_ref = Path::new(path);
+    let invalid = path_ref.as_os_str().is_empty() ||
+        path_ref.components().any(|component| {
+            matches!(component, Component::ParentDir | Component::RootDir | Component::Prefix(_))
+        });
+    if invalid {
+        return Err(InstallError::InvalidSubmodulePath(path.to_string()));
+    }
+    let normalized: PathBuf =
+        path_ref.components().filter(|component| *component != Component::CurDir).collect();
+    if normalized.as_os_str().is_empty() {
+        return Err(InstallError::InvalidSubmodulePath(path.to_string()));
+    }
+    Ok(normalized)
 }
 
 /// Check the integrity of an HTTP dependency.
@@ -1104,6 +1123,43 @@ mod tests {
         );
         let hash = hash_folder(&dir).unwrap();
         assert_eq!(lock.integrity, hash.to_string());
+    }
+
+    #[test]
+    fn test_validate_submodule_path_rejects_parent_directory() {
+        assert!(matches!(
+            validate_submodule_path("../victim-1.0.0"),
+            Err(InstallError::InvalidSubmodulePath(path)) if path == "../victim-1.0.0"
+        ));
+        assert!(matches!(
+            validate_submodule_path("lib/../../victim-1.0.0"),
+            Err(InstallError::InvalidSubmodulePath(_))
+        ));
+    }
+
+    #[test]
+    fn test_validate_submodule_path_rejects_absolute_path() {
+        assert!(matches!(
+            validate_submodule_path("/tmp/victim-1.0.0"),
+            Err(InstallError::InvalidSubmodulePath(path)) if path == "/tmp/victim-1.0.0"
+        ));
+        #[cfg(windows)]
+        {
+            assert!(matches!(
+                validate_submodule_path("C:\\victim-1.0.0"),
+                Err(InstallError::InvalidSubmodulePath(_))
+            ));
+            assert!(matches!(
+                validate_submodule_path("\\victim-1.0.0"),
+                Err(InstallError::InvalidSubmodulePath(_))
+            ));
+        }
+    }
+
+    #[test]
+    fn test_validate_submodule_path_normalizes_curdir() {
+        assert_eq!(validate_submodule_path("./lib/dep").unwrap(), PathBuf::from("lib").join("dep"));
+        assert!(matches!(validate_submodule_path("."), Err(InstallError::InvalidSubmodulePath(_))));
     }
 
     #[tokio::test]

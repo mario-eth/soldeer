@@ -171,6 +171,9 @@ pub enum InstallError {
 
     #[error("error with lockfile: {0}")]
     LockError(#[from] LockError),
+
+    #[error("invalid git submodule path: {0}")]
+    InvalidSubmodulePath(String),
 }
 
 #[derive(Error, Debug)]

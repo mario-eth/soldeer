@@ -30,8 +30,8 @@ pub struct IntegrityChecksum(pub String);
 
 /// Get the location where the token file is stored or read from.
 ///
-/// The token file is stored in the home directory of the user, or in the current directory
-/// if the home cannot be found, in a hidden folder called `.soldeer`. The token file is called
+/// The token file is stored in the user's home directory in a hidden folder called `.soldeer`.
+/// The token file is called
 /// `.soldeer_login`.
 ///
 /// The path can be overridden by setting the `SOLDEER_LOGIN_FILE` environment variable.
@@ -43,12 +43,18 @@ pub fn login_file_path() -> Result<PathBuf, std::io::Error> {
         return Ok(file_path.into());
     }
 
-    // if home dir cannot be found, use the current dir
-    let dir = home::home_dir().unwrap_or(env::current_dir()?);
+    let dir = home::home_dir().ok_or_else(|| {
+        std::io::Error::new(std::io::ErrorKind::NotFound, "could not determine home directory")
+    })?;
     let security_directory = dir.join(".soldeer");
     if !security_directory.exists() {
         debug!(dir:?; ".soldeer folder does not exist, creating it");
         fs::create_dir(&security_directory)?;
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&security_directory, fs::Permissions::from_mode(0o700))?;
     }
     let login_file = security_directory.join(".soldeer_login");
     debug!(login_file:?; "path to login file");

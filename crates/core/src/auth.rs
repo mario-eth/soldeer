@@ -6,7 +6,10 @@ use reqwest::{
     header::{AUTHORIZATION, HeaderMap, HeaderValue},
 };
 use serde::{Deserialize, Serialize};
-use std::{env, fs, path::PathBuf};
+use std::{
+    env, fs,
+    path::{Path, PathBuf},
+};
 
 pub type Result<T> = std::result::Result<T, AuthError>;
 
@@ -60,8 +63,33 @@ pub fn get_auth_headers() -> Result<HeaderMap> {
 /// Save an access token in the login file
 pub fn save_token(token: &str) -> Result<PathBuf> {
     let token_path = login_file_path()?;
-    fs::write(&token_path, token)?;
+    write_token(&token_path, token)?;
     Ok(token_path)
+}
+
+fn write_token(path: &Path, token: &str) -> Result<()> {
+    if path.symlink_metadata().map(|metadata| metadata.file_type().is_symlink()).unwrap_or(false) {
+        return Err(AuthError::IOError(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "login file must not be a symlink",
+        )));
+    }
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+        let mut file = fs::OpenOptions::new()
+            .create(true)
+            .truncate(true)
+            .write(true)
+            .mode(0o600)
+            .open(path)?;
+        fs::set_permissions(path, fs::Permissions::from_mode(0o600))?;
+        std::io::Write::write_all(&mut file, token.as_bytes())?;
+    }
+    #[cfg(not(unix))]
+    fs::write(path, token)?;
+    Ok(())
 }
 
 /// Retrieve user profile for the token to check its validity, returning the username
@@ -109,7 +137,7 @@ pub async fn execute_login(login: &Credentials) -> Result<PathBuf> {
         s if s.is_success() => {
             debug!("login request completed");
             let response: LoginResponse = res.json().await?;
-            fs::write(&token_path, response.token)?;
+            write_token(&token_path, &response.token)?;
             info!(token_path:?; "login successful");
             Ok(token_path)
         }
@@ -247,5 +275,21 @@ mod tests {
         let res = with_var("SOLDEER_API_TOKEN", Some("test"), get_token);
         assert!(res.is_ok(), "{res:?}");
         assert_eq!(res.unwrap(), "test");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_save_token_is_owner_only() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let file = testdir!().join("token");
+        let saved = temp_env::with_vars(
+            [("SOLDEER_LOGIN_FILE", Some(file.to_string_lossy().to_string()))],
+            || save_token("secret"),
+        )
+        .unwrap();
+
+        assert_eq!(saved, file);
+        assert_eq!(fs::metadata(file).unwrap().permissions().mode() & 0o777, 0o600);
     }
 }

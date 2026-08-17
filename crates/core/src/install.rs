@@ -535,6 +535,15 @@ pub async fn check_dependency_integrity(
 /// If the directory does not exist, it will be created.
 pub fn ensure_dependencies_dir(path: impl AsRef<Path>) -> Result<()> {
     let path = path.as_ref();
+    if path.symlink_metadata().map(|metadata| metadata.file_type().is_symlink()).unwrap_or(false) {
+        return Err(InstallError::IOError {
+            path: path.to_path_buf(),
+            source: std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "dependencies path must not be a symlink",
+            ),
+        });
+    }
     if !path.exists() {
         debug!(path:?; "dependencies dir doesn't exist, creating it");
         std::fs::create_dir(path)
@@ -1104,6 +1113,22 @@ mod tests {
         );
         let hash = hash_folder(&dir).unwrap();
         assert_eq!(lock.integrity, hash.to_string());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_ensure_dependencies_dir_rejects_symlink() {
+        use std::os::unix::fs::symlink;
+
+        let dir = testdir!();
+        let target = dir.join("target");
+        let dependencies = dir.join("dependencies");
+        std::fs::create_dir(&target).unwrap();
+        symlink(&target, &dependencies).unwrap();
+
+        let res = ensure_dependencies_dir(&dependencies);
+        assert!(res.is_err(), "{res:?}");
+        assert!(target.exists());
     }
 
     #[tokio::test]

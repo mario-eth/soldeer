@@ -355,7 +355,7 @@ name = "mylib"
 version = "1.1.0"
 url = "https://github.com/mario-eth/soldeer/archive/8585a7ec85a29889cec8d08f4770e15ec4795943.zip"
 checksum = "94a73dbe106f48179ea39b00d42e5d4dd96fdc6252caa3a89ce7efdaec0b9468"
-integrity = "f3c628f3e9eae4db14fe14f9ab29e49a0107c47b8ee956e4cee57b616b493fc2"
+integrity = "bcc66b553ea004dc1ccf39e9d3cda6487edec8e58446e6f04a1e7c4b2e8535f1"
 "#;
     fs::write(dir.join(SOLDEER_LOCK), lock).unwrap();
     let cmd: Command = Install::builder().build().into();
@@ -396,7 +396,7 @@ name = "mylib"
 version = "1.1.0"
 url = "{}/file.zip"
 checksum = "94a73dbe106f48179ea39b00d42e5d4dd96fdc6252caa3a89ce7efdaec0b9468"
-integrity = "f3c628f3e9eae4db14fe14f9ab29e49a0107c47b8ee956e4cee57b616b493fc2"
+integrity = "bcc66b553ea004dc1ccf39e9d3cda6487edec8e58446e6f04a1e7c4b2e8535f1"
 "#,
         server.url()
     );
@@ -456,7 +456,7 @@ test-private = "0.1.0"
 name = "test-private"
 version = "0.1.0"
 checksum = "94a73dbe106f48179ea39b00d42e5d4dd96fdc6252caa3a89ce7efdaec0b9468"
-integrity = "f3c628f3e9eae4db14fe14f9ab29e49a0107c47b8ee956e4cee57b616b493fc2"
+integrity = "bcc66b553ea004dc1ccf39e9d3cda6487edec8e58446e6f04a1e7c4b2e8535f1"
 "#;
     fs::write(dir.join(SOLDEER_LOCK), lock).unwrap();
     let cmd: Command = Install::builder().build().into();

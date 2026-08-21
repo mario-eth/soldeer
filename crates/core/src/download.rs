@@ -45,7 +45,17 @@ pub async fn download_file(
 }
 
 /// Unzip a file into a directory and then delete it.
-pub async fn unzip_file(path: impl AsRef<Path>, into: impl AsRef<Path>) -> Result<()> {
+///
+/// If `strip_root` is `true` and all archive entries are contained in a single top-level
+/// directory, that directory is stripped during extraction. This is desirable for source archives
+/// which wrap the contents in a root folder (e.g. GitHub-generated zips for custom URL
+/// dependencies), but must not be done for registry packages, where any top-level directory is
+/// part of the published package's layout.
+pub async fn unzip_file(
+    path: impl AsRef<Path>,
+    into: impl AsRef<Path>,
+    strip_root: bool,
+) -> Result<()> {
     let path = path.as_ref().to_path_buf();
     let zip_contents = tokio::fs::read(&path)
         .await
@@ -54,7 +64,7 @@ pub async fn unzip_file(path: impl AsRef<Path>, into: impl AsRef<Path>) -> Resul
     tokio::task::spawn_blocking({
         let out_dir = into.as_ref().to_path_buf();
         #[allow(deprecated)] // until we can get rid of zip_extract
-        move || zip_extract::extract(Cursor::new(zip_contents), &out_dir, true)
+        move || zip_extract::extract(Cursor::new(zip_contents), &out_dir, strip_root)
     })
     .await??;
     debug!(file:? = path, dest:? = into.as_ref(); "unzipped file");
@@ -242,11 +252,36 @@ mod tests {
         zip_file(&dir, &[file_path], &zip_path).unwrap();
 
         let out_dir = dir.join("out");
-        let res = unzip_file(&zip_path, &out_dir).await;
+        let res = unzip_file(&zip_path, &out_dir, true).await;
         assert!(res.is_ok(), "{res:?}");
         let file_path = out_dir.join("file.txt");
         assert!(file_path.exists());
         assert!(!zip_path.exists());
+    }
+
+    #[tokio::test]
+    async fn test_unzip_file_strip_root() {
+        // archive wrapping all contents in a single root directory, like GitHub source archives
+        let dir = testdir!();
+        let root = dir.join("my-repo");
+        fs::create_dir_all(root.join("src")).unwrap();
+        let file_path = root.join("src/Contract.sol");
+        fs::write(&file_path, "contract Contract {}\n").unwrap();
+        let zip_path = dir.join("archive.zip");
+        zip_file(&dir, &[file_path], &zip_path).unwrap();
+
+        // with strip_root, the wrapping directory is removed
+        let out_dir = dir.join("stripped");
+        unzip_file(&zip_path, &out_dir, true).await.unwrap();
+        assert!(out_dir.join("src/Contract.sol").exists());
+        assert!(!out_dir.join("my-repo").exists());
+
+        // without strip_root, the layout is preserved as-is
+        let zip_path = dir.join("archive2.zip");
+        zip_file(&dir, &[dir.join("my-repo/src/Contract.sol")], &zip_path).unwrap();
+        let out_dir = dir.join("preserved");
+        unzip_file(&zip_path, &out_dir, false).await.unwrap();
+        assert!(out_dir.join("my-repo/src/Contract.sol").exists());
     }
 
     #[tokio::test]

@@ -14,7 +14,9 @@ use crate::{
         format_install_path, generate_lockfile_contents, read_lockfile,
     },
     registry::{DownloadUrl, get_dependency_url_remote, get_latest_supported_version},
-    utils::{IntegrityChecksum, canonicalize, hash_file, hash_folder, run_git_command},
+    utils::{
+        IntegrityChecksum, canonicalize, hash_file, hash_folder, run_git_command, sanitize_filename,
+    },
 };
 use derive_more::derive::Display;
 use log::{debug, info, warn};
@@ -316,6 +318,7 @@ pub async fn install_dependencies(
     recursive_deps: bool,
     progress: InstallProgress,
 ) -> Result<Vec<LockEntry>> {
+    validate_dependency_path_collisions(dependencies)?;
     let mut set = JoinSet::new();
     for dep in dependencies {
         debug!(dep:% = dep; "spawning task to install dependency");
@@ -361,6 +364,7 @@ pub async fn install_dependencies_sequential(
     recursive_deps: bool,
     progress: InstallProgress,
 ) -> Result<Vec<LockEntry>> {
+    validate_dependency_path_collisions(dependencies)?;
     let mut results = Vec::new();
     for dep in dependencies {
         debug!(dep:% = dep; "installing dependency sequentially");
@@ -373,6 +377,23 @@ pub async fn install_dependencies_sequential(
     }
     debug!("all sequential installs have finished");
     Ok(results)
+}
+
+pub fn validate_dependency_path_collisions(dependencies: &[Dependency]) -> Result<()> {
+    let mut paths = HashMap::<String, String>::new();
+    for dependency in dependencies {
+        let path = sanitize_filename(dependency.name());
+        if let Some(other) = paths.insert(path.clone(), dependency.name().to_string()) &&
+            other != dependency.name()
+        {
+            return Err(InstallError::PathCollision {
+                dependency: dependency.name().to_string(),
+                other,
+                path,
+            });
+        }
+    }
+    Ok(())
 }
 
 /// Install a single dependency.
@@ -1382,5 +1403,28 @@ mod tests {
         );
         let hash = hash_folder(lock.install_path(&dir)).unwrap();
         assert_eq!(lock.integrity, hash.to_string());
+    }
+
+    #[tokio::test]
+    async fn test_install_dependencies_rejects_sanitized_path_collision() {
+        let dir = testdir!();
+        let dependencies: Vec<Dependency> = vec![
+            HttpDependency::builder()
+                .name("foo/bar")
+                .version_req("^1.0.0")
+                .url("https://example.com/first.zip")
+                .build()
+                .into(),
+            HttpDependency::builder()
+                .name("foo-bar")
+                .version_req("1.0.0")
+                .url("https://example.com/second.zip")
+                .build()
+                .into(),
+        ];
+        let (progress, _) = InstallProgress::new();
+
+        let res = install_dependencies(&dependencies, &[], &dir, false, progress).await;
+        assert!(matches!(res, Err(InstallError::PathCollision { .. })));
     }
 }

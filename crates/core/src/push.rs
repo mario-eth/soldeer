@@ -394,7 +394,7 @@ mod tests {
         fs::copy(dir.join("test.zip"), testdir!().join("test.zip")).unwrap();
         fs::remove_dir_all(&dir).unwrap();
         fs::create_dir(&dir).unwrap();
-        unzip_file(testdir!().join("test.zip"), &dir).await.unwrap();
+        unzip_file(testdir!().join("test.zip"), &dir, false).await.unwrap();
         for f in files {
             assert!(f.exists());
         }
@@ -427,5 +427,23 @@ mod tests {
         symlink(&target, &link).unwrap();
 
         assert!(!filter_ignored_files(&dir).contains(&link));
+    }
+
+    #[tokio::test]
+    async fn test_published_root_is_preserved_after_install() {
+        // a package whose files are all contained in a single top-level directory must keep that
+        // directory when installed from the registry (the root must not be stripped)
+        let dir = testdir!();
+        let package = dir.join("package");
+        fs::create_dir_all(package.join("src")).unwrap();
+        let token = package.join("src/Token.sol");
+        fs::write(&token, "contract Token {}\n").unwrap();
+
+        let archive = zip_file(&package, &[token], "package").unwrap();
+        let installed = dir.join("installed");
+        unzip_file(&archive, &installed, false).await.unwrap();
+
+        assert!(installed.join("src/Token.sol").exists());
+        assert!(!installed.join("Token.sol").exists());
     }
 }

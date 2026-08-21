@@ -171,6 +171,9 @@ pub enum InstallError {
 
     #[error("error with lockfile: {0}")]
     LockError(#[from] LockError),
+
+    #[error("dependency paths collide after sanitization: {dependency} and {other} -> {path}")]
+    PathCollision { dependency: String, other: String, path: String },
 }
 
 #[derive(Error, Debug)]
@@ -276,6 +279,11 @@ pub enum RegistryError {
 
     #[error("no matching version found for {dependency} with version requirement {version_req}")]
     NoMatchingVersion { dependency: String, version_req: String },
+
+    #[error(
+        "invalid version requirement {version_req} for {dependency}: multiple requirements must be separated with a comma"
+    )]
+    InvalidVersionReq { dependency: String, version_req: String },
 }
 
 #[derive(Error, Debug)]

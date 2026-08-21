@@ -87,7 +87,29 @@ pub async fn clone_repo(
     .await?;
     debug!(repo:? = path; "git repo cloned");
     if let Some(identifier) = identifier {
-        run_git_command(&["checkout", &identifier.to_string()], Some(&path)).await?;
+        match identifier {
+            GitIdentifier::Tag(tag) => {
+                run_git_command(&["checkout", &format!("refs/tags/{tag}")], Some(&path)).await?;
+            }
+            GitIdentifier::Branch(branch) => {
+                // a tag with the same name would shadow the branch during a plain checkout, so
+                // the local branch is created explicitly from the remote-tracking ref
+                run_git_command(
+                    &[
+                        "checkout",
+                        "--track",
+                        "-B",
+                        branch,
+                        &format!("refs/remotes/origin/{branch}"),
+                    ],
+                    Some(&path),
+                )
+                .await?;
+            }
+            GitIdentifier::Rev(rev) => {
+                run_git_command(&["checkout", rev], Some(&path)).await?;
+            }
+        }
         debug!(ref:? = identifier, repo:? = path; "checked out ref");
     }
     let commit =
@@ -272,6 +294,97 @@ mod tests {
         .await;
         assert!(res.is_ok(), "{res:?}");
         assert_eq!(&res.unwrap(), "78c2f6a1a54db26bab6c3f501854a1564eb3707f");
+    }
+
+    #[tokio::test]
+    async fn test_clone_repo_tag_prefers_tag_over_branch() {
+        use std::process::Command;
+
+        let dir = testdir!();
+        let source = dir.join("source");
+        fs::create_dir(&source).unwrap();
+        let run = |args: &[&str]| {
+            let output = Command::new("git").args(args).current_dir(&source).output().unwrap();
+            assert!(output.status.success(), "git failed: {args:?}");
+        };
+        run(&["init", "-b", "main"]);
+        run(&["config", "user.email", "test@example.com"]);
+        run(&["config", "user.name", "Test"]);
+        fs::write(source.join("version"), "tag").unwrap();
+        run(&["add", "version"]);
+        run(&["commit", "-m", "tag"]);
+        let tag_commit = String::from_utf8(
+            Command::new("git")
+                .args(["rev-parse", "HEAD"])
+                .current_dir(&source)
+                .output()
+                .unwrap()
+                .stdout,
+        )
+        .unwrap()
+        .trim()
+        .to_string();
+        run(&["tag", "main"]);
+        fs::write(source.join("version"), "branch").unwrap();
+        run(&["commit", "-am", "branch"]);
+
+        let clone_path = dir.join("clone");
+        let res = clone_repo(
+            source.to_string_lossy().as_ref(),
+            Some(&GitIdentifier::from_tag("main")),
+            &clone_path,
+        )
+        .await
+        .unwrap();
+        assert_eq!(res, tag_commit);
+        assert_eq!(fs::read_to_string(clone_path.join("version")).unwrap(), "tag");
+    }
+
+    #[tokio::test]
+    async fn test_clone_repo_branch_prefers_branch_over_tag() {
+        use std::process::Command;
+
+        let dir = testdir!();
+        let source = dir.join("source");
+        fs::create_dir(&source).unwrap();
+        let run = |args: &[&str]| {
+            let output = Command::new("git").args(args).current_dir(&source).output().unwrap();
+            assert!(output.status.success(), "git failed: {args:?}");
+        };
+        run(&["init", "-b", "main"]);
+        run(&["config", "user.email", "test@example.com"]);
+        run(&["config", "user.name", "Test"]);
+        fs::write(source.join("version"), "tag").unwrap();
+        run(&["add", "version"]);
+        run(&["commit", "-m", "tag"]);
+        // tag pointing at the first commit, shadowing the branch name
+        run(&["tag", "release"]);
+        run(&["checkout", "-b", "release"]);
+        fs::write(source.join("version"), "branch").unwrap();
+        run(&["commit", "-am", "branch"]);
+        let branch_commit = String::from_utf8(
+            Command::new("git")
+                .args(["rev-parse", "refs/heads/release"])
+                .current_dir(&source)
+                .output()
+                .unwrap()
+                .stdout,
+        )
+        .unwrap()
+        .trim()
+        .to_string();
+        run(&["checkout", "main"]);
+
+        let clone_path = dir.join("clone");
+        let res = clone_repo(
+            source.to_string_lossy().as_ref(),
+            Some(&GitIdentifier::from_branch("release")),
+            &clone_path,
+        )
+        .await
+        .unwrap();
+        assert_eq!(res, branch_commit);
+        assert_eq!(fs::read_to_string(clone_path.join("version")).unwrap(), "branch");
     }
 
     #[test]

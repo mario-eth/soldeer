@@ -11,7 +11,7 @@ use crate::{
     errors::{ConfigError, InstallError, LockError},
     lock::{
         GitLockEntry, HttpLockEntry, Integrity, LockEntry, PrivateLockEntry, forge,
-        format_install_path, read_lockfile,
+        format_install_path, generate_lockfile_contents, read_lockfile,
     },
     registry::{DownloadUrl, get_dependency_url_remote, get_latest_supported_version},
     utils::{IntegrityChecksum, canonicalize, hash_file, hash_folder, run_git_command},
@@ -396,6 +396,11 @@ pub async fn install_dependency(
         match check_dependency_integrity(lock, &deps).await? {
             DependencyStatus::Installed => {
                 info!(dep:% = dependency; "skipped install, dependency already up-to-date with lockfile");
+                if recursive_deps {
+                    let project_root = dependency.project_root();
+                    install_subdependencies(lock.install_path(&deps), project_root.as_ref())
+                        .await?;
+                }
                 progress.update_all(dependency.into());
 
                 return Ok(lock.clone());
@@ -664,7 +669,7 @@ async fn install_subdependencies_inner(paths: Paths) -> Result<()> {
     let (dependencies, _) = read_config_deps(&paths.config)?;
     let lockfile = read_lockfile(&paths.lock)?;
     let (progress, _) = InstallProgress::new(); // not used at the moment
-    let _ = install_dependencies(
+    let new_locks = install_dependencies(
         &dependencies,
         &lockfile.entries,
         &paths.dependencies,
@@ -672,6 +677,9 @@ async fn install_subdependencies_inner(paths: Paths) -> Result<()> {
         progress,
     )
     .await?;
+    fs::write(&paths.lock, generate_lockfile_contents(new_locks))
+        .await
+        .map_err(|source| InstallError::IOError { path: paths.lock, source })?;
     Ok(())
 }
 
@@ -924,7 +932,11 @@ async fn get_subdependency_root(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::{GitDependency, HttpDependency};
+    use crate::{
+        config::{GitDependency, HttpDependency},
+        lock::read_lockfile,
+        push::zip_file,
+    };
     use mockito::{Matcher, Server, ServerGuard};
     use temp_env::async_with_vars;
     use testdir::testdir;
@@ -1104,6 +1116,68 @@ mod tests {
         );
         let hash = hash_folder(&dir).unwrap();
         assert_eq!(lock.integrity, hash.to_string());
+    }
+
+    #[tokio::test]
+    async fn test_installed_recursive_dependency_persists_nested_lockfile() {
+        let dir = testdir!();
+        let parent_path = dir.join("dependencies/parent-1.0.0");
+        fs::create_dir_all(&parent_path).await.unwrap();
+        fs::write(
+            parent_path.join("soldeer.toml"),
+            "[dependencies]\nchild = { version = \"1.0.0\", url = \"PLACEHOLDER\" }\n",
+        )
+        .await
+        .unwrap();
+
+        let child_root = dir.join("child-source");
+        fs::create_dir(&child_root).await.unwrap();
+        let child_file = child_root.join("Child.sol");
+        fs::write(&child_file, "contract Child {}\n").await.unwrap();
+        let archive = zip_file(&child_root, &[child_file], "child").unwrap();
+        let mut server = Server::new_async().await;
+        server.mock("GET", "/child.zip").with_body_from_file(&archive).create_async().await;
+        fs::write(
+            parent_path.join("soldeer.toml"),
+            format!(
+                "[dependencies]\nchild = {{ version = \"1.0.0\", url = \"{}/child.zip\" }}\n",
+                server.url()
+            ),
+        )
+        .await
+        .unwrap();
+
+        let parent_dependency: Dependency = HttpDependency::builder()
+            .name("parent")
+            .version_req("1.0.0")
+            .url("https://example.com/parent.zip")
+            .build()
+            .into();
+        let parent_integrity = hash_folder(&parent_path).unwrap();
+        let parent_lock: LockEntry = HttpLockEntry::builder()
+            .name("parent")
+            .version("1.0.0")
+            .url("https://example.com/parent.zip")
+            .checksum("checksum")
+            .integrity(parent_integrity.to_string())
+            .build()
+            .into();
+        let (progress, _) = InstallProgress::new();
+
+        let res = install_dependency(
+            &parent_dependency,
+            Some(&parent_lock),
+            dir.join("dependencies"),
+            None,
+            true,
+            progress,
+        )
+        .await;
+        assert!(res.is_ok(), "{res:?}");
+        assert!(parent_path.join("dependencies/child-1.0.0").exists());
+        let nested_lock = read_lockfile(parent_path.join("soldeer.lock")).unwrap();
+        assert_eq!(nested_lock.entries.len(), 1);
+        assert_eq!(nested_lock.entries[0].name(), "child");
     }
 
     #[tokio::test]

@@ -36,8 +36,8 @@ pub struct IntegrityChecksum(pub String);
 ///
 /// The path can be overridden by setting the `SOLDEER_LOGIN_FILE` environment variable.
 pub fn login_file_path() -> Result<PathBuf, std::io::Error> {
-    if let Ok(file_path) = env::var("SOLDEER_LOGIN_FILE") &&
-        !file_path.is_empty()
+    if let Ok(file_path) = env::var("SOLDEER_LOGIN_FILE")
+        && !file_path.is_empty()
     {
         debug!("using soldeer login file defined in environment variable");
         return Ok(file_path.into());

@@ -54,9 +54,9 @@ impl From<soldeer_core::config::ConfigLocation> for ConfigLocation {
 }
 
 pub async fn run(command: Command, verbosity: Verbosity<CustomLevel>) -> Result<()> {
-    if let Some(level) = verbosity.log_level() &&
-        level <= Level::Error &&
-        env::var("RUST_LOG").is_err()
+    if let Some(level) = verbosity.log_level()
+        && level <= Level::Error
+        && env::var("RUST_LOG").is_err()
     {
         // enable TUI if no `-v` flag and no RUST_LOG is provided
         TUI_ENABLED.store(true, Ordering::Relaxed);

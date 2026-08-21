@@ -186,8 +186,8 @@ pub(crate) async fn install_command(paths: &Paths, cmd: Install) -> Result<()> {
             bars.stop_all();
             // for git deps, we need to add the commit hash before adding them to the
             // config, unless a branch/tag was specified
-            if let Some(git_dep) = dep.as_git_mut() &&
-                git_dep.identifier.is_none()
+            if let Some(git_dep) = dep.as_git_mut()
+                && git_dep.identifier.is_none()
             {
                 git_dep.identifier = Some(GitIdentifier::from_rev(
                     &lock.as_git().expect("lock entry should be of type git").rev,

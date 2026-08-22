@@ -219,6 +219,9 @@ pub enum PublishError {
     #[error("error while computing the relative path: {0}")]
     RelativePathError(#[from] StripPrefixError),
 
+    #[error("refusing to publish symlink: {0}")]
+    Symlink(PathBuf),
+
     #[error("auth error: {0}")]
     AuthError(#[from] AuthError),
 

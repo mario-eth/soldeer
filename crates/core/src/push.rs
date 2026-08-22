@@ -417,7 +417,7 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    fn test_filter_files_to_copy_skips_symlink() {
+    fn test_filter_ignored_files_skips_symlink() {
         use std::os::unix::fs::symlink;
 
         let dir = testdir!();

@@ -252,10 +252,7 @@ fn generate_remappings(
                 for (existing_remapped, existing_og) in existing_remappings {
                     new_remappings.push(format!("{existing_remapped}={existing_og}"));
                     let existing_install_dir: PathBuf =
-                        PathBuf::from(existing_og.trim_end_matches('/'))
-                            .components()
-                            .take(n_components)
-                            .collect();
+                        PathBuf::from(existing_og).components().take(n_components).collect();
                     let add_install_dir: PathBuf =
                         PathBuf::from(&add_dep_og).components().take(n_components).collect();
                     if existing_install_dir == add_install_dir {

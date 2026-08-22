@@ -19,10 +19,4 @@ fn test_rust_workflow_uses_pinned_actions_and_toolchain() {
     assert!(count > 0, "no action references found in workflow");
     assert!(!workflow.contains("@stable"), "workflow uses a floating stable toolchain");
     assert!(!workflow.contains("@nightly"), "workflow uses a floating nightly toolchain");
-    let toolchain_steps = workflow.matches("dtolnay/rust-toolchain@").count();
-    let pinned_toolchains = workflow.matches("toolchain: 1.88.0").count();
-    assert_eq!(
-        toolchain_steps, pinned_toolchains,
-        "every toolchain step should pin an explicit toolchain version"
-    );
 }

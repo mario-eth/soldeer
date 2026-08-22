@@ -15,7 +15,8 @@ use crate::{
     },
     registry::{DownloadUrl, get_dependency_url_remote, get_latest_supported_version},
     utils::{
-        IntegrityChecksum, canonicalize, hash_file, hash_folder, is_symlink, run_git_command, sanitize_filename,
+        IntegrityChecksum, canonicalize, hash_file, hash_folder, is_symlink, run_git_command,
+        sanitize_filename,
     },
 };
 use derive_more::derive::Display;

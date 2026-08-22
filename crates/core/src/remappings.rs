@@ -368,16 +368,6 @@ fn remappings_from_deps(
 ///
 /// # Errors
 /// If the there is no folder in the dependencies folder corresponding to the dependency
-/// Number of path components of a dependency's install directory relative to the project root.
-///
-/// This is the number of components of the dependencies folder relative to the project root, plus
-/// one for the dependency's own folder. Truncating a remapping path to that many components yields
-/// the install directory of the dependency it points to, regardless of how deep the dependencies
-/// folder is located.
-fn install_dir_component_count(paths: &Paths) -> usize {
-    paths.dependencies.strip_prefix(&paths.root).map(|p| p.components().count()).unwrap_or(1) + 1
-}
-
 fn get_install_dir_relative(dependency: &Dependency, paths: &Paths) -> Result<String> {
     let path = dunce::canonicalize(
         dependency
@@ -389,6 +379,16 @@ fn get_install_dir_relative(dependency: &Dependency, paths: &Paths) -> Result<St
         .map_err(|_| RemappingsError::DependencyNotFound(dependency.to_string()))?
         .to_slash_lossy()
         .to_string())
+}
+
+/// Number of path components of a dependency's install directory relative to the project root.
+///
+/// This is the number of components of the dependencies folder relative to the project root, plus
+/// one for the dependency's own folder. Truncating a remapping path to that many components yields
+/// the install directory of the dependency it points to, regardless of how deep the dependencies
+/// folder is located.
+fn install_dir_component_count(paths: &Paths) -> usize {
+    paths.dependencies.strip_prefix(&paths.root).map(|p| p.components().count()).unwrap_or(1) + 1
 }
 
 /// Format a TOML array as a multi-line array with indentation in case there is more than one

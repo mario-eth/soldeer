@@ -798,7 +798,7 @@ async fn reinit_submodules(path: &PathBuf) -> Result<Vec<PathBuf>> {
 }
 
 fn normalize_submodule_path(path: &str) -> PathBuf {
-    Path::new(path).components().filter(|component| *component != Component::CurDir).collect()
+    Path::new(path).components().filter(|&component| component != Component::CurDir).collect()
 }
 
 /// Check the integrity of an HTTP dependency.

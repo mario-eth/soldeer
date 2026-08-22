@@ -59,10 +59,10 @@ pub(crate) async fn push_command(cmd: Push) -> Result<()> {
     let files_to_copy: Vec<PathBuf> = filter_ignored_files(&path);
 
     // Check for sensitive files or directories
-    if !cmd.dry_run
-        && !cmd.skip_warnings
-        && check_dotfiles(&files_to_copy)
-        && !prompt_user_for_confirmation()?
+    if !cmd.dry_run &&
+        !cmd.skip_warnings &&
+        check_dotfiles(&files_to_copy) &&
+        !prompt_user_for_confirmation()?
     {
         return Err(PublishError::UserAborted.into());
     }

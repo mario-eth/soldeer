@@ -128,9 +128,9 @@ pub fn zip_file(
 
         // we add folders explicitly to the zip file, some tools might not handle this properly
         // otherwise
-        if let Some(parent) = relative_file_path.parent()
-            && !parent.as_os_str().is_empty()
-            && !added_dirs.contains(&parent)
+        if let Some(parent) = relative_file_path.parent() &&
+            !parent.as_os_str().is_empty() &&
+            !added_dirs.contains(&parent)
         {
             zip.add_directory(parent.to_slash_lossy(), options)?;
             debug!(folder:? = parent; "added parent directory in zip archive");

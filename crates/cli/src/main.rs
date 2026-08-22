@@ -6,9 +6,9 @@ use soldeer_commands::{Args, commands::Parser as _, run};
 use yansi::{Condition, Paint as _};
 
 const HAVE_COLOR: Condition = Condition(|| {
-    std::env::var_os("NO_COLOR").is_none()
-        && (Condition::CLICOLOR_LIVE)()
-        && Condition::stdouterr_are_tty_live()
+    std::env::var_os("NO_COLOR").is_none() &&
+        (Condition::CLICOLOR_LIVE)() &&
+        Condition::stdouterr_are_tty_live()
 });
 
 #[tokio::main]
@@ -19,8 +19,8 @@ async fn main() {
     // setup logging
     if env::var("RUST_LOG").is_ok() {
         env_logger::builder().init();
-    } else if let Some(level) = args.verbose.log_level()
-        && level > Level::Error
+    } else if let Some(level) = args.verbose.log_level() &&
+        level > Level::Error
     {
         // the user requested structured logging (-v[v*])
         // init logger

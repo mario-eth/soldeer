@@ -29,8 +29,8 @@ pub struct LoginResponse {
 ///
 /// Precedence is given to the `SOLDEER_API_TOKEN` environment variable.
 pub fn get_token() -> Result<String> {
-    if let Ok(token) = env::var("SOLDEER_API_TOKEN")
-        && !token.is_empty()
+    if let Ok(token) = env::var("SOLDEER_API_TOKEN") &&
+        !token.is_empty()
     {
         return Ok(token);
     }

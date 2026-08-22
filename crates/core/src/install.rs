@@ -780,9 +780,9 @@ async fn reinit_submodules(path: &PathBuf) -> Result<Vec<PathBuf>> {
         args.push(&submodule.path);
         run_git_command(args, Some(path)).await?;
         if let Some(
-            forge::DepIdentifier::Branch { rev, .. }
-            | forge::DepIdentifier::Tag { rev, .. }
-            | forge::DepIdentifier::Rev { rev },
+            forge::DepIdentifier::Branch { rev, .. } |
+            forge::DepIdentifier::Tag { rev, .. } |
+            forge::DepIdentifier::Rev { rev },
         ) = foundry_lock.get(Path::new(&submodule.path))
         {
             debug!(submodule_name, path:?; "found corresponding item in foundry lockfile");

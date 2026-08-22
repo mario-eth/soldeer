@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## `soldeer-core` - [0.11.1](https://github.com/mario-eth/soldeer/compare/soldeer-core-v0.11.0...soldeer-core-v0.11.1) - 2026-08-22
+
+### Fixed
+- *(install)* canonicalize submodule paths for lock lookup ([#373](https://github.com/mario-eth/soldeer/pull/373))
+- *(lock)* error on invalid lockfile entries ([#370](https://github.com/mario-eth/soldeer/pull/370))
+- *(push)* only include regular files in package archives ([#365](https://github.com/mario-eth/soldeer/pull/365))
+- *(remappings)* match dependencies by install directory ([#362](https://github.com/mario-eth/soldeer/pull/362))
+- *(install)* preserve package layout during extraction ([#367](https://github.com/mario-eth/soldeer/pull/367))
+- *(install)* error on conflicting dependency directory names ([#366](https://github.com/mario-eth/soldeer/pull/366))
+- *(registry)* error on unparseable version requirements ([#364](https://github.com/mario-eth/soldeer/pull/364))
+- *(install)* persist lockfiles for recursive dependencies ([#363](https://github.com/mario-eth/soldeer/pull/363))
+- *(remappings)* remove unused remappings.txt when using config storage ([#361](https://github.com/mario-eth/soldeer/pull/361))
+- *(download)* use fully-qualified refs for git checkouts ([#360](https://github.com/mario-eth/soldeer/pull/360))
+
+### Other
+- *(ci)* pin actions and toolchain versions ([#374](https://github.com/mario-eth/soldeer/pull/374))
+
 ## `soldeer` - [0.11.0](https://github.com/mario-eth/soldeer/compare/v0.10.1...v0.11.0) - 2026-04-16
 
 ### Fixed

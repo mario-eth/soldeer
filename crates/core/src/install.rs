@@ -14,7 +14,7 @@ use crate::{
         format_install_path, read_lockfile,
     },
     registry::{DownloadUrl, get_dependency_url_remote, get_latest_supported_version},
-    utils::{IntegrityChecksum, canonicalize, hash_file, hash_folder, run_git_command},
+    utils::{IntegrityChecksum, canonicalize, hash_file, hash_folder, is_symlink, run_git_command},
 };
 use derive_more::derive::Display;
 use log::{debug, info, warn};
@@ -535,24 +535,16 @@ pub async fn check_dependency_integrity(
 /// If the directory does not exist, it will be created.
 pub fn ensure_dependencies_dir(path: impl AsRef<Path>) -> Result<()> {
     let path = path.as_ref();
-    match path.symlink_metadata() {
-        Ok(metadata) if metadata.file_type().is_symlink() => {
-            return Err(InstallError::IOError {
-                path: path.to_path_buf(),
-                source: std::io::Error::new(
-                    std::io::ErrorKind::InvalidInput,
-                    "dependencies path must not be a symlink",
-                ),
-            });
-        }
-        Ok(_) => {}
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-        Err(e) => {
-            return Err(InstallError::IOError {
-                path: path.to_path_buf(),
-                source: e,
-            });
-        }
+    if is_symlink(path)
+        .map_err(|e| InstallError::IOError { path: path.to_path_buf(), source: e })?
+    {
+        return Err(InstallError::IOError {
+            path: path.to_path_buf(),
+            source: std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "dependencies path must not be a symlink",
+            ),
+        });
     }
     if !path.exists() {
         debug!(path:?; "dependencies dir doesn't exist, creating it");

@@ -535,14 +535,24 @@ pub async fn check_dependency_integrity(
 /// If the directory does not exist, it will be created.
 pub fn ensure_dependencies_dir(path: impl AsRef<Path>) -> Result<()> {
     let path = path.as_ref();
-    if path.symlink_metadata().map(|metadata| metadata.file_type().is_symlink()).unwrap_or(false) {
-        return Err(InstallError::IOError {
-            path: path.to_path_buf(),
-            source: std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                "dependencies path must not be a symlink",
-            ),
-        });
+    match path.symlink_metadata() {
+        Ok(metadata) if metadata.file_type().is_symlink() => {
+            return Err(InstallError::IOError {
+                path: path.to_path_buf(),
+                source: std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    "dependencies path must not be a symlink",
+                ),
+            });
+        }
+        Ok(_) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => {
+            return Err(InstallError::IOError {
+                path: path.to_path_buf(),
+                source: e,
+            });
+        }
     }
     if !path.exists() {
         debug!(path:?; "dependencies dir doesn't exist, creating it");

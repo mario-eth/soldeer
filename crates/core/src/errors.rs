@@ -200,8 +200,11 @@ pub enum LockError {
     #[error("foundry.lock is missing")]
     FoundryLockMissing,
 
-    #[error("error parsing lockfile contents: {0}")]
+    #[error("error parsing foundry.lock JSON contents: {0}")]
     DeserializeError(#[from] serde_json::Error),
+
+    #[error("error parsing soldeer.lock TOML contents: {0}")]
+    TomlDeserializeError(#[from] toml_edit::de::Error),
 }
 
 #[derive(Error, Debug)]

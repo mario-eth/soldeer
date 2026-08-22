@@ -883,7 +883,7 @@ async fn check_http_dependency(
             field: "integrity".to_string(),
             dep: path.to_string_lossy().to_string(),
         }
-        .into())
+        .into());
     };
     if &current_hash.to_string() != integrity {
         debug!(path:?, expected = integrity, computed = current_hash.0; "integrity checksum mismatch");

@@ -387,7 +387,7 @@ pub fn read_lockfile(path: impl AsRef<Path>) -> Result<LockFile> {
     let contents = fs::read_to_string(&path)?;
 
     let data: LockFileParsed = toml_edit::de::from_str(&contents).inspect_err(|err| {
-        warn!(path:? = path.as_ref(), err:?; "error while parsing soldeer.lock TOML contents");
+        warn!(path:? = path.as_ref(), err:%; "error while parsing soldeer.lock TOML contents");
     })?;
     let entries =
         data.dependencies.into_iter().map(TryInto::try_into).collect::<Result<Vec<LockEntry>>>()?;

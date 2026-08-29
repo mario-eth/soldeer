@@ -6,7 +6,11 @@
 //! The lockfile is used to ensure that the same versions of dependencies are installed across
 //! different machines. It is also used to skip the installation of dependencies that are already
 //! installed.
-use crate::{config::Dependency, errors::LockError, utils::sanitize_filename};
+use crate::{
+    config::Dependency,
+    errors::LockError,
+    utils::{is_symlink, sanitize_filename},
+};
 use log::{debug, warn};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -369,12 +373,7 @@ pub struct LockFile {
 
 /// Read a lockfile from disk.
 pub fn read_lockfile(path: impl AsRef<Path>) -> Result<LockFile> {
-    if path
-        .as_ref()
-        .symlink_metadata()
-        .map(|metadata| metadata.file_type().is_symlink())
-        .unwrap_or(false)
-    {
+    if is_symlink(&path)? {
         return Err(LockError::IOError(std::io::Error::new(
             std::io::ErrorKind::InvalidInput,
             "soldeer.lock must not be a symlink",
@@ -417,12 +416,7 @@ pub fn add_to_lockfile(entry: LockEntry, path: impl AsRef<Path>) -> Result<()> {
         lockfile.entries.push(entry);
     }
     let new_contents = generate_lockfile_contents(lockfile.entries);
-    if path
-        .as_ref()
-        .symlink_metadata()
-        .map(|metadata| metadata.file_type().is_symlink())
-        .unwrap_or(false)
-    {
+    if is_symlink(&path)? {
         return Err(LockError::IOError(std::io::Error::new(
             std::io::ErrorKind::InvalidInput,
             "soldeer.lock must not be a symlink",

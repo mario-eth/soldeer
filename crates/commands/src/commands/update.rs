@@ -6,13 +6,11 @@ use clap::Parser;
 use soldeer_core::{
     Result,
     config::{Paths, read_config_deps, read_soldeer_config},
-    errors::LockError,
     install::{InstallProgress, ensure_dependencies_dir},
-    lock::{generate_lockfile_contents, read_lockfile},
+    lock::{generate_lockfile_contents, read_lockfile, write_lockfile},
     remappings::{RemappingsAction, edit_remappings},
     update::update_dependencies,
 };
-use std::fs;
 
 /// Update dependencies by reading the config file
 #[derive(Debug, Clone, Default, Parser, bon::Builder)]
@@ -74,7 +72,7 @@ pub(crate) async fn update_command(paths: &Paths, cmd: Update) -> Result<()> {
     bars.stop_all();
 
     let new_lockfile_content = generate_lockfile_contents(new_locks);
-    fs::write(&paths.lock, new_lockfile_content).map_err(LockError::IOError)?;
+    write_lockfile(&new_lockfile_content, &paths.lock)?;
     success!("Updated lockfile");
 
     edit_remappings(&RemappingsAction::Update, &config, paths)?;

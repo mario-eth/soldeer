@@ -17,6 +17,7 @@ use std::{
     fs,
     path::{Path, PathBuf},
 };
+use uuid::Uuid;
 
 pub mod forge;
 
@@ -402,6 +403,27 @@ pub fn generate_lockfile_contents(mut entries: Vec<LockEntry>) -> String {
     toml_edit::ser::to_string_pretty(&data).expect("Lock entries should be serializable")
 }
 
+/// Write contents to a lockfile without following symlinks.
+///
+/// To ensure the path is not modified to be a symlink again after the check,
+/// the contents are written to a temporary file in the same folder and then the
+/// file is renamed to overwrite the final location.
+///
+/// # Errors
+/// If the `path` is a symlink, an `IOError` is returned.
+pub fn write_lockfile(contents: &str, path: impl AsRef<Path>) -> Result<()> {
+    let path = path.as_ref();
+    if is_symlink(path)? {
+        return Err(LockError::IOError(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "soldeer.lock must not be a symlink",
+        )));
+    }
+    replace_file(contents, path)?;
+    debug!(path:? = path; "lockfile modified");
+    Ok(())
+}
+
 /// Add a lock entry to a lockfile.
 ///
 /// If an entry with the same name already exists, it will be replaced.
@@ -416,15 +438,7 @@ pub fn add_to_lockfile(entry: LockEntry, path: impl AsRef<Path>) -> Result<()> {
         lockfile.entries.push(entry);
     }
     let new_contents = generate_lockfile_contents(lockfile.entries);
-    if is_symlink(&path)? {
-        return Err(LockError::IOError(std::io::Error::new(
-            std::io::ErrorKind::InvalidInput,
-            "soldeer.lock must not be a symlink",
-        )));
-    }
-    fs::write(&path, new_contents)?;
-    debug!(path:? = path.as_ref(); "lockfile modified");
-    Ok(())
+    write_lockfile(&new_contents, &path)
 }
 
 /// Remove a lock entry from a lockfile, matching on the name.
@@ -450,9 +464,7 @@ pub fn remove_lock(dependency: &Dependency, path: impl AsRef<Path>) -> Result<()
         toml_edit::ser::to_string_pretty(&LockFileParsed { dependencies: entries })?;
 
     // replace contents of lockfile with new contents
-    fs::write(&path, file_contents)?;
-    debug!(path:? = path.as_ref(); "lockfile modified");
-    Ok(())
+    write_lockfile(&file_contents, &path)
 }
 
 /// Format the install path of a dependency.
@@ -460,6 +472,28 @@ pub fn remove_lock(dependency: &Dependency, path: impl AsRef<Path>) -> Result<()
 /// The folder name is sanitized to remove disallowed characters.
 pub fn format_install_path(name: &str, version: &str, deps: impl AsRef<Path>) -> PathBuf {
     deps.as_ref().join(sanitize_filename(&format!("{name}-{version}")))
+}
+
+/// Replace a file with the given contents, via a temporary file in the same
+/// folder.
+///
+/// The rename is atomic and replaces any potential symlink at `path`.
+fn replace_file(contents: &str, path: &Path) -> Result<()> {
+    let Some(filename) = path.file_name() else {
+        return Err(LockError::IOError(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "lockfile path must point to a file",
+        )));
+    };
+    let mut tmp_filename = filename.to_os_string();
+    tmp_filename.push(format!(".{}.tmp", Uuid::new_v4()));
+    let tmp_path = path.with_file_name(tmp_filename);
+    let res = fs::write(&tmp_path, contents).and_then(|()| fs::rename(&tmp_path, path));
+    if let Err(e) = res {
+        let _ = fs::remove_file(&tmp_path);
+        return Err(e.into());
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -758,5 +792,38 @@ rev = "123456"
             .into();
         assert!(matches!(add_to_lockfile(entry, &link), Err(LockError::IOError(_))));
         assert_eq!(fs::read_to_string(target).unwrap(), "trusted");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_write_lockfile_does_not_follow_symlink() {
+        use std::os::unix::fs::symlink;
+
+        let dir = testdir!();
+        let target = dir.join("trusted.lock");
+        let link = dir.join(SOLDEER_LOCK);
+        fs::write(&target, "trusted").unwrap();
+        symlink(&target, &link).unwrap();
+
+        // simulates losing the check-to-write race: the symlink is replaced, not written through
+        replace_file("attacker", &link).unwrap();
+
+        assert_eq!(fs::read_to_string(&target).unwrap(), "trusted");
+        assert!(!fs::symlink_metadata(&link).unwrap().file_type().is_symlink());
+    }
+
+    #[test]
+    fn test_write_lockfile_leaves_no_temp_file() {
+        let dir = testdir!();
+        let path = dir.join(SOLDEER_LOCK);
+        write_lockfile("[[dependencies]]\n", &path).unwrap();
+
+        assert_eq!(fs::read_to_string(&path).unwrap(), "[[dependencies]]\n");
+        let leftovers: Vec<_> = fs::read_dir(&dir)
+            .unwrap()
+            .map(|e| e.unwrap().file_name())
+            .filter(|n| n != SOLDEER_LOCK)
+            .collect();
+        assert!(leftovers.is_empty(), "leftover files: {leftovers:?}");
     }
 }

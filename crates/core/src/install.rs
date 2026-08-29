@@ -870,7 +870,7 @@ async fn reinit_submodules(path: &PathBuf) -> Result<Vec<PathBuf>> {
     }
     let mut out = Vec::new();
     for (submodule_name, submodule) in submodules {
-        let submodule_path = normalize_submodule_path(&submodule.path);
+        let submodule_path = validate_submodule_path(&submodule.path)?;
         // make sure to remove the path if it already exists
         let dest_path = path.join(&submodule_path);
         fs::remove_dir_all(&dest_path).await.ok(); // ignore error if folder doesn't exist
@@ -899,8 +899,21 @@ async fn reinit_submodules(path: &PathBuf) -> Result<Vec<PathBuf>> {
     Ok(out)
 }
 
-fn normalize_submodule_path(path: &str) -> PathBuf {
-    Path::new(path).components().filter(|&component| component != Component::CurDir).collect()
+fn validate_submodule_path(path: &str) -> Result<PathBuf> {
+    let path_ref = Path::new(path);
+    let invalid = path_ref.as_os_str().is_empty() ||
+        path_ref.components().any(|component| {
+            matches!(component, Component::ParentDir | Component::RootDir | Component::Prefix(_))
+        });
+    if invalid {
+        return Err(InstallError::InvalidSubmodulePath(path.to_string()));
+    }
+    let normalized: PathBuf =
+        path_ref.components().filter(|component| *component != Component::CurDir).collect();
+    if normalized.as_os_str().is_empty() {
+        return Err(InstallError::InvalidSubmodulePath(path.to_string()));
+    }
+    Ok(normalized)
 }
 
 /// Check the integrity of an HTTP dependency.
@@ -1221,6 +1234,43 @@ mod tests {
         assert_eq!(lock.integrity, hash.to_string());
     }
 
+    #[test]
+    fn test_validate_submodule_path_rejects_parent_directory() {
+        assert!(matches!(
+            validate_submodule_path("../victim-1.0.0"),
+            Err(InstallError::InvalidSubmodulePath(path)) if path == "../victim-1.0.0"
+        ));
+        assert!(matches!(
+            validate_submodule_path("lib/../../victim-1.0.0"),
+            Err(InstallError::InvalidSubmodulePath(_))
+        ));
+    }
+
+    #[test]
+    fn test_validate_submodule_path_rejects_absolute_path() {
+        assert!(matches!(
+            validate_submodule_path("/tmp/victim-1.0.0"),
+            Err(InstallError::InvalidSubmodulePath(path)) if path == "/tmp/victim-1.0.0"
+        ));
+        #[cfg(windows)]
+        {
+            assert!(matches!(
+                validate_submodule_path("C:\\victim-1.0.0"),
+                Err(InstallError::InvalidSubmodulePath(_))
+            ));
+            assert!(matches!(
+                validate_submodule_path("\\victim-1.0.0"),
+                Err(InstallError::InvalidSubmodulePath(_))
+            ));
+        }
+    }
+
+    #[test]
+    fn test_validate_submodule_path_normalizes_curdir() {
+        assert_eq!(validate_submodule_path("./lib/dep").unwrap(), PathBuf::from("lib").join("dep"));
+        assert!(matches!(validate_submodule_path("."), Err(InstallError::InvalidSubmodulePath(_))));
+    }
+
     #[tokio::test]
     async fn test_install_http_dependency_cleans_partial_tree_on_extract_error() {
         let dir = testdir!();
@@ -1313,11 +1363,6 @@ mod tests {
         // staging must not lengthen paths, or deeply nested trees blow the windows 260 char limit
         assert!(name.len() <= dir_name.len(), "{name}");
         assert_eq!(Path::new(&name).components().count(), 1, "{name}");
-    }
-
-    #[test]
-    fn test_normalize_submodule_path_for_foundry_lock_lookup() {
-        assert_eq!(normalize_submodule_path("./lib/forge-std"), PathBuf::from("lib/forge-std"));
     }
 
     #[cfg(unix)]

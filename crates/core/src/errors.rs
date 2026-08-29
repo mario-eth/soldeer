@@ -172,6 +172,9 @@ pub enum InstallError {
     #[error("error with lockfile: {0}")]
     LockError(#[from] LockError),
 
+    #[error("invalid git submodule path: {0}")]
+    InvalidSubmodulePath(String),
+
     #[error("dependency paths collide after sanitization: {dependency} and {other} -> {path}")]
     PathCollision { dependency: String, other: String, path: String },
 }

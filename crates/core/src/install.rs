@@ -11,7 +11,7 @@ use crate::{
     errors::{ConfigError, InstallError, LockError},
     lock::{
         GitLockEntry, HttpLockEntry, Integrity, LockEntry, PrivateLockEntry, forge,
-        format_install_path, generate_lockfile_contents, read_lockfile,
+        format_install_path, generate_lockfile_contents, read_lockfile, write_lockfile,
     },
     registry::{DownloadUrl, get_dependency_url_remote, get_latest_supported_version},
     utils::{
@@ -740,9 +740,7 @@ async fn install_subdependencies_inner(paths: Paths) -> Result<()> {
         progress,
     )
     .await?;
-    fs::write(&paths.lock, generate_lockfile_contents(new_locks))
-        .await
-        .map_err(|source| InstallError::IOError { path: paths.lock, source })?;
+    write_lockfile(&generate_lockfile_contents(new_locks), &paths.lock)?;
     Ok(())
 }
 

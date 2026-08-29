@@ -219,7 +219,7 @@ fn generate_remappings(
 ) -> Result<Vec<String>> {
     let mut new_remappings = Vec::new();
     // the lockfile is read once here and the resolved paths are reused for all dependencies
-    let locked_paths = locked_install_paths(paths);
+    let locked_paths = locked_install_paths(paths)?;
     if soldeer_config.remappings_regenerate {
         debug!("ignoring existing remappings and recreating from config");
         let (dependencies, _) = read_config_deps(&paths.config)?;
@@ -377,19 +377,15 @@ fn remappings_from_deps(
 ///
 /// Entries whose install folder is missing from disk are skipped so that callers fall back to
 /// searching the dependencies folder instead of pointing at a path which doesn't exist.
-fn locked_install_paths(paths: &Paths) -> HashMap<String, PathBuf> {
-    let Ok(lockfile) = read_lockfile(&paths.lock) else {
-        debug!(path:? = paths.lock; "could not read lockfile, remappings will be resolved from the dependencies folder");
-        return HashMap::new();
-    };
-    lockfile
+fn locked_install_paths(paths: &Paths) -> Result<HashMap<String, PathBuf>> {
+    Ok(read_lockfile(&paths.lock)?
         .entries
         .into_iter()
         .filter_map(|entry| {
             let path = entry.install_path(&paths.dependencies);
             path.exists().then(|| (entry.name().to_string(), path))
         })
-        .collect()
+        .collect())
 }
 
 /// Find the install path (relative to project root) for a dependency that was already installed
@@ -511,7 +507,8 @@ mod tests {
         let dependency =
             HttpDependency::builder().name("dep1").version_req("^1.0.0").build().into();
 
-        let res = get_install_dir_relative(&dependency, &paths, &locked_install_paths(&paths));
+        let res =
+            get_install_dir_relative(&dependency, &paths, &locked_install_paths(&paths).unwrap());
         assert!(res.is_ok(), "{res:?}");
         assert_eq!(res.unwrap(), "dependencies/dep1-1.2.0");
     }
@@ -527,7 +524,8 @@ mod tests {
         let dependency =
             HttpDependency::builder().name("dep1").version_req("^1.0.0").build().into();
 
-        let res = get_install_dir_relative(&dependency, &paths, &locked_install_paths(&paths));
+        let res =
+            get_install_dir_relative(&dependency, &paths, &locked_install_paths(&paths).unwrap());
         assert!(res.is_ok(), "{res:?}");
         assert_eq!(res.unwrap(), "dependencies/dep1-1.1.1");
     }
@@ -544,7 +542,7 @@ mod tests {
         )
         .unwrap();
 
-        let res = locked_install_paths(&paths);
+        let res = locked_install_paths(&paths).unwrap();
         assert_eq!(res.len(), 1);
         assert_eq!(res.get("dep1"), Some(&paths.dependencies.join("dep1-1.2.0")));
     }

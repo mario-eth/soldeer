@@ -301,6 +301,9 @@ pub enum RemappingsError {
     #[error("error while interacting with the config file: {0}")]
     ConfigError(#[from] ConfigError),
 
+    #[error("error while reading the lockfile: {0}")]
+    LockError(#[from] LockError),
+
     #[error("dependency not found: {0}")]
     DependencyNotFound(String),
 }

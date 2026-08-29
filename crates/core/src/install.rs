@@ -22,8 +22,10 @@ use crate::{
 use derive_more::derive::Display;
 use log::{debug, info, warn};
 use path_slash::PathBufExt as _;
+use sha2::{Digest as _, Sha256};
 use std::{
     collections::HashMap,
+    ffi::OsStr,
     fmt,
     future::Future,
     ops::Deref,
@@ -761,8 +763,9 @@ async fn install_http_dependency(
     progress.downloads.send(dep.into()).ok();
 
     // the archive is extracted next to its final location and only moved into
-    // place once complete
-    let staging_path = parent.join(format!(".soldeer-temp-{}", dir_name.to_string_lossy()));
+    // place once complete, so an interrupted install can never leave a partial
+    // dependency behind
+    let staging_path = parent.join(staging_dir_name(dir_name));
     fs::remove_dir_all(&staging_path).await.ok(); // ignore error if folder doesn't exist
     fs::create_dir(&staging_path)
         .await
@@ -817,6 +820,18 @@ async fn install_http_dependency(
         fs::remove_file(&zip_path).await.ok();
     }
     result
+}
+
+/// Name of the staging directory used while extracting a dependency into `dir_name`.
+///
+/// The name is derived from the install directory name, so a leftover staging
+/// directory from an interrupted install is reclaimed by the next attempt.
+///
+/// It is deliberately short, Windows caps paths at 260 characters, and
+/// everything extracted into the staging directory has to fit under that limit
+fn staging_dir_name(dir_name: &OsStr) -> String {
+    let digest = Sha256::digest(dir_name.as_encoded_bytes());
+    format!(".{}", const_hex::encode(&digest[..4]))
 }
 
 /// Retrieve a map of git submodules for a path by looking at the `.gitmodules` file.
@@ -1228,7 +1243,7 @@ mod tests {
             .build();
         let install_path = dir.join("foo-2.0.0");
         // leftover staging dir from a previous interrupted install
-        let staging_path = dir.join(".soldeer-temp-foo-2.0.0");
+        let staging_path = dir.join(staging_dir_name(OsStr::new("foo-2.0.0")));
         fs::create_dir(&staging_path).await.unwrap();
         fs::write(staging_path.join("stale.txt"), "stale").await.unwrap();
         let (progress, _) = InstallProgress::new();
@@ -1289,6 +1304,17 @@ mod tests {
         assert!(dependency.install_path_sync(&deps).is_none());
         // the previously installed version is left untouched
         assert!(v1_path.join("Contract.sol").exists());
+    }
+
+    #[test]
+    fn test_staging_dir_name_is_short_and_deterministic() {
+        let dir_name = OsStr::new("@uniswap-permit2-1.0.0");
+        let name = staging_dir_name(dir_name);
+        assert_eq!(name, staging_dir_name(dir_name));
+        assert_ne!(name, staging_dir_name(OsStr::new("@uniswap-permit2-1.0.1")));
+        // staging must not lengthen paths, or deeply nested trees blow the windows 260 char limit
+        assert!(name.len() <= dir_name.len(), "{name}");
+        assert_eq!(Path::new(&name).components().count(), 1, "{name}");
     }
 
     #[test]

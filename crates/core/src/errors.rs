@@ -174,6 +174,12 @@ pub enum InstallError {
 
     #[error("error with lockfile: {0}")]
     LockError(#[from] LockError),
+
+    #[error("invalid git submodule path: {0}")]
+    InvalidSubmodulePath(String),
+
+    #[error("dependency paths collide after sanitization: {dependency} and {other} -> {path}")]
+    PathCollision { dependency: String, other: String, path: String },
 }
 
 #[derive(Error, Debug)]
@@ -200,8 +206,11 @@ pub enum LockError {
     #[error("foundry.lock is missing")]
     FoundryLockMissing,
 
-    #[error("error parsing lockfile contents: {0}")]
+    #[error("error parsing foundry.lock JSON contents: {0}")]
     DeserializeError(#[from] serde_json::Error),
+
+    #[error("error parsing soldeer.lock TOML contents: {0}")]
+    TomlDeserializeError(#[from] toml_edit::de::Error),
 }
 
 #[derive(Error, Debug)]
@@ -218,6 +227,9 @@ pub enum PublishError {
 
     #[error("error while computing the relative path: {0}")]
     RelativePathError(#[from] StripPrefixError),
+
+    #[error("refusing to publish symlink: {0}")]
+    Symlink(PathBuf),
 
     #[error("auth error: {0}")]
     AuthError(#[from] AuthError),
@@ -276,6 +288,11 @@ pub enum RegistryError {
 
     #[error("no matching version found for {dependency} with version requirement {version_req}")]
     NoMatchingVersion { dependency: String, version_req: String },
+
+    #[error(
+        "invalid version requirement {version_req} for {dependency}: multiple requirements must be separated with a comma"
+    )]
+    InvalidVersionReq { dependency: String, version_req: String },
 }
 
 #[derive(Error, Debug)]
@@ -286,6 +303,9 @@ pub enum RemappingsError {
 
     #[error("error while interacting with the config file: {0}")]
     ConfigError(#[from] ConfigError),
+
+    #[error("error while reading the lockfile: {0}")]
+    LockError(#[from] LockError),
 
     #[error("dependency not found: {0}")]
     DependencyNotFound(String),

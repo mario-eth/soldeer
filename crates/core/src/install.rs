@@ -15,7 +15,8 @@ use crate::{
     },
     registry::{DownloadUrl, get_dependency_url_remote, get_latest_supported_version},
     utils::{
-        IntegrityChecksum, canonicalize, hash_file, hash_folder, run_git_command, sanitize_filename,
+        IntegrityChecksum, canonicalize, hash_file, hash_folder, is_symlink, run_git_command,
+        sanitize_filename,
     },
 };
 use derive_more::derive::Display;
@@ -591,6 +592,17 @@ pub async fn check_dependency_integrity(
 /// If the directory does not exist, it will be created.
 pub fn ensure_dependencies_dir(path: impl AsRef<Path>) -> Result<()> {
     let path = path.as_ref();
+    if is_symlink(path)
+        .map_err(|e| InstallError::IOError { path: path.to_path_buf(), source: e })?
+    {
+        return Err(InstallError::IOError {
+            path: path.to_path_buf(),
+            source: std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "dependencies path must not be a symlink",
+            ),
+        });
+    }
     if !path.exists() {
         debug!(path:?; "dependencies dir doesn't exist, creating it");
         std::fs::create_dir(path)
@@ -1180,6 +1192,21 @@ mod tests {
         assert_eq!(normalize_submodule_path("./lib/forge-std"), PathBuf::from("lib/forge-std"));
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn test_ensure_dependencies_dir_rejects_symlink() {
+        use std::os::unix::fs::symlink;
+
+        let dir = testdir!();
+        let target = dir.join("target");
+        let dependencies = dir.join("dependencies");
+        std::fs::create_dir(&target).unwrap();
+        symlink(&target, &dependencies).unwrap();
+
+        let res = ensure_dependencies_dir(&dependencies);
+        assert!(res.is_err(), "{res:?}");
+        assert!(target.exists());
+    }
     #[tokio::test]
     async fn test_installed_recursive_dependency_persists_nested_lockfile() {
         let dir = testdir!();

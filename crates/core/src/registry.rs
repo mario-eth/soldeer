@@ -281,13 +281,15 @@ pub async fn get_latest_supported_version(dependency: &Dependency) -> Result<Str
                     Ok(new_version.to_string())
                 }
                 None => {
-                    warn!(dep:% = dependency, version_req = dependency.version_req(); "could not parse version req according to semver, using latest version");
-                    // we can't check which version is newer, so we just take the latest one
-                    Ok(all_versions
-                        .into_iter()
-                        .next()
-                        .map(|v| v.to_string())
-                        .expect("there should be at least 1 version"))
+                    // the requirement is not valid semver (e.g. it uses `||` to combine multiple
+                    // requirements, which is not supported), so we can't know which version the
+                    // user intended. Silently using the latest version could install a package
+                    // version that was never requested, so we fail instead.
+                    warn!(dep:% = dependency, version_req = dependency.version_req(); "could not parse version req according to semver");
+                    Err(RegistryError::InvalidVersionReq {
+                        dependency: dependency.name().to_string(),
+                        version_req: dependency.version_req().to_string(),
+                    })
                 }
             }
         }
@@ -530,6 +532,40 @@ mod tests {
         )
         .await;
         assert!(matches!(res, Err(RegistryError::NoMatchingVersion { .. })));
+    }
+
+    #[tokio::test]
+    async fn test_get_latest_supported_version_invalid_req() {
+        let mut server = Server::new_async().await;
+        let data = r#"{"data":[{"created_at":"2024-08-06T17:31:25.751079Z","deleted":false,"downloads":1,"id":"660132e6-4902-4804-8c4b-7cae0a648054","internal_name":"pkg/3.0.0.zip","project_id":"37adefe5-9bc7-4777-aaf2-e56277d1f30b","url":"https://example.com/3.0.0.zip","version":"3.0.0"},{"created_at":"2024-07-03T14:44:59.729623Z","deleted":false,"downloads":1,"id":"fa5160fc-ba7b-40fd-8e99-8becd6dadbe4","internal_name":"pkg/2.1.0.zip","project_id":"37adefe5-9bc7-4777-aaf2-e56277d1f30b","url":"https://example.com/2.1.0.zip","version":"2.1.0"},{"created_at":"2024-07-03T14:44:58.148723Z","deleted":false,"downloads":1,"id":"b463683a-c4b4-40bf-b707-1c4eb343c4d2","internal_name":"pkg/1.9.3.zip","project_id":"37adefe5-9bc7-4777-aaf2-e56277d1f30b","url":"https://example.com/1.9.3.zip","version":"1.9.3"}],"status":"success"}"#;
+        server
+            .mock("GET", "/api/v1/revision")
+            .match_query(Matcher::Any)
+            .with_header("content-type", "application/json")
+            .with_body(data)
+            .create_async()
+            .await;
+
+        // `||` is not a supported way of combining version requirements (multiple requirements
+        // must be comma-separated). This must not silently resolve to the latest version.
+        let dependency: Dependency =
+            HttpDependency::builder().name("pkg").version_req("^1.9.3 || ^2.0.0").build().into();
+        let res = async_with_vars(
+            [("SOLDEER_API_URL", Some(server.url()))],
+            get_latest_supported_version(&dependency),
+        )
+        .await;
+        assert!(matches!(res, Err(RegistryError::InvalidVersionReq { .. })), "{res:?}");
+
+        // same for any other requirement which cannot be parsed as semver
+        let dependency: Dependency =
+            HttpDependency::builder().name("pkg").version_req("foobar").build().into();
+        let res = async_with_vars(
+            [("SOLDEER_API_URL", Some(server.url()))],
+            get_latest_supported_version(&dependency),
+        )
+        .await;
+        assert!(matches!(res, Err(RegistryError::InvalidVersionReq { .. })), "{res:?}");
     }
 
     #[test]

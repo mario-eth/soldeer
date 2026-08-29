@@ -285,7 +285,7 @@ mod tests {
         zip.finish().unwrap();
 
         let out_dir = dir.join("out");
-        let res = unzip_file(&zip_path, &out_dir).await;
+        let res = unzip_file(&zip_path, &out_dir, true).await;
         assert!(
             matches!(res, Err(DownloadError::InvalidArchiveEntry(entry)) if entry == ".git/config")
         );

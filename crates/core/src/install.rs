@@ -760,9 +760,8 @@ async fn install_http_dependency(
         download_file(&dep.url, parent, &format!("{}-{}", dep.name, dep.version)).await?;
     progress.downloads.send(dep.into()).ok();
 
-    // the archive is extracted next to its final location and only moved into place once complete,
-    // so an interrupted install can never leave a partial dependency behind. the staging name is
-    // derived from the install path, so a leftover directory from a previous attempt is reclaimed
+    // the archive is extracted next to its final location and only moved into
+    // place once complete
     let staging_path = parent.join(format!(".soldeer-temp-{}", dir_name.to_string_lossy()));
     fs::remove_dir_all(&staging_path).await.ok(); // ignore error if folder doesn't exist
     fs::create_dir(&staging_path)

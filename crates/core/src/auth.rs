@@ -1,12 +1,21 @@
 //! Registry authentication
-use crate::{errors::AuthError, registry::api_url, utils::login_file_path};
+use crate::{
+    errors::AuthError,
+    registry::api_url,
+    utils::{is_symlink, login_file_path},
+};
 use log::{debug, info, warn};
 use reqwest::{
     Client, StatusCode,
     header::{AUTHORIZATION, HeaderMap, HeaderValue},
 };
 use serde::{Deserialize, Serialize};
-use std::{env, fs, path::PathBuf};
+use std::{
+    env, fs,
+    io::Write as _,
+    path::{Path, PathBuf},
+};
+use uuid::Uuid;
 
 pub type Result<T> = std::result::Result<T, AuthError>;
 
@@ -60,8 +69,58 @@ pub fn get_auth_headers() -> Result<HeaderMap> {
 /// Save an access token in the login file
 pub fn save_token(token: &str) -> Result<PathBuf> {
     let token_path = login_file_path()?;
-    fs::write(&token_path, token)?;
+    write_token(&token_path, token)?;
     Ok(token_path)
+}
+
+/// Write the token to the login file without following symlinks.
+///
+/// The token is written to a freshly created temporary file in the same folder,
+/// which is then renamed to overwrite the final location.
+fn write_token(path: &Path, token: &str) -> Result<()> {
+    if is_symlink(path)? {
+        return Err(AuthError::IOError(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "login file must not be a symlink",
+        )));
+    }
+    let Some(filename) = path.file_name() else {
+        return Err(AuthError::IOError(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "login file path must point to a file",
+        )));
+    };
+    let mut tmp_filename = filename.to_os_string();
+    tmp_filename.push(format!(".{}.tmp", Uuid::new_v4()));
+    let tmp_path = path.with_file_name(tmp_filename);
+    let res = create_private_file(&tmp_path, token).and_then(|()| fs::rename(&tmp_path, path));
+    if let Err(e) = res {
+        let _ = fs::remove_file(&tmp_path);
+        return Err(e.into());
+    }
+    Ok(())
+}
+
+/// Create a new file readable and writable only by its owner and write the contents into it.
+///
+/// The file must not exist already, which guarantees that no symlink is followed.
+fn create_private_file(path: &Path, contents: &str) -> std::io::Result<()> {
+    let mut options = fs::OpenOptions::new();
+    options.create_new(true).write(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt as _;
+        options.mode(0o600);
+    }
+    let mut file = options.open(path)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+        // the creation mode is masked by the process umask, so enforce the
+        // permissions on the open handle
+        file.set_permissions(fs::Permissions::from_mode(0o600))?;
+    }
+    file.write_all(contents.as_bytes())
 }
 
 /// Retrieve user profile for the token to check its validity, returning the username
@@ -109,7 +168,7 @@ pub async fn execute_login(login: &Credentials) -> Result<PathBuf> {
         s if s.is_success() => {
             debug!("login request completed");
             let response: LoginResponse = res.json().await?;
-            fs::write(&token_path, response.token)?;
+            write_token(&token_path, &response.token)?;
             info!(token_path:?; "login successful");
             Ok(token_path)
         }
@@ -247,5 +306,58 @@ mod tests {
         let res = with_var("SOLDEER_API_TOKEN", Some("test"), get_token);
         assert!(res.is_ok(), "{res:?}");
         assert_eq!(res.unwrap(), "test");
+    }
+
+    /// Save a token into `path`, with `SOLDEER_LOGIN_FILE` pointing at it.
+    fn save_token_to(path: &Path, token: &str) -> Result<PathBuf> {
+        temp_env::with_vars(
+            [("SOLDEER_LOGIN_FILE", Some(path.to_string_lossy().to_string()))],
+            || save_token(token),
+        )
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_save_token_is_owner_only() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let file = testdir!().join("token");
+        let saved = save_token_to(&file, "secret").unwrap();
+
+        assert_eq!(saved, file);
+        assert_eq!(fs::read_to_string(&file).unwrap(), "secret");
+        assert_eq!(fs::metadata(file).unwrap().permissions().mode() & 0o777, 0o600);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_save_token_tightens_existing_permissions() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = testdir!();
+        let file = dir.join("token");
+        fs::write(&file, "old").unwrap();
+        fs::set_permissions(&file, fs::Permissions::from_mode(0o644)).unwrap();
+
+        save_token_to(&file, "secret").unwrap();
+
+        assert_eq!(fs::read_to_string(&file).unwrap(), "secret");
+        assert_eq!(fs::metadata(&file).unwrap().permissions().mode() & 0o777, 0o600);
+        // the temporary file must not be left behind
+        assert_eq!(fs::read_dir(&dir).unwrap().count(), 1);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_save_token_rejects_symlink() {
+        let dir = testdir!();
+        let target = dir.join("target");
+        fs::write(&target, "original").unwrap();
+        let link = dir.join("token");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+
+        let res = save_token_to(&link, "secret");
+        assert!(res.is_err(), "{res:?}");
+        assert_eq!(fs::read_to_string(&target).unwrap(), "original");
     }
 }

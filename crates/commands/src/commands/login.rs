@@ -11,8 +11,9 @@ use std::path::PathBuf;
 
 /// Log into the central repository to push packages
 ///
-/// The credentials are saved by default into ~/.soldeer.
-/// If you want to overwrite that location, use the SOLDEER_LOGIN_FILE env var.
+/// The credentials are saved by default into ~/.soldeer, in a file which only
+/// the current user can read. If you want to overwrite that location, use the
+/// `SOLDEER_LOGIN_FILE` env var.
 #[derive(Debug, Clone, Default, Parser, bon::Builder)]
 #[builder(on(String, into))]
 #[clap(after_help = "For more information, read the README.md")]

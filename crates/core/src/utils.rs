@@ -30,11 +30,19 @@ pub struct IntegrityChecksum(pub String);
 
 /// Get the location where the token file is stored or read from.
 ///
-/// The token file is stored in the home directory of the user, or in the current directory
-/// if the home cannot be found, in a hidden folder called `.soldeer`. The token file is called
-/// `.soldeer_login`.
+/// The token file is stored in the user's home directory in a hidden folder called `.soldeer`.
+/// The token file is called `.soldeer_login`. On Unix, the folder is created with owner-only
+/// permissions.
 ///
 /// The path can be overridden by setting the `SOLDEER_LOGIN_FILE` environment variable.
+///
+/// # Errors
+/// If the home directory cannot be determined, an error is returned. Set the
+/// `SOLDEER_LOGIN_FILE` environment variable to an owner-private location to
+/// work around this.
+///
+/// An error is also returned if the `.soldeer` path exists but is a symlink or
+/// is not a directory.
 pub fn login_file_path() -> Result<PathBuf, std::io::Error> {
     if let Ok(file_path) = env::var("SOLDEER_LOGIN_FILE") &&
         !file_path.is_empty()
@@ -43,12 +51,41 @@ pub fn login_file_path() -> Result<PathBuf, std::io::Error> {
         return Ok(file_path.into());
     }
 
-    // if home dir cannot be found, use the current dir
-    let dir = home::home_dir().unwrap_or(env::current_dir()?);
+    let dir = home::home_dir().ok_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "could not determine home directory, set the SOLDEER_LOGIN_FILE environment variable to choose where the login file is stored",
+        )
+    })?;
     let security_directory = dir.join(".soldeer");
-    if !security_directory.exists() {
-        debug!(dir:?; ".soldeer folder does not exist, creating it");
-        fs::create_dir(&security_directory)?;
+    // we inspect the path itself and never follow it, so that the permissions below cannot be
+    // applied to some other location and the login file cannot be written outside of the home
+    // directory
+    match fs::symlink_metadata(&security_directory) {
+        Ok(metadata) if metadata.file_type().is_symlink() => {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "the .soldeer folder must not be a symlink",
+            ));
+        }
+        Ok(metadata) if !metadata.is_dir() => {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::NotADirectory,
+                "the .soldeer path must be a directory",
+            ));
+        }
+        Ok(_) => {
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt as _;
+                fs::set_permissions(&security_directory, fs::Permissions::from_mode(0o700))?;
+            }
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            debug!(dir:?; ".soldeer folder does not exist, creating it");
+            create_private_dir(&security_directory)?;
+        }
+        Err(e) => return Err(e),
     }
     let login_file = security_directory.join(".soldeer_login");
     debug!(login_file:?; "path to login file");
@@ -320,11 +357,95 @@ pub fn is_symlink(path: impl AsRef<Path>) -> Result<bool, std::io::Error> {
     }
 }
 
+/// Create a directory which, on Unix, can only be accessed by its owner.
+fn create_private_dir(path: &Path) -> Result<(), std::io::Error> {
+    let mut builder = fs::DirBuilder::new();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::DirBuilderExt as _;
+        builder.mode(0o700);
+    }
+    builder.create(path)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::fs;
     use testdir::testdir;
+
+    /// Compute the login file path with `SOLDEER_LOGIN_FILE` unset and the given home directory.
+    fn login_file_path_with_home(home: &Path) -> Result<PathBuf, std::io::Error> {
+        temp_env::with_vars(
+            [
+                ("SOLDEER_LOGIN_FILE", None),
+                ("HOME", Some(home.as_os_str())),
+                ("USERPROFILE", Some(home.as_os_str())),
+            ],
+            login_file_path,
+        )
+    }
+
+    #[test]
+    fn test_login_file_path_in_home() {
+        let home = testdir!();
+        let res = login_file_path_with_home(&home);
+        assert!(res.is_ok(), "{res:?}");
+        assert_eq!(res.unwrap(), home.join(".soldeer").join(".soldeer_login"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_login_file_dir_is_owner_only() {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let home = testdir!();
+        login_file_path_with_home(&home).unwrap();
+        let mode = fs::metadata(home.join(".soldeer")).unwrap().permissions().mode();
+        assert_eq!(mode & 0o777, 0o700);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_login_file_dir_permissions_are_tightened() {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let home = testdir!();
+        let security_dir = home.join(".soldeer");
+        fs::create_dir(&security_dir).unwrap();
+        fs::set_permissions(&security_dir, fs::Permissions::from_mode(0o755)).unwrap();
+
+        login_file_path_with_home(&home).unwrap();
+        let mode = fs::metadata(&security_dir).unwrap().permissions().mode();
+        assert_eq!(mode & 0o777, 0o700);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_login_file_dir_rejects_symlink() {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let home = testdir!();
+        let target = home.join("elsewhere");
+        fs::create_dir(&target).unwrap();
+        fs::set_permissions(&target, fs::Permissions::from_mode(0o755)).unwrap();
+        std::os::unix::fs::symlink(&target, home.join(".soldeer")).unwrap();
+
+        let res = login_file_path_with_home(&home);
+        assert!(res.is_err(), "{res:?}");
+        // the symlink target must be left untouched
+        let mode = fs::metadata(&target).unwrap().permissions().mode();
+        assert_eq!(mode & 0o777, 0o755);
+    }
+
+    #[test]
+    fn test_login_file_dir_rejects_non_directory() {
+        let home = testdir!();
+        fs::write(home.join(".soldeer"), "not a directory").unwrap();
+
+        let res = login_file_path_with_home(&home);
+        assert!(res.is_err(), "{res:?}");
+    }
 
     fn create_test_folder(name: Option<&str>) -> PathBuf {
         let dir = testdir!();

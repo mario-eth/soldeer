@@ -1281,7 +1281,9 @@ mod tests {
             .into();
         let (progress, _) = InstallProgress::new();
 
-        let res = update_dependencies(&[dependency.clone()], &[lock], &deps, false, progress).await;
+        let res =
+            update_dependencies(std::slice::from_ref(&dependency), &[lock], &deps, false, progress)
+                .await;
         assert!(res.is_err(), "{res:?}");
         assert!(!deps.join("foo-2.0.0").exists());
         assert!(dependency.install_path_sync(&deps).is_none());

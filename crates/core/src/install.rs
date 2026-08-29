@@ -11,10 +11,12 @@ use crate::{
     errors::{ConfigError, InstallError, LockError},
     lock::{
         GitLockEntry, HttpLockEntry, Integrity, LockEntry, PrivateLockEntry, forge,
-        format_install_path, read_lockfile,
+        format_install_path, generate_lockfile_contents, read_lockfile,
     },
     registry::{DownloadUrl, get_dependency_url_remote, get_latest_supported_version},
-    utils::{IntegrityChecksum, canonicalize, hash_file, hash_folder, run_git_command},
+    utils::{
+        IntegrityChecksum, canonicalize, hash_file, hash_folder, run_git_command, sanitize_filename,
+    },
 };
 use derive_more::derive::Display;
 use log::{debug, info, warn};
@@ -24,7 +26,7 @@ use std::{
     fmt,
     future::Future,
     ops::Deref,
-    path::{Path, PathBuf},
+    path::{Component, Path, PathBuf},
     pin::Pin,
 };
 use tokio::{fs, sync::mpsc, task::JoinSet};
@@ -186,6 +188,16 @@ struct HttpInstallInfo {
     /// The project root is where the soldeer.toml or foundry.toml resides. If no path is provided,
     /// then the zip's root must contain a Soldeer config.
     project_root: Option<PathBuf>,
+
+    /// Whether a single wrapping root directory should be stripped from the zip archive during
+    /// extraction.
+    ///
+    /// This is `true` for custom URL dependencies, which typically point to source archives
+    /// wrapping the contents in a root folder (e.g. GitHub-generated zips), and `false` for
+    /// registry packages, where the archive contains the published files directly and any
+    /// top-level directory is part of the package's layout.
+    #[builder(default = true)]
+    zip_strip_root: bool,
 }
 
 impl fmt::Display for HttpInstallInfo {
@@ -254,7 +266,11 @@ impl From<GitInstallInfo> for InstallInfo {
 }
 
 impl InstallInfo {
-    async fn from_lock(lock: LockEntry, project_root: Option<PathBuf>) -> Result<Self> {
+    async fn from_lock(
+        lock: LockEntry,
+        project_root: Option<PathBuf>,
+        zip_strip_root: bool,
+    ) -> Result<Self> {
         match lock {
             LockEntry::Http(lock) => Ok(HttpInstallInfo {
                 name: lock.name,
@@ -262,6 +278,7 @@ impl InstallInfo {
                 url: lock.url,
                 checksum: Some(lock.checksum),
                 project_root,
+                zip_strip_root,
             }
             .into()),
             LockEntry::Git(lock) => Ok(GitInstallInfo {
@@ -289,6 +306,9 @@ impl InstallInfo {
                     url: download.url,
                     checksum: Some(lock.checksum),
                     project_root,
+                    // private dependencies always come from the registry, where archives never
+                    // have a wrapping root directory
+                    zip_strip_root: false,
                 }))
             }
         }
@@ -316,6 +336,7 @@ pub async fn install_dependencies(
     recursive_deps: bool,
     progress: InstallProgress,
 ) -> Result<Vec<LockEntry>> {
+    validate_dependency_path_collisions(dependencies)?;
     let mut set = JoinSet::new();
     for dep in dependencies {
         debug!(dep:% = dep; "spawning task to install dependency");
@@ -361,6 +382,7 @@ pub async fn install_dependencies_sequential(
     recursive_deps: bool,
     progress: InstallProgress,
 ) -> Result<Vec<LockEntry>> {
+    validate_dependency_path_collisions(dependencies)?;
     let mut results = Vec::new();
     for dep in dependencies {
         debug!(dep:% = dep; "installing dependency sequentially");
@@ -373,6 +395,23 @@ pub async fn install_dependencies_sequential(
     }
     debug!("all sequential installs have finished");
     Ok(results)
+}
+
+pub fn validate_dependency_path_collisions(dependencies: &[Dependency]) -> Result<()> {
+    let mut paths = HashMap::<String, String>::new();
+    for dependency in dependencies {
+        let path = sanitize_filename(dependency.name());
+        if let Some(other) = paths.insert(path.clone(), dependency.name().to_string()) &&
+            other != dependency.name()
+        {
+            return Err(InstallError::PathCollision {
+                dependency: dependency.name().to_string(),
+                other,
+                path,
+            });
+        }
+    }
+    Ok(())
 }
 
 /// Install a single dependency.
@@ -396,6 +435,11 @@ pub async fn install_dependency(
         match check_dependency_integrity(lock, &deps).await? {
             DependencyStatus::Installed => {
                 info!(dep:% = dependency; "skipped install, dependency already up-to-date with lockfile");
+                if recursive_deps {
+                    let project_root = dependency.project_root();
+                    install_subdependencies(lock.install_path(&deps), project_root.as_ref())
+                        .await?;
+                }
                 progress.update_all(dependency.into());
 
                 return Ok(lock.clone());
@@ -445,7 +489,14 @@ pub async fn install_dependency(
             }
         }
         install_dependency_inner(
-            &InstallInfo::from_lock(lock.clone(), dependency.project_root()).await?,
+            &InstallInfo::from_lock(
+                lock.clone(),
+                dependency.project_root(),
+                // custom URLs point to source archives which may wrap the contents in a root
+                // folder; registry archives never do
+                dependency.url().is_some(),
+            )
+            .await?,
             lock.install_path(&deps),
             recursive_deps,
             progress,
@@ -482,6 +533,9 @@ pub async fn install_dependency(
         // indicate that we have retrieved the version number
         progress.versions.send(dependency.into()).ok();
 
+        // custom URLs point to source archives which may wrap the contents in a root folder;
+        // registry archives never do
+        let zip_strip_root = dependency.url().is_some();
         let info = match &dependency {
             Dependency::Http(dep) => {
                 if download.private {
@@ -490,6 +544,7 @@ pub async fn install_dependency(
                             .name(&dep.name)
                             .version(&version)
                             .url(download.url)
+                            .zip_strip_root(zip_strip_root)
                             .build(),
                     )
                 } else {
@@ -497,6 +552,7 @@ pub async fn install_dependency(
                         .name(&dep.name)
                         .version(&version)
                         .url(download.url)
+                        .zip_strip_root(zip_strip_root)
                         .build()
                         .into()
                 }
@@ -664,7 +720,7 @@ async fn install_subdependencies_inner(paths: Paths) -> Result<()> {
     let (dependencies, _) = read_config_deps(&paths.config)?;
     let lockfile = read_lockfile(&paths.lock)?;
     let (progress, _) = InstallProgress::new(); // not used at the moment
-    let _ = install_dependencies(
+    let new_locks = install_dependencies(
         &dependencies,
         &lockfile.entries,
         &paths.dependencies,
@@ -672,6 +728,9 @@ async fn install_subdependencies_inner(paths: Paths) -> Result<()> {
         progress,
     )
     .await?;
+    fs::write(&paths.lock, generate_lockfile_contents(new_locks))
+        .await
+        .map_err(|source| InstallError::IOError { path: paths.lock, source })?;
     Ok(())
 }
 
@@ -709,7 +768,7 @@ async fn install_http_dependency(
     } else {
         debug!(zip_path:?; "no checksum available for archive integrity check");
     }
-    unzip_file(&zip_path, path).await?;
+    unzip_file(&zip_path, path, dep.zip_strip_root).await?;
     progress.unzip.send(dep.into()).ok();
 
     if subdependencies {
@@ -768,8 +827,9 @@ async fn reinit_submodules(path: &PathBuf) -> Result<Vec<PathBuf>> {
     }
     let mut out = Vec::new();
     for (submodule_name, submodule) in submodules {
+        let submodule_path = normalize_submodule_path(&submodule.path);
         // make sure to remove the path if it already exists
-        let dest_path = path.join(&submodule.path);
+        let dest_path = path.join(&submodule_path);
         fs::remove_dir_all(&dest_path).await.ok(); // ignore error if folder doesn't exist
         let mut args = vec!["submodule", "add", "-f", "--name", &submodule_name];
         if let Some(branch) = &submodule.branch {
@@ -777,22 +837,27 @@ async fn reinit_submodules(path: &PathBuf) -> Result<Vec<PathBuf>> {
             args.push(branch);
         }
         args.push(&submodule.url);
-        args.push(&submodule.path);
+        let submodule_path = submodule_path.to_string_lossy().to_string();
+        args.push(&submodule_path);
         run_git_command(args, Some(path)).await?;
         if let Some(
             forge::DepIdentifier::Branch { rev, .. } |
             forge::DepIdentifier::Tag { rev, .. } |
             forge::DepIdentifier::Rev { rev },
-        ) = foundry_lock.get(Path::new(&submodule.path))
+        ) = foundry_lock.get(Path::new(&submodule_path))
         {
             debug!(submodule_name, path:?; "found corresponding item in foundry lockfile");
             run_git_command(["checkout", rev], Some(&dest_path)).await?;
             debug!(submodule_name, path:?; "submodule checked out at {rev}");
         }
         debug!(submodule_name, path:?; "added submodule");
-        out.push(path.join(submodule.path));
+        out.push(path.join(submodule_path));
     }
     Ok(out)
+}
+
+fn normalize_submodule_path(path: &str) -> PathBuf {
+    Path::new(path).components().filter(|&component| component != Component::CurDir).collect()
 }
 
 /// Check the integrity of an HTTP dependency.
@@ -818,7 +883,7 @@ async fn check_http_dependency(
             field: "integrity".to_string(),
             dep: path.to_string_lossy().to_string(),
         }
-        .into())
+        .into());
     };
     if &current_hash.to_string() != integrity {
         debug!(path:?, expected = integrity, computed = current_hash.0; "integrity checksum mismatch");
@@ -924,7 +989,11 @@ async fn get_subdependency_root(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::{GitDependency, HttpDependency};
+    use crate::{
+        config::{GitDependency, HttpDependency},
+        lock::read_lockfile,
+        push::zip_file,
+    };
     use mockito::{Matcher, Server, ServerGuard};
     use temp_env::async_with_vars;
     use testdir::testdir;
@@ -1104,6 +1173,73 @@ mod tests {
         );
         let hash = hash_folder(&dir).unwrap();
         assert_eq!(lock.integrity, hash.to_string());
+    }
+
+    #[test]
+    fn test_normalize_submodule_path_for_foundry_lock_lookup() {
+        assert_eq!(normalize_submodule_path("./lib/forge-std"), PathBuf::from("lib/forge-std"));
+    }
+
+    #[tokio::test]
+    async fn test_installed_recursive_dependency_persists_nested_lockfile() {
+        let dir = testdir!();
+        let parent_path = dir.join("dependencies/parent-1.0.0");
+        fs::create_dir_all(&parent_path).await.unwrap();
+        fs::write(
+            parent_path.join("soldeer.toml"),
+            "[dependencies]\nchild = { version = \"1.0.0\", url = \"PLACEHOLDER\" }\n",
+        )
+        .await
+        .unwrap();
+
+        let child_root = dir.join("child-source");
+        fs::create_dir(&child_root).await.unwrap();
+        let child_file = child_root.join("Child.sol");
+        fs::write(&child_file, "contract Child {}\n").await.unwrap();
+        let archive = zip_file(&child_root, &[child_file], "child").unwrap();
+        let mut server = Server::new_async().await;
+        server.mock("GET", "/child.zip").with_body_from_file(&archive).create_async().await;
+        fs::write(
+            parent_path.join("soldeer.toml"),
+            format!(
+                "[dependencies]\nchild = {{ version = \"1.0.0\", url = \"{}/child.zip\" }}\n",
+                server.url()
+            ),
+        )
+        .await
+        .unwrap();
+
+        let parent_dependency: Dependency = HttpDependency::builder()
+            .name("parent")
+            .version_req("1.0.0")
+            .url("https://example.com/parent.zip")
+            .build()
+            .into();
+        let parent_integrity = hash_folder(&parent_path).unwrap();
+        let parent_lock: LockEntry = HttpLockEntry::builder()
+            .name("parent")
+            .version("1.0.0")
+            .url("https://example.com/parent.zip")
+            .checksum("checksum")
+            .integrity(parent_integrity.to_string())
+            .build()
+            .into();
+        let (progress, _) = InstallProgress::new();
+
+        let res = install_dependency(
+            &parent_dependency,
+            Some(&parent_lock),
+            dir.join("dependencies"),
+            None,
+            true,
+            progress,
+        )
+        .await;
+        assert!(res.is_ok(), "{res:?}");
+        assert!(parent_path.join("dependencies/child-1.0.0").exists());
+        let nested_lock = read_lockfile(parent_path.join("soldeer.lock")).unwrap();
+        assert_eq!(nested_lock.entries.len(), 1);
+        assert_eq!(nested_lock.entries[0].name(), "child");
     }
 
     #[tokio::test]
@@ -1308,5 +1444,28 @@ mod tests {
         );
         let hash = hash_folder(lock.install_path(&dir)).unwrap();
         assert_eq!(lock.integrity, hash.to_string());
+    }
+
+    #[tokio::test]
+    async fn test_install_dependencies_rejects_sanitized_path_collision() {
+        let dir = testdir!();
+        let dependencies: Vec<Dependency> = vec![
+            HttpDependency::builder()
+                .name("foo/bar")
+                .version_req("^1.0.0")
+                .url("https://example.com/first.zip")
+                .build()
+                .into(),
+            HttpDependency::builder()
+                .name("foo-bar")
+                .version_req("1.0.0")
+                .url("https://example.com/second.zip")
+                .build()
+                .into(),
+        ];
+        let (progress, _) = InstallProgress::new();
+
+        let res = install_dependencies(&dependencies, &[], &dir, false, progress).await;
+        assert!(matches!(res, Err(InstallError::PathCollision { .. })));
     }
 }

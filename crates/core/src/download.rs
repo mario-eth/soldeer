@@ -45,7 +45,17 @@ pub async fn download_file(
 }
 
 /// Unzip a file into a directory and then delete it.
-pub async fn unzip_file(path: impl AsRef<Path>, into: impl AsRef<Path>) -> Result<()> {
+///
+/// If `strip_root` is `true` and all archive entries are contained in a single top-level
+/// directory, that directory is stripped during extraction. This is desirable for source archives
+/// which wrap the contents in a root folder (e.g. GitHub-generated zips for custom URL
+/// dependencies), but must not be done for registry packages, where any top-level directory is
+/// part of the published package's layout.
+pub async fn unzip_file(
+    path: impl AsRef<Path>,
+    into: impl AsRef<Path>,
+    strip_root: bool,
+) -> Result<()> {
     let path = path.as_ref().to_path_buf();
     let zip_contents = tokio::fs::read(&path)
         .await
@@ -54,7 +64,7 @@ pub async fn unzip_file(path: impl AsRef<Path>, into: impl AsRef<Path>) -> Resul
     tokio::task::spawn_blocking({
         let out_dir = into.as_ref().to_path_buf();
         #[allow(deprecated)] // until we can get rid of zip_extract
-        move || zip_extract::extract(Cursor::new(zip_contents), &out_dir, true)
+        move || zip_extract::extract(Cursor::new(zip_contents), &out_dir, strip_root)
     })
     .await??;
     debug!(file:? = path, dest:? = into.as_ref(); "unzipped file");
@@ -87,7 +97,29 @@ pub async fn clone_repo(
     .await?;
     debug!(repo:? = path; "git repo cloned");
     if let Some(identifier) = identifier {
-        run_git_command(&["checkout", &identifier.to_string()], Some(&path)).await?;
+        match identifier {
+            GitIdentifier::Tag(tag) => {
+                run_git_command(&["checkout", &format!("refs/tags/{tag}")], Some(&path)).await?;
+            }
+            GitIdentifier::Branch(branch) => {
+                // a tag with the same name would shadow the branch during a plain checkout, so
+                // the local branch is created explicitly from the remote-tracking ref
+                run_git_command(
+                    &[
+                        "checkout",
+                        "--track",
+                        "-B",
+                        branch,
+                        &format!("refs/remotes/origin/{branch}"),
+                    ],
+                    Some(&path),
+                )
+                .await?;
+            }
+            GitIdentifier::Rev(rev) => {
+                run_git_command(&["checkout", rev], Some(&path)).await?;
+            }
+        }
         debug!(ref:? = identifier, repo:? = path; "checked out ref");
     }
     let commit =
@@ -220,11 +252,36 @@ mod tests {
         zip_file(&dir, &[file_path], &zip_path).unwrap();
 
         let out_dir = dir.join("out");
-        let res = unzip_file(&zip_path, &out_dir).await;
+        let res = unzip_file(&zip_path, &out_dir, true).await;
         assert!(res.is_ok(), "{res:?}");
         let file_path = out_dir.join("file.txt");
         assert!(file_path.exists());
         assert!(!zip_path.exists());
+    }
+
+    #[tokio::test]
+    async fn test_unzip_file_strip_root() {
+        // archive wrapping all contents in a single root directory, like GitHub source archives
+        let dir = testdir!();
+        let root = dir.join("my-repo");
+        fs::create_dir_all(root.join("src")).unwrap();
+        let file_path = root.join("src/Contract.sol");
+        fs::write(&file_path, "contract Contract {}\n").unwrap();
+        let zip_path = dir.join("archive.zip");
+        zip_file(&dir, &[file_path], &zip_path).unwrap();
+
+        // with strip_root, the wrapping directory is removed
+        let out_dir = dir.join("stripped");
+        unzip_file(&zip_path, &out_dir, true).await.unwrap();
+        assert!(out_dir.join("src/Contract.sol").exists());
+        assert!(!out_dir.join("my-repo").exists());
+
+        // without strip_root, the layout is preserved as-is
+        let zip_path = dir.join("archive2.zip");
+        zip_file(&dir, &[dir.join("my-repo/src/Contract.sol")], &zip_path).unwrap();
+        let out_dir = dir.join("preserved");
+        unzip_file(&zip_path, &out_dir, false).await.unwrap();
+        assert!(out_dir.join("my-repo/src/Contract.sol").exists());
     }
 
     #[tokio::test]
@@ -272,6 +329,97 @@ mod tests {
         .await;
         assert!(res.is_ok(), "{res:?}");
         assert_eq!(&res.unwrap(), "78c2f6a1a54db26bab6c3f501854a1564eb3707f");
+    }
+
+    #[tokio::test]
+    async fn test_clone_repo_tag_prefers_tag_over_branch() {
+        use std::process::Command;
+
+        let dir = testdir!();
+        let source = dir.join("source");
+        fs::create_dir(&source).unwrap();
+        let run = |args: &[&str]| {
+            let output = Command::new("git").args(args).current_dir(&source).output().unwrap();
+            assert!(output.status.success(), "git failed: {args:?}");
+        };
+        run(&["init", "-b", "main"]);
+        run(&["config", "user.email", "test@example.com"]);
+        run(&["config", "user.name", "Test"]);
+        fs::write(source.join("version"), "tag").unwrap();
+        run(&["add", "version"]);
+        run(&["commit", "-m", "tag"]);
+        let tag_commit = String::from_utf8(
+            Command::new("git")
+                .args(["rev-parse", "HEAD"])
+                .current_dir(&source)
+                .output()
+                .unwrap()
+                .stdout,
+        )
+        .unwrap()
+        .trim()
+        .to_string();
+        run(&["tag", "main"]);
+        fs::write(source.join("version"), "branch").unwrap();
+        run(&["commit", "-am", "branch"]);
+
+        let clone_path = dir.join("clone");
+        let res = clone_repo(
+            source.to_string_lossy().as_ref(),
+            Some(&GitIdentifier::from_tag("main")),
+            &clone_path,
+        )
+        .await
+        .unwrap();
+        assert_eq!(res, tag_commit);
+        assert_eq!(fs::read_to_string(clone_path.join("version")).unwrap(), "tag");
+    }
+
+    #[tokio::test]
+    async fn test_clone_repo_branch_prefers_branch_over_tag() {
+        use std::process::Command;
+
+        let dir = testdir!();
+        let source = dir.join("source");
+        fs::create_dir(&source).unwrap();
+        let run = |args: &[&str]| {
+            let output = Command::new("git").args(args).current_dir(&source).output().unwrap();
+            assert!(output.status.success(), "git failed: {args:?}");
+        };
+        run(&["init", "-b", "main"]);
+        run(&["config", "user.email", "test@example.com"]);
+        run(&["config", "user.name", "Test"]);
+        fs::write(source.join("version"), "tag").unwrap();
+        run(&["add", "version"]);
+        run(&["commit", "-m", "tag"]);
+        // tag pointing at the first commit, shadowing the branch name
+        run(&["tag", "release"]);
+        run(&["checkout", "-b", "release"]);
+        fs::write(source.join("version"), "branch").unwrap();
+        run(&["commit", "-am", "branch"]);
+        let branch_commit = String::from_utf8(
+            Command::new("git")
+                .args(["rev-parse", "refs/heads/release"])
+                .current_dir(&source)
+                .output()
+                .unwrap()
+                .stdout,
+        )
+        .unwrap()
+        .trim()
+        .to_string();
+        run(&["checkout", "main"]);
+
+        let clone_path = dir.join("clone");
+        let res = clone_repo(
+            source.to_string_lossy().as_ref(),
+            Some(&GitIdentifier::from_branch("release")),
+            &clone_path,
+        )
+        .await
+        .unwrap();
+        assert_eq!(res, branch_commit);
+        assert_eq!(fs::read_to_string(clone_path.join("version")).unwrap(), "branch");
     }
 
     #[test]

@@ -386,15 +386,12 @@ pub fn read_lockfile(path: impl AsRef<Path>) -> Result<LockFile> {
     }
     let contents = fs::read_to_string(&path)?;
 
-    let data: LockFileParsed = toml_edit::de::from_str(&contents)
-        .inspect_err(|err| {
-            warn!(err:?; "error while parsing lockfile contents, it will be ignored");
-        })
-        .unwrap_or_default();
-    Ok(LockFile {
-        entries: data.dependencies.into_iter().filter_map(|d| d.try_into().ok()).collect(),
-        raw: contents,
-    })
+    let data: LockFileParsed = toml_edit::de::from_str(&contents).inspect_err(|err| {
+        warn!(path:? = path.as_ref(), err:?; "error while parsing soldeer.lock TOML contents");
+    })?;
+    let entries =
+        data.dependencies.into_iter().map(TryInto::try_into).collect::<Result<Vec<LockEntry>>>()?;
+    Ok(LockFile { entries, raw: contents })
 }
 
 /// Generate the contents of a lockfile from a list of lock entries.
@@ -604,7 +601,7 @@ mod tests {
     fn test_read_lockfile() {
         let dir = testdir!();
         let file_path = dir.join(SOLDEER_LOCK);
-        // last entry is invalid and should be skipped
+        // an invalid entry invalidates the whole lockfile
         let content = r#"[[dependencies]]
 name = "test"
 version = "1.0.0"
@@ -624,21 +621,7 @@ version = "1.0.0"
 "#;
         fs::write(&file_path, content).unwrap();
         let res = read_lockfile(&file_path);
-        assert!(res.is_ok(), "{res:?}");
-        let lockfile = res.unwrap();
-        assert_eq!(lockfile.entries.len(), 2);
-        assert_eq!(lockfile.entries[0].name(), "test");
-        assert_eq!(lockfile.entries[0].version(), "1.0.0");
-        let git = lockfile.entries[0].as_git().unwrap();
-        assert_eq!(git.git, "git@github.com:test/test.git");
-        assert_eq!(git.rev, "123456");
-        assert_eq!(lockfile.entries[1].name(), "test2");
-        assert_eq!(lockfile.entries[1].version(), "1.0.0");
-        let http = lockfile.entries[1].as_http().unwrap();
-        assert_eq!(http.url, "https://example.com/zip.zip");
-        assert_eq!(http.checksum, "123456");
-        assert_eq!(http.integrity, "beef");
-        assert_eq!(lockfile.raw, content);
+        assert!(matches!(res, Err(LockError::MissingField { .. })));
     }
 
     #[test]

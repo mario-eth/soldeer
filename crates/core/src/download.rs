@@ -345,6 +345,7 @@ mod tests {
         run(&["init", "-b", "main"]);
         run(&["config", "user.email", "test@example.com"]);
         run(&["config", "user.name", "Test"]);
+        run(&["config", "tag.gpgSign", "false"]);
         fs::write(source.join("version"), "tag").unwrap();
         run(&["add", "version"]);
         run(&["commit", "-m", "tag"]);
@@ -389,6 +390,7 @@ mod tests {
         run(&["init", "-b", "main"]);
         run(&["config", "user.email", "test@example.com"]);
         run(&["config", "user.name", "Test"]);
+        run(&["config", "tag.gpgSign", "false"]);
         fs::write(source.join("version"), "tag").unwrap();
         run(&["add", "version"]);
         run(&["commit", "-m", "tag"]);

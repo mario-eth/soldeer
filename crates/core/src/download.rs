@@ -331,38 +331,42 @@ mod tests {
         assert_eq!(&res.unwrap(), "78c2f6a1a54db26bab6c3f501854a1564eb3707f");
     }
 
+    /// Run a git command in `dir` and return its trimmed stdout.
+    ///
+    /// The global and system configuration files are ignored to make sure the
+    /// local git config doesn't interfere.
+    fn git(dir: &Path, args: &[&str]) -> String {
+        let output = std::process::Command::new("git")
+            .args(args)
+            .current_dir(dir)
+            .env("GIT_CONFIG_GLOBAL", dir.join("nonexistent-global-config"))
+            .env("GIT_CONFIG_SYSTEM", dir.join("nonexistent-system-config"))
+            .output()
+            .unwrap();
+        assert!(output.status.success(), "git failed: {args:?}");
+        String::from_utf8(output.stdout).unwrap().trim().to_string()
+    }
+
+    /// Create a repository with a deterministic identity.
+    fn init_repo(dir: &Path) {
+        fs::create_dir(dir).unwrap();
+        git(dir, &["init", "-b", "main"]);
+        git(dir, &["config", "user.email", "test@example.com"]);
+        git(dir, &["config", "user.name", "Test"]);
+    }
+
     #[tokio::test]
     async fn test_clone_repo_tag_prefers_tag_over_branch() {
-        use std::process::Command;
-
         let dir = testdir!();
         let source = dir.join("source");
-        fs::create_dir(&source).unwrap();
-        let run = |args: &[&str]| {
-            let output = Command::new("git").args(args).current_dir(&source).output().unwrap();
-            assert!(output.status.success(), "git failed: {args:?}");
-        };
-        run(&["init", "-b", "main"]);
-        run(&["config", "user.email", "test@example.com"]);
-        run(&["config", "user.name", "Test"]);
-        run(&["config", "tag.gpgSign", "false"]);
+        init_repo(&source);
         fs::write(source.join("version"), "tag").unwrap();
-        run(&["add", "version"]);
-        run(&["commit", "-m", "tag"]);
-        let tag_commit = String::from_utf8(
-            Command::new("git")
-                .args(["rev-parse", "HEAD"])
-                .current_dir(&source)
-                .output()
-                .unwrap()
-                .stdout,
-        )
-        .unwrap()
-        .trim()
-        .to_string();
-        run(&["tag", "main"]);
+        git(&source, &["add", "version"]);
+        git(&source, &["commit", "-m", "tag"]);
+        let tag_commit = git(&source, &["rev-parse", "HEAD"]);
+        git(&source, &["tag", "main"]);
         fs::write(source.join("version"), "branch").unwrap();
-        run(&["commit", "-am", "branch"]);
+        git(&source, &["commit", "-am", "branch"]);
 
         let clone_path = dir.join("clone");
         let res = clone_repo(
@@ -378,39 +382,19 @@ mod tests {
 
     #[tokio::test]
     async fn test_clone_repo_branch_prefers_branch_over_tag() {
-        use std::process::Command;
-
         let dir = testdir!();
         let source = dir.join("source");
-        fs::create_dir(&source).unwrap();
-        let run = |args: &[&str]| {
-            let output = Command::new("git").args(args).current_dir(&source).output().unwrap();
-            assert!(output.status.success(), "git failed: {args:?}");
-        };
-        run(&["init", "-b", "main"]);
-        run(&["config", "user.email", "test@example.com"]);
-        run(&["config", "user.name", "Test"]);
-        run(&["config", "tag.gpgSign", "false"]);
+        init_repo(&source);
         fs::write(source.join("version"), "tag").unwrap();
-        run(&["add", "version"]);
-        run(&["commit", "-m", "tag"]);
+        git(&source, &["add", "version"]);
+        git(&source, &["commit", "-m", "tag"]);
         // tag pointing at the first commit, shadowing the branch name
-        run(&["tag", "release"]);
-        run(&["checkout", "-b", "release"]);
+        git(&source, &["tag", "release"]);
+        git(&source, &["checkout", "-b", "release"]);
         fs::write(source.join("version"), "branch").unwrap();
-        run(&["commit", "-am", "branch"]);
-        let branch_commit = String::from_utf8(
-            Command::new("git")
-                .args(["rev-parse", "refs/heads/release"])
-                .current_dir(&source)
-                .output()
-                .unwrap()
-                .stdout,
-        )
-        .unwrap()
-        .trim()
-        .to_string();
-        run(&["checkout", "main"]);
+        git(&source, &["commit", "-am", "branch"]);
+        let branch_commit = git(&source, &["rev-parse", "refs/heads/release"]);
+        git(&source, &["checkout", "main"]);
 
         let clone_path = dir.join("clone");
         let res = clone_repo(

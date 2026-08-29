@@ -2,6 +2,7 @@
 use crate::{
     config::{Dependency, Paths, SoldeerConfig, read_config_deps},
     errors::RemappingsError,
+    lock::read_lockfile,
     utils::path_matches,
 };
 use derive_more::derive::From;
@@ -10,6 +11,7 @@ use path_slash::PathExt as _;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::{
+    collections::HashMap,
     fs::{self, File},
     io::Write as _,
     path::PathBuf,
@@ -216,10 +218,12 @@ fn generate_remappings(
     existing_remappings: &[(&str, &str)],
 ) -> Result<Vec<String>> {
     let mut new_remappings = Vec::new();
+    // the lockfile is read once here and the resolved paths are reused for all dependencies
+    let locked_paths = locked_install_paths(paths)?;
     if soldeer_config.remappings_regenerate {
         debug!("ignoring existing remappings and recreating from config");
         let (dependencies, _) = read_config_deps(&paths.config)?;
-        new_remappings = remappings_from_deps(&dependencies, paths, soldeer_config)?
+        new_remappings = remappings_from_deps(&dependencies, paths, soldeer_config, &locked_paths)?
             .into_iter()
             .map(|i| i.remapping_string)
             .collect();
@@ -228,7 +232,7 @@ fn generate_remappings(
             RemappingsAction::Remove(remove_dep) => {
                 debug!(dep:% = remove_dep; "trying to remove dependency from remappings");
                 // only keep items not matching the dependency to remove
-                if let Ok(remove_og) = get_install_dir_relative(remove_dep, paths) {
+                if let Ok(remove_og) = get_install_dir_relative(remove_dep, paths, &locked_paths) {
                     for (existing_remapped, existing_og) in existing_remappings {
                         // TODO: make the detection smarter, and match on any path where the version
                         // is semver-compatible too.
@@ -250,7 +254,7 @@ fn generate_remappings(
                 // we only add the remapping if it's not already existing, otherwise we keep the old
                 // remapping
                 let add_dep_remapped = format_remap_name(soldeer_config, add_dep);
-                let add_dep_og = get_install_dir_relative(add_dep, paths)?;
+                let add_dep_og = get_install_dir_relative(add_dep, paths, &locked_paths)?;
                 let mut found = false; // whether a remapping existed for that dep already
                 let n_components = install_dir_component_count(paths);
                 for (existing_remapped, existing_og) in existing_remappings {
@@ -278,7 +282,7 @@ fn generate_remappings(
                 );
                 let (dependencies, _) = read_config_deps(&paths.config)?;
                 let new_remappings_info =
-                    remappings_from_deps(&dependencies, paths, soldeer_config)?;
+                    remappings_from_deps(&dependencies, paths, soldeer_config, &locked_paths)?;
                 if existing_remappings.is_empty() {
                     debug!("no existing remappings, using the ones from config");
                     new_remappings =
@@ -357,27 +361,51 @@ fn remappings_from_deps(
     dependencies: &[Dependency],
     paths: &Paths,
     soldeer_config: &SoldeerConfig,
+    locked_paths: &HashMap<String, PathBuf>,
 ) -> Result<Vec<RemappingInfo>> {
     dependencies
         .par_iter()
         .map(|dependency| {
             let dependency_name_formatted = format_remap_name(soldeer_config, dependency); // contains trailing slash
-            let relative_path = get_install_dir_relative(dependency, paths)?;
+            let relative_path = get_install_dir_relative(dependency, paths, locked_paths)?;
             Ok((format!("{dependency_name_formatted}={relative_path}/"), dependency.clone()).into())
         })
         .collect::<Result<Vec<RemappingInfo>>>()
 }
 
+/// Map each dependency name found in the lockfile to its exact install folder.
+///
+/// Entries whose install folder is missing from disk are skipped so that callers fall back to
+/// searching the dependencies folder instead of pointing at a path which doesn't exist.
+fn locked_install_paths(paths: &Paths) -> Result<HashMap<String, PathBuf>> {
+    Ok(read_lockfile(&paths.lock)?
+        .entries
+        .into_iter()
+        .filter_map(|entry| {
+            let path = entry.install_path(&paths.dependencies);
+            path.exists().then(|| (entry.name().to_string(), path))
+        })
+        .collect())
+}
+
 /// Find the install path (relative to project root) for a dependency that was already installed
+///
+/// The path recorded in the lockfile takes precedence, so that a semver requirement always resolves
+/// to the locked version rather than to any compatible folder left over from a previous install.
 ///
 /// # Errors
 /// If the there is no folder in the dependencies folder corresponding to the dependency
-fn get_install_dir_relative(dependency: &Dependency, paths: &Paths) -> Result<String> {
-    let path = dunce::canonicalize(
-        dependency
-            .install_path_sync(&paths.dependencies)
-            .ok_or(RemappingsError::DependencyNotFound(dependency.to_string()))?,
-    )?;
+fn get_install_dir_relative(
+    dependency: &Dependency,
+    paths: &Paths,
+    locked_paths: &HashMap<String, PathBuf>,
+) -> Result<String> {
+    let path = locked_paths
+        .get(dependency.name())
+        .cloned()
+        .or_else(|| dependency.install_path_sync(&paths.dependencies))
+        .ok_or_else(|| RemappingsError::DependencyNotFound(dependency.to_string()))?;
+    let path = dunce::canonicalize(path)?;
     Ok(path
         .strip_prefix(&paths.root) // already canonicalized
         .map_err(|_| RemappingsError::DependencyNotFound(dependency.to_string()))?
@@ -448,7 +476,7 @@ mod tests {
         fs::create_dir_all(dependencies_dir.join("dep1-1.1.1")).unwrap();
         let dependency =
             HttpDependency::builder().name("dep1").version_req("^1.0.0").build().into();
-        let res = get_install_dir_relative(&dependency, &paths);
+        let res = get_install_dir_relative(&dependency, &paths, &HashMap::new());
         assert!(res.is_ok(), "{res:?}");
         assert_eq!(res.unwrap(), "dependencies/dep1-1.1.1");
 
@@ -459,13 +487,76 @@ mod tests {
             .git("git@github.com:test/test.git")
             .build()
             .into();
-        let res = get_install_dir_relative(&dependency, &paths);
+        let res = get_install_dir_relative(&dependency, &paths, &HashMap::new());
         assert!(res.is_ok(), "{res:?}");
         assert_eq!(res.unwrap(), "dependencies/dep2-2.0.0");
 
         let dependency = HttpDependency::builder().name("dep3").version_req("3.0.0").build().into();
-        let res = get_install_dir_relative(&dependency, &paths);
+        let res = get_install_dir_relative(&dependency, &paths, &HashMap::new());
         assert!(res.is_err(), "{res:?}");
+    }
+
+    #[test]
+    fn test_get_install_dir_relative_uses_locked_version() {
+        let dir = testdir!();
+        fs::write(dir.join("soldeer.toml"), "[dependencies]\n").unwrap();
+        let paths = Paths::from_root(&dir).unwrap();
+        fs::create_dir_all(paths.dependencies.join("dep1-1.1.1")).unwrap();
+        fs::create_dir_all(paths.dependencies.join("dep1-1.2.0")).unwrap();
+        fs::write(&paths.lock, lockfile_contents("dep1", "1.2.0")).unwrap();
+        let dependency =
+            HttpDependency::builder().name("dep1").version_req("^1.0.0").build().into();
+
+        let res =
+            get_install_dir_relative(&dependency, &paths, &locked_install_paths(&paths).unwrap());
+        assert!(res.is_ok(), "{res:?}");
+        assert_eq!(res.unwrap(), "dependencies/dep1-1.2.0");
+    }
+
+    #[test]
+    fn test_get_install_dir_relative_locked_version_missing() {
+        let dir = testdir!();
+        fs::write(dir.join("soldeer.toml"), "[dependencies]\n").unwrap();
+        let paths = Paths::from_root(&dir).unwrap();
+        fs::create_dir_all(paths.dependencies.join("dep1-1.1.1")).unwrap();
+        // the locked version was never installed, we fall back to the compatible folder on disk
+        fs::write(&paths.lock, lockfile_contents("dep1", "1.2.0")).unwrap();
+        let dependency =
+            HttpDependency::builder().name("dep1").version_req("^1.0.0").build().into();
+
+        let res =
+            get_install_dir_relative(&dependency, &paths, &locked_install_paths(&paths).unwrap());
+        assert!(res.is_ok(), "{res:?}");
+        assert_eq!(res.unwrap(), "dependencies/dep1-1.1.1");
+    }
+
+    #[test]
+    fn test_locked_install_paths() {
+        let dir = testdir!();
+        fs::write(dir.join("soldeer.toml"), "[dependencies]\n").unwrap();
+        let paths = Paths::from_root(&dir).unwrap();
+        fs::create_dir_all(paths.dependencies.join("dep1-1.2.0")).unwrap();
+        fs::write(
+            &paths.lock,
+            format!("{}{}", lockfile_contents("dep1", "1.2.0"), lockfile_contents("dep2", "2.0.0")),
+        )
+        .unwrap();
+
+        let res = locked_install_paths(&paths).unwrap();
+        assert_eq!(res.len(), 1);
+        assert_eq!(res.get("dep1"), Some(&paths.dependencies.join("dep1-1.2.0")));
+    }
+
+    fn lockfile_contents(name: &str, version: &str) -> String {
+        format!(
+            r#"[[dependencies]]
+name = "{name}"
+version = "{version}"
+url = "https://example.com/{name}.zip"
+checksum = "checksum"
+integrity = "integrity"
+"#
+        )
     }
 
     #[test]
@@ -540,7 +631,8 @@ dep3 = { version = "foobar", git = "git@github.com:test/test.git", branch = "foo
         fs::create_dir_all(dependencies_dir.join("dep3-foobar")).unwrap();
 
         let (dependencies, _) = read_config_deps(&paths.config).unwrap();
-        let res = remappings_from_deps(&dependencies, &paths, &SoldeerConfig::default());
+        let res =
+            remappings_from_deps(&dependencies, &paths, &SoldeerConfig::default(), &HashMap::new());
         assert!(res.is_ok(), "{res:?}");
         let res = res.unwrap();
         assert_eq!(res.len(), 3);
@@ -834,6 +926,49 @@ lib1 = "1.0.0"
         assert!(res.is_ok(), "{res:?}");
         let contents = fs::read_to_string(&paths.remappings).unwrap();
         assert_eq!(contents, "lib1-1.0.0/=dependencies/lib1-1.0.0/\n");
+    }
+
+    #[test]
+    fn test_remappings_txt_regenerate_stale_dir() {
+        let dir = testdir!();
+        let contents = r#"[dependencies]
+lib1 = "^1.0.0"
+"#;
+        fs::write(dir.join("soldeer.toml"), contents).unwrap();
+        let paths = Paths::from_root(&dir).unwrap();
+        // other compatible versions are still present on disk but the lockfile resolved to 1.2.0
+        for version in ["1.0.0", "1.1.0", "1.2.0", "1.3.0", "1.4.0", "1.5.0"] {
+            fs::create_dir_all(paths.dependencies.join(format!("lib1-{version}"))).unwrap();
+        }
+        fs::write(&paths.lock, lockfile_contents("lib1", "1.2.0")).unwrap();
+        fs::write(dir.join("remappings.txt"), "lib1/=dependencies/lib1-1.0.0/\n").unwrap();
+        let config = SoldeerConfig { remappings_regenerate: true, ..Default::default() };
+
+        let res = remappings_txt(&RemappingsAction::Update, &paths, &config);
+        assert!(res.is_ok(), "{res:?}");
+        let contents = fs::read_to_string(&paths.remappings).unwrap();
+        assert_eq!(contents, "lib1-^1.0.0/=dependencies/lib1-1.2.0/\n");
+    }
+
+    #[test]
+    fn test_remappings_txt_update_stale_dir() {
+        let dir = testdir!();
+        let contents = r#"[dependencies]
+lib1 = "^1.0.0"
+"#;
+        fs::write(dir.join("soldeer.toml"), contents).unwrap();
+        let paths = Paths::from_root(&dir).unwrap();
+        for version in ["1.0.0", "1.1.0", "1.2.0", "1.3.0", "1.4.0", "1.5.0"] {
+            fs::create_dir_all(paths.dependencies.join(format!("lib1-{version}"))).unwrap();
+        }
+        fs::write(&paths.lock, lockfile_contents("lib1", "1.2.0")).unwrap();
+        // the existing remapping points to the stale folder and must be re-targeted
+        fs::write(dir.join("remappings.txt"), "lib1/=dependencies/lib1-1.0.0/src/\n").unwrap();
+
+        let res = remappings_txt(&RemappingsAction::Update, &paths, &SoldeerConfig::default());
+        assert!(res.is_ok(), "{res:?}");
+        let contents = fs::read_to_string(&paths.remappings).unwrap();
+        assert_eq!(contents, "lib1/=dependencies/lib1-1.2.0/src/\n");
     }
 
     #[test]

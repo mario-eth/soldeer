@@ -200,8 +200,11 @@ pub enum LockError {
     #[error("foundry.lock is missing")]
     FoundryLockMissing,
 
-    #[error("error parsing lockfile contents: {0}")]
+    #[error("error parsing foundry.lock JSON contents: {0}")]
     DeserializeError(#[from] serde_json::Error),
+
+    #[error("error parsing soldeer.lock TOML contents: {0}")]
+    TomlDeserializeError(#[from] toml_edit::de::Error),
 }
 
 #[derive(Error, Debug)]
@@ -218,6 +221,9 @@ pub enum PublishError {
 
     #[error("error while computing the relative path: {0}")]
     RelativePathError(#[from] StripPrefixError),
+
+    #[error("refusing to publish symlink: {0}")]
+    Symlink(PathBuf),
 
     #[error("auth error: {0}")]
     AuthError(#[from] AuthError),

@@ -252,9 +252,14 @@ fn generate_remappings(
                 let add_dep_remapped = format_remap_name(soldeer_config, add_dep);
                 let add_dep_og = get_install_dir_relative(add_dep, paths)?;
                 let mut found = false; // whether a remapping existed for that dep already
+                let n_components = install_dir_component_count(paths);
                 for (existing_remapped, existing_og) in existing_remappings {
                     new_remappings.push(format!("{existing_remapped}={existing_og}"));
-                    if existing_og.trim_end_matches('/').starts_with(&add_dep_og) {
+                    let existing_install_dir: PathBuf =
+                        PathBuf::from(existing_og).components().take(n_components).collect();
+                    let add_install_dir: PathBuf =
+                        PathBuf::from(&add_dep_og).components().take(n_components).collect();
+                    if existing_install_dir == add_install_dir {
                         debug!(dep:% = add_dep; "remapping exists already, skipping");
                         found = true;
                     }
@@ -288,17 +293,20 @@ fn generate_remappings(
                             item.split_once('=').expect("remappings should have two parts");
                         // try to find all existing items pointing to a matching dependency folder
                         let mut found = false;
+                        let n_components = install_dir_component_count(paths);
                         existing_remappings.retain(|(existing_remapped, existing_og)| {
-                            // only keep the first two components of the path (`dependencies`
-                            // folder and the dependency folder)
+                            // only keep the components corresponding to the dependency's install
+                            // directory (the dependencies folder and the dependency folder)
                             let path: PathBuf =
-                                PathBuf::from(existing_og).components().take(2).collect();
+                                PathBuf::from(existing_og).components().take(n_components).collect();
                             // if path matches, we should update the item's path with the new
                             // one and add it to the final list
                             if path_matches(&dep, &path) {
                                 debug!(path = existing_og; "existing remapping matches the config item");
-                                let path: PathBuf =
-                                    PathBuf::from(existing_og).components().take(2).collect();
+                                let path: PathBuf = PathBuf::from(existing_og)
+                                    .components()
+                                    .take(n_components)
+                                    .collect();
                                 let existing_og_updated = existing_og.replace(
                                     path.to_slash_lossy().as_ref(),
                                     item_og.trim_end_matches('/'),
@@ -375,6 +383,16 @@ fn get_install_dir_relative(dependency: &Dependency, paths: &Paths) -> Result<St
         .map_err(|_| RemappingsError::DependencyNotFound(dependency.to_string()))?
         .to_slash_lossy()
         .to_string())
+}
+
+/// Number of path components of a dependency's install directory relative to the project root.
+///
+/// This is the number of components of the dependencies folder relative to the project root, plus
+/// one for the dependency's own folder. Truncating a remapping path to that many components yields
+/// the install directory of the dependency it points to, regardless of how deep the dependencies
+/// folder is located.
+fn install_dir_component_count(paths: &Paths) -> usize {
+    paths.dependencies.strip_prefix(&paths.root).map(|p| p.components().count()).unwrap_or(1) + 1
 }
 
 /// Format a TOML array as a multi-line array with indentation in case there is more than one
@@ -562,6 +580,18 @@ dep3 = { version = "foobar", git = "git@github.com:test/test.git", branch = "foo
         let res = generate_remappings(&RemappingsAction::Add(dep), &paths, &config, &existing_deps);
         assert!(res.is_ok(), "{res:?}");
         assert_eq!(res.unwrap(), vec!["@lib1-1.0.0/foo=dependencies/lib1-1.0.0/src"]);
+
+        // a pre-release install is not the same dependency directory as the stable install
+        fs::create_dir_all(paths.dependencies.join("lib1-1.0.0-evil")).unwrap();
+        let existing_deps = vec![("lib1/", "dependencies/lib1-1.0.0-evil")];
+        let dep = HttpDependency::builder().name("lib1").version_req("1.0.0").build().into();
+        let config = SoldeerConfig { remappings_version: false, ..Default::default() };
+        let res = generate_remappings(&RemappingsAction::Add(dep), &paths, &config, &existing_deps);
+        assert!(res.is_ok(), "{res:?}");
+        assert_eq!(
+            res.unwrap(),
+            vec!["lib1/=dependencies/lib1-1.0.0-evil", "lib1/=dependencies/lib1-1.0.0/"]
+        );
     }
 
     #[test]

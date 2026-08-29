@@ -31,7 +31,6 @@ use std::{
     pin::Pin,
 };
 use tokio::{fs, sync::mpsc, task::JoinSet};
-use uuid::Uuid;
 
 pub type Result<T> = std::result::Result<T, InstallError>;
 
@@ -756,45 +755,40 @@ async fn install_http_dependency(
 ) -> Result<(IntegrityChecksum, IntegrityChecksum)> {
     let path = path.as_ref();
     let parent = path.parent().expect("dependency install path should have a parent");
-    let staging_path = parent.join(staging_dir_name(dep.checksum.as_deref()));
-    if fs::try_exists(&staging_path).await.unwrap_or(false) {
-        fs::remove_dir_all(&staging_path)
-            .await
-            .map_err(|e| InstallError::IOError { path: staging_path.clone(), source: e })?;
-    }
+    let dir_name = path.file_name().expect("dependency install path should have a file name");
+    let zip_path =
+        download_file(&dep.url, parent, &format!("{}-{}", dep.name, dep.version)).await?;
+    progress.downloads.send(dep.into()).ok();
+
+    // the archive is extracted next to its final location and only moved into place once complete,
+    // so an interrupted install can never leave a partial dependency behind. the staging name is
+    // derived from the install path, so a leftover directory from a previous attempt is reclaimed
+    let staging_path = parent.join(format!(".soldeer-temp-{}", dir_name.to_string_lossy()));
+    fs::remove_dir_all(&staging_path).await.ok(); // ignore error if folder doesn't exist
     fs::create_dir(&staging_path)
         .await
         .map_err(|e| InstallError::IOError { path: staging_path.clone(), source: e })?;
-    let mut zip_path = None;
-    let result = async {
-        let downloaded_zip = download_file(
-            &dep.url,
-            parent,
-            &format!("{}-{}", dep.name, dep.version),
-        )
-        .await?;
-        zip_path = Some(downloaded_zip.clone());
-        progress.downloads.send(dep.into()).ok();
 
+    let result = async {
         let zip_integrity = tokio::task::spawn_blocking({
-            let zip_path = downloaded_zip.clone();
+            let zip_path = zip_path.clone();
             move || hash_file(zip_path)
         })
         .await?
-        .map_err(|e| InstallError::IOError { path: downloaded_zip.clone(), source: e })?;
+        .map_err(|e| InstallError::IOError { path: zip_path.clone(), source: e })?;
         if let Some(checksum) = &dep.checksum {
             if checksum != &zip_integrity.to_string() {
                 return Err(InstallError::ZipIntegrityError {
-                    path: downloaded_zip.clone(),
+                    path: zip_path.clone(),
                     expected: checksum.to_string(),
                     actual: zip_integrity.to_string(),
                 });
             }
-            debug!(zip_path:? = downloaded_zip; "archive integrity check successful");
+            debug!(zip_path:?; "archive integrity check successful");
         } else {
-            debug!(zip_path:? = downloaded_zip; "no checksum available for archive integrity check");
+            debug!(zip_path:?; "no checksum available for archive integrity check");
         }
-        unzip_file(&downloaded_zip, &staging_path, dep.zip_strip_root).await?;
+        unzip_file(&zip_path, &staging_path, dep.zip_strip_root).await?;
         progress.unzip.send(dep.into()).ok();
 
         if subdependencies {
@@ -812,38 +806,18 @@ async fn install_http_dependency(
         .map_err(|e| InstallError::IOError { path: staging_path.clone(), source: e })?;
         debug!(dep:% = dep, checksum = integrity.0; "integrity checksum computed");
         progress.integrity.send(dep.into()).ok();
+        fs::rename(&staging_path, path)
+            .await
+            .map_err(|e| InstallError::IOError { path: path.to_path_buf(), source: e })?;
         Ok((zip_integrity, integrity))
     }
     .await;
 
-    let result = match result {
-        Ok(result) => fs::rename(&staging_path, path)
-            .await
-            .map(|()| result)
-            .map_err(|e| InstallError::IOError { path: path.to_path_buf(), source: e }),
-        Err(error) => Err(error),
-    };
     if result.is_err() {
-        let _ = fs::remove_dir_all(&staging_path).await;
-        if let Some(zip_path) = zip_path {
-            let _ = fs::remove_file(zip_path).await;
-        }
+        fs::remove_dir_all(&staging_path).await.ok();
+        fs::remove_file(&zip_path).await.ok();
     }
     result
-}
-
-/// Name of the staging directory used while extracting an HTTP dependency.
-///
-/// When a checksum is available, the name is derived from it so that a leftover staging directory
-/// from an interrupted install can be identified and replaced. The checksum comes from the
-/// lockfile, so it is sanitized before being used in a path, and a random suffix is used when
-/// nothing usable remains.
-fn staging_dir_name(checksum: Option<&str>) -> String {
-    let suffix = checksum
-        .map(|c| sanitize_filename(&c.chars().take(8).collect::<String>()))
-        .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| Uuid::new_v4().simple().to_string().chars().take(8).collect());
-    format!(".soldeer-temp-{suffix}")
 }
 
 /// Retrieve a map of git submodules for a path by looking at the `.gitmodules` file.
@@ -1050,9 +1024,10 @@ mod tests {
         config::{GitDependency, HttpDependency},
         lock::read_lockfile,
         push::zip_file,
+        update::update_dependencies,
     };
     use mockito::{Matcher, Server, ServerGuard};
-    use std::io::Write as _;
+    use std::io::{Cursor, Write as _};
     use temp_env::async_with_vars;
     use testdir::testdir;
     use zip::{ZipWriter, write::SimpleFileOptions};
@@ -1237,55 +1212,82 @@ mod tests {
     #[tokio::test]
     async fn test_install_http_dependency_cleans_partial_tree_on_extract_error() {
         let dir = testdir!();
-        let archive = dir.join("archive.zip");
-        let file = fs::File::create(&archive).await.unwrap().into_std().await;
-        let mut zip = ZipWriter::new(file);
+        let mut zip = ZipWriter::new(Cursor::new(Vec::new()));
         zip.start_file("src/Contract.sol", SimpleFileOptions::default()).unwrap();
         zip.write_all(b"contract Contract {}\n").unwrap();
+        // a file entry nested under another file entry cannot be extracted
         zip.start_file("src/Contract.sol/nested", SimpleFileOptions::default()).unwrap();
         zip.write_all(b"invalid").unwrap();
-        zip.finish().unwrap();
+        let archive = zip.finish().unwrap().into_inner();
 
         let mut server = Server::new_async().await;
-        server.mock("GET", "/file.zip").with_body_from_file(&archive).create_async().await;
+        server.mock("GET", "/file.zip").with_body(archive).create_async().await;
         let dep = HttpInstallInfo::builder()
             .name("foo")
             .version("2.0.0")
             .url(format!("{}/file.zip", server.url()))
             .build();
         let install_path = dir.join("foo-2.0.0");
+        // leftover staging dir from a previous interrupted install
+        let staging_path = dir.join(".soldeer-temp-foo-2.0.0");
+        fs::create_dir(&staging_path).await.unwrap();
+        fs::write(staging_path.join("stale.txt"), "stale").await.unwrap();
         let (progress, _) = InstallProgress::new();
 
         let res = install_http_dependency(&dep, &install_path, false, progress).await;
         assert!(res.is_err(), "{res:?}");
         assert!(!install_path.exists());
         assert!(!dir.join("foo-2.0.0.zip").exists());
-        let mut entries = fs::read_dir(&dir).await.unwrap();
-        let mut has_partial = false;
-        while let Some(entry) = entries.next_entry().await.unwrap() {
-            has_partial |= entry.file_name().to_string_lossy().starts_with(".soldeer-temp-");
-        }
-        assert!(!has_partial);
+        assert!(!staging_path.exists());
     }
 
-    #[test]
-    fn test_staging_dir_name_sanitizes_checksum() {
-        assert_eq!(
-            staging_dir_name(Some(
-                "94a73dbe106f48179ea39b00d42e5d4dd96fdc6252caa3a89ce7efdaec0b9468"
-            )),
-            ".soldeer-temp-94a73dbe"
-        );
-        // a lockfile-controlled checksum must not be able to escape the dependencies dir
-        for checksum in ["../../etc", "/../../et", "..", "a/b\\c"] {
-            let name = staging_dir_name(Some(checksum));
-            let mut components = Path::new(&name).components();
-            assert!(matches!(components.next(), Some(Component::Normal(_))), "{name}");
-            assert!(components.next().is_none(), "{name}");
-        }
-        // nothing left after sanitizing, fall back to a random suffix
-        assert_ne!(staging_dir_name(Some("")), ".soldeer-temp-");
-        assert_ne!(staging_dir_name(None), staging_dir_name(None));
+    // a failed http update must not leave a partial tree behind: the lockfile still points at the
+    // old version, and remappings resolve through a filesystem scan that would otherwise pick the
+    // orphaned directory up
+    #[tokio::test]
+    async fn test_failed_update_leaves_no_orphan_tree() {
+        let dir = testdir!();
+        let deps = dir.join("dependencies");
+        fs::create_dir(&deps).await.unwrap();
+
+        // a valid v1 install, as if a previous `soldeer install` had succeeded
+        let v1_path = deps.join("foo-1.0.0");
+        fs::create_dir(&v1_path).await.unwrap();
+        fs::write(v1_path.join("Contract.sol"), "contract V1 {}\n").await.unwrap();
+        let v1_integrity = hash_folder(&v1_path).unwrap();
+
+        // the v2 archive collides a file entry with a directory entry, so extraction fails partway
+        let mut zip = ZipWriter::new(Cursor::new(Vec::new()));
+        zip.start_file("src/Contract.sol", SimpleFileOptions::default()).unwrap();
+        zip.write_all(b"contract Evil {}\n").unwrap();
+        zip.start_file("src/Contract.sol/x", SimpleFileOptions::default()).unwrap();
+        zip.write_all(b"invalid").unwrap();
+        let archive = zip.finish().unwrap().into_inner();
+        let mut server = Server::new_async().await;
+        server.mock("GET", "/v2.zip").with_body(archive).create_async().await;
+
+        let dependency: Dependency = HttpDependency::builder()
+            .name("foo")
+            .version_req("2.0.0")
+            .url(format!("{}/v2.zip", server.url()))
+            .build()
+            .into();
+        let lock: LockEntry = HttpLockEntry::builder()
+            .name("foo")
+            .version("1.0.0")
+            .url("https://example.com/v1.zip")
+            .checksum("checksum")
+            .integrity(v1_integrity.to_string())
+            .build()
+            .into();
+        let (progress, _) = InstallProgress::new();
+
+        let res = update_dependencies(&[dependency.clone()], &[lock], &deps, false, progress).await;
+        assert!(res.is_err(), "{res:?}");
+        assert!(!deps.join("foo-2.0.0").exists());
+        assert!(dependency.install_path_sync(&deps).is_none());
+        // the previously installed version is left untouched
+        assert!(v1_path.join("Contract.sol").exists());
     }
 
     #[test]

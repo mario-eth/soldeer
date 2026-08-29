@@ -313,6 +313,19 @@ pub fn path_matches(dependency: &Dependency, path: impl AsRef<Path>) -> bool {
     }
 }
 
+/// Checks whether a path is a symlink, propagating any IO error except
+/// [`ErrorKind::NotFound`](std::io::ErrorKind::NotFound), in which case we
+/// declare that path is not a symlink.
+pub fn is_symlink(path: impl AsRef<Path>) -> Result<bool, std::io::Error> {
+    let path = path.as_ref();
+    match path.symlink_metadata() {
+        Ok(metadata) if metadata.file_type().is_symlink() => Ok(true),
+        Ok(_) => Ok(false),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(e) => Err(e),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

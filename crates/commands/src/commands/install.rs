@@ -10,9 +10,9 @@ use soldeer_core::{
         Dependency, GitIdentifier, Paths, UrlType, add_to_config, read_config_deps,
         read_soldeer_config,
     },
-    errors::{InstallError, LockError},
+    errors::InstallError,
     install::{InstallProgress, ensure_dependencies_dir, install_dependencies, install_dependency},
-    lock::{add_to_lockfile, generate_lockfile_contents, read_lockfile},
+    lock::{add_to_lockfile, generate_lockfile_contents, read_lockfile, write_lockfile},
     remappings::{RemappingsAction, edit_remappings},
 };
 use std::fs;
@@ -138,7 +138,7 @@ pub(crate) async fn install_command(paths: &Paths, cmd: Install) -> Result<()> {
                     "Warning: the lock file is out of sync with the dependencies. Consider running `soldeer update` to re-generate the lockfile."
                 );
             } else if lockfile.raw.is_empty() {
-                fs::write(&paths.lock, new_lockfile_content).map_err(LockError::IOError)?;
+                write_lockfile(&new_lockfile_content, &paths.lock)?;
             }
             edit_remappings(&RemappingsAction::Update, &config, paths)?;
             success!("Updated remappings");

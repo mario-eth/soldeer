@@ -35,7 +35,7 @@ pub fn get_token() -> Result<String> {
     if let Ok(token) = env::var("SOLDEER_API_TOKEN") &&
         !token.is_empty()
     {
-        return Ok(token)
+        return Ok(token);
     }
     let token_path = login_file_path()?;
     let jwt =

@@ -756,13 +756,7 @@ async fn install_http_dependency(
 ) -> Result<(IntegrityChecksum, IntegrityChecksum)> {
     let path = path.as_ref();
     let parent = path.parent().expect("dependency install path should have a parent");
-    // short deterministic name derived from the zip's checksum when available, so a leftover
-    // staging directory from an interrupted install can be identified and replaced
-    let staging_suffix = match &dep.checksum {
-        Some(checksum) => checksum.chars().take(8).collect::<String>(),
-        None => Uuid::new_v4().simple().to_string().chars().take(8).collect::<String>(),
-    };
-    let staging_path = parent.join(format!(".soldeer-temp-{staging_suffix}"));
+    let staging_path = parent.join(staging_dir_name(dep.checksum.as_deref()));
     if fs::try_exists(&staging_path).await.unwrap_or(false) {
         fs::remove_dir_all(&staging_path)
             .await
@@ -836,6 +830,20 @@ async fn install_http_dependency(
         }
     }
     result
+}
+
+/// Name of the staging directory used while extracting an HTTP dependency.
+///
+/// When a checksum is available, the name is derived from it so that a leftover staging directory
+/// from an interrupted install can be identified and replaced. The checksum comes from the
+/// lockfile, so it is sanitized before being used in a path, and a random suffix is used when
+/// nothing usable remains.
+fn staging_dir_name(checksum: Option<&str>) -> String {
+    let suffix = checksum
+        .map(|c| sanitize_filename(&c.chars().take(8).collect::<String>()))
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| Uuid::new_v4().simple().to_string().chars().take(8).collect());
+    format!(".soldeer-temp-{suffix}")
 }
 
 /// Retrieve a map of git submodules for a path by looking at the `.gitmodules` file.
@@ -1258,6 +1266,26 @@ mod tests {
             has_partial |= entry.file_name().to_string_lossy().starts_with(".soldeer-temp-");
         }
         assert!(!has_partial);
+    }
+
+    #[test]
+    fn test_staging_dir_name_sanitizes_checksum() {
+        assert_eq!(
+            staging_dir_name(Some(
+                "94a73dbe106f48179ea39b00d42e5d4dd96fdc6252caa3a89ce7efdaec0b9468"
+            )),
+            ".soldeer-temp-94a73dbe"
+        );
+        // a lockfile-controlled checksum must not be able to escape the dependencies dir
+        for checksum in ["../../etc", "/../../et", "..", "a/b\\c"] {
+            let name = staging_dir_name(Some(checksum));
+            let mut components = Path::new(&name).components();
+            assert!(matches!(components.next(), Some(Component::Normal(_))), "{name}");
+            assert!(components.next().is_none(), "{name}");
+        }
+        // nothing left after sanitizing, fall back to a random suffix
+        assert_ne!(staging_dir_name(Some("")), ".soldeer-temp-");
+        assert_ne!(staging_dir_name(None), staging_dir_name(None));
     }
 
     #[test]

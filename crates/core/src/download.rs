@@ -53,8 +53,9 @@ pub async fn download_file(
 /// dependencies), but must not be done for registry packages, where any top-level directory is
 /// part of the published package's layout.
 ///
-/// Git repository metadata contained in the archive is never extracted, see
-/// [`extract_dependency_archive`].
+/// Git repository metadata contained in the archive is never extracted. Symlink entries are written
+/// as regular files holding their target path, and any entry whose path would land outside of
+/// `into` is rejected.
 pub async fn unzip_file(
     path: impl AsRef<Path>,
     into: impl AsRef<Path>,

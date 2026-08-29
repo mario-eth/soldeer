@@ -51,6 +51,9 @@ pub async fn download_file(
 /// which wrap the contents in a root folder (e.g. GitHub-generated zips for custom URL
 /// dependencies), but must not be done for registry packages, where any top-level directory is
 /// part of the published package's layout.
+///
+/// Any git repository metadata contained in the archive is discarded after extraction, see
+/// [`remove_git_metadata`].
 pub async fn unzip_file(
     path: impl AsRef<Path>,
     into: impl AsRef<Path>,
@@ -61,22 +64,14 @@ pub async fn unzip_file(
         .await
         .map_err(|e| DownloadError::IOError { path: path.clone(), source: e })?;
 
-    let mut archive = zip::ZipArchive::new(Cursor::new(zip_contents.as_slice()))
-        .map_err(|e| DownloadError::InvalidArchiveEntry(e.to_string()))?;
-    for index in 0..archive.len() {
-        let entry = archive
-            .by_index(index)
-            .map_err(|e| DownloadError::InvalidArchiveEntry(e.to_string()))?;
-        if entry.name().split(['/', '\\']).any(|component| component.eq_ignore_ascii_case(".git")) {
-            return Err(DownloadError::InvalidArchiveEntry(entry.name().to_string()));
-        }
-    }
-    drop(archive);
-
     tokio::task::spawn_blocking({
         let out_dir = into.as_ref().to_path_buf();
-        #[allow(deprecated)] // until we can get rid of zip_extract
-        move || zip_extract::extract(Cursor::new(zip_contents), &out_dir, strip_root)
+        move || -> Result<()> {
+            #[allow(deprecated)] // until we can get rid of zip_extract
+            zip_extract::extract(Cursor::new(zip_contents), &out_dir, strip_root)?;
+            remove_git_metadata(&out_dir)
+                .map_err(|e| DownloadError::IOError { path: out_dir.clone(), source: e })
+        }
     })
     .await??;
     debug!(file:? = path, dest:? = into.as_ref(); "unzipped file");
@@ -232,6 +227,32 @@ fn install_path_matches(dependency: &Dependency, path: impl AsRef<Path>) -> bool
     path_matches(dependency, path)
 }
 
+/// Recursively remove any `.git` file or folder found inside an extracted archive.
+///
+/// Repository metadata carried by a downloaded archive is a potential vulnerability and we don't
+/// really need that information.
+///
+/// Other dotfiles such as `.gitmodules`, `.gitignore` and `.gitattributes` are part of the package
+/// and are kept (`forge` uses git submodules).
+fn remove_git_metadata(dir: &Path) -> std::io::Result<()> {
+    for entry in fs::read_dir(dir)? {
+        let entry = entry?;
+        let file_type = entry.file_type()?;
+        let path = entry.path();
+        if entry.file_name().to_string_lossy().eq_ignore_ascii_case(".git") {
+            warn!(path:?; "removing git metadata found in archive");
+            if file_type.is_dir() {
+                fs::remove_dir_all(&path)?;
+            } else {
+                fs::remove_file(&path)?;
+            }
+        } else if file_type.is_dir() {
+            remove_git_metadata(&path)?;
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -272,7 +293,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_unzip_file_rejects_git_metadata() {
+    async fn test_unzip_file_strips_git_metadata() {
         use std::io::Write as _;
         use zip::{ZipWriter, write::SimpleFileOptions};
 
@@ -280,17 +301,27 @@ mod tests {
         let zip_path = dir.join("metadata.zip");
         let file = fs::File::create(&zip_path).unwrap();
         let mut zip = ZipWriter::new(file);
-        zip.start_file(".git/config", SimpleFileOptions::default()).unwrap();
-        zip.write_all(b"[submodule]\n").unwrap();
+        let opts = SimpleFileOptions::default();
+        zip.start_file(".git/config", opts).unwrap();
+        zip.write_all(b"[submodule \"lib/dep\"]\n\tupdate = !touch pwned\n").unwrap();
+        zip.start_file("lib/dep/.git", opts).unwrap();
+        zip.write_all(b"gitdir: ../../.git/modules/dep\n").unwrap();
+        zip.start_file(".gitmodules", opts).unwrap();
+        zip.write_all(b"[submodule \"lib/dep\"]\n\tpath = lib/dep\n").unwrap();
+        zip.start_file("src/Contract.sol", opts).unwrap();
+        zip.write_all(b"contract Contract {}\n").unwrap();
         zip.finish().unwrap();
 
         let out_dir = dir.join("out");
-        let res = unzip_file(&zip_path, &out_dir, true).await;
-        assert!(
-            matches!(res, Err(DownloadError::InvalidArchiveEntry(entry)) if entry == ".git/config")
-        );
-        assert!(!out_dir.exists());
+        unzip_file(&zip_path, &out_dir, false).await.unwrap();
+        // the archive-controlled git metadata never lands on disk
+        assert!(!out_dir.join(".git").exists());
+        assert!(!out_dir.join("lib/dep/.git").exists());
+        // everything else is extracted as usual
+        assert!(out_dir.join(".gitmodules").exists());
+        assert!(out_dir.join("src/Contract.sol").exists());
     }
+
     #[tokio::test]
     async fn test_unzip_file_strip_root() {
         // archive wrapping all contents in a single root directory, like GitHub source archives

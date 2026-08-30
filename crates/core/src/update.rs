@@ -3,7 +3,7 @@ use crate::{
     config::{Dependency, GitIdentifier},
     errors::UpdateError,
     install::{InstallProgress, install_dependency, validate_dependency_path_collisions},
-    lock::{GitLockEntry, LockEntry, format_install_path},
+    lock::{GitLockEntry, LockEntry, LockFileVersion, format_install_path},
     registry::get_latest_supported_version,
     utils::run_git_command,
 };
@@ -31,6 +31,7 @@ pub type Result<T> = std::result::Result<T, UpdateError>;
 pub async fn update_dependencies(
     dependencies: &[Dependency],
     locks: &[LockEntry],
+    lock_version: LockFileVersion,
     deps_path: impl AsRef<Path>,
     recursive_deps: bool,
     progress: InstallProgress,
@@ -45,7 +46,9 @@ pub async fn update_dependencies(
 
             let lock = locks.iter().find(|l| l.name() == dep.name()).cloned();
             let paths = deps_path.as_ref().to_path_buf();
-            async move { update_dependency(&d, lock.as_ref(), &paths, recursive_deps, p).await }
+            async move {
+                update_dependency(&d, lock.as_ref(), lock_version, &paths, recursive_deps, p).await
+            }
         });
     }
 
@@ -73,6 +76,7 @@ pub async fn update_dependencies(
 pub async fn update_dependency(
     dependency: &Dependency,
     lock: Option<&LockEntry>,
+    lock_version: LockFileVersion,
     deps: impl AsRef<Path>,
     recursive_deps: bool,
     progress: InstallProgress,
@@ -165,9 +169,16 @@ pub async fn update_dependency(
                     .build()
                     .into(),
             };
-            let new_lock =
-                install_dependency(dependency, Some(lock), &deps, None, recursive_deps, progress)
-                    .await?;
+            let new_lock = install_dependency(
+                dependency,
+                Some(lock),
+                lock_version,
+                &deps,
+                None,
+                recursive_deps,
+                progress,
+            )
+            .await?;
             Ok(new_lock)
         }
         _ => {
@@ -195,6 +206,7 @@ pub async fn update_dependency(
             let new_lock = install_dependency(
                 dependency,
                 None,
+                lock_version,
                 &deps,
                 force_version,
                 recursive_deps,

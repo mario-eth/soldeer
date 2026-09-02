@@ -232,8 +232,7 @@ pub fn hash_file(path: impl AsRef<Path>) -> Result<IntegrityChecksum, std::io::E
 
 /// Run a `git` command with the given arguments in the given directory.
 ///
-/// The command runs with terminal prompts disabled and with restricted transport protocols (see
-/// [`GIT_PROTOCOL_POLICY`]).
+/// The command runs with terminal prompts disabled and with restricted transport protocols.
 ///
 /// The function output is parsed as a UTF-8 string and returned.
 pub async fn run_git_command<I, S>(

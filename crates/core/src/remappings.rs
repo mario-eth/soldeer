@@ -14,7 +14,7 @@ use std::{
     collections::HashMap,
     fs::{self, File},
     io::Write as _,
-    path::PathBuf,
+    path::{Path, PathBuf},
 };
 use toml_edit::{Array, DocumentMut, value};
 
@@ -270,7 +270,8 @@ fn generate_remappings(
                 }
                 if !found {
                     debug!(dep:% = add_dep; "remapping not found, adding it");
-                    new_remappings.push(format!("{add_dep_remapped}={add_dep_og}/"));
+                    let suffix = source_dir_suffix(&paths.root.join(&add_dep_og));
+                    new_remappings.push(format!("{add_dep_remapped}={add_dep_og}/{suffix}"));
                 }
             }
             RemappingsAction::Update => {
@@ -311,9 +312,14 @@ fn generate_remappings(
                                     .components()
                                     .take(n_components)
                                     .collect();
+                                // Replace only the install-directory portion so the user's
+                                // own suffix (or its deliberate absence) is preserved: the
+                                // inferred source suffix in `item_og` must not leak in here.
+                                let new_install_dir: PathBuf =
+                                    PathBuf::from(item_og).components().take(n_components).collect();
                                 let existing_og_updated = existing_og.replace(
                                     path.to_slash_lossy().as_ref(),
-                                    item_og.trim_end_matches('/'),
+                                    new_install_dir.to_slash_lossy().as_ref(),
                                 );
                                 debug!(new_path = existing_og_updated; "updated remapping path");
                                 new_remappings
@@ -368,7 +374,12 @@ fn remappings_from_deps(
         .map(|dependency| {
             let dependency_name_formatted = format_remap_name(soldeer_config, dependency); // contains trailing slash
             let relative_path = get_install_dir_relative(dependency, paths, locked)?;
-            Ok((format!("{dependency_name_formatted}={relative_path}/"), dependency.clone()).into())
+            let suffix = source_dir_suffix(&paths.root.join(&relative_path));
+            Ok((
+                format!("{dependency_name_formatted}={relative_path}/{suffix}"),
+                dependency.clone(),
+            )
+                .into())
         })
         .collect::<Result<Vec<RemappingInfo>>>()
 }
@@ -380,6 +391,26 @@ fn locked_entries(paths: &Paths) -> Result<HashMap<String, LockEntry>> {
         .into_iter()
         .map(|entry| (entry.name().to_string(), entry))
         .collect())
+}
+
+/// Common Solidity source subdirectories, in the order Foundry probes them.
+const SOURCE_SUBDIRS: [&str; 2] = ["src", "contracts"];
+
+/// Infer the source subdirectory of an installed dependency so remappings point
+/// at canonical import paths, matching how `forge remappings` behaves (e.g.
+/// `forge-std/=dependencies/forge-std-1.9.4/src/` rather than the dependency
+/// root). Returns the segment to append with a trailing slash (e.g. `"src/"`),
+/// or an empty string when no known source subdirectory exists.
+///
+/// This is only applied when a remapping is first generated; the update logic
+/// preserves whatever suffix the user has, so a manually removed `src/` will not
+/// come back.
+fn source_dir_suffix(install_dir: &Path) -> String {
+    SOURCE_SUBDIRS
+        .into_iter()
+        .find(|sub| install_dir.join(sub).is_dir())
+        .map(|sub| format!("{sub}/"))
+        .unwrap_or_default()
 }
 
 /// Find the install path (relative to project root) for a dependency that was already installed.
@@ -693,6 +724,45 @@ dep3 = { version = "foobar", git = "git@github.com:test/test.git", branch = "foo
         assert_eq!(res[0].remapping_string, "dep1-^1.0.0/=dependencies/dep1-1.1.1/");
         assert_eq!(res[1].remapping_string, "dep2-2.0.0/=dependencies/dep2-2.0.0/");
         assert_eq!(res[2].remapping_string, "dep3-foobar/=dependencies/dep3-foobar/");
+    }
+
+    #[test]
+    fn test_generate_remappings_add_infers_source_dir() {
+        let dir = testdir!();
+        fs::write(dir.join("soldeer.toml"), "[dependencies]\n").unwrap();
+        let paths = Paths::from_root(&dir).unwrap();
+        // lib1 ships its Solidity under `src/`, lib2 has no known source subdir.
+        fs::create_dir_all(paths.dependencies.join("lib1-1.0.0").join("src")).unwrap();
+        fs::create_dir_all(paths.dependencies.join("lib2-1.1.1")).unwrap();
+        write_lock(&paths, &[("lib1", "1.0.0"), ("lib2", "1.1.1")]);
+        let config = SoldeerConfig::default();
+
+        // A dependency with a `src/` directory gets the canonical suffix.
+        let dep = HttpDependency::builder().name("lib1").version_req("1.0.0").build().into();
+        let res = generate_remappings(&RemappingsAction::Add(dep), &paths, &config, &[]).unwrap();
+        assert_eq!(res, vec!["lib1-1.0.0/=dependencies/lib1-1.0.0/src/"]);
+
+        // A dependency without a known source subdir stays at the root.
+        let dep = HttpDependency::builder().name("lib2").version_req("1.1.1").build().into();
+        let res = generate_remappings(&RemappingsAction::Add(dep), &paths, &config, &[]).unwrap();
+        assert_eq!(res, vec!["lib2-1.1.1/=dependencies/lib2-1.1.1/"]);
+    }
+
+    #[test]
+    fn test_generate_remappings_update_keeps_user_removed_source_suffix() {
+        // The inferred suffix must not be permanent: even though lib1 ships a
+        // `src/` directory, if the user removed the auto-detected suffix from
+        // their remapping, updating must not bring it back.
+        let dir = testdir!();
+        fs::write(dir.join("soldeer.toml"), "[dependencies]\nlib1 = \"1.0.0\"\n").unwrap();
+        let paths = Paths::from_root(&dir).unwrap();
+        fs::create_dir_all(paths.dependencies.join("lib1-1.0.0").join("src")).unwrap();
+        write_lock(&paths, &[("lib1", "1.0.0")]);
+        let config = SoldeerConfig::default();
+
+        let existing_deps = vec![("lib1-1.0.0/", "dependencies/lib1-1.0.0/")];
+        let res = generate_remappings(&RemappingsAction::Update, &paths, &config, &existing_deps);
+        assert_eq!(res.unwrap(), vec!["lib1-1.0.0/=dependencies/lib1-1.0.0/"]);
     }
 
     #[test]

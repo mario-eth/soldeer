@@ -5,7 +5,7 @@ use soldeer_core::{
     SoldeerError,
     config::{ConfigLocation, read_config_deps},
     download::download_file,
-    errors::InstallError,
+    errors::{InstallError, LockError},
     lock::{SOLDEER_LOCK, read_lockfile},
     push::zip_file,
     utils::hash_file,
@@ -32,6 +32,25 @@ fn check_install(dir: &Path, name: &str, version_req: &str) {
     let version = lock.entries.first().unwrap().version();
     assert!(version.starts_with(version_req));
     assert!(dir.join("dependencies").join(format!("{name}-{version}")).exists());
+}
+
+/// Mock the registry endpoint which resolves a dependency version into a download URL.
+///
+/// Registry dependencies don't record their source in the config, so the download URL is resolved
+/// from the registry at install time instead of being taken from the lockfile. Tests which serve a
+/// dependency from a mock server therefore need to serve that endpoint too.
+async fn mock_revision(server: &mut mockito::ServerGuard, name: &str, version: &str) {
+    let data = format!(
+        r#"{{"data":[{{"created_at":"2025-09-28T12:36:09.526660Z","deleted":false,"id":"0440c261-8cdf-4738-9139-c4dc7b0c7f3e","internal_name":"{name}.zip","private":false,"project_id":"14f419e7-2d64-49e4-86b9-b44b36627786","url":"{}/file.zip","version":"{version}"}}],"status":"success"}}"#,
+        server.url()
+    );
+    server
+        .mock("GET", "/api/v1/revision-cli")
+        .match_query(Matcher::Any)
+        .with_header("content-type", "application/json")
+        .with_body(data)
+        .create_async()
+        .await;
 }
 
 fn create_zip_monorepo(testdir: &Path) -> PathBuf {
@@ -350,17 +369,36 @@ async fn test_install_missing_with_lock() {
 mylib = "1.1"
 "#;
     fs::write(dir.join("soldeer.toml"), contents).unwrap();
-    let lock = r#"[[dependencies]]
+
+    // get zip file locally for mock
+    let zip_file = download_file(
+        "https://github.com/mario-eth/soldeer/archive/8585a7ec85a29889cec8d08f4770e15ec4795943.zip",
+        &dir,
+        "tmp",
+    )
+    .await
+    .unwrap();
+    let mut server = mockito::Server::new_async().await;
+    server.mock("GET", "/file.zip").with_body_from_file(zip_file).create_async().await;
+    mock_revision(&mut server, "mylib", "1.1.0").await;
+
+    let lock = format!(
+        r#"[[dependencies]]
 name = "mylib"
 version = "1.1.0"
-url = "https://github.com/mario-eth/soldeer/archive/8585a7ec85a29889cec8d08f4770e15ec4795943.zip"
+url = "{}/file.zip"
 checksum = "94a73dbe106f48179ea39b00d42e5d4dd96fdc6252caa3a89ce7efdaec0b9468"
 integrity = "bcc66b553ea004dc1ccf39e9d3cda6487edec8e58446e6f04a1e7c4b2e8535f1"
-"#;
+"#,
+        server.url()
+    );
     fs::write(dir.join(SOLDEER_LOCK), lock).unwrap();
     let cmd: Command = Install::builder().build().into();
     let res = async_with_vars(
-        [("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))],
+        [
+            ("SOLDEER_API_URL", Some(server.url().as_str())),
+            ("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref())),
+        ],
         run(cmd, Verbosity::default()),
     )
     .await;
@@ -389,6 +427,7 @@ mylib = "1.1"
     let mut server = mockito::Server::new_async().await;
     let mock = server.mock("GET", "/file.zip").with_body_from_file(zip_file).create_async().await;
     let mock = mock.expect(1); // download link should be called exactly once
+    mock_revision(&mut server, "mylib", "1.1.0").await;
 
     let lock = format!(
         r#"[[dependencies]]
@@ -403,7 +442,10 @@ integrity = "bcc66b553ea004dc1ccf39e9d3cda6487edec8e58446e6f04a1e7c4b2e8535f1"
     fs::write(dir.join(SOLDEER_LOCK), lock).unwrap();
     let cmd: Command = Install::builder().build().into();
     let res = async_with_vars(
-        [("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))],
+        [
+            ("SOLDEER_API_URL", Some(server.url().as_str())),
+            ("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref())),
+        ],
         run(cmd.clone(), Verbosity::default()),
     )
     .await;
@@ -412,12 +454,97 @@ integrity = "bcc66b553ea004dc1ccf39e9d3cda6487edec8e58446e6f04a1e7c4b2e8535f1"
 
     // second install
     let res = async_with_vars(
-        [("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))],
+        [
+            ("SOLDEER_API_URL", Some(server.url().as_str())),
+            ("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref())),
+        ],
         run(cmd, Verbosity::default()),
     )
     .await;
     assert!(res.is_ok(), "{res:?}");
     mock.assert(); // download link was not called a second time
+}
+
+#[tokio::test]
+async fn test_install_rejects_stale_lock() {
+    let dir = testdir!();
+    // the config asks for 2.0.0 but the lockfile still records the previous 1.0.0 install
+    let contents = r#"[dependencies]
+mylib = { version = "2.0.0", url = "https://example.com/mylib.zip" }
+"#;
+    fs::write(dir.join("soldeer.toml"), contents).unwrap();
+    let lock = r#"[[dependencies]]
+name = "mylib"
+version = "1.0.0"
+url = "https://example.com/mylib.zip"
+checksum = "94a73dbe106f48179ea39b00d42e5d4dd96fdc6252caa3a89ce7efdaec0b9468"
+integrity = "bcc66b553ea004dc1ccf39e9d3cda6487edec8e58446e6f04a1e7c4b2e8535f1"
+"#;
+    fs::write(dir.join(SOLDEER_LOCK), lock).unwrap();
+
+    let cmd: Command = Install::builder().build().into();
+    let res = async_with_vars(
+        [("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))],
+        run(cmd, Verbosity::default()),
+    )
+    .await;
+    assert!(
+        matches!(
+            res.unwrap_err(),
+            SoldeerError::InstallError(InstallError::LockError(LockError::Mismatch { .. }))
+        ),
+        "install should refuse a lockfile entry which disagrees with the config"
+    );
+}
+
+#[tokio::test]
+async fn test_install_rejects_lockfile_url_for_registry_dep() {
+    let dir = testdir!();
+    let contents = r#"[dependencies]
+mylib = "1.1"
+"#;
+    fs::write(dir.join("soldeer.toml"), contents).unwrap();
+
+    // get zip file locally for mock
+    let zip_file = download_file(
+        "https://github.com/mario-eth/soldeer/archive/8585a7ec85a29889cec8d08f4770e15ec4795943.zip",
+        &dir,
+        "tmp",
+    )
+    .await
+    .unwrap();
+
+    let mut server = mockito::Server::new_async().await;
+    server.mock("GET", "/file.zip").with_body_from_file(zip_file).create_async().await;
+    mock_revision(&mut server, "mylib", "1.1.0").await;
+    // the config declares no URL, so the one in the lockfile must never be contacted
+    let planted =
+        server.mock("GET", "/planted.zip").with_body("planted").expect(0).create_async().await;
+
+    let lock = format!(
+        r#"[[dependencies]]
+name = "mylib"
+version = "1.1.0"
+url = "{}/planted.zip"
+checksum = "94a73dbe106f48179ea39b00d42e5d4dd96fdc6252caa3a89ce7efdaec0b9468"
+integrity = "bcc66b553ea004dc1ccf39e9d3cda6487edec8e58446e6f04a1e7c4b2e8535f1"
+"#,
+        server.url()
+    );
+    fs::write(dir.join(SOLDEER_LOCK), lock).unwrap();
+
+    let cmd: Command = Install::builder().build().into();
+    let res = async_with_vars(
+        [
+            ("SOLDEER_API_URL", Some(server.url().as_str())),
+            ("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref())),
+        ],
+        run(cmd, Verbosity::default()),
+    )
+    .await;
+    assert!(res.is_ok(), "{res:?}");
+    planted.assert();
+    check_install(&dir, "mylib", "1.1");
 }
 
 #[tokio::test]
@@ -611,16 +738,20 @@ async fn test_install_recursive_project_root() {
     let zip_path = create_zip_monorepo(&dir);
     let checksum = hash_file(&zip_path).unwrap();
 
-    let contents = r#"[dependencies]
-mylib = { version = "1.0.0", project_root = "contracts" }
-
-[soldeer]
-recursive_deps = true
-"#;
-
     // serve the dependency which uses foundry in a `contracts` subfolder
     let mut server = mockito::Server::new_async().await;
     server.mock("GET", "/file.zip").with_body_from_file(zip_path).create_async().await;
+    // the URL is declared in the config, so the registry is only contacted for the nested
+    // `forge-std` dependency
+    let contents = format!(
+        r#"[dependencies]
+mylib = {{ version = "1.0.0", url = "{}/file.zip", project_root = "contracts" }}
+
+[soldeer]
+recursive_deps = true
+"#,
+        server.url()
+    );
     fs::write(dir.join("soldeer.toml"), contents).unwrap();
     let lock = format!(
         r#"[[dependencies]]
@@ -652,17 +783,19 @@ async fn test_install_recursive_project_root_invalid_path() {
     let zip_path = create_zip_monorepo(&dir);
     let checksum = hash_file(&zip_path).unwrap();
 
-    // directory traversal is forbidden
-    let contents = r#"[dependencies]
-mylib = { version = "1.0.0", project_root = "../../../contracts" }
-
-[soldeer]
-recursive_deps = true
-"#;
-
     // serve the dependency which uses foundry in a `contracts` subfolder
     let mut server = mockito::Server::new_async().await;
     server.mock("GET", "/file.zip").with_body_from_file(zip_path).create_async().await;
+    // directory traversal is forbidden
+    let contents = format!(
+        r#"[dependencies]
+mylib = {{ version = "1.0.0", url = "{}/file.zip", project_root = "../../../contracts" }}
+
+[soldeer]
+recursive_deps = true
+"#,
+        server.url()
+    );
     fs::write(dir.join("soldeer.toml"), contents).unwrap();
     let lock = format!(
         r#"[[dependencies]]
@@ -925,6 +1058,7 @@ recursive_deps = true
     // Serve the dependency via mock server
     let mut server = mockito::Server::new_async().await;
     server.mock("GET", "/file.zip").with_body_from_file(&zip_path).create_async().await;
+    mock_revision(&mut server, "mylib", "1.0.0").await;
     fs::write(dir.join("soldeer.toml"), contents).unwrap();
 
     let lock = format!(
@@ -941,7 +1075,10 @@ integrity = "placeholder"
 
     let cmd: Command = Install::builder().build().into();
     let res = async_with_vars(
-        [("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))],
+        [
+            ("SOLDEER_API_URL", Some(server.url().as_str())),
+            ("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref())),
+        ],
         run(cmd.clone(), Verbosity::default()),
     )
     .await;
@@ -978,6 +1115,7 @@ recursive_deps = true
     // Serve the dependency via mock server
     let mut server = mockito::Server::new_async().await;
     server.mock("GET", "/file.zip").with_body_from_file(&zip_path).create_async().await;
+    mock_revision(&mut server, "mylib", "1.0.0").await;
     fs::write(dir.join("soldeer.toml"), contents).unwrap();
 
     let lock = format!(
@@ -994,7 +1132,10 @@ integrity = "placeholder"
 
     let cmd: Command = Install::builder().build().into();
     let res = async_with_vars(
-        [("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))],
+        [
+            ("SOLDEER_API_URL", Some(server.url().as_str())),
+            ("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref())),
+        ],
         run(cmd.clone(), Verbosity::default()),
     )
     .await;

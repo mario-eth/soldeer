@@ -10,8 +10,8 @@ use crate::{
     download::{clone_repo, delete_dependency_files, download_file, unzip_file},
     errors::{ConfigError, InstallError, LockError},
     lock::{
-        GitLockEntry, HttpLockEntry, Integrity, LockEntry, PrivateLockEntry, forge,
-        format_install_path, generate_lockfile_contents, lock_for_dependency, read_lockfile,
+        GitLockEntry, HttpLockEntry, Integrity, LockEntry, LockFileVersion, PrivateLockEntry,
+        forge, format_install_path, generate_lockfile_contents, lock_for_dependency, read_lockfile,
         write_lockfile,
     },
     registry::{DownloadUrl, get_dependency_url_remote, get_latest_supported_version},
@@ -337,6 +337,7 @@ struct Submodule {
 pub async fn install_dependencies(
     dependencies: &[Dependency],
     locks: &[LockEntry],
+    lock_version: LockFileVersion,
     deps: impl AsRef<Path>,
     recursive_deps: bool,
     progress: InstallProgress,
@@ -351,15 +352,8 @@ pub async fn install_dependencies(
             let p = progress.clone();
             let deps = deps.as_ref().to_path_buf();
             async move {
-                install_dependency(
-                    &d,
-                    lock.as_ref(),
-                    deps,
-                    None,
-                    recursive_deps,
-                    p,
-                )
-                .await
+                install_dependency(&d, lock.as_ref(), lock_version, deps, None, recursive_deps, p)
+                    .await
             }
         });
     }
@@ -383,6 +377,7 @@ pub async fn install_dependencies(
 pub async fn install_dependencies_sequential(
     dependencies: &[Dependency],
     locks: &[LockEntry],
+    lock_version: LockFileVersion,
     deps: impl AsRef<Path> + Clone,
     recursive_deps: bool,
     progress: InstallProgress,
@@ -393,8 +388,16 @@ pub async fn install_dependencies_sequential(
         debug!(dep:% = dep; "installing dependency sequentially");
         let lock = lock_for_dependency(locks, dep)?;
         results.push(
-            install_dependency(dep, lock, deps.clone(), None, recursive_deps, progress.clone())
-                .await?,
+            install_dependency(
+                dep,
+                lock,
+                lock_version,
+                deps.clone(),
+                None,
+                recursive_deps,
+                progress.clone(),
+            )
+            .await?,
         );
         debug!(dep:% = dep; "sequential install finished");
     }
@@ -427,9 +430,14 @@ pub fn validate_dependency_path_collisions(dependencies: &[Dependency]) -> Resul
 ///
 /// If no lockfile entry is provided, the dependency is installed from the config object and
 /// integrity checks are skipped.
+///
+/// The `lock_version` is the format version of the lockfile the entry comes from. It is used to
+/// report a failed integrity check of a legacy lockfile as an expected migration. It is irrelevant
+/// when no lock entry is provided.
 pub async fn install_dependency(
     dependency: &Dependency,
     lock: Option<&LockEntry>,
+    lock_version: LockFileVersion,
     deps: impl AsRef<Path>,
     force_version: Option<String>,
     recursive_deps: bool,
@@ -451,10 +459,15 @@ pub async fn install_dependency(
             }
             DependencyStatus::FailedIntegrity => match dependency {
                 Dependency::Http(_) => {
-                    info!(dep:% = dependency; "dependency failed integrity check, reinstalling");
-                    progress.log(format!(
-                        "Dependency {dependency} failed integrity check, reinstalling"
-                    ));
+                    if lock_version.is_legacy() {
+                        info!(dep:% = dependency; "legacy lockfile entry, reinstalling to refresh the integrity checksum");
+                        progress.log(format!("Re-installing {dependency} to refresh the checksum"));
+                    } else {
+                        info!(dep:% = dependency; "dependency failed integrity check, reinstalling");
+                        progress.log(format!(
+                            "Dependency {dependency} failed integrity check, reinstalling"
+                        ));
+                    }
                     // we know the folder exists because otherwise we would have gotten
                     // `Missing`
                     delete_dependency_files(dependency, &deps).await?;
@@ -736,12 +749,17 @@ async fn install_subdependencies_inner(paths: Paths) -> Result<()> {
     let new_locks = install_dependencies(
         &dependencies,
         &lockfile.entries,
+        lockfile.version,
         &paths.dependencies,
         config.recursive_deps,
         progress,
     )
     .await?;
-    write_lockfile(&generate_lockfile_contents(new_locks), &paths.lock)?;
+    // all entries were recomputed, so the lockfile can be stamped with the current format version
+    write_lockfile(
+        &generate_lockfile_contents(new_locks, LockFileVersion::default()),
+        &paths.lock,
+    )?;
     Ok(())
 }
 
@@ -1343,9 +1361,15 @@ mod tests {
             .into();
         let (progress, _) = InstallProgress::new();
 
-        let res =
-            update_dependencies(std::slice::from_ref(&dependency), &[lock], &deps, false, progress)
-                .await;
+        let res = update_dependencies(
+            std::slice::from_ref(&dependency),
+            &[lock],
+            LockFileVersion::default(),
+            &deps,
+            false,
+            progress,
+        )
+        .await;
         assert!(res.is_err(), "{res:?}");
         assert!(!deps.join("foo-2.0.0").exists());
         assert!(dependency.install_path_sync(&deps).is_none());
@@ -1429,6 +1453,7 @@ mod tests {
         let res = install_dependency(
             &parent_dependency,
             Some(&parent_lock),
+            LockFileVersion::default(),
             dir.join("dependencies"),
             None,
             true,
@@ -1537,7 +1562,7 @@ mod tests {
         let (progress, _) = InstallProgress::new();
         let res = async_with_vars(
             [("SOLDEER_API_URL", Some(server.url()))],
-            install_dependency(&dep, None, &dir, None, false, progress),
+            install_dependency(&dep, None, LockFileVersion::default(), &dir, None, false, progress),
         )
         .await;
         assert!(res.is_ok(), "{res:?}");
@@ -1565,7 +1590,7 @@ mod tests {
         let (progress, _) = InstallProgress::new();
         let res = async_with_vars(
             [("SOLDEER_API_URL", Some(server.url()))],
-            install_dependency(&dep, None, &dir, None, false, progress),
+            install_dependency(&dep, None, LockFileVersion::default(), &dir, None, false, progress),
         )
         .await;
         assert!(res.is_ok(), "{res:?}");
@@ -1586,7 +1611,9 @@ mod tests {
         let dir = testdir!();
         let dep = HttpDependency::builder().name("test").version_req("1.0.0").url("https://github.com/mario-eth/soldeer/archive/8585a7ec85a29889cec8d08f4770e15ec4795943.zip").build().into();
         let (progress, _) = InstallProgress::new();
-        let res = install_dependency(&dep, None, &dir, None, false, progress).await;
+        let res =
+            install_dependency(&dep, None, LockFileVersion::default(), &dir, None, false, progress)
+                .await;
         assert!(res.is_ok(), "{res:?}");
         let lock = res.unwrap();
         assert_eq!(lock.name(), dep.name());
@@ -1602,6 +1629,45 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_install_dependency_legacy_lock_integrity_message() {
+        async fn logs_for(lock_version: LockFileVersion) -> Vec<String> {
+            let dir = testdir!();
+            let dep: Dependency = HttpDependency::builder().name("test").version_req("1.0.0").url("https://github.com/mario-eth/soldeer/archive/8585a7ec85a29889cec8d08f4770e15ec4795943.zip").build().into();
+            // the installed folder does not match the checksum recorded in the lockfile
+            let lock: LockEntry = HttpLockEntry::builder()
+                .name("test")
+                .version("1.0.0")
+                .url(dep.url().unwrap())
+                .checksum("94a73dbe106f48179ea39b00d42e5d4dd96fdc6252caa3a89ce7efdaec0b9468")
+                .integrity("beef")
+                .build()
+                .into();
+            let install_path = lock.install_path(&dir);
+            fs::create_dir_all(&install_path).await.unwrap();
+            fs::write(install_path.join("stale.sol"), "contract Stale {}\n").await.unwrap();
+
+            let (progress, mut monitor) = InstallProgress::new();
+            let res =
+                install_dependency(&dep, Some(&lock), lock_version, &dir, None, false, progress)
+                    .await;
+            assert!(res.is_ok(), "{res:?}");
+            let mut logs = Vec::new();
+            while let Ok(msg) = monitor.logs.try_recv() {
+                logs.push(msg);
+            }
+            logs
+        }
+
+        // a mismatch against a legacy lockfile is expected, so it must not be reported as one
+        let logs = logs_for(LockFileVersion::V1).await;
+        assert!(logs.iter().any(|l| l.contains("to refresh the checksum")), "{logs:?}");
+        assert!(!logs.iter().any(|l| l.contains("failed integrity check")), "{logs:?}");
+
+        let logs = logs_for(LockFileVersion::V2).await;
+        assert!(logs.iter().any(|l| l.contains("failed integrity check")), "{logs:?}");
+    }
+
+    #[tokio::test]
     async fn test_install_dependency_git() {
         let dir = testdir!();
         let dep = GitDependency::builder()
@@ -1611,7 +1677,9 @@ mod tests {
             .build()
             .into();
         let (progress, _) = InstallProgress::new();
-        let res = install_dependency(&dep, None, &dir, None, false, progress).await;
+        let res =
+            install_dependency(&dep, None, LockFileVersion::default(), &dir, None, false, progress)
+                .await;
         assert!(res.is_ok(), "{res:?}");
         let lock = res.unwrap();
         assert_eq!(lock.name(), dep.name());
@@ -1630,7 +1698,7 @@ mod tests {
         let (progress, _) = InstallProgress::new();
         let res = async_with_vars(
             [("SOLDEER_API_URL", Some(server.url()))],
-            install_dependency(&dep, None, &dir, None, false, progress),
+            install_dependency(&dep, None, LockFileVersion::default(), &dir, None, false, progress),
         )
         .await;
         assert!(res.is_ok(), "{res:?}");
@@ -1665,7 +1733,15 @@ mod tests {
         ];
         let (progress, _) = InstallProgress::new();
 
-        let res = install_dependencies(&dependencies, &[], &dir, false, progress).await;
+        let res = install_dependencies(
+            &dependencies,
+            &[],
+            LockFileVersion::default(),
+            &dir,
+            false,
+            progress,
+        )
+        .await;
         assert!(matches!(res, Err(InstallError::PathCollision { .. })));
     }
 }

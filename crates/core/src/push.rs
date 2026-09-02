@@ -172,7 +172,13 @@ pub fn filter_ignored_files(root_directory_path: impl AsRef<Path>) -> Vec<PathBu
     let walker = WalkBuilder::new(root_directory_path)
         .add_custom_ignore_filename(".soldeerignore")
         .hidden(false)
-        .filter_entry(|entry| entry.path().file_name().unwrap_or_default() != ".git")
+        .filter_entry(|entry| {
+            !entry
+                .path()
+                .file_name()
+                .and_then(|n| n.to_str())
+                .is_some_and(|n| n.eq_ignore_ascii_case(".git"))
+        })
         .build_parallel();
     walker.run(|| {
         let tx = tx.clone();
@@ -385,6 +391,12 @@ mod tests {
         fs::write(dir.join("lib/.git"), "gitdir: ../.git/modules/lib\n").unwrap();
         included.push(dir.join("lib/Lib.sol"));
         fs::write(included.last().unwrap(), "contract Lib {}").unwrap();
+
+        // a differently-cased gitlink must be skipped too, on case-sensitive filesystems
+        fs::create_dir(dir.join("lib2")).unwrap();
+        fs::write(dir.join("lib2/.GIT"), "gitdir: ../.git/modules/lib2\n").unwrap();
+        included.push(dir.join("lib2/Lib2.sol"));
+        fs::write(included.last().unwrap(), "contract Lib2 {}").unwrap();
 
         let res = filter_ignored_files(&dir);
         assert_eq!(res.len(), included.len(), "{res:?}");

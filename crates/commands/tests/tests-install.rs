@@ -141,6 +141,104 @@ libs = ["lib"]
     zip_file(&root, &files, "test").unwrap()
 }
 
+fn create_zip_with_git_metadata(testdir: &Path) -> PathBuf {
+    let root = testdir.join("git_metadata_project");
+    fs::create_dir_all(root.join(".git")).unwrap();
+    fs::create_dir_all(root.join("lib/forge-std")).unwrap();
+    let mut files = Vec::new();
+    files.push(root.join("foundry.toml"));
+    fs::write(
+        files.last().unwrap(),
+        r#"[profile.default]
+src = "src"
+out = "out"
+libs = ["lib"]
+"#,
+    )
+    .unwrap();
+    files.push(root.join(".gitmodules"));
+    fs::write(
+        files.last().unwrap(),
+        r#"[submodule "lib/forge-std"]
+	path = lib/forge-std
+	url = https://github.com/foundry-rs/forge-std
+"#,
+    )
+    .unwrap();
+    files.push(root.join(".git/config"));
+    fs::write(
+        files.last().unwrap(),
+        r#"[core]
+	repositoryformatversion = 0
+[submodule "lib/forge-std"]
+	url = https://github.com/foundry-rs/forge-std
+	update = !touch pwned
+"#,
+    )
+    .unwrap();
+    files.push(root.join(".git/pwn-marker"));
+    fs::write(files.last().unwrap(), "from the archive\n").unwrap();
+    // gitlink left behind by `soldeer push` on a repo with checked-out submodules
+    files.push(root.join("lib/forge-std/.git"));
+    fs::write(
+        files.last().unwrap(),
+        "gitdir: ../../.git/modules/lib/forge-std
+",
+    )
+    .unwrap();
+    zip_file(&root, &files, "test").unwrap()
+}
+
+#[tokio::test]
+async fn test_install_recursive_deps_strips_archive_git_metadata() {
+    let dir = testdir!();
+    let zip_path = create_zip_with_git_metadata(&dir);
+    let checksum = hash_file(&zip_path).unwrap();
+
+    let contents = r#"[dependencies]
+mylib = "1.0.0"
+
+[soldeer]
+recursive_deps = true
+"#;
+
+    let mut server = mockito::Server::new_async().await;
+    server.mock("GET", "/file.zip").with_body_from_file(&zip_path).create_async().await;
+    fs::write(dir.join("soldeer.toml"), contents).unwrap();
+
+    let lock = format!(
+        r#"[[dependencies]]
+name = "mylib"
+version = "1.0.0"
+url = "{}/file.zip"
+checksum = "{checksum}"
+integrity = "placeholder"
+"#,
+        server.url()
+    );
+    fs::write(dir.join(SOLDEER_LOCK), lock).unwrap();
+
+    let cmd: Command = Install::builder().build().into();
+    let res = async_with_vars(
+        [("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))],
+        run(cmd, Verbosity::default()),
+    )
+    .await;
+    assert!(res.is_ok(), "{res:?}");
+
+    let install_path = dir.join("dependencies/mylib-1.0.0");
+    // the archive's repository metadata never reached the install directory, so its
+    // `submodule.<name>.update` command could not run. The `.git` that is there was created by
+    // `git init` while re-adding the submodules
+    assert!(!install_path.join(".git/pwn-marker").exists());
+    let git_config = fs::read_to_string(install_path.join(".git/config")).unwrap();
+    assert!(!git_config.contains("update = !"), "{git_config}");
+    assert!(!install_path.join("pwned").exists());
+    // and the package still installs, submodule included
+    assert!(install_path.join(".gitmodules").exists());
+    assert!(install_path.join("lib/forge-std/src/Test.sol").exists());
+}
+
 #[tokio::test]
 async fn test_install_registry_any_version() {
     let dir = testdir!();

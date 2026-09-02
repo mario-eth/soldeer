@@ -669,6 +669,10 @@ async fn install_dependency_inner(
 /// This function checks for a `.gitmodules` file in the dependency directory and clones the
 /// submodules if it exists. If a valid Soldeer config is found at the project root (optionally a
 /// sub-dir of the dependency folder), the soldeer dependencies are installed.
+///
+/// Archives get their repository metadata stripped during extraction. Any `.git`
+/// found here was created by us, either by [`clone_repo`] for a git dependency
+/// or by [`reinit_submodules`].
 fn install_subdependencies(
     path: impl AsRef<Path>,
     project_root: Option<&PathBuf>,
@@ -679,7 +683,7 @@ fn install_subdependencies(
         if fs::metadata(&gitmodules_path).await.is_ok() {
             debug!(path:?; "found .gitmodules, installing subdependencies with git");
             if fs::metadata(path.join(".git")).await.is_ok() {
-                debug!(path:?; "subdependency contains .git directory, cloning submodules");
+                debug!(path:?; "subdependency is a git repo we created, cloning submodules");
                 run_git_command(&["submodule", "update", "--init"], Some(&path)).await?;
                 // we need to recurse into each of the submodules to ensure any soldeer sub-deps
                 // of those are also installed

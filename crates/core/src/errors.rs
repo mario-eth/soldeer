@@ -118,7 +118,10 @@ pub enum DownloadError {
     HttpError(#[from] reqwest::Error),
 
     #[error("error extracting dependency: {0}")]
-    UnzipError(#[from] zip_extract::ZipExtractError),
+    UnzipError(#[from] zip::result::ZipError),
+
+    #[error("archive entry has an unsafe path: {0}")]
+    InvalidArchivePath(String),
 
     #[error("error during git command {args:?}: {message}")]
     GitError { message: String, args: Vec<String> },

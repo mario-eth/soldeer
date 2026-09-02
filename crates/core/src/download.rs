@@ -8,11 +8,12 @@ use log::{debug, trace, warn};
 use reqwest::{IntoUrl, Url};
 use std::{
     fs,
-    io::Cursor,
+    io::{Read, Seek},
     path::{Path, PathBuf},
     str,
 };
 use tokio::io::AsyncWriteExt as _;
+use zip::{ZipArchive, read::root_dir_common_filter};
 
 pub type Result<T> = std::result::Result<T, DownloadError>;
 
@@ -51,20 +52,24 @@ pub async fn download_file(
 /// which wrap the contents in a root folder (e.g. GitHub-generated zips for custom URL
 /// dependencies), but must not be done for registry packages, where any top-level directory is
 /// part of the published package's layout.
+///
+/// Git repository metadata contained in the archive is never extracted. Symlink entries are written
+/// as regular files holding their target path, and any entry whose path would land outside of
+/// `into` or which names an alternate data stream is rejected.
 pub async fn unzip_file(
     path: impl AsRef<Path>,
     into: impl AsRef<Path>,
     strip_root: bool,
 ) -> Result<()> {
     let path = path.as_ref().to_path_buf();
-    let zip_contents = tokio::fs::read(&path)
-        .await
-        .map_err(|e| DownloadError::IOError { path: path.clone(), source: e })?;
-
     tokio::task::spawn_blocking({
+        let path = path.clone();
         let out_dir = into.as_ref().to_path_buf();
-        #[allow(deprecated)] // until we can get rid of zip_extract
-        move || zip_extract::extract(Cursor::new(zip_contents), &out_dir, strip_root)
+        move || {
+            let file = fs::File::open(&path)
+                .map_err(|e| DownloadError::IOError { path: path.clone(), source: e })?;
+            extract_dependency_archive(file, &out_dir, strip_root)
+        }
     })
     .await??;
     debug!(file:? = path, dest:? = into.as_ref(); "unzipped file");
@@ -220,12 +225,97 @@ fn install_path_matches(dependency: &Dependency, path: impl AsRef<Path>) -> bool
     path_matches(dependency, path)
 }
 
+/// Extract a downloaded dependency archive into `dir`, which is created if it does not exist.
+///
+/// Git repository metadata is skipped, we never need the publisher's metadata and it's dangerous
+/// since we then run git commands in that folder. Other dotfiles such as `.gitmodules`,
+/// `.gitignore` and `.gitattributes` are part of the package and are extracted as usual.
+///
+/// Symlink entries are written as regular files holding their target path. Entries whose path would
+/// land outside of `dir` or which name an alternate data stream are rejected, and on unix the file
+/// permissions recorded in the archive are preserved minus the setuid/setgid/sticky and
+/// group/other write bits.
+///
+/// If `strip_root` is `true` and the archive wraps everything in a single top-level directory,
+/// that directory is stripped. This is desirable for source archives which wrap their contents in
+/// a root folder, but must not be done for registry packages.
+fn extract_dependency_archive(
+    source: impl Read + Seek,
+    dir: &Path,
+    strip_root: bool,
+) -> Result<()> {
+    let mut archive = ZipArchive::new(source)?;
+    let root = if strip_root { archive.root_dir(root_dir_common_filter)? } else { None };
+    let mut skipped = 0usize;
+    fs::create_dir_all(dir)
+        .map_err(|e| DownloadError::IOError { path: dir.to_path_buf(), source: e })?;
+    for index in 0..archive.len() {
+        let mut entry = archive.by_index(index)?;
+        let Some(name) = entry.enclosed_name() else {
+            // entry cannot be placed inside the destination safely
+            return Err(DownloadError::InvalidArchivePath(entry.name().to_string()));
+        };
+        // entries filtered out of the root detection may not live under the root
+        let name = root.as_ref().map_or(name.as_path(), |r| name.strip_prefix(r).unwrap_or(&name));
+        if name.as_os_str().is_empty() {
+            continue; // the stripped top-level directory itself
+        }
+        let mut is_git_metadata = false;
+        for component in name.components() {
+            let Some(component) = component.as_os_str().to_str() else {
+                continue; // a non-unicode name cannot be `.git` and cannot name a stream
+            };
+            if component.contains(':') {
+                // `foo:bar` writes to an alternate data stream of `foo` on windows
+                return Err(DownloadError::InvalidArchivePath(entry.name().to_string()));
+            }
+            // the win32 path parser strips trailing dots and spaces from each component, so we need
+            // to trim on every platform to have the same integrity checksum
+            is_git_metadata |= component.trim_end_matches(['.', ' ']).eq_ignore_ascii_case(".git");
+        }
+        if is_git_metadata {
+            trace!(entry = entry.name(); "skipping git metadata found in archive");
+            skipped += 1;
+            continue;
+        }
+        let out_path = dir.join(name);
+        trace!(entry = entry.name(), path:? = out_path; "extracting archive entry");
+        if entry.is_dir() {
+            fs::create_dir_all(&out_path)
+                .map_err(|e| DownloadError::IOError { path: out_path.clone(), source: e })?;
+            continue;
+        }
+        if let Some(parent) = out_path.parent() {
+            fs::create_dir_all(parent)
+                .map_err(|e| DownloadError::IOError { path: parent.to_path_buf(), source: e })?;
+        }
+        let mut out_file = fs::File::create(&out_path)
+            .map_err(|e| DownloadError::IOError { path: out_path.clone(), source: e })?;
+        std::io::copy(&mut entry, &mut out_file)
+            .map_err(|e| DownloadError::IOError { path: out_path.clone(), source: e })?;
+        #[cfg(unix)]
+        if let Some(mode) = entry.unix_mode().filter(|_| !entry.is_symlink()) {
+            use std::os::unix::fs::PermissionsExt as _;
+            // the recorded mode is cleaned up to remove setuid/setgid/sticky, and also the `group`
+            // + `other` write bits which don't really make a lot of sense for dependencies
+            fs::set_permissions(&out_path, fs::Permissions::from_mode(mode & 0o777 & !0o022))
+                .map_err(|e| DownloadError::IOError { path: out_path.clone(), source: e })?;
+        }
+    }
+    if skipped > 0 {
+        warn!(skipped, dir:?; "skipped git metadata entries found in archive");
+    }
+    debug!(dir:?; "extracted archive");
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::{config::HttpDependency, push::zip_file};
-    use std::fs;
+    use std::{fs, io::Write as _};
     use testdir::testdir;
+    use zip::{ZipWriter, write::SimpleFileOptions};
 
     #[tokio::test]
     async fn test_download_file() {
@@ -257,6 +347,187 @@ mod tests {
         let file_path = out_dir.join("file.txt");
         assert!(file_path.exists());
         assert!(!zip_path.exists());
+    }
+
+    #[tokio::test]
+    async fn test_unzip_file_strips_git_metadata() {
+        let dir = testdir!();
+        let zip_path = dir.join("metadata.zip");
+        let file = fs::File::create(&zip_path).unwrap();
+        let mut zip = ZipWriter::new(file);
+        let opts = SimpleFileOptions::default();
+        zip.start_file(".git/config", opts).unwrap();
+        zip.write_all(b"[submodule \"lib/dep\"]\n\tupdate = !touch pwned\n").unwrap();
+        zip.start_file("lib/dep/.git", opts).unwrap();
+        zip.write_all(b"gitdir: ../../.git/modules/dep\n").unwrap();
+        zip.start_file(".gitmodules", opts).unwrap();
+        zip.write_all(b"[submodule \"lib/dep\"]\n\tpath = lib/dep\n").unwrap();
+        zip.start_file("src/Contract.sol", opts).unwrap();
+        zip.write_all(b"contract Contract {}\n").unwrap();
+        zip.finish().unwrap();
+
+        let out_dir = dir.join("out");
+        unzip_file(&zip_path, &out_dir, false).await.unwrap();
+        // the archive-controlled git metadata never lands on disk
+        assert!(!out_dir.join(".git").exists());
+        assert!(!out_dir.join("lib/dep/.git").exists());
+        // everything else is extracted as usual
+        assert!(out_dir.join(".gitmodules").exists());
+        assert!(out_dir.join("src/Contract.sol").exists());
+    }
+
+    #[tokio::test]
+    async fn test_unzip_file_strips_disguised_git_metadata() {
+        // the win32 path parser strips trailing dots and spaces from each component, so these all
+        // name the `.git` directory once they reach the filesystem on windows
+        let dir = testdir!();
+        let zip_path = dir.join("disguised.zip");
+        let file = fs::File::create(&zip_path).unwrap();
+        let mut zip = ZipWriter::new(file);
+        let opts = SimpleFileOptions::default();
+        for name in [".git./config", ".git /config", ".GIT/config", "lib/dep/.git.", "src/.git ."] {
+            zip.start_file(name, opts).unwrap();
+            zip.write_all(b"[core]\n").unwrap();
+        }
+        zip.start_file("src/Contract.sol", opts).unwrap();
+        zip.write_all(b"contract Contract {}\n").unwrap();
+        zip.finish().unwrap();
+
+        let out_dir = dir.join("out");
+        unzip_file(&zip_path, &out_dir, false).await.unwrap();
+        for name in [".git", ".git.", ".git ", ".GIT", "lib/dep/.git.", "src/.git ."] {
+            assert!(!out_dir.join(name).exists(), "{name} was extracted");
+        }
+        assert!(out_dir.join("src/Contract.sol").exists());
+    }
+
+    #[tokio::test]
+    async fn test_unzip_file_rejects_alternate_data_stream() {
+        let dir = testdir!();
+        let zip_path = dir.join("stream.zip");
+        let file = fs::File::create(&zip_path).unwrap();
+        let mut zip = ZipWriter::new(file);
+        zip.start_file("src/Contract.sol:hidden", SimpleFileOptions::default()).unwrap();
+        zip.write_all(b"hidden\n").unwrap();
+        zip.finish().unwrap();
+
+        let out_dir = dir.join("out");
+        let res = unzip_file(&zip_path, &out_dir, false).await;
+        assert!(
+            matches!(&res, Err(DownloadError::InvalidArchivePath(entry)) if entry == "src/Contract.sol:hidden"),
+            "{res:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_unzip_file_rejects_path_escape() {
+        let dir = testdir!();
+        let zip_path = dir.join("escape.zip");
+        let file = fs::File::create(&zip_path).unwrap();
+        let mut zip = ZipWriter::new(file);
+        zip.start_file("../escaped.txt", SimpleFileOptions::default()).unwrap();
+        zip.write_all(b"escaped\n").unwrap();
+        zip.finish().unwrap();
+
+        let out_dir = dir.join("out");
+        let res = unzip_file(&zip_path, &out_dir, false).await;
+        assert!(
+            matches!(&res, Err(DownloadError::InvalidArchivePath(entry)) if entry == "../escaped.txt"),
+            "{res:?}"
+        );
+        assert!(!dir.join("escaped.txt").exists());
+    }
+
+    #[tokio::test]
+    async fn test_unzip_file_accepts_absolute_entry_names() {
+        // some archives in the wild record entries with a leading slash, they are extracted
+        // relative to the destination like any other entry
+        let dir = testdir!();
+        let zip_path = dir.join("absolute.zip");
+        let file = fs::File::create(&zip_path).unwrap();
+        let mut zip = ZipWriter::new(file);
+        zip.start_file("/LICENSE-APACHE", SimpleFileOptions::default()).unwrap();
+        zip.write_all(b"Apache-2.0\n").unwrap();
+        zip.start_file("src/Contract.sol", SimpleFileOptions::default()).unwrap();
+        zip.write_all(b"contract Contract {}\n").unwrap();
+        zip.finish().unwrap();
+
+        let out_dir = dir.join("out");
+        unzip_file(&zip_path, &out_dir, false).await.unwrap();
+        assert_eq!(fs::read_to_string(out_dir.join("LICENSE-APACHE")).unwrap(), "Apache-2.0\n");
+        assert!(out_dir.join("src/Contract.sol").exists());
+    }
+
+    #[tokio::test]
+    async fn test_unzip_file_does_not_create_symlinks() {
+        let dir = testdir!();
+        let zip_path = dir.join("symlink.zip");
+        let file = fs::File::create(&zip_path).unwrap();
+        let mut zip = ZipWriter::new(file);
+        zip.add_symlink("link", "../../secret", SimpleFileOptions::default()).unwrap();
+        zip.start_file("file.txt", SimpleFileOptions::default()).unwrap();
+        zip.write_all(b"ok\n").unwrap();
+        zip.finish().unwrap();
+
+        let out_dir = dir.join("out");
+        unzip_file(&zip_path, &out_dir, false).await.unwrap();
+        // symlink entries are written as regular files, they never become links out of the folder
+        let link = out_dir.join("link");
+        assert!(!fs::symlink_metadata(&link).unwrap().file_type().is_symlink());
+        assert_eq!(fs::read_to_string(&link).unwrap(), "../../secret");
+        // the entry records the symlink mode `0o120777`, which must not land as a world-writable
+        // file once the format bits are dropped
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt as _;
+
+            assert_ne!(fs::metadata(&link).unwrap().permissions().mode() & 0o777, 0o777);
+        }
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn test_unzip_file_read_only_dir_entry() {
+        // a read-only directory recorded in the archive must not stop its children being written
+        let dir = testdir!();
+        let zip_path = dir.join("readonly.zip");
+        let file = fs::File::create(&zip_path).unwrap();
+        let mut zip = ZipWriter::new(file);
+        zip.add_directory("locked", SimpleFileOptions::default().unix_permissions(0o555)).unwrap();
+        zip.start_file("locked/file.txt", SimpleFileOptions::default()).unwrap();
+        zip.write_all(b"readable\n").unwrap();
+        zip.finish().unwrap();
+
+        let out_dir = dir.join("out");
+        unzip_file(&zip_path, &out_dir, false).await.unwrap();
+        assert_eq!(fs::read_to_string(out_dir.join("locked/file.txt")).unwrap(), "readable\n");
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn test_unzip_file_preserves_unix_mode() {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let dir = testdir!();
+        let zip_path = dir.join("modes.zip");
+        let file = fs::File::create(&zip_path).unwrap();
+        let mut zip = ZipWriter::new(file);
+        zip.start_file("run.sh", SimpleFileOptions::default().unix_permissions(0o755)).unwrap();
+        zip.write_all(b"#!/bin/sh\n").unwrap();
+        zip.start_file("plain.txt", SimpleFileOptions::default().unix_permissions(0o644)).unwrap();
+        zip.write_all(b"plain\n").unwrap();
+        zip.start_file("shared.txt", SimpleFileOptions::default().unix_permissions(0o777)).unwrap();
+        zip.write_all(b"shared\n").unwrap();
+        zip.finish().unwrap();
+
+        let out_dir = dir.join("out");
+        unzip_file(&zip_path, &out_dir, false).await.unwrap();
+        let mode =
+            |name: &str| fs::metadata(out_dir.join(name)).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode("run.sh"), 0o755);
+        assert_eq!(mode("plain.txt"), 0o644);
+        // the archive cannot hand out write access to anyone but the owner
+        assert_eq!(mode("shared.txt"), 0o755);
     }
 
     #[tokio::test]

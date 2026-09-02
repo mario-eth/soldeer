@@ -1,7 +1,6 @@
 [package]
 name = "soldeer-commands"
 description = "High-level commands for the Soldeer CLI"
-authors.workspace = true
 categories.workspace = true
 edition.workspace = true
 exclude.workspace = true

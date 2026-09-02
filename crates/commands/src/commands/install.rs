@@ -135,7 +135,10 @@ pub(crate) async fn install_command(paths: &Paths, cmd: Install) -> Result<()> {
                 config.recursive_deps,
                 progress,
             )
-            .await?;
+            .await
+            .inspect_err(|e| {
+                bars.set_error(e);
+            })?;
             bars.stop_all();
             let new_lockfile_content =
                 generate_lockfile_contents(new_locks.clone(), LockFileVersion::default());
@@ -200,7 +203,10 @@ pub(crate) async fn install_command(paths: &Paths, cmd: Install) -> Result<()> {
                 config.recursive_deps,
                 progress,
             )
-            .await?;
+            .await
+            .inspect_err(|e| {
+                bars.set_error(e);
+            })?;
             bars.stop_all();
             // for git deps, we need to add the commit hash before adding them to the
             // config, unless a branch/tag was specified

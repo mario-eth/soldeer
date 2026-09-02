@@ -1,6 +1,13 @@
 #![allow(unused_macros)]
 //! Utils for the commands crate
-use std::{fmt, path::Path};
+use std::{
+    fmt,
+    path::Path,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+};
 
 use crate::ConfigLocation;
 use cliclack::{MultiProgress, ProgressBar, multi_progress, progress_bar, select};
@@ -20,6 +27,7 @@ pub struct Progress {
     unzip: Option<ProgressBar>,
     subdependencies: Option<ProgressBar>,
     integrity: Option<ProgressBar>,
+    stopped: Arc<AtomicBool>,
 }
 
 impl Progress {
@@ -105,6 +113,7 @@ impl Progress {
             unzip: Some(unzip),
             subdependencies: Some(subdependencies),
             integrity: Some(integrity),
+            stopped: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -119,6 +128,7 @@ impl Progress {
 
     /// Stop all progress bars.
     pub fn stop_all(&self) {
+        self.stopped.store(true, Ordering::Relaxed);
         self.versions.as_ref().inspect(|p| p.stop("Done retrieving versions"));
         self.downloads.as_ref().inspect(|p| p.stop("Done downloading dependencies"));
         self.unzip.as_ref().inspect(|p| p.stop("Done unzipping dependencies"));
@@ -127,8 +137,20 @@ impl Progress {
         self.multi.as_ref().inspect(|p| p.stop());
     }
 
+    /// Stop all progress bars and render the header in the error state.
     pub fn set_error(&self, error: impl fmt::Display) {
+        self.stopped.store(true, Ordering::Relaxed);
         self.multi.as_ref().inspect(|m| m.error(error));
+    }
+}
+
+impl Drop for Progress {
+    fn drop(&mut self) {
+        // the bars keep a render thread alive which repaints over anything printed to stderr, so
+        // an early return that skips `stop_all`/`set_error` would hide the error message
+        if !self.stopped.swap(true, Ordering::Relaxed) {
+            self.multi.as_ref().inspect(|m| m.cancel());
+        }
     }
 }
 

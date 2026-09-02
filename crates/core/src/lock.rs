@@ -7,9 +7,9 @@
 //! different machines. It is also used to skip the installation of dependencies that are already
 //! installed.
 use crate::{
-    config::Dependency,
-    errors::LockError,
-    utils::{is_symlink, sanitize_filename},
+    config::{Dependency, GitIdentifier},
+    errors::{LockError, LockMismatch},
+    utils::{is_symlink, sanitize_filename, version_matches_req},
 };
 use log::{debug, warn};
 use serde::{Deserialize, Serialize};
@@ -365,6 +365,111 @@ impl LockEntry {
     pub fn as_private(&self) -> Option<&PrivateLockEntry> {
         if let Self::Private(l) = self { Some(l) } else { None }
     }
+
+    /// Check that this entry describes the dependency declared in the config file.
+    ///
+    /// The name is not checked, since entries are looked up by name in the first place. Registry
+    /// dependencies don't pin a URL in the config, so their download URL is resolved again at
+    /// install time. For git dependencies, we only check consistency with the config if a `rev` is
+    /// provided, as anything more would require talking to a remote.
+    ///
+    /// # Errors
+    /// If the entry's type, version, source URL or pinned commit disagrees with the config.
+    pub fn matches(&self, dependency: &Dependency) -> std::result::Result<(), LockMismatch> {
+        match (self, dependency) {
+            (Self::Http(lock), Dependency::Http(dep)) => {
+                check_version(&lock.version, &dep.version_req, dep.url.is_some())?;
+                if let Some(url) = &dep.url &&
+                    url != &lock.url
+                {
+                    return Err(LockMismatch::Url {
+                        locked: lock.url.clone(),
+                        required: url.clone(),
+                    });
+                }
+                Ok(())
+            }
+            (Self::Private(lock), Dependency::Http(dep)) => {
+                // private dependencies always come from the registry, so a custom URL can't match
+                if dep.url.is_some() {
+                    return Err(LockMismatch::Type {
+                        locked: "private".to_string(),
+                        required: "http".to_string(),
+                    });
+                }
+                check_version(&lock.version, &dep.version_req, false)
+            }
+            (Self::Git(lock), Dependency::Git(dep)) => {
+                check_version(&lock.version, &dep.version_req, true)?;
+                if lock.git != dep.git {
+                    return Err(LockMismatch::Git {
+                        locked: lock.git.clone(),
+                        required: dep.git.clone(),
+                    });
+                }
+                if let Some(GitIdentifier::Rev(rev)) = &dep.identifier &&
+                    rev != &lock.rev
+                {
+                    return Err(LockMismatch::Rev {
+                        locked: lock.rev.clone(),
+                        required: rev.clone(),
+                    });
+                }
+                Ok(())
+            }
+            (lock, dep) => Err(LockMismatch::Type {
+                locked: lock.kind().to_string(),
+                required: match dep {
+                    Dependency::Http(_) => "http".to_string(),
+                    Dependency::Git(_) => "git".to_string(),
+                },
+            }),
+        }
+    }
+
+    /// The kind of dependency this entry describes, for diagnostics.
+    fn kind(&self) -> &'static str {
+        match self {
+            Self::Git(_) => "git",
+            Self::Http(_) => "http",
+            Self::Private(_) => "private",
+        }
+    }
+}
+
+/// Check that a locked version is compatible with the version requirement from the config.
+///
+/// Git dependencies and HTTP dependencies with a custom URL store the requirement string verbatim
+/// as their version, since there is no registry to resolve a range against, so they are compared
+/// exactly.
+fn check_version(
+    locked: &str,
+    version_req: &str,
+    exact: bool,
+) -> std::result::Result<(), LockMismatch> {
+    let matches =
+        if exact { locked == version_req } else { version_matches_req(locked, version_req) };
+    if matches {
+        return Ok(());
+    }
+    Err(LockMismatch::Version { locked: locked.to_string(), required: version_req.to_string() })
+}
+
+/// Find the lockfile entry corresponding to a dependency from the config file.
+///
+/// # Errors
+/// If an entry exists for that dependency name but disagrees with the config.
+pub fn lock_for_dependency<'a>(
+    locks: &'a [LockEntry],
+    dependency: &Dependency,
+) -> Result<Option<&'a LockEntry>> {
+    let Some(lock) = locks.iter().find(|l| l.name() == dependency.name()) else {
+        debug!(dep:% = dependency; "no lockfile entry for dependency");
+        return Ok(None);
+    };
+    lock.matches(dependency)
+        .map_err(|source| LockError::Mismatch { dep: dependency.to_string(), source })?;
+    Ok(Some(lock))
 }
 
 impl From<HttpLockEntry> for LockEntry {
@@ -585,7 +690,157 @@ fn replace_file(contents: &str, path: &Path) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::{GitDependency, HttpDependency};
     use testdir::testdir;
+
+    fn http_lock(version: &str, url: &str) -> LockEntry {
+        HttpLockEntry::builder()
+            .name("mylib")
+            .version(version)
+            .url(url)
+            .checksum("dead")
+            .integrity("beef")
+            .build()
+            .into()
+    }
+
+    fn git_lock(version: &str, git: &str, rev: &str) -> LockEntry {
+        GitLockEntry::builder().name("mylib").version(version).git(git).rev(rev).build().into()
+    }
+
+    #[test]
+    fn test_check_matches_registry_version() {
+        let lock = http_lock("1.2.0", "https://example.com/mylib.zip");
+        // the lockfile records the resolved version, which must satisfy the requirement
+        for req in ["^1.0.0", "1.2.0", "*", ">=1.1.0, <2.0.0"] {
+            let dep = HttpDependency::builder().name("mylib").version_req(req).build().into();
+            assert!(lock.matches(&dep).is_ok(), "{req}");
+        }
+        for req in ["^2.0.0", "1.1.0", "=1.3.0"] {
+            let dep = HttpDependency::builder().name("mylib").version_req(req).build().into();
+            assert!(matches!(lock.matches(&dep), Err(LockMismatch::Version { .. })), "{req}");
+        }
+    }
+
+    #[test]
+    fn test_check_matches_custom_url() {
+        let lock = http_lock("1.0.0", "https://example.com/mylib.zip");
+        let dep = HttpDependency::builder()
+            .name("mylib")
+            .version_req("1.0.0")
+            .url("https://example.com/mylib.zip")
+            .build()
+            .into();
+        assert!(lock.matches(&dep).is_ok());
+
+        // a lockfile entry cannot repoint a dependency at another URL
+        let dep = HttpDependency::builder()
+            .name("mylib")
+            .version_req("1.0.0")
+            .url("https://evil.com/mylib.zip")
+            .build()
+            .into();
+        assert!(matches!(lock.matches(&dep), Err(LockMismatch::Url { .. })));
+
+        // for a custom URL the version requirement is stored verbatim, so it is compared exactly
+        let dep = HttpDependency::builder()
+            .name("mylib")
+            .version_req("^1.0.0")
+            .url("https://example.com/mylib.zip")
+            .build()
+            .into();
+        assert!(matches!(lock.matches(&dep), Err(LockMismatch::Version { .. })));
+    }
+
+    #[test]
+    fn test_check_matches_git() {
+        let rev = "78c2f6a1a54db26bab6c3f501854a1564eb3707f";
+        let lock = git_lock("1.0.0", "git@github.com:foo/bar.git", rev);
+        let dep = GitDependency::builder()
+            .name("mylib")
+            .version_req("1.0.0")
+            .git("git@github.com:foo/bar.git")
+            .build()
+            .into();
+        assert!(lock.matches(&dep).is_ok());
+
+        let dep = GitDependency::builder()
+            .name("mylib")
+            .version_req("1.0.0")
+            .git("git@github.com:evil/bar.git")
+            .build()
+            .into();
+        assert!(matches!(lock.matches(&dep), Err(LockMismatch::Git { .. })));
+
+        // an explicit rev in the config wins over the one recorded in the lockfile
+        let dep = GitDependency::builder()
+            .name("mylib")
+            .version_req("1.0.0")
+            .git("git@github.com:foo/bar.git")
+            .identifier(GitIdentifier::from_rev("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"))
+            .build()
+            .into();
+        assert!(matches!(lock.matches(&dep), Err(LockMismatch::Rev { .. })));
+
+        // a branch can only be resolved by talking to the remote, so it is not compared
+        let dep = GitDependency::builder()
+            .name("mylib")
+            .version_req("1.0.0")
+            .git("git@github.com:foo/bar.git")
+            .identifier(GitIdentifier::from_branch("main"))
+            .build()
+            .into();
+        assert!(lock.matches(&dep).is_ok());
+    }
+
+    #[test]
+    fn test_check_matches_type() {
+        let git = git_lock("1.0.0", "git@github.com:foo/bar.git", "dead");
+        let dep = HttpDependency::builder().name("mylib").version_req("1.0.0").build().into();
+        assert!(matches!(git.matches(&dep), Err(LockMismatch::Type { .. })));
+
+        let http = http_lock("1.0.0", "https://example.com/mylib.zip");
+        let dep = GitDependency::builder()
+            .name("mylib")
+            .version_req("1.0.0")
+            .git("git@github.com:foo/bar.git")
+            .build()
+            .into();
+        assert!(matches!(http.matches(&dep), Err(LockMismatch::Type { .. })));
+
+        // private entries come from the registry, so they can't back a custom URL
+        let private: LockEntry = PrivateLockEntry::builder()
+            .name("mylib")
+            .version("1.0.0")
+            .checksum("dead")
+            .integrity("beef")
+            .build()
+            .into();
+        let dep = HttpDependency::builder().name("mylib").version_req("1.0.0").build().into();
+        assert!(private.matches(&dep).is_ok());
+        let dep = HttpDependency::builder()
+            .name("mylib")
+            .version_req("1.0.0")
+            .url("https://example.com/mylib.zip")
+            .build()
+            .into();
+        assert!(matches!(private.matches(&dep), Err(LockMismatch::Type { .. })));
+    }
+
+    #[test]
+    fn test_lock_for_dependency() {
+        let locks = vec![http_lock("1.2.0", "https://example.com/mylib.zip")];
+        let dep = HttpDependency::builder().name("mylib").version_req("^1.0.0").build().into();
+        assert!(lock_for_dependency(&locks, &dep).unwrap().is_some());
+
+        // a dependency without an entry is not an error, it just gets installed from the config
+        let dep = HttpDependency::builder().name("other").version_req("^1.0.0").build().into();
+        assert!(lock_for_dependency(&locks, &dep).unwrap().is_none());
+
+        let dep = HttpDependency::builder().name("mylib").version_req("^2.0.0").build().into();
+        let res = lock_for_dependency(&locks, &dep);
+        assert!(matches!(res, Err(LockError::Mismatch { .. })), "{res:?}");
+    }
 
     #[test]
     fn test_toml_to_lock_entry_conversion_http() {

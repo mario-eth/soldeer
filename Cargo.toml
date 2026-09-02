@@ -1,9 +1,8 @@
 [workspace]
 members = ["crates/cli", "crates/core", "crates/commands"]
-resolver = "2"
+resolver = "3"
 
 [workspace.package]
-authors = ["m4rio"]
 categories = ["development-tools"]
 description = "A minimal Solidity package manager written in Rust, best used with Foundry"
 edition = "2024"

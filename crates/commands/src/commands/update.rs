@@ -70,7 +70,10 @@ pub(crate) async fn update_command(paths: &Paths, cmd: Update) -> Result<()> {
         config.recursive_deps,
         progress,
     )
-    .await?;
+    .await
+    .inspect_err(|e| {
+        bars.set_error(e);
+    })?;
     bars.stop_all();
 
     let new_lockfile_content = generate_lockfile_contents(new_locks, LockFileVersion::default());

@@ -329,18 +329,22 @@ pub fn path_matches(dependency: &Dependency, path: impl AsRef<Path>) -> bool {
     };
     let dir_name = dir_name.to_string_lossy();
     let prefix = format!("{}-", sanitize_filename(dependency.name()));
-    if !dir_name.starts_with(&prefix) {
+    let Some(version) = dir_name.strip_prefix(&prefix) else {
         return false;
-    }
-    match (
-        parse_version_req(dependency.version_req()),
-        Version::parse(dir_name.strip_prefix(&prefix).expect("prefix should be present")),
-    ) {
+    };
+    version_matches_req(version, dependency.version_req())
+}
+
+/// Check if a resolved version satisfies a dependency's version requirement.
+///
+/// If either side is not semver compliant, the two strings are compared after sanitization, since
+/// that is the form in which non-semver versions appear in folder names.
+pub fn version_matches_req(version: &str, version_req: &str) -> bool {
+    match (parse_version_req(version_req), Version::parse(version)) {
+        (Some(req), Ok(version)) => req.matches(&version),
         (None, _) | (Some(_), Err(_)) => {
-            // not semver compliant
-            dir_name == format!("{prefix}{}", sanitize_filename(dependency.version_req()))
+            sanitize_filename(version) == sanitize_filename(version_req)
         }
-        (Some(version_req), Ok(version)) => version_req.matches(&version),
     }
 }
 

@@ -44,7 +44,13 @@ pub async fn update_dependencies(
             let d = dep.clone();
             let p = progress.clone();
 
-            let lock = locks.iter().find(|l| l.name() == dep.name()).cloned();
+            // during updating, we skip lockfile entries which do not match on all criteria, so we
+            // can generate a new lockfile that corresponds to the updated config entry.
+            let lock = locks
+                .iter()
+                .find(|l| l.name() == dep.name())
+                .filter(|l| l.matches(dep).is_ok())
+                .cloned();
             let paths = deps_path.as_ref().to_path_buf();
             async move {
                 update_dependency(&d, lock.as_ref(), lock_version, &paths, recursive_deps, p).await

@@ -118,7 +118,10 @@ pub enum DownloadError {
     HttpError(#[from] reqwest::Error),
 
     #[error("error extracting dependency: {0}")]
-    UnzipError(#[from] zip_extract::ZipExtractError),
+    UnzipError(#[from] zip::result::ZipError),
+
+    #[error("archive entry has an unsafe path: {0}")]
+    InvalidArchivePath(String),
 
     #[error("error during git command {args:?}: {message}")]
     GitError { message: String, args: Vec<String> },
@@ -197,6 +200,9 @@ pub enum LockError {
     #[error("lock entry does not match a valid format")]
     InvalidLockEntry,
 
+    #[error("lockfile entry for {dep} does not match the config: {source} (run `soldeer update`)")]
+    Mismatch { dep: String, source: LockMismatch },
+
     #[error("missing `{field}` field in lock entry for {dep}")]
     MissingField { field: String, dep: String },
 
@@ -208,6 +214,28 @@ pub enum LockError {
 
     #[error("error parsing soldeer.lock TOML contents: {0}")]
     TomlDeserializeError(#[from] toml_edit::de::Error),
+}
+
+/// The reason why a lockfile entry does not correspond to the dependency declared in the config.
+#[derive(Error, Debug)]
+#[non_exhaustive]
+pub enum LockMismatch {
+    #[error(
+        "locked entry is a {locked} dependency but the config declares a {required} dependency"
+    )]
+    Type { locked: String, required: String },
+
+    #[error("locked version {locked} does not match the requirement {required}")]
+    Version { locked: String, required: String },
+
+    #[error("locked URL {locked} does not match the configured URL {required}")]
+    Url { locked: String, required: String },
+
+    #[error("locked git remote {locked} does not match the configured remote {required}")]
+    Git { locked: String, required: String },
+
+    #[error("locked commit {locked} does not match the configured rev {required}")]
+    Rev { locked: String, required: String },
 }
 
 #[derive(Error, Debug)]

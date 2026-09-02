@@ -4,14 +4,15 @@
 //! lockfile. Dependencies can be installed in parallel.
 use crate::{
     config::{
-        Dependency, GitIdentifier, HttpDependency, Paths, detect_config_location, read_config_deps,
+        Dependency, GitIdentifier, Paths, detect_config_location, read_config_deps,
         read_soldeer_config,
     },
     download::{clone_repo, delete_dependency_files, download_file, unzip_file},
     errors::{ConfigError, InstallError, LockError},
     lock::{
         GitLockEntry, HttpLockEntry, Integrity, LockEntry, LockFileVersion, PrivateLockEntry,
-        forge, format_install_path, generate_lockfile_contents, read_lockfile, write_lockfile,
+        forge, format_install_path, generate_lockfile_contents, lock_for_dependency, read_lockfile,
+        write_lockfile,
     },
     registry::{DownloadUrl, get_dependency_url_remote, get_latest_supported_version},
     utils::{
@@ -269,21 +270,30 @@ impl From<GitInstallInfo> for InstallInfo {
 }
 
 impl InstallInfo {
-    async fn from_lock(
-        lock: LockEntry,
-        project_root: Option<PathBuf>,
-        zip_strip_root: bool,
-    ) -> Result<Self> {
+    /// Build the installation information for a dependency which has a matching lockfile entry.
+    async fn from_lock(lock: LockEntry, dependency: &Dependency) -> Result<Self> {
+        let project_root = dependency.project_root();
         match lock {
-            LockEntry::Http(lock) => Ok(HttpInstallInfo {
-                name: lock.name,
-                version: lock.version,
-                url: lock.url,
-                checksum: Some(lock.checksum),
-                project_root,
-                zip_strip_root,
+            LockEntry::Http(lock) => {
+                let config_url = match dependency {
+                    Dependency::Http(dep) => dep.url.clone(),
+                    Dependency::Git(_) => None,
+                };
+                let zip_strip_root = config_url.is_some();
+                let url = match config_url {
+                    Some(url) => url,
+                    None => get_dependency_url_remote(dependency, &lock.version).await?.url,
+                };
+                Ok(HttpInstallInfo {
+                    name: lock.name,
+                    version: lock.version,
+                    url,
+                    checksum: Some(lock.checksum),
+                    project_root,
+                    zip_strip_root,
+                }
+                .into())
             }
-            .into()),
             LockEntry::Git(lock) => Ok(GitInstallInfo {
                 name: lock.name,
                 version: lock.version,
@@ -294,15 +304,7 @@ impl InstallInfo {
             .into()),
             LockEntry::Private(lock) => {
                 // need to retrieve a signed download URL from the registry
-                let download = get_dependency_url_remote(
-                    &HttpDependency::builder()
-                        .name(&lock.name)
-                        .version_req(&lock.version)
-                        .build()
-                        .into(),
-                    &lock.version,
-                )
-                .await?;
+                let download = get_dependency_url_remote(dependency, &lock.version).await?;
                 Ok(Self::Private(HttpInstallInfo {
                     name: lock.name,
                     version: lock.version,
@@ -344,10 +346,10 @@ pub async fn install_dependencies(
     let mut set = JoinSet::new();
     for dep in dependencies {
         debug!(dep:% = dep; "spawning task to install dependency");
+        let lock = lock_for_dependency(locks, dep)?.cloned();
         set.spawn({
             let d = dep.clone();
             let p = progress.clone();
-            let lock = locks.iter().find(|l| l.name() == dep.name()).cloned();
             let deps = deps.as_ref().to_path_buf();
             async move {
                 install_dependency(&d, lock.as_ref(), lock_version, deps, None, recursive_deps, p)
@@ -384,7 +386,7 @@ pub async fn install_dependencies_sequential(
     let mut results = Vec::new();
     for dep in dependencies {
         debug!(dep:% = dep; "installing dependency sequentially");
-        let lock = locks.iter().find(|l| l.name() == dep.name());
+        let lock = lock_for_dependency(locks, dep)?;
         results.push(
             install_dependency(
                 dep,
@@ -505,14 +507,7 @@ pub async fn install_dependency(
             }
         }
         install_dependency_inner(
-            &InstallInfo::from_lock(
-                lock.clone(),
-                dependency.project_root(),
-                // custom URLs point to source archives which may wrap the contents in a root
-                // folder; registry archives never do
-                dependency.url().is_some(),
-            )
-            .await?,
+            &InstallInfo::from_lock(lock.clone(), dependency).await?,
             lock.install_path(&deps),
             recursive_deps,
             progress,
@@ -687,6 +682,10 @@ async fn install_dependency_inner(
 /// This function checks for a `.gitmodules` file in the dependency directory and clones the
 /// submodules if it exists. If a valid Soldeer config is found at the project root (optionally a
 /// sub-dir of the dependency folder), the soldeer dependencies are installed.
+///
+/// Archives get their repository metadata stripped during extraction. Any `.git`
+/// found here was created by us, either by [`clone_repo`] for a git dependency
+/// or by [`reinit_submodules`].
 fn install_subdependencies(
     path: impl AsRef<Path>,
     project_root: Option<&PathBuf>,
@@ -697,7 +696,7 @@ fn install_subdependencies(
         if fs::metadata(&gitmodules_path).await.is_ok() {
             debug!(path:?; "found .gitmodules, installing subdependencies with git");
             if fs::metadata(path.join(".git")).await.is_ok() {
-                debug!(path:?; "subdependency contains .git directory, cloning submodules");
+                debug!(path:?; "subdependency is a git repo we created, cloning submodules");
                 run_git_command(&["submodule", "update", "--init"], Some(&path)).await?;
                 // we need to recurse into each of the submodules to ensure any soldeer sub-deps
                 // of those are also installed

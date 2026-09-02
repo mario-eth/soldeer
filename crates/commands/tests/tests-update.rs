@@ -4,7 +4,9 @@ use soldeer_commands::{
     run,
 };
 use soldeer_core::{
+    SoldeerError,
     config::ConfigLocation,
+    errors::{InstallError, LockError},
     lock::{SOLDEER_LOCK, read_lockfile},
 };
 use std::{fs, path::PathBuf};
@@ -60,6 +62,50 @@ async fn test_update_existing() {
     assert_ne!(version, "1.9.0");
     let remappings = fs::read_to_string(dir.join("remappings.txt")).unwrap();
     assert_eq!(remappings, format!("forge-std-1/=dependencies/forge-std-{version}/\n"));
+    assert!(dir.join("dependencies").join(format!("forge-std-{version}")).exists());
+}
+
+#[tokio::test]
+#[allow(clippy::unwrap_used)]
+async fn test_update_after_config_version_bump() {
+    let dir = testdir!();
+    fs::write(dir.join("soldeer.toml"), "[dependencies]\nforge-std = \"1.9.0\"\n").unwrap();
+    let cmd: Command = Install::default().into();
+    let res = async_with_vars(
+        [("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))],
+        run(cmd, Verbosity::default()),
+    )
+    .await;
+    assert!(res.is_ok(), "{res:?}");
+
+    // require a version which the lockfile entry cannot satisfy
+    fs::write(dir.join("soldeer.toml"), "[dependencies]\nforge-std = \"^1.10.0\"\n").unwrap();
+
+    let cmd: Command = Install::default().into();
+    let res = async_with_vars(
+        [("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))],
+        run(cmd, Verbosity::default()),
+    )
+    .await;
+    assert!(
+        matches!(
+            res.unwrap_err(),
+            SoldeerError::InstallError(InstallError::LockError(LockError::Mismatch { .. }))
+        ),
+        "install should not silently keep the outdated install"
+    );
+
+    // updating re-resolves the dependency from the config
+    let cmd: Command = Update::default().into();
+    let res = async_with_vars(
+        [("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))],
+        run(cmd, Verbosity::default()),
+    )
+    .await;
+    assert!(res.is_ok(), "{res:?}");
+    let lockfile = read_lockfile(dir.join(SOLDEER_LOCK)).unwrap();
+    let version = lockfile.entries.first().unwrap().version();
+    assert_ne!(version, "1.9.0");
     assert!(dir.join("dependencies").join(format!("forge-std-{version}")).exists());
 }
 

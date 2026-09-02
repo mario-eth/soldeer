@@ -1,7 +1,6 @@
 [package]
 name = "soldeer-core"
 description = "Core functionality for Soldeer"
-authors.workspace = true
 categories.workspace = true
 edition.workspace = true
 exclude.workspace = true

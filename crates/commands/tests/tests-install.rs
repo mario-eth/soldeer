@@ -204,6 +204,7 @@ recursive_deps = true
 
     let mut server = mockito::Server::new_async().await;
     server.mock("GET", "/file.zip").with_body_from_file(&zip_path).create_async().await;
+    mock_revision(&mut server, "mylib", "1.0.0").await;
     fs::write(dir.join("soldeer.toml"), contents).unwrap();
 
     let lock = format!(
@@ -220,7 +221,10 @@ integrity = "placeholder"
 
     let cmd: Command = Install::builder().build().into();
     let res = async_with_vars(
-        [("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref()))],
+        [
+            ("SOLDEER_API_URL", Some(server.url().as_str())),
+            ("SOLDEER_PROJECT_ROOT", Some(dir.to_string_lossy().as_ref())),
+        ],
         run(cmd, Verbosity::default()),
     )
     .await;

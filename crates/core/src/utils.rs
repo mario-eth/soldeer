@@ -37,8 +37,10 @@ pub struct IntegrityChecksum(pub String);
 /// can't be sure it's up to date.
 ///
 /// These are passed as command-line `-c` flags, which outrank both the global and the
-/// repository-local config, so the policy holds regardless of the user's git configuration or the
-/// git version in use.
+/// repository-local config. They do not outrank the `GIT_ALLOW_PROTOCOL` environment variable,
+/// which git treats as an allow-list that wins over any config, so [`run_git_command`] removes it
+/// from the child environment. Git versions that predate `protocol.allow` ignore these keys
+/// altogether and cannot be constrained this way.
 const GIT_PROTOCOL_POLICY: [&str; 5] = [
     "protocol.allow=never",
     "protocol.https.allow=always",
@@ -230,7 +232,8 @@ pub fn hash_file(path: impl AsRef<Path>) -> Result<IntegrityChecksum, std::io::E
 
 /// Run a `git` command with the given arguments in the given directory.
 ///
-/// The command runs with terminal prompts disabled and with restricted transport protocols.
+/// The command runs with terminal prompts disabled and with restricted transport protocols (see
+/// [`GIT_PROTOCOL_POLICY`]).
 ///
 /// The function output is parsed as a UTF-8 string and returned.
 pub async fn run_git_command<I, S>(
@@ -245,7 +248,7 @@ where
     for policy in GIT_PROTOCOL_POLICY {
         git.arg("-c").arg(policy);
     }
-    git.args(args.clone()).env("GIT_TERMINAL_PROMPT", "0");
+    git.args(args.clone()).env("GIT_TERMINAL_PROMPT", "0").env_remove("GIT_ALLOW_PROTOCOL");
     if let Some(current_dir) = current_dir {
         git.current_dir(
             canonicalize(current_dir)
@@ -593,6 +596,21 @@ mod tests {
             run_git_command(&["clone", "ext::sh -c true", dest.to_string_lossy().as_ref()], None)
                 .await
                 .unwrap_err();
+        assert!(err.to_string().contains("transport 'ext' not allowed"), "{err}");
+    }
+
+    #[tokio::test]
+    async fn test_git_denies_ext_protocol_with_env_override() {
+        let dir = testdir!();
+        let dest = dir.join("clone");
+        // `GIT_ALLOW_PROTOCOL` is an allow-list that outranks the `-c` policy, so it must not reach
+        // the git child process
+        let err = temp_env::async_with_vars(
+            [("GIT_ALLOW_PROTOCOL", Some("ext"))],
+            run_git_command(&["clone", "ext::sh -c true", dest.to_string_lossy().as_ref()], None),
+        )
+        .await
+        .unwrap_err();
         assert!(err.to_string().contains("transport 'ext' not allowed"), "{err}");
     }
 

@@ -766,6 +766,27 @@ dep3 = { version = "foobar", git = "git@github.com:test/test.git", branch = "foo
     }
 
     #[test]
+    fn test_generate_remappings_update_suffix_is_consistent() {
+        // The path a dependency is remapped to must not depend on whether a
+        // remappings file happened to exist: generating from scratch and
+        // merging into existing remappings have to agree.
+        let dir = testdir!();
+        fs::write(dir.join("soldeer.toml"), "[dependencies]\nlib1 = \"1.0.0\"\n").unwrap();
+        let paths = Paths::from_root(&dir).unwrap();
+        fs::create_dir_all(paths.dependencies.join("lib1-1.0.0").join("src")).unwrap();
+        write_lock(&paths, &[("lib1", "1.0.0")]);
+        let config = SoldeerConfig::default();
+
+        let existing_deps = vec![("lib1-1.0.0/", "dependencies/lib1-1.0.0/")];
+        let merged =
+            generate_remappings(&RemappingsAction::Update, &paths, &config, &existing_deps)
+                .unwrap();
+        let from_scratch =
+            generate_remappings(&RemappingsAction::Update, &paths, &config, &[]).unwrap();
+        assert_eq!(merged, from_scratch);
+    }
+
+    #[test]
     fn test_generate_remappings_add() {
         let dir = testdir!();
         fs::write(dir.join("soldeer.toml"), "[dependencies]\n").unwrap();

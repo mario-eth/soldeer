@@ -766,6 +766,23 @@ dep3 = { version = "foobar", git = "git@github.com:test/test.git", branch = "foo
     }
 
     #[test]
+    fn test_generate_remappings_regenerate_keeps_user_removed_source_suffix() {
+        // Same invariant as above, but with `remappings_regenerate` enabled: the
+        // suffix must not come back there either, otherwise every install,
+        // update or uninstall silently rewrites the user's remappings.
+        let dir = testdir!();
+        fs::write(dir.join("soldeer.toml"), "[dependencies]\nlib1 = \"1.0.0\"\n").unwrap();
+        let paths = Paths::from_root(&dir).unwrap();
+        fs::create_dir_all(paths.dependencies.join("lib1-1.0.0").join("src")).unwrap();
+        write_lock(&paths, &[("lib1", "1.0.0")]);
+        let config = SoldeerConfig { remappings_regenerate: true, ..Default::default() };
+
+        let existing_deps = vec![("lib1-1.0.0/", "dependencies/lib1-1.0.0/")];
+        let res = generate_remappings(&RemappingsAction::Update, &paths, &config, &existing_deps);
+        assert_eq!(res.unwrap(), vec!["lib1-1.0.0/=dependencies/lib1-1.0.0/"]);
+    }
+
+    #[test]
     fn test_generate_remappings_update_suffix_is_consistent() {
         // The path a dependency is remapped to must not depend on whether a
         // remappings file happened to exist: generating from scratch and

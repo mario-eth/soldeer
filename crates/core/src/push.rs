@@ -165,14 +165,19 @@ pub fn zip_file(
 /// - `.git/info/exclude`
 /// - `.soldeerignore`
 ///
-/// The `.git` folders are always skipped.
+/// Git metadata is always skipped, both the `.git` folder of a repository and the `.git` gitlink
+/// file that a checked-out submodule has in its place.
 pub fn filter_ignored_files(root_directory_path: impl AsRef<Path>) -> Vec<PathBuf> {
     let (tx, rx) = mpsc::channel::<PathBuf>();
     let walker = WalkBuilder::new(root_directory_path)
         .add_custom_ignore_filename(".soldeerignore")
         .hidden(false)
         .filter_entry(|entry| {
-            !(entry.path().is_dir() && entry.path().file_name().unwrap_or_default() == ".git")
+            !entry
+                .path()
+                .file_name()
+                .and_then(|n| n.to_str())
+                .is_some_and(|n| n.eq_ignore_ascii_case(".git"))
         })
         .build_parallel();
     walker.run(|| {
@@ -368,6 +373,35 @@ mod tests {
         assert_eq!(res.len(), included.len());
         for r in res {
             assert!(included.contains(&r));
+        }
+    }
+
+    #[test]
+    fn test_filter_files_skips_git_metadata() {
+        let dir = testdir!();
+        let mut included = vec![dir.join("Contract.sol")];
+        fs::write(included.last().unwrap(), "contract Contract {}").unwrap();
+
+        // the repo's own git folder
+        fs::create_dir(dir.join(".git")).unwrap();
+        fs::write(dir.join(".git/config"), "[core]\n").unwrap();
+
+        // a checked-out submodule has a gitlink file where the repo has a folder
+        fs::create_dir(dir.join("lib")).unwrap();
+        fs::write(dir.join("lib/.git"), "gitdir: ../.git/modules/lib\n").unwrap();
+        included.push(dir.join("lib/Lib.sol"));
+        fs::write(included.last().unwrap(), "contract Lib {}").unwrap();
+
+        // a differently-cased gitlink must be skipped too, on case-sensitive filesystems
+        fs::create_dir(dir.join("lib2")).unwrap();
+        fs::write(dir.join("lib2/.GIT"), "gitdir: ../.git/modules/lib2\n").unwrap();
+        included.push(dir.join("lib2/Lib2.sol"));
+        fs::write(included.last().unwrap(), "contract Lib2 {}").unwrap();
+
+        let res = filter_ignored_files(&dir);
+        assert_eq!(res.len(), included.len(), "{res:?}");
+        for r in res {
+            assert!(included.contains(&r), "{r:?}");
         }
     }
 

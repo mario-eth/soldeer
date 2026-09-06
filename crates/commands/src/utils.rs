@@ -11,7 +11,9 @@ use std::{
 
 use crate::ConfigLocation;
 use cliclack::{MultiProgress, ProgressBar, multi_progress, progress_bar, select};
-use soldeer_core::{Result, config::detect_config_location, install::InstallMonitoring};
+use soldeer_core::{
+    Result, config::detect_config_location, install::InstallMonitoring, lock::LockFile,
+};
 
 /// Template for the progress bars.
 pub const PROGRESS_TEMPLATE: &str = "[{elapsed_precise}] {bar:30.magenta} ({pos}/{len}) {msg}";
@@ -164,6 +166,15 @@ pub fn get_config_location(
             None => prompt_config_location()?.into(),
         },
     })
+}
+
+/// Tell the user to upgrade Soldeer if the lockfile uses a format we don't know about.
+pub fn warn_unknown_lockfile_version(lockfile: &LockFile) {
+    if let Some(version) = lockfile.unknown_version {
+        warning!(format!(
+            "The lockfile uses format version {version}, which this version of Soldeer does not know about. Please upgrade Soldeer."
+        ));
+    }
 }
 
 /// Prompt the user for their desired config location in case it cannot be auto-detected.

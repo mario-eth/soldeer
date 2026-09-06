@@ -1,7 +1,7 @@
 use super::validate_dependency;
 use crate::{
     ConfigLocation,
-    utils::{Progress, remark, success, warning},
+    utils::{Progress, remark, success, warn_unknown_lockfile_version, warning},
 };
 use clap::Parser;
 use soldeer_core::{
@@ -12,7 +12,10 @@ use soldeer_core::{
     },
     errors::InstallError,
     install::{InstallProgress, ensure_dependencies_dir, install_dependencies, install_dependency},
-    lock::{add_to_lockfile, generate_lockfile_contents, read_lockfile, write_lockfile},
+    lock::{
+        LockFileVersion, add_to_lockfile, generate_lockfile_contents, only_integrity_differs,
+        read_lockfile, write_lockfile,
+    },
     remappings::{RemappingsAction, edit_remappings},
 };
 use std::fs;
@@ -111,6 +114,7 @@ pub(crate) async fn install_command(paths: &Paths, cmd: Install) -> Result<()> {
         None => {
             let lockfile = read_lockfile(&paths.lock)?;
             success!("Done reading lockfile");
+            warn_unknown_lockfile_version(&lockfile);
             if cmd.clean {
                 remark!("Flag `--clean` was set, re-installing all dependencies");
                 fs::remove_dir_all(&paths.dependencies).map_err(|e| InstallError::IOError {
@@ -126,6 +130,7 @@ pub(crate) async fn install_command(paths: &Paths, cmd: Install) -> Result<()> {
             let new_locks = install_dependencies(
                 &dependencies,
                 &lockfile.entries,
+                lockfile.version,
                 &paths.dependencies,
                 config.recursive_deps,
                 progress,
@@ -135,13 +140,25 @@ pub(crate) async fn install_command(paths: &Paths, cmd: Install) -> Result<()> {
                 bars.set_error(e);
             })?;
             bars.stop_all();
-            let new_lockfile_content = generate_lockfile_contents(new_locks);
-            if !lockfile.raw.is_empty() && new_lockfile_content != lockfile.raw {
+            let new_lockfile_content =
+                generate_lockfile_contents(new_locks.clone(), LockFileVersion::default());
+            if lockfile.raw.is_empty() {
+                write_lockfile(&new_lockfile_content, &paths.lock)?;
+            } else if lockfile.version.is_legacy() &&
+                only_integrity_differs(&lockfile.entries, &new_locks)
+            {
+                // Soldeer v0.11 and older extracted archives differently, so the integrity
+                // checksums they recorded can be stale even though the dependencies themselves
+                // did not change. The archives were verified against the `checksum` field during
+                // install, so recomputing the integrity checksums here is safe.
+                write_lockfile(&new_lockfile_content, &paths.lock)?;
+                success!(
+                    "Migrated the lockfile to the v2 format and refreshed the integrity checksums"
+                );
+            } else if new_lockfile_content != lockfile.raw {
                 warning!(
                     "Warning: the lock file is out of sync with the dependencies. Consider running `soldeer update` to re-generate the lockfile."
                 );
-            } else if lockfile.raw.is_empty() {
-                write_lockfile(&new_lockfile_content, &paths.lock)?;
             }
             edit_remappings(&RemappingsAction::Update, &config, paths)?;
             success!("Updated remappings");
@@ -180,6 +197,7 @@ pub(crate) async fn install_command(paths: &Paths, cmd: Install) -> Result<()> {
             let lock = install_dependency(
                 &dep,
                 None,
+                LockFileVersion::default(),
                 &paths.dependencies,
                 None,
                 config.recursive_deps,

@@ -1,13 +1,13 @@
 use crate::{
     ConfigLocation,
-    utils::{Progress, success, warning},
+    utils::{Progress, success, warn_unknown_lockfile_version, warning},
 };
 use clap::Parser;
 use soldeer_core::{
     Result,
     config::{Paths, read_config_deps, read_soldeer_config},
     install::{InstallProgress, ensure_dependencies_dir},
-    lock::{generate_lockfile_contents, read_lockfile, write_lockfile},
+    lock::{LockFileVersion, generate_lockfile_contents, read_lockfile, write_lockfile},
     remappings::{RemappingsAction, edit_remappings},
     update::update_dependencies,
 };
@@ -58,12 +58,14 @@ pub(crate) async fn update_command(paths: &Paths, cmd: Update) -> Result<()> {
 
     let lockfile = read_lockfile(&paths.lock)?;
     success!("Done reading lockfile");
+    warn_unknown_lockfile_version(&lockfile);
     let (progress, monitor) = InstallProgress::new();
     let bars = Progress::new("Updating dependencies", dependencies.len(), monitor);
     bars.start_all();
     let new_locks = update_dependencies(
         &dependencies,
         &lockfile.entries,
+        lockfile.version,
         &paths.dependencies,
         config.recursive_deps,
         progress,
@@ -74,7 +76,7 @@ pub(crate) async fn update_command(paths: &Paths, cmd: Update) -> Result<()> {
     })?;
     bars.stop_all();
 
-    let new_lockfile_content = generate_lockfile_contents(new_locks);
+    let new_lockfile_content = generate_lockfile_contents(new_locks, LockFileVersion::default());
     write_lockfile(&new_lockfile_content, &paths.lock)?;
     success!("Updated lockfile");
 

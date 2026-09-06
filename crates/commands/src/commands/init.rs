@@ -7,7 +7,7 @@ use soldeer_core::{
     Result,
     config::{Paths, add_to_config, read_soldeer_config, update_config_libs},
     install::{InstallProgress, ensure_dependencies_dir, install_dependency},
-    lock::add_to_lockfile,
+    lock::{LockFileVersion, add_to_lockfile},
     registry::get_latest_version,
     remappings::{RemappingsAction, edit_remappings},
     utils::remove_forge_lib,
@@ -46,11 +46,19 @@ pub(crate) async fn init_command(paths: &Paths, cmd: Init) -> Result<()> {
     let (progress, monitor) = InstallProgress::new();
     let bars = Progress::new(format!("Installing {dependency}"), 1, monitor);
     bars.start_all();
-    let lock = install_dependency(&dependency, None, &paths.dependencies, None, false, progress)
-        .await
-        .inspect_err(|e| {
-            bars.set_error(e);
-        })?;
+    let lock = install_dependency(
+        &dependency,
+        None,
+        LockFileVersion::default(),
+        &paths.dependencies,
+        None,
+        false,
+        progress,
+    )
+    .await
+    .inspect_err(|e| {
+        bars.set_error(e);
+    })?;
     bars.stop_all();
     add_to_config(&dependency, &paths.config)?;
     let foundry_config = paths.root.join("foundry.toml");

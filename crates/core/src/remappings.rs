@@ -374,9 +374,11 @@ fn remappings_from_deps(
         .map(|dependency| {
             let dependency_name_formatted = format_remap_name(soldeer_config, dependency); // contains trailing slash
             let relative_path = get_install_dir_relative(dependency, paths, locked)?;
-            let suffix = source_dir_suffix(&paths.root.join(&relative_path));
+            // The source-dir suffix is inferred only on install (`Add`). On update we
+            // must not reintroduce a `src/` the user deliberately removed, and the
+            // path must not depend on whether a remappings file already existed.
             Ok((
-                format!("{dependency_name_formatted}={relative_path}/{suffix}"),
+                format!("{dependency_name_formatted}={relative_path}/"),
                 dependency.clone(),
             )
                 .into())

@@ -28,6 +28,27 @@ use tokio::process::Command;
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct IntegrityChecksum(pub String);
 
+/// Transport protocol policy applied to every `git` invocation.
+///
+/// Submodule URLs are read from a `.gitmodules` file that ships inside a dependency, so they are
+/// not trusted input. Everything not listed here is denied, which rules out `ext::` (arbitrary
+/// command execution) and the unauthenticated `git://` and `http://` transports. This is not a
+/// problem with recent version of git (after CVE-2022-39253) but since we use the system git we
+/// can't be sure it's up to date.
+///
+/// These are passed as command-line `-c` flags, which outrank both the global and the
+/// repository-local config. They do not outrank the `GIT_ALLOW_PROTOCOL` environment variable,
+/// which git treats as an allow-list that wins over any config, so [`run_git_command`] removes it
+/// from the child environment. Git versions that predate `protocol.allow` ignore these keys
+/// altogether and cannot be constrained this way.
+const GIT_PROTOCOL_POLICY: [&str; 5] = [
+    "protocol.allow=never",
+    "protocol.https.allow=always",
+    "protocol.ssh.allow=always",
+    "protocol.file.allow=user",
+    "protocol.ext.allow=never",
+];
+
 /// Get the location where the token file is stored or read from.
 ///
 /// The token file is stored in the user's home directory in a hidden folder called `.soldeer`.
@@ -211,6 +232,8 @@ pub fn hash_file(path: impl AsRef<Path>) -> Result<IntegrityChecksum, std::io::E
 
 /// Run a `git` command with the given arguments in the given directory.
 ///
+/// The command runs with terminal prompts disabled and with restricted transport protocols.
+///
 /// The function output is parsed as a UTF-8 string and returned.
 pub async fn run_git_command<I, S>(
     args: I,
@@ -221,7 +244,10 @@ where
     S: AsRef<OsStr>,
 {
     let mut git = Command::new("git");
-    git.args(args.clone()).env("GIT_TERMINAL_PROMPT", "0");
+    for policy in GIT_PROTOCOL_POLICY {
+        git.arg("-c").arg(policy);
+    }
+    git.args(args.clone()).env("GIT_TERMINAL_PROMPT", "0").env_remove("GIT_ALLOW_PROTOCOL");
     if let Some(current_dir) = current_dir {
         git.current_dir(
             canonicalize(current_dir)
@@ -377,6 +403,30 @@ mod tests {
     use super::*;
     use std::fs;
     use testdir::testdir;
+
+    /// Run a `git` command in the given directory, ignoring the user's git config.
+    fn git(dir: &Path, args: &[&str]) -> String {
+        let output = std::process::Command::new("git")
+            .args(args)
+            .current_dir(dir)
+            .env("GIT_CONFIG_GLOBAL", dir.join("nonexistent-global-config"))
+            .env("GIT_CONFIG_SYSTEM", dir.join("nonexistent-system-config"))
+            .output()
+            .unwrap();
+        assert!(output.status.success(), "git failed: {args:?}");
+        String::from_utf8(output.stdout).unwrap().trim().to_string()
+    }
+
+    /// Create a repository with a single commit and a deterministic identity.
+    fn init_repo(dir: &Path) {
+        fs::create_dir_all(dir).unwrap();
+        git(dir, &["init", "-b", "main"]);
+        git(dir, &["config", "user.email", "test@example.com"]);
+        git(dir, &["config", "user.name", "Test"]);
+        fs::write(dir.join("file.txt"), "content").unwrap();
+        git(dir, &["add", "file.txt"]);
+        git(dir, &["commit", "-m", "init"]);
+    }
 
     /// Compute the login file path with `SOLDEER_LOGIN_FILE` unset and the given home directory.
     fn login_file_path_with_home(home: &Path) -> Result<PathBuf, std::io::Error> {
@@ -538,5 +588,62 @@ mod tests {
         let hash3 = hash_folder(&folder).unwrap();
         assert_ne!(hash2, hash3);
         assert_ne!(hash1, hash3);
+    }
+
+    #[tokio::test]
+    async fn test_git_denies_ext_protocol() {
+        let dir = testdir!();
+        let dest = dir.join("clone");
+        // `ext::` hands the rest of the URL to the shell, so it must never be reachable
+        let err =
+            run_git_command(&["clone", "ext::sh -c true", dest.to_string_lossy().as_ref()], None)
+                .await
+                .unwrap_err();
+        assert!(err.to_string().contains("transport 'ext' not allowed"), "{err}");
+    }
+
+    #[tokio::test]
+    async fn test_git_denies_ext_protocol_with_env_override() {
+        let dir = testdir!();
+        let dest = dir.join("clone");
+        // `GIT_ALLOW_PROTOCOL` is an allow-list that outranks the `-c` policy, so it must not reach
+        // the git child process
+        let err = temp_env::async_with_vars(
+            [("GIT_ALLOW_PROTOCOL", Some("ext"))],
+            run_git_command(&["clone", "ext::sh -c true", dest.to_string_lossy().as_ref()], None),
+        )
+        .await
+        .unwrap_err();
+        assert!(err.to_string().contains("transport 'ext' not allowed"), "{err}");
+    }
+
+    #[tokio::test]
+    async fn test_git_denies_file_protocol_for_submodules() {
+        let dir = testdir!();
+        let source = dir.join("source");
+        init_repo(&source);
+
+        // a submodule URL comes from an archive-supplied `.gitmodules`, so the file transport is
+        // out of reach there even if the user's config loosened `protocol.file.allow`
+        let parent = dir.join("parent");
+        init_repo(&parent);
+        let err = run_git_command(
+            &["submodule", "add", "-f", source.to_string_lossy().as_ref(), "sub"],
+            Some(&parent),
+        )
+        .await
+        .unwrap_err();
+        assert!(err.to_string().contains("transport 'file' not allowed"), "{err}");
+
+        // a clone the user asked for directly still works, so local-path git dependencies keep
+        // working
+        let dest = dir.join("clone");
+        let res = run_git_command(
+            &["clone", source.to_string_lossy().as_ref(), dest.to_string_lossy().as_ref()],
+            None,
+        )
+        .await;
+        assert!(res.is_ok(), "{res:?}");
+        assert!(dest.join("file.txt").exists());
     }
 }

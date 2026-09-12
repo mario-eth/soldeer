@@ -1082,7 +1082,7 @@ remappings_regenerate = true
 src = "src"
 out = "out"
 libs = ["dependencies"]
-remappings = ["@custom-f@forge-std-1.8.1/=dependencies/forge-std-1.8.1/"]
+remappings = ["@custom-f@forge-std-1.8.1/=dependencies/forge-std-1.8.1/src/"]
 
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
 
@@ -1125,7 +1125,7 @@ remappings_location = "config"
 
     let expected = r#"[profile.default]
 libs = ["dependencies"]
-remappings = ["!custom-f!forge-std-1.8.1/=dependencies/forge-std-1.8.1/"]
+remappings = ["!custom-f!forge-std-1.8.1/=dependencies/forge-std-1.8.1/src/"]
 
 [soldeer]
 remappings_prefix = "!custom-f!"
@@ -1165,7 +1165,7 @@ remappings_regenerate = true
     .await;
     assert!(res.is_ok(), "{res:?}");
 
-    let updated_contents = r#"!custom-f!forge-std-1.8.1/=dependencies/forge-std-1.8.1/
+    let updated_contents = r#"!custom-f!forge-std-1.8.1/=dependencies/forge-std-1.8.1/src/
 "#;
 
     assert_eq!(updated_contents, fs::read_to_string(dir.join("remappings.txt")).unwrap());

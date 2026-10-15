@@ -1489,6 +1489,64 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_install_recursive_abbreviated_git_rev() {
+        let dir = testdir!();
+        // Ignore user signing and hooks configuration when creating the fixture.
+        let git_command = |dir: &Path, args: &[&str]| {
+            let output = std::process::Command::new("git")
+                .args(["-c", "user.name=Test", "-c", "user.email=test@example.com"])
+                .args(args)
+                .current_dir(dir)
+                .env("GIT_CONFIG_GLOBAL", dir.join("nonexistent-global-config"))
+                .env("GIT_CONFIG_SYSTEM", dir.join("nonexistent-system-config"))
+                .output()
+                .unwrap();
+            assert!(output.status.success(), "git failed: {args:?}");
+            String::from_utf8(output.stdout).unwrap().trim().to_string()
+        };
+        let source = dir.join("source");
+        fs::create_dir(&source).await.unwrap();
+        fs::write(source.join("Child.sol"), "contract Child {}\n").await.unwrap();
+        git_command(&source, &["init", "-b", "main"]);
+        git_command(&source, &["add", "."]);
+        git_command(&source, &["commit", "-m", "initial"]);
+        let rev = git_command(&source, &["rev-parse", "HEAD"]);
+        let rev = rev.as_str();
+        git_command(&source, &["commit", "--allow-empty", "-m", "newer"]);
+        assert_ne!(git_command(&source, &["rev-parse", "HEAD"]), rev);
+        let git = source.to_str().unwrap();
+        let child_lock: LockEntry =
+            GitLockEntry::builder().name("child").version("1.0.0").git(git).rev(rev).build().into();
+        let parent = dir.join("dependencies/parent-1.0.0");
+        fs::create_dir_all(&parent).await.unwrap();
+        fs::write(
+            parent.join("soldeer.toml"),
+            format!(
+                "[dependencies]\nchild = {{ version = \"1.0.0\", git = {git:?}, rev = {:?} }}\n",
+                &rev[..7]
+            ),
+        )
+        .await
+        .unwrap();
+        write_lockfile(
+            &generate_lockfile_contents(vec![child_lock], LockFileVersion::default()),
+            parent.join("soldeer.lock"),
+        )
+        .unwrap();
+        // Exercise both a fresh nested clone and replay with the child already installed.
+        for _ in 0..2 {
+            install_subdependencies(&parent, None).await.unwrap();
+            assert!(parent.join("dependencies/child-1.0.0/Child.sol").exists());
+            assert_eq!(
+                git_command(&parent.join("dependencies/child-1.0.0"), &["rev-parse", "HEAD"]),
+                rev
+            );
+            let nested = read_lockfile(parent.join("soldeer.lock")).unwrap();
+            assert_eq!(nested.entries[0].as_git().unwrap().rev, rev);
+        }
+    }
+
+    #[tokio::test]
     async fn test_install_dependency_inner_git_rev() {
         let dir = testdir!();
         let install: InstallInfo = GitInstallInfo::builder()

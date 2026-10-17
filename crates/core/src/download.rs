@@ -251,9 +251,10 @@ fn extract_dependency_archive(
         .map_err(|e| DownloadError::IOError { path: dir.to_path_buf(), source: e })?;
     for index in 0..archive.len() {
         let mut entry = archive.by_index(index)?;
+        let entry_name = String::from_utf8_lossy(entry.name_raw());
         let Some(name) = entry.enclosed_name() else {
             // entry cannot be placed inside the destination safely
-            return Err(DownloadError::InvalidArchivePath(entry.name().to_string()));
+            return Err(DownloadError::InvalidArchivePath(entry_name.into_owned()));
         };
         // entries filtered out of the root detection may not live under the root
         let name = root.as_ref().map_or(name.as_path(), |r| name.strip_prefix(r).unwrap_or(&name));
@@ -267,19 +268,19 @@ fn extract_dependency_archive(
             };
             if component.contains(':') {
                 // `foo:bar` writes to an alternate data stream of `foo` on windows
-                return Err(DownloadError::InvalidArchivePath(entry.name().to_string()));
+                return Err(DownloadError::InvalidArchivePath(entry_name.into_owned()));
             }
             // the win32 path parser strips trailing dots and spaces from each component, so we need
             // to trim on every platform to have the same integrity checksum
             is_git_metadata |= component.trim_end_matches(['.', ' ']).eq_ignore_ascii_case(".git");
         }
         if is_git_metadata {
-            trace!(entry = entry.name(); "skipping git metadata found in archive");
+            trace!(entry = &*entry_name; "skipping git metadata found in archive");
             skipped += 1;
             continue;
         }
         let out_path = dir.join(name);
-        trace!(entry = entry.name(), path:? = out_path; "extracting archive entry");
+        trace!(entry = &*entry_name, path:? = out_path; "extracting archive entry");
         if entry.is_dir() {
             fs::create_dir_all(&out_path)
                 .map_err(|e| DownloadError::IOError { path: out_path.clone(), source: e })?;

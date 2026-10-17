@@ -10,6 +10,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## `soldeer` - [0.12.1](https://github.com/mario-eth/soldeer/compare/v0.12.0...v0.12.1) - 2026-10-17
 
 ### Other
+- release v0.12.1 ([#412](https://github.com/mario-eth/soldeer/pull/412))
+
+## `soldeer-commands` - [0.12.1](https://github.com/mario-eth/soldeer/compare/soldeer-commands-v0.12.0...soldeer-commands-v0.12.1) - 2026-10-17
+
+### Other
+- release v0.12.1 ([#412](https://github.com/mario-eth/soldeer/pull/412))
+
+## `soldeer-core` - [0.12.1](https://github.com/mario-eth/soldeer/compare/soldeer-core-v0.12.0...soldeer-core-v0.12.1) - 2026-10-17
+
+### Other
+- *(deps)* bump zip to 9 ([#411](https://github.com/mario-eth/soldeer/pull/411))
+
+## `soldeer` - [0.12.1](https://github.com/mario-eth/soldeer/compare/v0.12.0...v0.12.1) - 2026-10-17
+
+### Other
 - update Cargo.lock dependencies
 
 ## `soldeer-core` - [0.12.1](https://github.com/mario-eth/soldeer/compare/soldeer-core-v0.12.0...soldeer-core-v0.12.1) - 2026-10-17

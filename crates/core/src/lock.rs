@@ -411,7 +411,7 @@ impl LockEntry {
                     // Match hexadecimal prefixes against the authoritative full lock pin.
                     // This does not validate repository-wide abbreviation uniqueness.
                     let matches_rev = rev == &lock.rev ||
-                        ((4..=40).contains(&rev.len()) &&
+                        ((7..=40).contains(&rev.len()) &&
                             lock.rev.len() == 40 &&
                             lock.rev.bytes().all(|b| b.is_ascii_hexdigit()) &&
                             lock.rev[..rev.len()].eq_ignore_ascii_case(rev));
@@ -804,7 +804,7 @@ mod tests {
     fn test_check_matches_git_abbreviated_rev() {
         let rev = "78c2f6a1a54db26bab6c3f501854a1564eb3707f";
         let lock = git_lock("1.0.0", "git@github.com:foo/bar.git", rev);
-        for required in [rev, &rev[..7], &rev[..4], "78C2F6A"] {
+        for required in [rev, &rev[..7], "78C2F6A"] {
             let dep = GitDependency::builder()
                 .name("mylib")
                 .version_req("1.0.0")
@@ -814,9 +814,17 @@ mod tests {
                 .into();
             assert!(lock.matches(&dep).is_ok(), "{required}");
         }
-        for required in
-            ["", "78c", "78c2f6b", "78c2f6aZ", "main", "78c2f6a1a54db26bab6c3f501854a1564eb3707f0"]
-        {
+        for required in [
+            "",
+            "78c",
+            &rev[..4],
+            &rev[..5],
+            &rev[..6],
+            "78c2f6b",
+            "78c2f6aZ",
+            "main",
+            "78c2f6a1a54db26bab6c3f501854a1564eb3707f0",
+        ] {
             let dep = GitDependency::builder()
                 .name("mylib")
                 .version_req("1.0.0")

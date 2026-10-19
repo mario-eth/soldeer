@@ -407,13 +407,17 @@ impl LockEntry {
                         required: dep.git.clone(),
                     });
                 }
-                if let Some(GitIdentifier::Rev(rev)) = &dep.identifier &&
-                    rev != &lock.rev
-                {
-                    return Err(LockMismatch::Rev {
-                        locked: lock.rev.clone(),
-                        required: rev.clone(),
-                    });
+                if let Some(GitIdentifier::Rev(rev)) = &dep.identifier {
+                    // Match hexadecimal prefixes against the authoritative full lock pin.
+                    // This does not validate repository-wide abbreviation uniqueness.
+                    let matches_rev = rev.len() >= 7 &&
+                        lock.rev.get(..rev.len()).is_some_and(|p| p.eq_ignore_ascii_case(rev));
+                    if !matches_rev {
+                        return Err(LockMismatch::Rev {
+                            locked: lock.rev.clone(),
+                            required: rev.clone(),
+                        });
+                    }
                 }
                 Ok(())
             }
@@ -791,6 +795,42 @@ mod tests {
             .build()
             .into();
         assert!(lock.matches(&dep).is_ok());
+    }
+
+    #[test]
+    fn test_check_matches_git_abbreviated_rev() {
+        let rev = "78c2f6a1a54db26bab6c3f501854a1564eb3707f";
+        let lock = git_lock("1.0.0", "git@github.com:foo/bar.git", rev);
+        for required in [rev, &rev[..7], "78C2F6A"] {
+            let dep = GitDependency::builder()
+                .name("mylib")
+                .version_req("1.0.0")
+                .git("git@github.com:foo/bar.git")
+                .identifier(GitIdentifier::from_rev(required))
+                .build()
+                .into();
+            assert!(lock.matches(&dep).is_ok(), "{required}");
+        }
+        for required in [
+            "",
+            "78c",
+            &rev[..4],
+            &rev[..5],
+            &rev[..6],
+            "78c2f6b",
+            "78c2f6aZ",
+            "main",
+            "78c2f6a1a54db26bab6c3f501854a1564eb3707f0",
+        ] {
+            let dep = GitDependency::builder()
+                .name("mylib")
+                .version_req("1.0.0")
+                .git("git@github.com:foo/bar.git")
+                .identifier(GitIdentifier::from_rev(required))
+                .build()
+                .into();
+            assert!(matches!(lock.matches(&dep), Err(LockMismatch::Rev { .. })), "{required}");
+        }
     }
 
     #[test]

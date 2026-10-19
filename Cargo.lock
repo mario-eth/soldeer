@@ -249,9 +249,9 @@ dependencies = [
 
 [[package]]
 name = "cc"
-version = "1.8.0"
+version = "1.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6651c9ed80effdc7db0ff72512157f901af5e3549e341e24b1dd4887d836d838"
+checksum = "877bf67ac8e52449eb2f9e98a344ea163beb70dd1f9eebe3cc5357dcfeaee4df"
 dependencies = [
  "find-msvc-tools",
  "jobserver",
@@ -733,9 +733,9 @@ dependencies = [
 
 [[package]]
 name = "find-msvc-tools"
-version = "0.1.14"
+version = "0.1.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "aedcfb3409746eddb02b9e19ebda1c3394f759a152e48ee875a0844d1b955484"
+checksum = "1c66915cc5391097de7a2b0b972e8505aa33c0df401fd3a6811dbdb32881ba48"
 
 [[package]]
 name = "flate2"
@@ -2389,7 +2389,7 @@ dependencies = [
 
 [[package]]
 name = "soldeer"
-version = "0.12.1"
+version = "0.12.2"
 dependencies = [
  "env_logger",
  "log",
@@ -2400,7 +2400,7 @@ dependencies = [
 
 [[package]]
 name = "soldeer-commands"
-version = "0.12.1"
+version = "0.12.2"
 dependencies = [
  "bon",
  "clap",
@@ -2420,7 +2420,7 @@ dependencies = [
 
 [[package]]
 name = "soldeer-core"
-version = "0.12.1"
+version = "0.12.2"
 dependencies = [
  "bon",
  "chrono",
@@ -3568,9 +3568,9 @@ dependencies = [
 
 [[package]]
 name = "zip"
-version = "9.0.4"
+version = "9.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a954114b47a54df49f83d2722814e86b23d4bb1b54a1b90fb7d92b41619ddc22"
+checksum = "6e04976da629d3b04204ba8105b396a193af8ad2583b2c79bfb3ab8af580a11e"
 dependencies = [
  "crc32fast",
  "flate2",

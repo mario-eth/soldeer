@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## `soldeer-core` - [0.12.2](https://github.com/mario-eth/soldeer/compare/soldeer-core-v0.12.1...soldeer-core-v0.12.2) - 2026-10-19
+
+### Fixed
+- accept abbreviated git revs in lock matching ([#410](https://github.com/mario-eth/soldeer/pull/410))
+
 ## `soldeer` - [0.12.1](https://github.com/mario-eth/soldeer/compare/v0.12.0...v0.12.1) - 2026-10-17
 
 ### Other

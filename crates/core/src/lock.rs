@@ -410,11 +410,8 @@ impl LockEntry {
                 if let Some(GitIdentifier::Rev(rev)) = &dep.identifier {
                     // Match hexadecimal prefixes against the authoritative full lock pin.
                     // This does not validate repository-wide abbreviation uniqueness.
-                    let matches_rev = rev == &lock.rev ||
-                        ((7..=40).contains(&rev.len()) &&
-                            lock.rev.len() == 40 &&
-                            lock.rev.bytes().all(|b| b.is_ascii_hexdigit()) &&
-                            lock.rev[..rev.len()].eq_ignore_ascii_case(rev));
+                    let matches_rev = rev.len() >= 7 &&
+                        lock.rev.get(..rev.len()).is_some_and(|p| p.eq_ignore_ascii_case(rev));
                     if !matches_rev {
                         return Err(LockMismatch::Rev {
                             locked: lock.rev.clone(),

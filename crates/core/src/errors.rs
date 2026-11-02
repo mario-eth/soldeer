@@ -38,6 +38,14 @@ pub enum SoldeerError {
     IOError(#[from] io::Error),
 }
 
+/// The `SOLDEER_API_URL` environment variable does not contain a valid URL.
+#[derive(Error, Debug)]
+#[error("invalid `SOLDEER_API_URL` environment variable value `{url}`: {reason}")]
+pub struct InvalidApiUrl {
+    pub url: String,
+    pub reason: String,
+}
+
 #[derive(Error, Debug)]
 #[non_exhaustive]
 pub enum AuthError {
@@ -58,6 +66,9 @@ pub enum AuthError {
 
     #[error("TUI disabled and no credentials passed via CLI")]
     TuiDisabled,
+
+    #[error(transparent)]
+    InvalidApiUrl(#[from] InvalidApiUrl),
 }
 
 #[derive(Error, Debug)]
@@ -74,6 +85,9 @@ pub enum ConfigError {
 
     #[error("missing `{field}` field in {dep}")]
     MissingField { field: String, dep: String },
+
+    #[error("missing `{field}` field in {dep} (unknown field(s): {unknown})")]
+    MissingFieldWithUnknown { field: String, dep: String, unknown: String },
 
     #[error("invalid `{field}` field in {dep}")]
     InvalidField { field: String, dep: String },
@@ -287,6 +301,9 @@ pub enum PublishError {
     #[error("user cancelled operation")]
     UserAborted,
 
+    #[error(transparent)]
+    InvalidApiUrl(#[from] InvalidApiUrl),
+
     #[error("unknown http error")]
     UnknownError,
 }
@@ -318,6 +335,9 @@ pub enum RegistryError {
         "invalid version requirement {version_req} for {dependency}: multiple requirements must be separated with a comma"
     )]
     InvalidVersionReq { dependency: String, version_req: String },
+
+    #[error(transparent)]
+    InvalidApiUrl(#[from] InvalidApiUrl),
 }
 
 #[derive(Error, Debug)]

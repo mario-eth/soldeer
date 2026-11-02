@@ -2394,6 +2394,7 @@ dependencies = [
  "env_logger",
  "log",
  "soldeer-commands",
+ "testdir",
  "tokio",
  "yansi",
 ]

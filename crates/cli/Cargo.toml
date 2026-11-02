@@ -25,3 +25,6 @@ log.workspace = true
 soldeer-commands = { path = "../commands", version = "0.12.1" }
 tokio.workspace = true
 yansi = { version = "1.0.1", features = ["detect-tty", "detect-env"] }
+
+[dev-dependencies]
+testdir.workspace = true

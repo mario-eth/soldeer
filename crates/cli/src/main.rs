@@ -1,5 +1,5 @@
 //! Soldeer is a package manager for Solidity projects
-use std::env;
+use std::{env, process::ExitCode};
 
 use log::Level;
 use soldeer_commands::{Args, commands::Parser as _, run};
@@ -12,7 +12,7 @@ const HAVE_COLOR: Condition = Condition(|| {
 });
 
 #[tokio::main]
-async fn main() {
+async fn main() -> ExitCode {
     // disable colors if unsupported
     yansi::whenever(HAVE_COLOR);
     let args = Args::parse();
@@ -30,8 +30,10 @@ async fn main() {
         banner();
     }
     if let Err(err) = run(args.command, args.verbose).await {
-        eprintln!("{}", err.to_string().red())
+        eprintln!("{}", err.to_string().red());
+        return ExitCode::FAILURE;
     }
+    ExitCode::SUCCESS
 }
 
 /// Generate and print a banner

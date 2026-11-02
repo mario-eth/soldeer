@@ -5,7 +5,7 @@
 use crate::{
     auth::get_auth_headers,
     config::{Dependency, HttpDependency},
-    errors::RegistryError,
+    errors::{InvalidApiUrl, RegistryError},
 };
 use chrono::{DateTime, Utc};
 use log::{debug, warn};
@@ -122,6 +122,8 @@ pub struct DownloadUrl {
 /// <https://api.soldeer.xyz>. The API version prefix and path are appended to the base URL,
 /// and any query parameters are URL-encoded and appended to the URL.
 ///
+/// An error is returned if `SOLDEER_API_URL` is not a valid URL.
+///
 /// # Examples
 ///
 /// ```
@@ -130,21 +132,27 @@ pub struct DownloadUrl {
 ///     "v1",
 ///     "revision",
 ///     &[("project_name", "forge-std"), ("offset", "0"), ("limit", "1")],
-/// );
+/// )
+/// .unwrap();
 /// assert_eq!(
 ///     url.as_str(),
 ///     "https://api.soldeer.xyz/api/v1/revision?project_name=forge-std&offset=0&limit=1"
 /// );
 /// ```
-pub fn api_url(version: &str, path: &str, params: &[(&str, &str)]) -> Url {
+pub fn api_url(
+    version: &str,
+    path: &str,
+    params: &[(&str, &str)],
+) -> std::result::Result<Url, InvalidApiUrl> {
     let url = env::var("SOLDEER_API_URL").unwrap_or("https://api.soldeer.xyz".to_string());
-    let mut url = Url::parse(&url).expect("SOLDEER_API_URL is invalid");
+    let mut url = Url::parse(&url)
+        .map_err(|err| InvalidApiUrl { url: url.clone(), reason: err.to_string() })?;
     url.set_path(&format!("api/{version}/{path}"));
     if params.is_empty() {
-        return url;
+        return Ok(url);
     }
     url.query_pairs_mut().extend_pairs(params.iter());
-    url
+    Ok(url)
 }
 
 /// Get the download URL for a dependency at a specific version.
@@ -157,7 +165,7 @@ pub async fn get_dependency_url_remote(
         "v1",
         "revision-cli",
         &[("project_name", dependency.name()), ("revision", version)],
-    );
+    )?;
 
     let res = Client::new().get(url).headers(get_auth_headers()?).send().await?;
     let res = res.error_for_status()?;
@@ -172,7 +180,7 @@ pub async fn get_dependency_url_remote(
 /// Get the unique ID for a project by name.
 pub async fn get_project_id(dependency_name: &str) -> Result<String> {
     debug!(name = dependency_name; "retrieving project ID");
-    let url = api_url("v2", "project", &[("project_name", dependency_name)]);
+    let url = api_url("v2", "project", &[("project_name", dependency_name)])?;
     let res = Client::new().get(url).headers(get_auth_headers()?).send().await?;
     let res = res.error_for_status()?;
     let project: ProjectResponse = res.json().await?;
@@ -190,7 +198,7 @@ pub async fn get_latest_version(dependency_name: &str) -> Result<Dependency> {
         "v1",
         "revision",
         &[("project_name", dependency_name), ("offset", "0"), ("limit", "1")],
-    );
+    )?;
     let res = Client::new().get(url).headers(get_auth_headers()?).send().await?;
     let res = res.error_for_status()?;
     let revision: RevisionResponse = res.json().await?;
@@ -234,7 +242,7 @@ pub async fn get_all_versions_descending(dependency_name: &str) -> Result<Versio
         "v1",
         "revision",
         &[("project_name", dependency_name), ("offset", "0"), ("limit", "10000")],
-    );
+    )?;
     let res = Client::new().get(url).headers(get_auth_headers()?).send().await?;
     let res = res.error_for_status()?;
     let revision: RevisionResponse = res.json().await?;
@@ -341,7 +349,7 @@ pub fn parse_version_req(version_req: &str) -> Option<VersionReq> {
 mod tests {
     use super::*;
     use mockito::{Matcher, Server};
-    use temp_env::async_with_vars;
+    use temp_env::{async_with_vars, with_var};
 
     #[tokio::test]
     async fn test_get_dependency_url() {
@@ -566,6 +574,17 @@ mod tests {
         )
         .await;
         assert!(matches!(res, Err(RegistryError::InvalidVersionReq { .. })), "{res:?}");
+    }
+
+    #[test]
+    fn test_api_url_invalid() {
+        let res = with_var("SOLDEER_API_URL", Some("notaurl"), || api_url("v1", "revision", &[]));
+        let err = res.unwrap_err();
+        assert_eq!(err.url, "notaurl");
+        assert_eq!(
+            err.to_string(),
+            "invalid `SOLDEER_API_URL` environment variable value `notaurl`: relative URL without a base"
+        );
     }
 
     #[test]

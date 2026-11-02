@@ -995,26 +995,41 @@ fn parse_dependency(name: impl Into<String>, value: &Item) -> Result<ParsingResu
         }
     };
 
-    let mut warnings = Vec::new();
-
     // check for unsupported fields
-    warnings.extend(table.iter().filter_map(|(k, _)| {
-        if !["version", "url", "git", "rev", "branch", "tag", "project_root"].contains(&k) {
+    let unknown_fields: Vec<&str> = table
+        .iter()
+        .map(|(k, _)| k)
+        .filter(|k| !["version", "url", "git", "rev", "branch", "tag", "project_root"].contains(k))
+        .collect();
+    let mut warnings: Vec<_> = unknown_fields
+        .iter()
+        .map(|k| {
             warn!(dependency = name; "toml parsing: `{k}` is not a valid dependency option");
-            Some(ParsingWarning {
+            ParsingWarning {
                 dependency_name: name.clone(),
                 message: format!("`{k}` is not a valid dependency option"),
-            })
-        } else {
-            None
-        }
-    }));
+            }
+        })
+        .collect();
 
     // version is needed in both cases
     let version_req = match table.get("version").map(|v| v.as_str()) {
         Some(None) => {
             debug!(dep = name; "dependency's `version` field is not a string");
             return Err(ConfigError::InvalidField { field: "version".to_string(), dep: name });
+        }
+        None if !unknown_fields.is_empty() => {
+            // the warnings are not returned on error, so mention the unknown fields here since one
+            // of them is likely a misspelled `version`
+            return Err(ConfigError::MissingFieldWithUnknown {
+                field: "version".to_string(),
+                dep: name,
+                unknown: unknown_fields
+                    .iter()
+                    .map(|k| format!("`{k}`"))
+                    .collect::<Vec<_>>()
+                    .join(", "),
+            });
         }
         None => {
             return Err(ConfigError::MissingField { field: "version".to_string(), dep: name });
@@ -1968,6 +1983,41 @@ libs = ["dependencies"]
             let res = parse_dependency(name, v).unwrap();
             assert_eq!(res.warnings[0].message, "`foo` is not a valid dependency option");
         }
+    }
+
+    #[test]
+    fn test_parse_dependency_misspelled_version() {
+        let config_contents = r#"[dependencies]
+"lib1" = { verison = "1.0.0" }
+"lib2" = { verison = "1.0.0", foo = "bar" }
+"lib3" = { url = "https://example.com" }
+"#;
+        let doc: DocumentMut = config_contents.parse::<DocumentMut>().unwrap();
+        let data = doc.get("dependencies").map(|v| v.as_table()).unwrap().unwrap();
+
+        let res = parse_dependency("lib1", &data["lib1"]);
+        let err = res.unwrap_err();
+        assert!(
+            matches!(err, ConfigError::MissingFieldWithUnknown { ref field, ref dep, ref unknown } if field == "version" && dep == "lib1" && unknown == "`verison`"),
+            "{err:?}"
+        );
+        assert_eq!(
+            err.to_string(),
+            "missing `version` field in lib1 (unknown field(s): `verison`)"
+        );
+
+        let res = parse_dependency("lib2", &data["lib2"]);
+        assert!(
+            matches!(res, Err(ConfigError::MissingFieldWithUnknown { ref unknown, .. }) if unknown == "`verison`, `foo`"),
+            "{res:?}"
+        );
+
+        // without unknown fields, the error is unchanged
+        let res = parse_dependency("lib3", &data["lib3"]);
+        assert!(
+            matches!(res, Err(ConfigError::MissingField { ref field, .. }) if field == "version"),
+            "{res:?}"
+        );
     }
 
     #[test]

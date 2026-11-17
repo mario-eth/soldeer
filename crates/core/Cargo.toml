@@ -18,15 +18,12 @@ workspace = true
 
 [dependencies]
 bon.workspace = true
-chrono = { version = "0.4.38", default-features = false, features = [
-    "serde",
-    "std",
-] }
 const-hex = "1.12.0"
 derive_more.workspace = true
 dunce = "1.0.5"
 home = "0.5.9"
 ignore = { version = "0.4.24", features = ["simd-accel"] }
+jiff = { version = "0.2", default-features = false, features = ["std", "serde"] }
 log = { workspace = true, features = ["kv_std"] }
 path-slash.workspace = true
 rayon.workspace = true

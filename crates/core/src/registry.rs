@@ -7,7 +7,7 @@ use crate::{
     config::{Dependency, HttpDependency},
     errors::RegistryError,
 };
-use chrono::{DateTime, Utc};
+use jiff::Timestamp;
 use log::{debug, warn};
 use reqwest::{Client, Url};
 use semver::{Version, VersionReq};
@@ -39,7 +39,7 @@ pub struct Revision {
     pub deleted: bool,
 
     /// Creation date for the revision.
-    pub created_at: Option<DateTime<Utc>>,
+    pub created_at: Option<Timestamp>,
 
     /// Whether the revision is private.
     pub private: Option<bool>,
@@ -74,8 +74,8 @@ pub struct Project {
     pub downloads: Option<i64>,
     pub image: Option<String>,
     pub long_description: Option<String>,
-    pub created_at: Option<DateTime<Utc>>,
-    pub updated_at: Option<DateTime<Utc>>,
+    pub created_at: Option<Timestamp>,
+    pub updated_at: Option<Timestamp>,
     pub organization_id: Option<uuid::Uuid>,
     pub latest_version: Option<String>,
     pub deprecated: Option<bool>,
@@ -585,5 +585,21 @@ mod tests {
         assert_eq!(parse_version_req(""), None);
         assert_eq!(parse_version_req("foobar"), None);
         assert_eq!(parse_version_req("*"), Some(VersionReq::STAR));
+    }
+
+    #[test]
+    fn test_registry_timestamps() {
+        let data = r#"{"data":[{"created_at":"2024-02-27T19:19:23.938837Z","created_by":"96228bb5-f777-4c19-ba72-363d14b8beed","deleted":false,"description":"","github_url":"","id":"37adefe5-9bc6-4777-aaf2-e56277d1f30b","name":"forge-std","updated_at":"2024-02-28T08:00:00+02:00"}],"status":"success"}"#;
+        let res: ProjectResponse = serde_json::from_str(data).unwrap();
+        let project = &res.data[0];
+        assert_eq!(project.created_at, Some("2024-02-27T19:19:23.938837Z".parse().unwrap()));
+        // offsets are normalized to UTC
+        assert_eq!(project.updated_at, Some("2024-02-28T06:00:00Z".parse().unwrap()));
+        #[cfg(feature = "serde")]
+        {
+            let json = serde_json::to_value(project).unwrap();
+            assert_eq!(json["created_at"], "2024-02-27T19:19:23.938837Z");
+            assert_eq!(json["updated_at"], "2024-02-28T06:00:00Z");
+        }
     }
 }
